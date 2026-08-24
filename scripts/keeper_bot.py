@@ -20,11 +20,13 @@ import os
 import signal
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from types import FrameType
 
 import algokit_utils
 
 from scripts import network as net
+from scripts.keeper_backoff import Backoff, default_state_path
 from smart_contracts.artifacts.keeper.keeper_client import (
     ExecuteArgs,
     KeeperClient,
@@ -314,6 +316,28 @@ def main(argv: list[str] | None = None) -> None:
         help="warn below this signer balance in µALGO (default: %(default)s)",
     )
     parser.add_argument(
+        "--state-file",
+        type=Path,
+        default=None,
+        help="where to persist backoff state (default: under XDG_STATE_HOME)",
+    )
+    parser.add_argument(
+        "--no-state",
+        action="store_true",
+        help="keep backoff in memory only; nothing is written to disk",
+    )
+    parser.add_argument(
+        "--clear-backoff",
+        action="store_true",
+        help="forget every backed-off upkeep before scanning",
+    )
+    parser.add_argument(
+        "--retry-now",
+        type=int,
+        metavar="UPKEEP_ID",
+        help="forget one upkeep's backoff before scanning, after fixing its target",
+    )
+    parser.add_argument(
         "--log-format",
         choices=("text", "json"),
         default=os.environ.get("ARCHON_LOG_FORMAT", "text"),
@@ -344,6 +368,22 @@ def main(argv: list[str] | None = None) -> None:
         keeper = algorand.account.from_environment("KEEPER")
     except Exception:
         keeper = algorand.account.from_environment("DEPLOYER")
+    state_file = (
+        None
+        if args.no_state
+        else (args.state_file or default_state_path(args.network, app_id))
+    )
+    backoff = Backoff(state_file)
+    if args.clear_backoff:
+        emit("backoff_cleared", f"Cleared backoff for {backoff.clear()} upkeep(s)")
+    if args.retry_now is not None:
+        emit(
+            "backoff_cleared",
+            f"Cleared backoff for upkeep {args.retry_now}",
+            upkeep_id=args.retry_now,
+            cleared=backoff.clear(args.retry_now),
+        )
+
     balance = guard_balance(algod, keeper.address, args.min_balance)
     client = KeeperClient(
         algorand=algorand,
@@ -358,13 +398,9 @@ def main(argv: list[str] | None = None) -> None:
         app_id=app_id,
         network=args.network,
         balance=balance,
+        backoff_state=str(state_file) if state_file else "memory",
     )
 
-    # Upkeeps that failed this run. A failed execution is free — Algorand
-    # rejects it before it reaches a block, so nothing is spent — but retrying
-    # a target that keeps rejecting wastes a round-trip every round and
-    # crowds the transaction pool, so it is skipped for the rest of the run.
-    failed: set[int] = set()
     error_delay = ERROR_RETRY_SECONDS
     executed_count = 0
     scans = 0
@@ -378,13 +414,15 @@ def main(argv: list[str] | None = None) -> None:
             # Take the work in the order escalation exists to create: what
             # pays most right now, first. Registry order would mean a
             # neglected upkeep stays neglected however far its fee has risen.
+            # Anything in backoff is left out entirely — its target is the
+            # thing that is broken, and a rising fee does not fix it.
             due = sorted(
                 (
                     u
                     for u in upkeeps
-                    if u.upkeep_id not in failed
-                    and current >= u.next_execution_round
+                    if current >= u.next_execution_round
                     and u.balance >= effective_fee(u, current)
+                    and not backoff.blocked(u.upkeep_id, current)
                 ),
                 key=lambda u: (-effective_fee(u, current), u.upkeep_id),
             )
@@ -396,7 +434,7 @@ def main(argv: list[str] | None = None) -> None:
                 round=current,
                 upkeeps=len(upkeeps),
                 due=len(due),
-                skipped=len(failed),
+                skipped=len(backoff.blocked_ids(current)),
             )
             for upkeep in due:
                 if shutdown.requested:
@@ -412,6 +450,7 @@ def main(argv: list[str] | None = None) -> None:
                         ),
                     )
                     executed_count += 1
+                    backoff.record_success(upkeep.upkeep_id)
                     emit(
                         "executed",
                         f"Executed upkeep {upkeep.upkeep_id} "
@@ -428,16 +467,33 @@ def main(argv: list[str] | None = None) -> None:
                         tx_id=response.tx_id,
                     )
                 except Exception as exc:
-                    failed.add(upkeep.upkeep_id)
-                    emit(
-                        "execute_failed",
-                        f"Upkeep {upkeep.upkeep_id} failed (no fee charged); "
-                        f"skipping it for this run: {exc}",
-                        level=logging.WARNING,
-                        round=current,
-                        upkeep_id=upkeep.upkeep_id,
-                        reason=str(exc)[:400],
+                    entry = backoff.record_failure(
+                        upkeep.upkeep_id, str(exc), current, upkeep.interval_rounds
                     )
+                    if entry is None:
+                        # Another keeper got there first, or it was cancelled
+                        # mid-flight. Nothing was spent and nothing is wrong —
+                        # backing off here would only reduce our coverage.
+                        emit(
+                            "race_lost",
+                            f"Upkeep {upkeep.upkeep_id} was already handled by "
+                            f"another keeper",
+                            round=current,
+                            upkeep_id=upkeep.upkeep_id,
+                        )
+                    else:
+                        emit(
+                            "execute_failed",
+                            f"Upkeep {upkeep.upkeep_id} failed (no fee charged); "
+                            f"retrying at round {entry.next_attempt_round} after "
+                            f"{entry.failures} failure(s): {exc}",
+                            level=logging.WARNING,
+                            round=current,
+                            upkeep_id=upkeep.upkeep_id,
+                            failures=entry.failures,
+                            next_attempt_round=entry.next_attempt_round,
+                            reason=str(exc)[:400],
+                        )
             if scans % HEARTBEAT_SCANS == 0 or args.once:
                 # Proof of life, and the number that kills bots silently.
                 balance = guard_balance(algod, keeper.address, args.min_balance)
@@ -450,7 +506,7 @@ def main(argv: list[str] | None = None) -> None:
                     upkeeps=len(upkeeps),
                     due=len(due),
                     executed_session=executed_count,
-                    skipped=len(failed),
+                    backed_off=len(backoff.blocked_ids(current)),
                     balance=balance,
                 )
             if args.once:

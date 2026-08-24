@@ -231,9 +231,26 @@ poetry run python -m scripts.keeper_bot --app-id N # other keeper instance
 
   So the barrier to running a keeper is lower than it looks: a bot that loses
   every race it enters is out nothing but local compute and a round-trip.
-- A failing upkeep (e.g. a target that rejects the call) is still skipped for
-  the rest of the bot run — for latency and transaction-pool hygiene now,
-  not to avoid burning fees, since there are none to burn.
+- A failing upkeep (e.g. a target that rejects the call) **backs off
+  exponentially**, and that state survives restarts — so a `--once` cron
+  invocation does not re-attempt a doomed upkeep on every run, which the old
+  skip-for-the-rest-of-this-run behaviour did.
+
+  The schedule is deliberately gentle, because failing costs nothing: the wait
+  doubles in the upkeep's own intervals up to 8×, but is capped at ~1,286
+  rounds (about an hour) in absolute terms. Without that cap a daily upkeep
+  would go unretried for over a week, and the only thing that buys is a slow
+  recovery once someone fixes the target. A success resets it to zero.
+
+  **Losing a race never backs off.** Another keeper getting there first is the
+  common case in a healthy network, it is free, and a keeper that stopped
+  trying everything it lost a race for would service less and less of the
+  registry.
+
+  Once you have fixed a target: `--retry-now <id>` clears one upkeep's
+  backoff, `--clear-backoff` clears them all. State lives under
+  `XDG_STATE_HOME` per network and app, or wherever `--state-file` says;
+  `--no-state` keeps it in memory only.
 
 ### Running one continuously
 
