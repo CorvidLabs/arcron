@@ -307,13 +307,13 @@ top_up:
     assert // Upkeep not found
     // smart_contracts/keeper/contract.py:111-112
     // upkeep = box.value.copy()
-    // new_balance: UInt64 = upkeep.balance.native + funding_payment.amount
+    // new_balance: UInt64 = upkeep.balance.as_uint64() + funding_payment.amount
     dup
     pushint 66
     intc_0 // 8
     box_extract // on error: index out of bounds
     // smart_contracts/keeper/contract.py:112
-    // new_balance: UInt64 = upkeep.balance.native + funding_payment.amount
+    // new_balance: UInt64 = upkeep.balance.as_uint64() + funding_payment.amount
     btoi
     uncover 2
     +
@@ -439,7 +439,7 @@ cancel:
     ==
     assert // Only the creator can cancel
     // smart_contracts/keeper/contract.py:133
-    // upkeep.balance.native
+    // upkeep.balance.as_uint64()
     dup
     pushint 66
     intc_0 // 8
@@ -449,7 +449,7 @@ cancel:
     // + BOX_MBR_FIXED
     intc 4 // 39700
     // smart_contracts/keeper/contract.py:133-134
-    // upkeep.balance.native
+    // upkeep.balance.as_uint64()
     // + BOX_MBR_FIXED
     +
     // smart_contracts/keeper/contract.py:135
@@ -470,7 +470,7 @@ cancel:
     pushint 400
     *
     // smart_contracts/keeper/contract.py:133-135
-    // upkeep.balance.native
+    // upkeep.balance.as_uint64()
     // + BOX_MBR_FIXED
     // + 400 * upkeep.call_data.native.length
     +
@@ -527,17 +527,17 @@ execute:
     assert // Upkeep not found
     // smart_contracts/keeper/contract.py:149-150
     // upkeep = box.value.copy()
-    // fee: UInt64 = upkeep.fee_per_execution.native
+    // fee: UInt64 = upkeep.fee_per_execution.as_uint64()
     dup
     pushint 58
     intc_0 // 8
     box_extract // on error: index out of bounds
     // smart_contracts/keeper/contract.py:150
-    // fee: UInt64 = upkeep.fee_per_execution.native
+    // fee: UInt64 = upkeep.fee_per_execution.as_uint64()
     dup
     btoi
     // smart_contracts/keeper/contract.py:151
-    // assert Global.round >= upkeep.next_execution_round.native, "Not due"
+    // assert Global.round >= upkeep.next_execution_round.as_uint64(), "Not due"
     global Round
     dig 3
     pushint 50
@@ -549,7 +549,7 @@ execute:
     >=
     assert // Not due
     // smart_contracts/keeper/contract.py:152
-    // assert upkeep.balance.native >= fee, "Insufficient funding"
+    // assert upkeep.balance.as_uint64() >= fee, "Insufficient funding"
     dig 3
     pushint 66
     intc_0 // 8
@@ -560,7 +560,7 @@ execute:
     >=
     assert // Insufficient funding
     // smart_contracts/keeper/contract.py:155
-    // upkeep.next_execution_round.native + upkeep.interval_rounds.native
+    // upkeep.next_execution_round.as_uint64() + upkeep.interval_rounds.as_uint64()
     dig 4
     pushint 42
     intc_0 // 8
@@ -570,12 +570,12 @@ execute:
     uncover 3
     +
     // smart_contracts/keeper/contract.py:157
-    // new_balance: UInt64 = upkeep.balance.native - fee
+    // new_balance: UInt64 = upkeep.balance.as_uint64() - fee
     uncover 2
     dig 3
     -
     // smart_contracts/keeper/contract.py:158
-    // times: UInt64 = upkeep.times_executed.native + 1
+    // times: UInt64 = upkeep.times_executed.as_uint64() + 1
     dig 5
     pushint 74
     intc_0 // 8
@@ -655,13 +655,13 @@ execute:
     box_put
     // smart_contracts/keeper/contract.py:166-170
     // itxn.ApplicationCall(
-    //     app_id=upkeep.target_app.native,
+    //     app_id=upkeep.target_app.as_uint64(),
     //     app_args=(upkeep.call_data.native,),
     //     on_completion=OnCompleteAction.NoOp,
     // ).submit()
     itxn_begin
     // smart_contracts/keeper/contract.py:167
-    // app_id=upkeep.target_app.native,
+    // app_id=upkeep.target_app.as_uint64(),
     uncover 2
     btoi
     // smart_contracts/keeper/contract.py:168
@@ -682,7 +682,7 @@ execute:
     itxn_field Fee
     // smart_contracts/keeper/contract.py:166-170
     // itxn.ApplicationCall(
-    //     app_id=upkeep.target_app.native,
+    //     app_id=upkeep.target_app.as_uint64(),
     //     app_args=(upkeep.call_data.native,),
     //     on_completion=OnCompleteAction.NoOp,
     // ).submit()

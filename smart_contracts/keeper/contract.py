@@ -109,7 +109,7 @@ class Keeper(ARC4Contract):
         box = Box(Upkeep, key=op.concat(b"u", op.itob(upkeep_id)))
         assert box, "Upkeep not found"
         upkeep = box.value.copy()
-        new_balance: UInt64 = upkeep.balance.native + funding_payment.amount
+        new_balance: UInt64 = upkeep.balance.as_uint64() + funding_payment.amount
         box.value = upkeep._replace(
             balance=arc4.UInt64(new_balance), call_data=upkeep.call_data.copy()
         )
@@ -130,7 +130,7 @@ class Keeper(ARC4Contract):
 
         # The box MBR is released by the delete below, so it is refundable.
         refund: UInt64 = (
-            upkeep.balance.native
+            upkeep.balance.as_uint64()
             + BOX_MBR_FIXED
             + 400 * upkeep.call_data.native.length
         )
@@ -147,15 +147,15 @@ class Keeper(ARC4Contract):
         box = Box(Upkeep, key=op.concat(b"u", op.itob(upkeep_id)))
         assert box, "Upkeep not found"
         upkeep = box.value.copy()
-        fee: UInt64 = upkeep.fee_per_execution.native
-        assert Global.round >= upkeep.next_execution_round.native, "Not due"
-        assert upkeep.balance.native >= fee, "Insufficient funding"
+        fee: UInt64 = upkeep.fee_per_execution.as_uint64()
+        assert Global.round >= upkeep.next_execution_round.as_uint64(), "Not due"
+        assert upkeep.balance.as_uint64() >= fee, "Insufficient funding"
 
         next_due: UInt64 = (
-            upkeep.next_execution_round.native + upkeep.interval_rounds.native
+            upkeep.next_execution_round.as_uint64() + upkeep.interval_rounds.as_uint64()
         )
-        new_balance: UInt64 = upkeep.balance.native - fee
-        times: UInt64 = upkeep.times_executed.native + 1
+        new_balance: UInt64 = upkeep.balance.as_uint64() - fee
+        times: UInt64 = upkeep.times_executed.as_uint64() + 1
         box.value = upkeep._replace(
             next_execution_round=arc4.UInt64(next_due),
             balance=arc4.UInt64(new_balance),
@@ -164,7 +164,7 @@ class Keeper(ARC4Contract):
         )
 
         itxn.ApplicationCall(
-            app_id=upkeep.target_app.native,
+            app_id=upkeep.target_app.as_uint64(),
             app_args=(upkeep.call_data.native,),
             on_completion=OnCompleteAction.NoOp,
         ).submit()
