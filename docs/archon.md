@@ -437,3 +437,35 @@ that look like they need multi-arg calls do not, once payouts are pull-based.
 - Single-arg NoOp call shape; no multi-arg or foreign-array calls.
 - No catch-up clamp: long-missed upkeeps fire once per round until caught up.
 - Unaudited. TestNet throwaway deployer — redeploy fresh for mainnet.
+
+## CI
+
+`.github/workflows/ci.yml` runs on a CorvidLabs **self-hosted macOS runner**.
+Every step shells out to a task in `fledge.toml` rather than restating the
+command, so CI and `fledge lanes run ci` cannot drift apart.
+
+| Job | When | What |
+|-----|------|------|
+| Contracts and console | every push to `main`, same-repo PRs, manual | build, unit tests, spec drift, artifacts-are-current, console tests and build |
+| LocalNet end-to-end | pushes to `main`, manual | starts LocalNet, runs the keeper e2e and the timed-release demo |
+
+The end-to-end job is kept off pull requests so the fast checks stay fast; it
+needs Docker and takes minutes rather than seconds.
+
+**Fork pull requests do not run.** A self-hosted runner executes whatever the
+workflow says on hardware we own, so `build-and-test` is guarded with
+`github.event.pull_request.head.repo.full_name == github.repository`. Once the
+repository is public this matters a great deal: without that guard, opening a
+pull request would be remote code execution on the runner. Revisit it as part
+of the open-source readiness work rather than leaving it implicit.
+
+### Registering the runner
+
+Repository **Settings → Actions → Runners → New self-hosted runner**, then give
+it the labels `self-hosted` and `macOS` (the defaults on a macOS runner). It
+needs `poetry`, `bun`, `fledge` and — for the end-to-end job — `algokit` and a
+running Docker on its `PATH`. The workflow's first step checks for them and
+fails with a readable message rather than a mysterious "command not found".
+
+The Python version is guarded too: 3.12 or 3.13 only, because coincurve has no
+wheels for 3.14 and the failure it produces otherwise is deeply unhelpful.
