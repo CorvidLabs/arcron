@@ -35,6 +35,49 @@ the repo root deploys one and prints its id.
 - **On LocalNet**, KMD is offered as a wallet too, so a browser can sign with
   nothing installed. Keys never leave KMD.
 
+## Two views of the same state
+
+**Registry** is for someone watching their own upkeeps: every upkeep, its
+cadence, escrow and runway, with register/top-up/cancel.
+
+**Keeper board** is for someone deciding what to work on: what is claimable
+right now and what it pays *net of the 3,000 µALGO an execution costs*,
+sortable by reward, lateness, runway or cadence, with one-click execute for a
+connected wallet. Upkeeps that are stuck — escrow below one fee, so no keeper
+can execute them — are shown rather than hidden, because they are the
+network's failures and concealing them helps nobody.
+
+Both work with no indexer and no backend.
+
+### The leaderboard, and why it is not here yet
+
+More is derivable from box state than you might expect. The board already
+shows total executions, **ALGO paid to keepers** (`Σ times_executed ×
+fee_per_execution`) and median lateness — all without a byte of transaction
+history.
+
+What is *not* derivable is **which keeper** earned it. `times_executed` is
+stored per upkeep, not per keeper, so a leaderboard — and the number that
+matters most for a permissionless network, how many distinct keepers are
+active — needs another source. The options, and the decision:
+
+| Option | Cost |
+|--------|------|
+| **Public indexer, leaderboard only** | a third-party read dependency, and rate limits |
+| On-chain per-keeper stats | a box write on **every execution**, making the network more expensive for everyone to power a UI |
+| Client-side accumulation | no dependency, but only sees rounds this browser was open for |
+
+**Decision: a public indexer, used only for the leaderboard, and optional.**
+The property worth protecting is that *we* run no backend — a public indexer
+preserves that, and the board must keep working untouched when the indexer is
+missing, slow or rate-limited. The leaderboard then degrades to an honest
+empty state rather than breaking the page.
+
+On-chain keeper stats are rejected for now: taxing every execution to power a
+UI is a bad trade. It becomes a reasonable one only if
+[#15](https://github.com/CorvidLabs/archon/issues/15) proceeds, since staking
+would give keeper reputation a mechanical use rather than a decorative one.
+
 ## Layout
 
 ```
@@ -49,7 +92,9 @@ src/app/core/
   kmd.service.ts     LocalNet signing
   keeper.service.ts  the four calls as UI state
   format.ts          ALGO amounts and rounds-as-time
-src/app/components/  network bar, stat tiles, registry table, register form, activity log
+src/app/core/
+  board.ts           what a keeper is offered: classification, sorting, network stats
+src/app/components/  network bar, stat tiles, registry table, keeper board, register form, activity log
 scripts/
   dev.ts             poke rounds / seed hour- and day-cadence upkeeps on LocalNet
   localnet-txns.ts   drive the transaction builders headlessly against LocalNet
