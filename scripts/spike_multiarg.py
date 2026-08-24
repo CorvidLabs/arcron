@@ -60,8 +60,10 @@ PAGE_BYTES = 2_048
 # Ceilings worth pricing: 1 is the encoding change alone, 2 is "selector plus
 # one argument", 16 is the protocol's own MaxAppArgs.
 CEILINGS = (1, 2, 3, 4, 6, 8, 16)
-# The ceiling Part C measures at runtime.
-MEASURED_CEILING = 4
+# The ceiling Part C measures at runtime — 3, the setting 1.0 takes: a
+# selector plus two ABI arguments, chosen because it is what keeps the whole
+# batch on one program page (see `scripts/spike_asa_fee.py`, Part D).
+MEASURED_CEILING = 3
 
 BOX_NAME_BYTES = 9
 UPKEEP_HEAD_BYTES = 106
@@ -295,7 +297,7 @@ def part_a(out_root: pathlib.Path) -> list[tuple[int, int, int]]:
 def part_b(algorand, deployer, probe_app: int, out_root: pathlib.Path) -> None:
     """Show that a loop-built args array keeps only its last element."""
     spec = _compile(LOOP_SOURCE, "loop_args", out_root)
-    client, _ = _factory(algorand, spec, deployer.address, "LoopArgs").deploy()
+    client, _ = _factory(algorand, spec, deployer.address, "LoopArgs").send.bare.create()
     selector = abi.Method.from_signature("report_budget()uint64").get_selector()
     junk = b"\xde\xad\xbe\xef"
 
@@ -331,8 +333,10 @@ def part_b(algorand, deployer, probe_app: int, out_root: pathlib.Path) -> None:
 def part_c(algorand, deployer, probe_app: int, out_root: pathlib.Path) -> None:
     """Price the encoding in box MBR and in budget the target does not get."""
     spec = _compile(_variant_source(MEASURED_CEILING), "keeper_measured", out_root)
-    base, _ = _factory(algorand, KEEPER_SPEC, deployer.address, "KeeperToday").deploy()
-    multi, _ = _factory(algorand, spec, deployer.address, "KeeperMultiArg").deploy()
+    # Fresh apps each run: both contracts change whenever the keeper does, and
+    # a redeployment against a stale one would compare the wrong bytecode.
+    base, _ = _factory(algorand, KEEPER_SPEC, deployer.address, "KeeperToday").send.bare.create()
+    multi, _ = _factory(algorand, spec, deployer.address, "KeeperMultiArg").send.bare.create()
     for client in (base, multi):
         algorand.send.payment(
             algokit_utils.PaymentParams(

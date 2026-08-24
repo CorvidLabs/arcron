@@ -224,7 +224,7 @@ REG_ANCHOR = '''    ) -> UInt64:
 # because it is the one design that needs Archon to hold no asset at all.
 
 
-def _keeper_arg_source(max_args: int = 4) -> str:
+def _keeper_arg_source(max_args: int = 3) -> str:
     """The multi-arg keeper, optionally naming the keeper in the call."""
     from scripts.spike_multiarg import _fan_out, _variant_source as multi_arg_source
 
@@ -581,13 +581,13 @@ def part_d(out_root: pathlib.Path) -> None:
     rows = [("the contract today (#7 + #14)", today)]
     rows.append(("+ #9 (ASA bonus)", _approval_bytes(_compile(_variant_source(), "d_asa", out_root))))
     rows.append(
-        ("+ #8 (4 arguments)", _approval_bytes(_compile(multi_arg_source(4), "d_args", out_root)))
+        ("+ #8 (3 arguments)", _approval_bytes(_compile(multi_arg_source(3), "d_args", out_root)))
     )
     rows.append(
         (
-            "the whole 1.0 batch",
+            "the whole 1.0 batch (ceiling 3)",
             _approval_bytes(
-                _compile(multi_arg_source(4, source=_variant_source()), "d_all", out_root)
+                _compile(multi_arg_source(3, source=_variant_source()), "d_all", out_root)
             ),
         )
     )
@@ -615,7 +615,7 @@ def part_d(out_root: pathlib.Path) -> None:
         fits = "" if pages == 1 else "  ← second page"
         logger.info(f"    ceiling {ceiling}: {size:>5} B, {headroom:>5} spare{fits}")
 
-    alternative = _approval_bytes(_compile(_keeper_arg_source(4), "d_named", out_root))
+    alternative = _approval_bytes(_compile(_keeper_arg_source(3), "d_named", out_root))
     pages = -(-alternative // PAGE_BYTES)
     logger.info("")
     logger.info(
