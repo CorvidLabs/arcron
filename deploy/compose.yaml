@@ -27,3 +27,28 @@ services:
       options:
         max-size: "10m"
         max-file: "5"
+
+  # Read-only. It holds no keys and cannot sign anything — see
+  # scripts/notifier.py, where a test enforces that.
+  notifier:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: archon-keeper
+    restart: unless-stopped
+    env_file: notifier.env
+    entrypoint: ["python", "-m", "scripts.notifier"]
+    command: ["--network", "testnet"]
+    stop_signal: SIGTERM
+    stop_grace_period: 15s
+    volumes:
+      # Remember what has been announced, so a restart is quiet.
+      - notifier-state:/home/keeper/.local/state/archon
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  notifier-state:
