@@ -1,0 +1,147 @@
+# CI on CorvidLabs' own macOS runner.
+#
+# Every step shells out to a task in fledge.toml rather than restating the
+# command, so CI and `fledge lanes run ci` cannot drift apart.
+#
+# Register a runner (repo Settings → Actions → Runners → New self-hosted
+# runner) and give it the labels `self-hosted` and `macOS`. The runner needs
+# poetry, bun, algokit and fledge on its PATH; the toolchain step below fails
+# with a readable message rather than a mysterious "command not found" if any
+# are missing.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build-and-test:
+    name: Contracts and console
+    # A self-hosted runner executes whatever the workflow says on hardware we
+    # own, so never run a fork's code on it.
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, macOS]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: |
+          missing=()
+          for tool in poetry bun fledge; do
+            command -v "$tool" >/dev/null 2>&1 || missing+=("$tool")
+          done
+          if [ ${#missing[@]} -ne 0 ]; then
+            echo "::error::Missing on this runner: ${missing[*]}"
+            echo "Install them, or see .github/workflows/ci.yml for what CI expects."
+            exit 1
+          fi
+          poetry --version && bun --version && fledge --version
+
+      - name: Install Python dependencies
+        run: poetry install --no-interaction
+
+      - name: Python version guard
+        run: |
+          # coincurve has no wheels for 3.14; the repo pins 3.13 deliberately.
+          version=$(poetry run python -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
+          echo "Python $version"
+          case "$version" in
+            3.12|3.13) ;;
+            *) echo "::error::Python $version is unsupported — use 3.13 (never 3.14)"; exit 1 ;;
+          esac
+
+      - name: Build contracts
+        run: fledge run build
+
+      - name: Unit tests
+        run: fledge run test
+
+      - name: Spec drift
+        run: fledge run spec
+
+      - name: Contract artifacts are current
+        run: |
+          # A contract change with stale artifacts means the bot and console
+          # are compiled against something that is no longer the source.
+          if ! git diff --quiet -- smart_contracts/artifacts; then
+            echo "::error::Artifacts differ from a fresh build — run 'poetry run python -m smart_contracts build' and commit."
+            git --no-pager diff --stat -- smart_contracts/artifacts
+            exit 1
+          fi
+
+      - name: Console dependencies
+        run: fledge run web-install
+
+      - name: Console tests
+        run: fledge run web-test
+
+      - name: Console build
+        run: fledge run web-build
+
+  localnet:
+    name: LocalNet end-to-end
+    # The chain-facing half: slower, needs Docker, and proves the things mocks
+    # cannot. Kept off pull requests so the fast checks stay fast.
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    needs: build-and-test
+    runs-on: [self-hosted, macOS]
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Docker and AlgoKit
+        run: |
+          if ! docker info >/dev/null 2>&1; then
+            echo "::error::Docker is not running on this runner; LocalNet needs it."
+            exit 1
+          fi
+          command -v algokit >/dev/null 2>&1 || { echo "::error::algokit is not installed"; exit 1; }
+          algokit --version
+
+      - name: Install Python dependencies
+        run: poetry install --no-interaction
+
+      - name: Start LocalNet
+        run: |
+          algokit localnet start
+          # Wait for algod to answer rather than assuming it is up.
+          for attempt in $(seq 1 30); do
+            if curl -sf -H "X-Algo-API-Token: $(printf 'a%.0s' {1..64})" \
+                 http://localhost:4001/v2/status >/dev/null; then
+              echo "algod is up after ${attempt} attempt(s)"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::algod did not become ready"
+          exit 1
+
+      - name: Build contracts
+        run: fledge run build
+
+      - name: Keeper end-to-end
+        run: fledge run smoke-keeper
+
+      - name: Timed release demo
+        run: fledge run smoke-embargo
+
+      - name: LocalNet state on failure
+        if: failure()
+        run: |
+          # A failed chain test is much easier to read with the chain's own view.
+          algokit localnet status || true
+          docker ps --filter name=algokit --format '{{.Names}}\t{{.Status}}' || true
