@@ -1,0 +1,2998 @@
+{
+  "version": 3,
+  "sources": [
+    "../../deadman/contract.py"
+  ],
+  "mappings": ";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;AAuDQ;;AAAyB;;AAAzB;AACA;;AAA+B;;AAA/B;AACA;AAAmC;AAAnC;AACA;AAA4B;AAA5B;AACA;;AAA0B;AAA1B;AACA;;AAA6B;AAA7B;AACA;AAA+B;AAA/B;AACA;;AAA6B;AAA7B;AAXR;;AAAA;;;AAAA;;AAAA;AAAA;AAAA;;AAAA;AAAA;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;AAAA;;;AAAA;;;;;;;;;;;;;;AAAA;;;;;;;;;AAaK;;AAAA;AAAA;AAAA;AAAA;;AAAA;AAAA;AAAA;AAAA;;;AAAA;AAAA;AAAA;;AAAA;AAAA;AAAA;;;AAAA;AAAA;AAAA;;AAAA;AAAA;AAAA;AAQU;;AAAc;AAAA;;AAAA;AAAA;AAAd;AAAA;;AAAA;AAAP;AACO;AAAA;AAAA;AAAA;AAAA;AAAP;AACO;;AAAmB;;AAAnB;AAAP;AAEI;;AAAA;;AAAoB;;AAApB;AADJ;AAGO;;AAAA;;AAAP;AAAA;AACO;;AAAA;;AAAA;AAAP;AAEA;;AAAA;;AAAA;AACA;AAAA;;AAAA;AAIA;AAAA;;AAAA;AAAA;AAAA;AAAA;;AAAA;AAAA;AACsB;;AAAA;AAAtB;AAAA;;AAAA;AAvBH;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AA6BU;;AAAc;AAAA;;AAAA;AAAA;AAAd;AAAP;AACO;AAAA;AAAA;AAAA;AAAP;AAAA;AACO;AAAA;AAAA;AAAA;AAAA;AAAP;AAEsB;;AAAA;AAAtB;AAAA;AAAA;AACA;AAAA;;AAAA;AAAA;AAAwB;AAAxB;AAAA;;AAAA;AAAA;AACO;AAAA;AAAA;AAAA;AATV;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AAqBO;AAAA;AAAA;AAAA;AAAA;;;AACG;AAAA;AAAA;AAAA;AADH;;;AAEG;;AAAe;AAAA;AAAA;AAAA;AAAf;AAFH;;;AAIO;AAdd;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AAgBG;AAAyB;;AAAzB;AACuB;AAAA;;AAAA;AAAA;AAAvB;;AAAA;AAAA;AACA;;AAAoB;AAApB;AAGgC;;AAAZ;AACS;AAAA;AAAA;AAAA;AAAZ;AACgB;AAAA;;AAAA;AAAA;AACN;AAAA;;AAAA;AAAA;AAAZ;AAJX;;AAAA;;AAAA;AAAA;;AAAA;AAAA;AAAA;AADJ;;;;;;AAAA;AAAA;AAAA;AAQO;AAAA;AAAA;AAAA;AA3BV;;;AAgCU;AAAA;AAAA;AAAA;AAAP;AACO;;AAAc;AAAA;;AAAA;AAAA;AAAd;AAAP;AACS;AAAA;;AAAA;AAAA;AACT;AAAA;AAEA;;AAAuB;AAAvB;AACA;AAAsB;;;;;;;;AAAtB;;;AAAA;;;AAAA;AATH;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AAeM;AAAA;AAAA;AAAA;AAAA;;;AAA8B;;AAAgB;AAAA;AAAA;AAAA;AAAhB;AAA9B;;;AACQ;AAJd;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AAKU;AAAA;AAAA;AAAA;AAAsB;;AAAtB;AALV;;;AASU;AAAA;AAAA;AAAA;AAAyB;AAAzB;AAFV;;;AAAA;AAAA;;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA",
+  "op_pc_offset": 0,
+  "pc_events": {
+    "1": {
+      "subroutine": "algopy.arc4.ARC4Contract.approval_program",
+      "params": {},
+      "block": "main",
+      "stack_in": [],
+      "op": "intcblock 0 1"
+    },
+    "5": {
+      "op": "bytecblock \"deadline\" \"fired_round\" 0x151f7c75 \"interval_rounds\" \"escrow\" \"allocated\" \"beneficiary\" \"owner\" \"check_ins\""
+    },
+    "94": {
+      "op": "txn ApplicationID",
+      "defined_out": [
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0"
+      ]
+    },
+    "96": {
+      "op": "bnz main_after_if_else@2",
+      "stack_out": []
+    },
+    "99": {
+      "op": "bytec 7 // \"owner\"",
+      "defined_out": [
+        "\"owner\""
+      ],
+      "stack_out": [
+        "\"owner\""
+      ]
+    },
+    "101": {
+      "op": "global CreatorAddress",
+      "defined_out": [
+        "\"owner\"",
+        "tmp%0#2"
+      ],
+      "stack_out": [
+        "\"owner\"",
+        "tmp%0#2"
+      ]
+    },
+    "103": {
+      "op": "app_global_put",
+      "stack_out": []
+    },
+    "104": {
+      "op": "bytec 6 // \"beneficiary\"",
+      "defined_out": [
+        "\"beneficiary\""
+      ],
+      "stack_out": [
+        "\"beneficiary\""
+      ]
+    },
+    "106": {
+      "op": "global ZeroAddress",
+      "defined_out": [
+        "\"beneficiary\"",
+        "tmp%1#2"
+      ],
+      "stack_out": [
+        "\"beneficiary\"",
+        "tmp%1#2"
+      ]
+    },
+    "108": {
+      "op": "app_global_put",
+      "stack_out": []
+    },
+    "109": {
+      "op": "bytec_3 // \"interval_rounds\"",
+      "defined_out": [
+        "\"interval_rounds\""
+      ],
+      "stack_out": [
+        "\"interval_rounds\""
+      ]
+    },
+    "110": {
+      "op": "intc_0 // 0",
+      "defined_out": [
+        "\"interval_rounds\"",
+        "0"
+      ],
+      "stack_out": [
+        "\"interval_rounds\"",
+        "0"
+      ]
+    },
+    "111": {
+      "op": "app_global_put",
+      "stack_out": []
+    },
+    "112": {
+      "op": "bytec_0 // \"deadline\"",
+      "defined_out": [
+        "\"deadline\""
+      ],
+      "stack_out": [
+        "\"deadline\""
+      ]
+    },
+    "113": {
+      "op": "intc_0 // 0",
+      "stack_out": [
+        "\"deadline\"",
+        "0"
+      ]
+    },
+    "114": {
+      "op": "app_global_put",
+      "stack_out": []
+    },
+    "115": {
+      "op": "bytec 4 // \"escrow\"",
+      "defined_out": [
+        "\"escrow\""
+      ],
+      "stack_out": [
+        "\"escrow\""
+      ]
+    },
+    "117": {
+      "op": "intc_0 // 0",
+      "stack_out": [
+        "\"escrow\"",
+        "0"
+      ]
+    },
+    "118": {
+      "op": "app_global_put",
+      "stack_out": []
+    },
+    "119": {
+      "op": "bytec 5 // \"allocated\"",
+      "defined_out": [
+        "\"allocated\""
+      ],
+      "stack_out": [
+        "\"allocated\""
+      ]
+    },
+    "121": {
+      "op": "intc_0 // 0",
+      "stack_out": [
+        "\"allocated\"",
+        "0"
+      ]
+    },
+    "122": {
+      "op": "app_global_put",
+      "stack_out": []
+    },
+    "123": {
+      "op": "bytec_1 // \"fired_round\"",
+      "defined_out": [
+        "\"fired_round\""
+      ],
+      "stack_out": [
+        "\"fired_round\""
+      ]
+    },
+    "124": {
+      "op": "intc_0 // 0",
+      "stack_out": [
+        "\"fired_round\"",
+        "0"
+      ]
+    },
+    "125": {
+      "op": "app_global_put",
+      "stack_out": []
+    },
+    "126": {
+      "op": "bytec 8 // \"check_ins\"",
+      "defined_out": [
+        "\"check_ins\""
+      ],
+      "stack_out": [
+        "\"check_ins\""
+      ]
+    },
+    "128": {
+      "op": "intc_0 // 0",
+      "stack_out": [
+        "\"check_ins\"",
+        "0"
+      ]
+    },
+    "129": {
+      "op": "app_global_put",
+      "stack_out": []
+    },
+    "130": {
+      "block": "main_after_if_else@2",
+      "stack_in": [],
+      "op": "txn NumAppArgs",
+      "defined_out": [
+        "tmp%0#1"
+      ],
+      "stack_out": [
+        "tmp%0#1"
+      ]
+    },
+    "132": {
+      "op": "bz main___algopy_default_create@15",
+      "stack_out": []
+    },
+    "135": {
+      "op": "txn OnCompletion",
+      "defined_out": [
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "tmp%2#0"
+      ]
+    },
+    "137": {
+      "op": "!",
+      "defined_out": [
+        "tmp%3#0"
+      ],
+      "stack_out": [
+        "tmp%3#0"
+      ]
+    },
+    "138": {
+      "op": "assert",
+      "stack_out": []
+    },
+    "139": {
+      "op": "txn ApplicationID",
+      "defined_out": [
+        "tmp%4#0"
+      ],
+      "stack_out": [
+        "tmp%4#0"
+      ]
+    },
+    "141": {
+      "op": "assert",
+      "stack_out": []
+    },
+    "142": {
+      "op": "pushbytess 0x536b3644 0xd9d61dd1 0xbc0d58a7 0xcc82ab99 0x26c58ba7 0x1e5f9783 // method \"arm(pay,address,uint64)uint64\", method \"check_in()uint64\", method \"sweep()uint64\", method \"claim()uint64\", method \"rounds_remaining()uint64\", method \"has_fired()bool\"",
+      "defined_out": [
+        "Method(arm(pay,address,uint64)uint64)",
+        "Method(check_in()uint64)",
+        "Method(claim()uint64)",
+        "Method(has_fired()bool)",
+        "Method(rounds_remaining()uint64)",
+        "Method(sweep()uint64)"
+      ],
+      "stack_out": [
+        "Method(arm(pay,address,uint64)uint64)",
+        "Method(check_in()uint64)",
+        "Method(sweep()uint64)",
+        "Method(claim()uint64)",
+        "Method(rounds_remaining()uint64)",
+        "Method(has_fired()bool)"
+      ]
+    },
+    "174": {
+      "op": "txna ApplicationArgs 0",
+      "defined_out": [
+        "Method(arm(pay,address,uint64)uint64)",
+        "Method(check_in()uint64)",
+        "Method(claim()uint64)",
+        "Method(has_fired()bool)",
+        "Method(rounds_remaining()uint64)",
+        "Method(sweep()uint64)",
+        "tmp%6#0"
+      ],
+      "stack_out": [
+        "Method(arm(pay,address,uint64)uint64)",
+        "Method(check_in()uint64)",
+        "Method(sweep()uint64)",
+        "Method(claim()uint64)",
+        "Method(rounds_remaining()uint64)",
+        "Method(has_fired()bool)",
+        "tmp%6#0"
+      ]
+    },
+    "177": {
+      "op": "match arm check_in sweep claim rounds_remaining has_fired",
+      "stack_out": []
+    },
+    "191": {
+      "op": "err"
+    },
+    "192": {
+      "block": "main___algopy_default_create@15",
+      "stack_in": [],
+      "op": "txn OnCompletion",
+      "defined_out": [
+        "tmp%7#0"
+      ],
+      "stack_out": [
+        "tmp%7#0"
+      ]
+    },
+    "194": {
+      "op": "!",
+      "defined_out": [
+        "tmp%8#0"
+      ],
+      "stack_out": [
+        "tmp%8#0"
+      ]
+    },
+    "195": {
+      "op": "txn ApplicationID",
+      "defined_out": [
+        "tmp%8#0",
+        "tmp%9#0"
+      ],
+      "stack_out": [
+        "tmp%8#0",
+        "tmp%9#0"
+      ]
+    },
+    "197": {
+      "op": "!",
+      "defined_out": [
+        "tmp%10#0",
+        "tmp%8#0"
+      ],
+      "stack_out": [
+        "tmp%8#0",
+        "tmp%10#0"
+      ]
+    },
+    "198": {
+      "op": "&&",
+      "defined_out": [
+        "tmp%11#0"
+      ],
+      "stack_out": [
+        "tmp%11#0"
+      ]
+    },
+    "199": {
+      "op": "return",
+      "defined_out": [],
+      "stack_out": []
+    },
+    "200": {
+      "subroutine": "smart_contracts.deadman.contract.DeadMan.arm[routing]",
+      "params": {},
+      "block": "arm",
+      "stack_in": [],
+      "op": "txn GroupIndex",
+      "defined_out": [
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0"
+      ]
+    },
+    "202": {
+      "op": "intc_1 // 1",
+      "defined_out": [
+        "1",
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0",
+        "1"
+      ]
+    },
+    "203": {
+      "op": "-",
+      "defined_out": [
+        "deposit#0"
+      ],
+      "stack_out": [
+        "deposit#0"
+      ]
+    },
+    "204": {
+      "op": "dup",
+      "defined_out": [
+        "deposit#0",
+        "deposit#0 (copy)"
+      ],
+      "stack_out": [
+        "deposit#0",
+        "deposit#0 (copy)"
+      ]
+    },
+    "205": {
+      "op": "gtxns TypeEnum",
+      "defined_out": [
+        "deposit#0",
+        "gtxn_type%0#0"
+      ],
+      "stack_out": [
+        "deposit#0",
+        "gtxn_type%0#0"
+      ]
+    },
+    "207": {
+      "op": "intc_1 // pay",
+      "defined_out": [
+        "deposit#0",
+        "gtxn_type%0#0",
+        "pay"
+      ],
+      "stack_out": [
+        "deposit#0",
+        "gtxn_type%0#0",
+        "pay"
+      ]
+    },
+    "208": {
+      "op": "==",
+      "defined_out": [
+        "deposit#0",
+        "gtxn_type_matches%0#0"
+      ],
+      "stack_out": [
+        "deposit#0",
+        "gtxn_type_matches%0#0"
+      ]
+    },
+    "209": {
+      "error": "transaction type is pay",
+      "op": "assert // transaction type is pay",
+      "stack_out": [
+        "deposit#0"
+      ]
+    },
+    "210": {
+      "op": "txna ApplicationArgs 1",
+      "defined_out": [
+        "beneficiary#0",
+        "deposit#0"
+      ],
+      "stack_out": [
+        "deposit#0",
+        "beneficiary#0"
+      ]
+    },
+    "213": {
+      "op": "dup",
+      "defined_out": [
+        "beneficiary#0",
+        "beneficiary#0 (copy)",
+        "deposit#0"
+      ],
+      "stack_out": [
+        "deposit#0",
+        "beneficiary#0",
+        "beneficiary#0 (copy)"
+      ]
+    },
+    "214": {
+      "op": "len",
+      "defined_out": [
+        "beneficiary#0",
+        "deposit#0",
+        "len%0#0"
+      ],
+      "stack_out": [
+        "deposit#0",
+        "beneficiary#0",
+        "len%0#0"
+      ]
+    },
+    "215": {
+      "op": "pushint 32",
+      "defined_out": [
+        "32",
+        "beneficiary#0",
+        "deposit#0",
+        "len%0#0"
+      ],
+      "stack_out": [
+        "deposit#0",
+        "beneficiary#0",
+        "len%0#0",
+        "32"
+      ]
+    },
+    "217": {
+      "op": "==",
+      "defined_out": [
+        "beneficiary#0",
+        "deposit#0",
+        "eq%0#0"
+      ],
+      "stack_out": [
+        "deposit#0",
+        "beneficiary#0",
+        "eq%0#0"
+      ]
+    },
+    "218": {
+      "error": "invalid number of bytes for arc4.static_array<arc4.uint8, 32>",
+      "op": "assert // invalid number of bytes for arc4.static_array<arc4.uint8, 32>",
+      "stack_out": [
+        "deposit#0",
+        "beneficiary#0"
+      ]
+    },
+    "219": {
+      "op": "txna ApplicationArgs 2",
+      "defined_out": [
+        "beneficiary#0",
+        "deposit#0",
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "deposit#0",
+        "beneficiary#0",
+        "tmp%2#0"
+      ]
+    },
+    "222": {
+      "op": "dup",
+      "defined_out": [
+        "beneficiary#0",
+        "deposit#0",
+        "tmp%2#0",
+        "tmp%2#0 (copy)"
+      ],
+      "stack_out": [
+        "deposit#0",
+        "beneficiary#0",
+        "tmp%2#0",
+        "tmp%2#0 (copy)"
+      ]
+    },
+    "223": {
+      "op": "len",
+      "defined_out": [
+        "beneficiary#0",
+        "deposit#0",
+        "len%1#0",
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "deposit#0",
+        "beneficiary#0",
+        "tmp%2#0",
+        "len%1#0"
+      ]
+    },
+    "224": {
+      "op": "pushint 8",
+      "defined_out": [
+        "8",
+        "beneficiary#0",
+        "deposit#0",
+        "len%1#0",
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "deposit#0",
+        "beneficiary#0",
+        "tmp%2#0",
+        "len%1#0",
+        "8"
+      ]
+    },
+    "226": {
+      "op": "==",
+      "defined_out": [
+        "beneficiary#0",
+        "deposit#0",
+        "eq%1#0",
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "deposit#0",
+        "beneficiary#0",
+        "tmp%2#0",
+        "eq%1#0"
+      ]
+    },
+    "227": {
+      "error": "invalid number of bytes for arc4.uint64",
+      "op": "assert // invalid number of bytes for arc4.uint64",
+      "stack_out": [
+        "deposit#0",
+        "beneficiary#0",
+        "tmp%2#0"
+      ]
+    },
+    "228": {
+      "op": "btoi",
+      "defined_out": [
+        "beneficiary#0",
+        "deposit#0",
+        "interval_rounds#0"
+      ],
+      "stack_out": [
+        "deposit#0",
+        "beneficiary#0",
+        "interval_rounds#0"
+      ]
+    },
+    "229": {
+      "op": "txn Sender",
+      "defined_out": [
+        "beneficiary#0",
+        "deposit#0",
+        "interval_rounds#0",
+        "tmp%0#1"
+      ],
+      "stack_out": [
+        "deposit#0",
+        "beneficiary#0",
+        "interval_rounds#0",
+        "tmp%0#1"
+      ]
+    },
+    "231": {
+      "op": "intc_0 // 0",
+      "defined_out": [
+        "0",
+        "beneficiary#0",
+        "deposit#0",
+        "interval_rounds#0",
+        "tmp%0#1"
+      ],
+      "stack_out": [
+        "deposit#0",
+        "beneficiary#0",
+        "interval_rounds#0",
+        "tmp%0#1",
+        "0"
+      ]
+    },
+    "232": {
+      "op": "bytec 7 // \"owner\"",
+      "defined_out": [
+        "\"owner\"",
+        "0",
+        "beneficiary#0",
+        "deposit#0",
+        "interval_rounds#0",
+        "tmp%0#1"
+      ],
+      "stack_out": [
+        "deposit#0",
+        "beneficiary#0",
+        "interval_rounds#0",
+        "tmp%0#1",
+        "0",
+        "\"owner\""
+      ]
+    },
+    "234": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "beneficiary#0",
+        "deposit#0",
+        "interval_rounds#0",
+        "maybe_exists%0#0",
+        "maybe_value%0#0",
+        "tmp%0#1"
+      ],
+      "stack_out": [
+        "deposit#0",
+        "beneficiary#0",
+        "interval_rounds#0",
+        "tmp%0#1",
+        "maybe_value%0#0",
+        "maybe_exists%0#0"
+      ]
+    },
+    "235": {
+      "error": "check self.owner exists",
+      "op": "assert // check self.owner exists",
+      "stack_out": [
+        "deposit#0",
+        "beneficiary#0",
+        "interval_rounds#0",
+        "tmp%0#1",
+        "maybe_value%0#0"
+      ]
+    },
+    "236": {
+      "op": "swap",
+      "stack_out": [
+        "deposit#0",
+        "beneficiary#0",
+        "interval_rounds#0",
+        "maybe_value%0#0",
+        "tmp%0#1"
+      ]
+    },
+    "237": {
+      "op": "dig 1",
+      "defined_out": [
+        "beneficiary#0",
+        "deposit#0",
+        "interval_rounds#0",
+        "maybe_value%0#0",
+        "maybe_value%0#0 (copy)",
+        "tmp%0#1"
+      ],
+      "stack_out": [
+        "deposit#0",
+        "beneficiary#0",
+        "interval_rounds#0",
+        "maybe_value%0#0",
+        "tmp%0#1",
+        "maybe_value%0#0 (copy)"
+      ]
+    },
+    "239": {
+      "op": "==",
+      "defined_out": [
+        "beneficiary#0",
+        "deposit#0",
+        "interval_rounds#0",
+        "maybe_value%0#0",
+        "tmp%1#1"
+      ],
+      "stack_out": [
+        "deposit#0",
+        "beneficiary#0",
+        "interval_rounds#0",
+        "maybe_value%0#0",
+        "tmp%1#1"
+      ]
+    },
+    "240": {
+      "error": "Only the owner can arm it",
+      "op": "assert // Only the owner can arm it",
+      "stack_out": [
+        "deposit#0",
+        "beneficiary#0",
+        "interval_rounds#0",
+        "maybe_value%0#0"
+      ]
+    },
+    "241": {
+      "op": "intc_0 // 0",
+      "stack_out": [
+        "deposit#0",
+        "beneficiary#0",
+        "interval_rounds#0",
+        "maybe_value%0#0",
+        "0"
+      ]
+    },
+    "242": {
+      "op": "bytec_3 // \"interval_rounds\"",
+      "defined_out": [
+        "\"interval_rounds\"",
+        "0",
+        "beneficiary#0",
+        "deposit#0",
+        "interval_rounds#0",
+        "maybe_value%0#0"
+      ],
+      "stack_out": [
+        "deposit#0",
+        "beneficiary#0",
+        "interval_rounds#0",
+        "maybe_value%0#0",
+        "0",
+        "\"interval_rounds\""
+      ]
+    },
+    "243": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "beneficiary#0",
+        "deposit#0",
+        "interval_rounds#0",
+        "maybe_exists%1#0",
+        "maybe_value%0#0",
+        "maybe_value%1#0"
+      ],
+      "stack_out": [
+        "deposit#0",
+        "beneficiary#0",
+        "interval_rounds#0",
+        "maybe_value%0#0",
+        "maybe_value%1#0",
+        "maybe_exists%1#0"
+      ]
+    },
+    "244": {
+      "error": "check self.interval_rounds exists",
+      "op": "assert // check self.interval_rounds exists",
+      "stack_out": [
+        "deposit#0",
+        "beneficiary#0",
+        "interval_rounds#0",
+        "maybe_value%0#0",
+        "maybe_value%1#0"
+      ]
+    },
+    "245": {
+      "op": "!",
+      "defined_out": [
+        "beneficiary#0",
+        "deposit#0",
+        "interval_rounds#0",
+        "maybe_value%0#0",
+        "tmp%2#1"
+      ],
+      "stack_out": [
+        "deposit#0",
+        "beneficiary#0",
+        "interval_rounds#0",
+        "maybe_value%0#0",
+        "tmp%2#1"
+      ]
+    },
+    "246": {
+      "error": "Already armed",
+      "op": "assert // Already armed",
+      "stack_out": [
+        "deposit#0",
+        "beneficiary#0",
+        "interval_rounds#0",
+        "maybe_value%0#0"
+      ]
+    },
+    "247": {
+      "op": "dig 1",
+      "defined_out": [
+        "beneficiary#0",
+        "deposit#0",
+        "interval_rounds#0",
+        "interval_rounds#0 (copy)",
+        "maybe_value%0#0"
+      ],
+      "stack_out": [
+        "deposit#0",
+        "beneficiary#0",
+        "interval_rounds#0",
+        "maybe_value%0#0",
+        "interval_rounds#0 (copy)"
+      ]
+    },
+    "249": {
+      "op": "pushint 30",
+      "defined_out": [
+        "30",
+        "beneficiary#0",
+        "deposit#0",
+        "interval_rounds#0",
+        "interval_rounds#0 (copy)",
+        "maybe_value%0#0"
+      ],
+      "stack_out": [
+        "deposit#0",
+        "beneficiary#0",
+        "interval_rounds#0",
+        "maybe_value%0#0",
+        "interval_rounds#0 (copy)",
+        "30"
+      ]
+    },
+    "251": {
+      "op": ">=",
+      "defined_out": [
+        "beneficiary#0",
+        "deposit#0",
+        "interval_rounds#0",
+        "maybe_value%0#0",
+        "tmp%3#1"
+      ],
+      "stack_out": [
+        "deposit#0",
+        "beneficiary#0",
+        "interval_rounds#0",
+        "maybe_value%0#0",
+        "tmp%3#1"
+      ]
+    },
+    "252": {
+      "error": "Interval below minimum",
+      "op": "assert // Interval below minimum",
+      "stack_out": [
+        "deposit#0",
+        "beneficiary#0",
+        "interval_rounds#0",
+        "maybe_value%0#0"
+      ]
+    },
+    "253": {
+      "op": "dig 3",
+      "stack_out": [
+        "deposit#0",
+        "beneficiary#0",
+        "interval_rounds#0",
+        "maybe_value%0#0",
+        "deposit#0 (copy)"
+      ]
+    },
+    "255": {
+      "op": "gtxns Receiver",
+      "defined_out": [
+        "beneficiary#0",
+        "deposit#0",
+        "interval_rounds#0",
+        "maybe_value%0#0",
+        "tmp%4#1"
+      ],
+      "stack_out": [
+        "deposit#0",
+        "beneficiary#0",
+        "interval_rounds#0",
+        "maybe_value%0#0",
+        "tmp%4#1"
+      ]
+    },
+    "257": {
+      "op": "global CurrentApplicationAddress",
+      "defined_out": [
+        "beneficiary#0",
+        "deposit#0",
+        "interval_rounds#0",
+        "maybe_value%0#0",
+        "tmp%4#1",
+        "tmp%5#1"
+      ],
+      "stack_out": [
+        "deposit#0",
+        "beneficiary#0",
+        "interval_rounds#0",
+        "maybe_value%0#0",
+        "tmp%4#1",
+        "tmp%5#1"
+      ]
+    },
+    "259": {
+      "op": "==",
+      "defined_out": [
+        "beneficiary#0",
+        "deposit#0",
+        "interval_rounds#0",
+        "maybe_value%0#0",
+        "tmp%6#1"
+      ],
+      "stack_out": [
+        "deposit#0",
+        "beneficiary#0",
+        "interval_rounds#0",
+        "maybe_value%0#0",
+        "tmp%6#1"
+      ]
+    },
+    "260": {
+      "error": "Deposit must go to the app account",
+      "op": "assert // Deposit must go to the app account",
+      "stack_out": [
+        "deposit#0",
+        "beneficiary#0",
+        "interval_rounds#0",
+        "maybe_value%0#0"
+      ]
+    },
+    "261": {
+      "op": "uncover 3",
+      "stack_out": [
+        "beneficiary#0",
+        "interval_rounds#0",
+        "maybe_value%0#0",
+        "deposit#0"
+      ]
+    },
+    "263": {
+      "op": "gtxns Amount",
+      "defined_out": [
+        "beneficiary#0",
+        "interval_rounds#0",
+        "maybe_value%0#0",
+        "tmp%7#0"
+      ],
+      "stack_out": [
+        "beneficiary#0",
+        "interval_rounds#0",
+        "maybe_value%0#0",
+        "tmp%7#0"
+      ]
+    },
+    "265": {
+      "op": "dup",
+      "defined_out": [
+        "beneficiary#0",
+        "interval_rounds#0",
+        "maybe_value%0#0",
+        "tmp%7#0",
+        "tmp%7#0 (copy)"
+      ],
+      "stack_out": [
+        "beneficiary#0",
+        "interval_rounds#0",
+        "maybe_value%0#0",
+        "tmp%7#0",
+        "tmp%7#0 (copy)"
+      ]
+    },
+    "266": {
+      "error": "Nothing to release",
+      "op": "assert // Nothing to release",
+      "stack_out": [
+        "beneficiary#0",
+        "interval_rounds#0",
+        "maybe_value%0#0",
+        "tmp%7#0"
+      ]
+    },
+    "267": {
+      "op": "dig 3",
+      "stack_out": [
+        "beneficiary#0",
+        "interval_rounds#0",
+        "maybe_value%0#0",
+        "tmp%7#0",
+        "beneficiary#0 (copy)"
+      ]
+    },
+    "269": {
+      "op": "uncover 2",
+      "stack_out": [
+        "beneficiary#0",
+        "interval_rounds#0",
+        "tmp%7#0",
+        "beneficiary#0 (copy)",
+        "maybe_value%0#0"
+      ]
+    },
+    "271": {
+      "op": "!=",
+      "defined_out": [
+        "beneficiary#0",
+        "interval_rounds#0",
+        "tmp%7#0",
+        "tmp%9#0"
+      ],
+      "stack_out": [
+        "beneficiary#0",
+        "interval_rounds#0",
+        "tmp%7#0",
+        "tmp%9#0"
+      ]
+    },
+    "272": {
+      "error": "Beneficiary must not be the owner",
+      "op": "assert // Beneficiary must not be the owner",
+      "stack_out": [
+        "beneficiary#0",
+        "interval_rounds#0",
+        "tmp%7#0"
+      ]
+    },
+    "273": {
+      "op": "bytec 6 // \"beneficiary\"",
+      "defined_out": [
+        "\"beneficiary\"",
+        "beneficiary#0",
+        "interval_rounds#0",
+        "tmp%7#0"
+      ],
+      "stack_out": [
+        "beneficiary#0",
+        "interval_rounds#0",
+        "tmp%7#0",
+        "\"beneficiary\""
+      ]
+    },
+    "275": {
+      "op": "uncover 3",
+      "stack_out": [
+        "interval_rounds#0",
+        "tmp%7#0",
+        "\"beneficiary\"",
+        "beneficiary#0"
+      ]
+    },
+    "277": {
+      "op": "app_global_put",
+      "stack_out": [
+        "interval_rounds#0",
+        "tmp%7#0"
+      ]
+    },
+    "278": {
+      "op": "bytec_3 // \"interval_rounds\"",
+      "stack_out": [
+        "interval_rounds#0",
+        "tmp%7#0",
+        "\"interval_rounds\""
+      ]
+    },
+    "279": {
+      "op": "dig 2",
+      "stack_out": [
+        "interval_rounds#0",
+        "tmp%7#0",
+        "\"interval_rounds\"",
+        "interval_rounds#0 (copy)"
+      ]
+    },
+    "281": {
+      "op": "app_global_put",
+      "stack_out": [
+        "interval_rounds#0",
+        "tmp%7#0"
+      ]
+    },
+    "282": {
+      "op": "intc_0 // 0",
+      "stack_out": [
+        "interval_rounds#0",
+        "tmp%7#0",
+        "0"
+      ]
+    },
+    "283": {
+      "op": "bytec 4 // \"escrow\"",
+      "defined_out": [
+        "\"escrow\"",
+        "0",
+        "interval_rounds#0",
+        "tmp%7#0"
+      ],
+      "stack_out": [
+        "interval_rounds#0",
+        "tmp%7#0",
+        "0",
+        "\"escrow\""
+      ]
+    },
+    "285": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "interval_rounds#0",
+        "maybe_exists%3#0",
+        "maybe_value%3#0",
+        "tmp%7#0"
+      ],
+      "stack_out": [
+        "interval_rounds#0",
+        "tmp%7#0",
+        "maybe_value%3#0",
+        "maybe_exists%3#0"
+      ]
+    },
+    "286": {
+      "error": "check self.escrow exists",
+      "op": "assert // check self.escrow exists",
+      "stack_out": [
+        "interval_rounds#0",
+        "tmp%7#0",
+        "maybe_value%3#0"
+      ]
+    },
+    "287": {
+      "op": "+",
+      "defined_out": [
+        "interval_rounds#0",
+        "tmp%11#0"
+      ],
+      "stack_out": [
+        "interval_rounds#0",
+        "tmp%11#0"
+      ]
+    },
+    "288": {
+      "op": "bytec 4 // \"escrow\"",
+      "stack_out": [
+        "interval_rounds#0",
+        "tmp%11#0",
+        "\"escrow\""
+      ]
+    },
+    "290": {
+      "op": "swap",
+      "stack_out": [
+        "interval_rounds#0",
+        "\"escrow\"",
+        "tmp%11#0"
+      ]
+    },
+    "291": {
+      "op": "app_global_put",
+      "stack_out": [
+        "interval_rounds#0"
+      ]
+    },
+    "292": {
+      "op": "global Round",
+      "defined_out": [
+        "interval_rounds#0",
+        "tmp%12#0"
+      ],
+      "stack_out": [
+        "interval_rounds#0",
+        "tmp%12#0"
+      ]
+    },
+    "294": {
+      "op": "+",
+      "defined_out": [
+        "tmp%13#0"
+      ],
+      "stack_out": [
+        "tmp%13#0"
+      ]
+    },
+    "295": {
+      "op": "bytec_0 // \"deadline\"",
+      "defined_out": [
+        "\"deadline\"",
+        "tmp%13#0"
+      ],
+      "stack_out": [
+        "tmp%13#0",
+        "\"deadline\""
+      ]
+    },
+    "296": {
+      "op": "dig 1",
+      "defined_out": [
+        "\"deadline\"",
+        "tmp%13#0",
+        "tmp%13#0 (copy)"
+      ],
+      "stack_out": [
+        "tmp%13#0",
+        "\"deadline\"",
+        "tmp%13#0 (copy)"
+      ]
+    },
+    "298": {
+      "op": "app_global_put",
+      "stack_out": [
+        "tmp%13#0"
+      ]
+    },
+    "299": {
+      "op": "itob",
+      "defined_out": [
+        "aggregate%val_as_bytes%0#0"
+      ],
+      "stack_out": [
+        "aggregate%val_as_bytes%0#0"
+      ]
+    },
+    "300": {
+      "op": "bytec_2 // 0x151f7c75",
+      "defined_out": [
+        "0x151f7c75",
+        "aggregate%val_as_bytes%0#0"
+      ],
+      "stack_out": [
+        "aggregate%val_as_bytes%0#0",
+        "0x151f7c75"
+      ]
+    },
+    "301": {
+      "op": "swap",
+      "stack_out": [
+        "0x151f7c75",
+        "aggregate%val_as_bytes%0#0"
+      ]
+    },
+    "302": {
+      "op": "concat",
+      "defined_out": [
+        "tmp%6#0"
+      ],
+      "stack_out": [
+        "tmp%6#0"
+      ]
+    },
+    "303": {
+      "op": "log",
+      "stack_out": []
+    },
+    "304": {
+      "op": "intc_1 // 1",
+      "stack_out": [
+        "1"
+      ]
+    },
+    "305": {
+      "op": "return",
+      "stack_out": []
+    },
+    "306": {
+      "subroutine": "smart_contracts.deadman.contract.DeadMan.check_in[routing]",
+      "params": {},
+      "block": "check_in",
+      "stack_in": [],
+      "op": "txn Sender",
+      "defined_out": [
+        "tmp%0#1"
+      ],
+      "stack_out": [
+        "tmp%0#1"
+      ]
+    },
+    "308": {
+      "op": "intc_0 // 0",
+      "defined_out": [
+        "0",
+        "tmp%0#1"
+      ],
+      "stack_out": [
+        "tmp%0#1",
+        "0"
+      ]
+    },
+    "309": {
+      "op": "bytec 7 // \"owner\"",
+      "defined_out": [
+        "\"owner\"",
+        "0",
+        "tmp%0#1"
+      ],
+      "stack_out": [
+        "tmp%0#1",
+        "0",
+        "\"owner\""
+      ]
+    },
+    "311": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "maybe_exists%0#0",
+        "maybe_value%0#0",
+        "tmp%0#1"
+      ],
+      "stack_out": [
+        "tmp%0#1",
+        "maybe_value%0#0",
+        "maybe_exists%0#0"
+      ]
+    },
+    "312": {
+      "error": "check self.owner exists",
+      "op": "assert // check self.owner exists",
+      "stack_out": [
+        "tmp%0#1",
+        "maybe_value%0#0"
+      ]
+    },
+    "313": {
+      "op": "==",
+      "defined_out": [
+        "tmp%1#1"
+      ],
+      "stack_out": [
+        "tmp%1#1"
+      ]
+    },
+    "314": {
+      "error": "Only the owner can check in",
+      "op": "assert // Only the owner can check in",
+      "stack_out": []
+    },
+    "315": {
+      "op": "intc_0 // 0",
+      "stack_out": [
+        "0"
+      ]
+    },
+    "316": {
+      "op": "bytec_3 // \"interval_rounds\"",
+      "defined_out": [
+        "\"interval_rounds\"",
+        "0"
+      ],
+      "stack_out": [
+        "0",
+        "\"interval_rounds\""
+      ]
+    },
+    "317": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "maybe_exists%1#0",
+        "maybe_value%1#0"
+      ],
+      "stack_out": [
+        "maybe_value%1#0",
+        "maybe_exists%1#0"
+      ]
+    },
+    "318": {
+      "error": "check self.interval_rounds exists",
+      "op": "assert // check self.interval_rounds exists",
+      "stack_out": [
+        "maybe_value%1#0"
+      ]
+    },
+    "319": {
+      "op": "dup",
+      "defined_out": [
+        "maybe_value%1#0",
+        "maybe_value%1#0 (copy)"
+      ],
+      "stack_out": [
+        "maybe_value%1#0",
+        "maybe_value%1#0 (copy)"
+      ]
+    },
+    "320": {
+      "error": "Not armed",
+      "op": "assert // Not armed",
+      "stack_out": [
+        "maybe_value%1#0"
+      ]
+    },
+    "321": {
+      "op": "intc_0 // 0",
+      "stack_out": [
+        "maybe_value%1#0",
+        "0"
+      ]
+    },
+    "322": {
+      "op": "bytec_1 // \"fired_round\"",
+      "defined_out": [
+        "\"fired_round\"",
+        "0",
+        "maybe_value%1#0"
+      ],
+      "stack_out": [
+        "maybe_value%1#0",
+        "0",
+        "\"fired_round\""
+      ]
+    },
+    "323": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "maybe_exists%2#0",
+        "maybe_value%1#0",
+        "maybe_value%2#0"
+      ],
+      "stack_out": [
+        "maybe_value%1#0",
+        "maybe_value%2#0",
+        "maybe_exists%2#0"
+      ]
+    },
+    "324": {
+      "error": "check self.fired_round exists",
+      "op": "assert // check self.fired_round exists",
+      "stack_out": [
+        "maybe_value%1#0",
+        "maybe_value%2#0"
+      ]
+    },
+    "325": {
+      "op": "!",
+      "defined_out": [
+        "maybe_value%1#0",
+        "tmp%3#0"
+      ],
+      "stack_out": [
+        "maybe_value%1#0",
+        "tmp%3#0"
+      ]
+    },
+    "326": {
+      "error": "Already fired",
+      "op": "assert // Already fired",
+      "stack_out": [
+        "maybe_value%1#0"
+      ]
+    },
+    "327": {
+      "op": "global Round",
+      "defined_out": [
+        "maybe_value%1#0",
+        "tmp%4#0"
+      ],
+      "stack_out": [
+        "maybe_value%1#0",
+        "tmp%4#0"
+      ]
+    },
+    "329": {
+      "op": "+",
+      "defined_out": [
+        "tmp%5#0"
+      ],
+      "stack_out": [
+        "tmp%5#0"
+      ]
+    },
+    "330": {
+      "op": "bytec_0 // \"deadline\"",
+      "defined_out": [
+        "\"deadline\"",
+        "tmp%5#0"
+      ],
+      "stack_out": [
+        "tmp%5#0",
+        "\"deadline\""
+      ]
+    },
+    "331": {
+      "op": "swap",
+      "stack_out": [
+        "\"deadline\"",
+        "tmp%5#0"
+      ]
+    },
+    "332": {
+      "op": "app_global_put",
+      "stack_out": []
+    },
+    "333": {
+      "op": "intc_0 // 0",
+      "stack_out": [
+        "0"
+      ]
+    },
+    "334": {
+      "op": "bytec 8 // \"check_ins\"",
+      "defined_out": [
+        "\"check_ins\"",
+        "0"
+      ],
+      "stack_out": [
+        "0",
+        "\"check_ins\""
+      ]
+    },
+    "336": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "maybe_exists%4#0",
+        "maybe_value%4#0"
+      ],
+      "stack_out": [
+        "maybe_value%4#0",
+        "maybe_exists%4#0"
+      ]
+    },
+    "337": {
+      "error": "check self.check_ins exists",
+      "op": "assert // check self.check_ins exists",
+      "stack_out": [
+        "maybe_value%4#0"
+      ]
+    },
+    "338": {
+      "op": "intc_1 // 1",
+      "defined_out": [
+        "1",
+        "maybe_value%4#0"
+      ],
+      "stack_out": [
+        "maybe_value%4#0",
+        "1"
+      ]
+    },
+    "339": {
+      "op": "+",
+      "defined_out": [
+        "tmp%6#0"
+      ],
+      "stack_out": [
+        "tmp%6#0"
+      ]
+    },
+    "340": {
+      "op": "bytec 8 // \"check_ins\"",
+      "stack_out": [
+        "tmp%6#0",
+        "\"check_ins\""
+      ]
+    },
+    "342": {
+      "op": "swap",
+      "stack_out": [
+        "\"check_ins\"",
+        "tmp%6#0"
+      ]
+    },
+    "343": {
+      "op": "app_global_put",
+      "stack_out": []
+    },
+    "344": {
+      "op": "intc_0 // 0",
+      "stack_out": [
+        "0"
+      ]
+    },
+    "345": {
+      "op": "bytec_0 // \"deadline\"",
+      "stack_out": [
+        "0",
+        "\"deadline\""
+      ]
+    },
+    "346": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "maybe_exists%5#0",
+        "maybe_value%5#0"
+      ],
+      "stack_out": [
+        "maybe_value%5#0",
+        "maybe_exists%5#0"
+      ]
+    },
+    "347": {
+      "error": "check self.deadline exists",
+      "op": "assert // check self.deadline exists",
+      "stack_out": [
+        "maybe_value%5#0"
+      ]
+    },
+    "348": {
+      "op": "itob",
+      "defined_out": [
+        "aggregate%val_as_bytes%0#0"
+      ],
+      "stack_out": [
+        "aggregate%val_as_bytes%0#0"
+      ]
+    },
+    "349": {
+      "op": "bytec_2 // 0x151f7c75",
+      "defined_out": [
+        "0x151f7c75",
+        "aggregate%val_as_bytes%0#0"
+      ],
+      "stack_out": [
+        "aggregate%val_as_bytes%0#0",
+        "0x151f7c75"
+      ]
+    },
+    "350": {
+      "op": "swap",
+      "stack_out": [
+        "0x151f7c75",
+        "aggregate%val_as_bytes%0#0"
+      ]
+    },
+    "351": {
+      "op": "concat",
+      "defined_out": [
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "tmp%2#0"
+      ]
+    },
+    "352": {
+      "op": "log",
+      "stack_out": []
+    },
+    "353": {
+      "op": "intc_1 // 1",
+      "stack_out": [
+        "1"
+      ]
+    },
+    "354": {
+      "op": "return",
+      "stack_out": []
+    },
+    "355": {
+      "subroutine": "smart_contracts.deadman.contract.DeadMan.sweep[routing]",
+      "params": {},
+      "block": "sweep",
+      "stack_in": [],
+      "op": "intc_0 // 0",
+      "defined_out": [
+        "0"
+      ],
+      "stack_out": [
+        "0"
+      ]
+    },
+    "356": {
+      "op": "bytec_3 // \"interval_rounds\"",
+      "defined_out": [
+        "\"interval_rounds\"",
+        "0"
+      ],
+      "stack_out": [
+        "0",
+        "\"interval_rounds\""
+      ]
+    },
+    "357": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "maybe_exists%0#0",
+        "maybe_value%0#0"
+      ],
+      "stack_out": [
+        "maybe_value%0#0",
+        "maybe_exists%0#0"
+      ]
+    },
+    "358": {
+      "error": "check self.interval_rounds exists",
+      "op": "assert // check self.interval_rounds exists",
+      "stack_out": [
+        "maybe_value%0#0"
+      ]
+    },
+    "359": {
+      "op": "bz sweep_if_body@4",
+      "stack_out": []
+    },
+    "362": {
+      "op": "intc_0 // 0",
+      "stack_out": [
+        "0"
+      ]
+    },
+    "363": {
+      "op": "bytec_1 // \"fired_round\"",
+      "defined_out": [
+        "\"fired_round\"",
+        "0"
+      ],
+      "stack_out": [
+        "0",
+        "\"fired_round\""
+      ]
+    },
+    "364": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "maybe_exists%1#0",
+        "maybe_value%1#0"
+      ],
+      "stack_out": [
+        "maybe_value%1#0",
+        "maybe_exists%1#0"
+      ]
+    },
+    "365": {
+      "error": "check self.fired_round exists",
+      "op": "assert // check self.fired_round exists",
+      "stack_out": [
+        "maybe_value%1#0"
+      ]
+    },
+    "366": {
+      "op": "bnz sweep_if_body@4",
+      "stack_out": []
+    },
+    "369": {
+      "op": "global Round",
+      "defined_out": [
+        "tmp%2#1"
+      ],
+      "stack_out": [
+        "tmp%2#1"
+      ]
+    },
+    "371": {
+      "op": "intc_0 // 0",
+      "stack_out": [
+        "tmp%2#1",
+        "0"
+      ]
+    },
+    "372": {
+      "op": "bytec_0 // \"deadline\"",
+      "defined_out": [
+        "\"deadline\"",
+        "0",
+        "tmp%2#1"
+      ],
+      "stack_out": [
+        "tmp%2#1",
+        "0",
+        "\"deadline\""
+      ]
+    },
+    "373": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "maybe_exists%2#0",
+        "maybe_value%2#0",
+        "tmp%2#1"
+      ],
+      "stack_out": [
+        "tmp%2#1",
+        "maybe_value%2#0",
+        "maybe_exists%2#0"
+      ]
+    },
+    "374": {
+      "error": "check self.deadline exists",
+      "op": "assert // check self.deadline exists",
+      "stack_out": [
+        "tmp%2#1",
+        "maybe_value%2#0"
+      ]
+    },
+    "375": {
+      "op": "<",
+      "defined_out": [
+        "tmp%3#0"
+      ],
+      "stack_out": [
+        "tmp%3#0"
+      ]
+    },
+    "376": {
+      "op": "bz sweep_after_if_else@5",
+      "stack_out": []
+    },
+    "379": {
+      "block": "sweep_if_body@4",
+      "stack_in": [],
+      "op": "intc_0 // 0",
+      "defined_out": [
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0"
+      ]
+    },
+    "380": {
+      "block": "sweep_after_inlined_smart_contracts.deadman.contract.DeadMan.sweep@6",
+      "stack_in": [
+        "tmp%0#0"
+      ],
+      "op": "itob",
+      "defined_out": [
+        "aggregate%val_as_bytes%3#0"
+      ],
+      "stack_out": [
+        "aggregate%val_as_bytes%3#0"
+      ]
+    },
+    "381": {
+      "op": "bytec_2 // 0x151f7c75",
+      "defined_out": [
+        "0x151f7c75",
+        "aggregate%val_as_bytes%3#0"
+      ],
+      "stack_out": [
+        "aggregate%val_as_bytes%3#0",
+        "0x151f7c75"
+      ]
+    },
+    "382": {
+      "op": "swap",
+      "stack_out": [
+        "0x151f7c75",
+        "aggregate%val_as_bytes%3#0"
+      ]
+    },
+    "383": {
+      "op": "concat",
+      "defined_out": [
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "tmp%2#0"
+      ]
+    },
+    "384": {
+      "op": "log",
+      "stack_out": []
+    },
+    "385": {
+      "op": "intc_1 // 1",
+      "defined_out": [
+        "1"
+      ],
+      "stack_out": [
+        "1"
+      ]
+    },
+    "386": {
+      "op": "return",
+      "stack_out": []
+    },
+    "387": {
+      "block": "sweep_after_if_else@5",
+      "stack_in": [],
+      "op": "bytec_1 // \"fired_round\"",
+      "defined_out": [
+        "\"fired_round\""
+      ],
+      "stack_out": [
+        "\"fired_round\""
+      ]
+    },
+    "388": {
+      "op": "global Round",
+      "defined_out": [
+        "\"fired_round\"",
+        "tmp%4#0"
+      ],
+      "stack_out": [
+        "\"fired_round\"",
+        "tmp%4#0"
+      ]
+    },
+    "390": {
+      "op": "app_global_put",
+      "stack_out": []
+    },
+    "391": {
+      "op": "intc_0 // 0",
+      "defined_out": [
+        "0"
+      ],
+      "stack_out": [
+        "0"
+      ]
+    },
+    "392": {
+      "op": "bytec 4 // \"escrow\"",
+      "defined_out": [
+        "\"escrow\"",
+        "0"
+      ],
+      "stack_out": [
+        "0",
+        "\"escrow\""
+      ]
+    },
+    "394": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "maybe_exists%3#0",
+        "maybe_value%3#0"
+      ],
+      "stack_out": [
+        "maybe_value%3#0",
+        "maybe_exists%3#0"
+      ]
+    },
+    "395": {
+      "error": "check self.escrow exists",
+      "op": "assert // check self.escrow exists",
+      "stack_out": [
+        "maybe_value%3#0"
+      ]
+    },
+    "396": {
+      "op": "bytec 5 // \"allocated\"",
+      "defined_out": [
+        "\"allocated\"",
+        "maybe_value%3#0"
+      ],
+      "stack_out": [
+        "maybe_value%3#0",
+        "\"allocated\""
+      ]
+    },
+    "398": {
+      "op": "swap",
+      "stack_out": [
+        "\"allocated\"",
+        "maybe_value%3#0"
+      ]
+    },
+    "399": {
+      "op": "app_global_put",
+      "stack_out": []
+    },
+    "400": {
+      "op": "bytec 4 // \"escrow\"",
+      "stack_out": [
+        "\"escrow\""
+      ]
+    },
+    "402": {
+      "op": "intc_0 // 0",
+      "stack_out": [
+        "\"escrow\"",
+        "0"
+      ]
+    },
+    "403": {
+      "op": "app_global_put",
+      "stack_out": []
+    },
+    "404": {
+      "op": "global Round",
+      "defined_out": [
+        "tmp%5#0"
+      ],
+      "stack_out": [
+        "tmp%5#0"
+      ]
+    },
+    "406": {
+      "op": "itob",
+      "defined_out": [
+        "aggregate%val_as_bytes%0#0"
+      ],
+      "stack_out": [
+        "aggregate%val_as_bytes%0#0"
+      ]
+    },
+    "407": {
+      "op": "intc_0 // 0",
+      "stack_out": [
+        "aggregate%val_as_bytes%0#0",
+        "0"
+      ]
+    },
+    "408": {
+      "op": "bytec_0 // \"deadline\"",
+      "defined_out": [
+        "\"deadline\"",
+        "0",
+        "aggregate%val_as_bytes%0#0"
+      ],
+      "stack_out": [
+        "aggregate%val_as_bytes%0#0",
+        "0",
+        "\"deadline\""
+      ]
+    },
+    "409": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "aggregate%val_as_bytes%0#0",
+        "maybe_exists%4#0",
+        "maybe_value%4#0"
+      ],
+      "stack_out": [
+        "aggregate%val_as_bytes%0#0",
+        "maybe_value%4#0",
+        "maybe_exists%4#0"
+      ]
+    },
+    "410": {
+      "error": "check self.deadline exists",
+      "op": "assert // check self.deadline exists",
+      "stack_out": [
+        "aggregate%val_as_bytes%0#0",
+        "maybe_value%4#0"
+      ]
+    },
+    "411": {
+      "op": "itob",
+      "defined_out": [
+        "aggregate%val_as_bytes%0#0",
+        "aggregate%val_as_bytes%1#0"
+      ],
+      "stack_out": [
+        "aggregate%val_as_bytes%0#0",
+        "aggregate%val_as_bytes%1#0"
+      ]
+    },
+    "412": {
+      "op": "intc_0 // 0",
+      "stack_out": [
+        "aggregate%val_as_bytes%0#0",
+        "aggregate%val_as_bytes%1#0",
+        "0"
+      ]
+    },
+    "413": {
+      "op": "bytec 6 // \"beneficiary\"",
+      "defined_out": [
+        "\"beneficiary\"",
+        "0",
+        "aggregate%val_as_bytes%0#0",
+        "aggregate%val_as_bytes%1#0"
+      ],
+      "stack_out": [
+        "aggregate%val_as_bytes%0#0",
+        "aggregate%val_as_bytes%1#0",
+        "0",
+        "\"beneficiary\""
+      ]
+    },
+    "415": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "aggregate%val_as_bytes%0#0",
+        "aggregate%val_as_bytes%1#0",
+        "maybe_exists%5#0",
+        "maybe_value%5#0"
+      ],
+      "stack_out": [
+        "aggregate%val_as_bytes%0#0",
+        "aggregate%val_as_bytes%1#0",
+        "maybe_value%5#0",
+        "maybe_exists%5#0"
+      ]
+    },
+    "416": {
+      "error": "check self.beneficiary exists",
+      "op": "assert // check self.beneficiary exists",
+      "stack_out": [
+        "aggregate%val_as_bytes%0#0",
+        "aggregate%val_as_bytes%1#0",
+        "maybe_value%5#0"
+      ]
+    },
+    "417": {
+      "op": "intc_0 // 0",
+      "stack_out": [
+        "aggregate%val_as_bytes%0#0",
+        "aggregate%val_as_bytes%1#0",
+        "maybe_value%5#0",
+        "0"
+      ]
+    },
+    "418": {
+      "op": "bytec 5 // \"allocated\"",
+      "stack_out": [
+        "aggregate%val_as_bytes%0#0",
+        "aggregate%val_as_bytes%1#0",
+        "maybe_value%5#0",
+        "0",
+        "\"allocated\""
+      ]
+    },
+    "420": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "aggregate%val_as_bytes%0#0",
+        "aggregate%val_as_bytes%1#0",
+        "maybe_exists%6#0",
+        "maybe_value%5#0",
+        "maybe_value%6#0"
+      ],
+      "stack_out": [
+        "aggregate%val_as_bytes%0#0",
+        "aggregate%val_as_bytes%1#0",
+        "maybe_value%5#0",
+        "maybe_value%6#0",
+        "maybe_exists%6#0"
+      ]
+    },
+    "421": {
+      "error": "check self.allocated exists",
+      "op": "assert // check self.allocated exists",
+      "stack_out": [
+        "aggregate%val_as_bytes%0#0",
+        "aggregate%val_as_bytes%1#0",
+        "maybe_value%5#0",
+        "maybe_value%6#0"
+      ]
+    },
+    "422": {
+      "op": "itob",
+      "defined_out": [
+        "aggregate%val_as_bytes%0#0",
+        "aggregate%val_as_bytes%1#0",
+        "aggregate%val_as_bytes%2#0",
+        "maybe_value%5#0"
+      ],
+      "stack_out": [
+        "aggregate%val_as_bytes%0#0",
+        "aggregate%val_as_bytes%1#0",
+        "maybe_value%5#0",
+        "aggregate%val_as_bytes%2#0"
+      ]
+    },
+    "423": {
+      "op": "uncover 3",
+      "stack_out": [
+        "aggregate%val_as_bytes%1#0",
+        "maybe_value%5#0",
+        "aggregate%val_as_bytes%2#0",
+        "aggregate%val_as_bytes%0#0"
+      ]
+    },
+    "425": {
+      "op": "uncover 3",
+      "stack_out": [
+        "maybe_value%5#0",
+        "aggregate%val_as_bytes%2#0",
+        "aggregate%val_as_bytes%0#0",
+        "aggregate%val_as_bytes%1#0"
+      ]
+    },
+    "427": {
+      "op": "concat",
+      "defined_out": [
+        "aggregate%head%1#0",
+        "aggregate%val_as_bytes%2#0",
+        "maybe_value%5#0"
+      ],
+      "stack_out": [
+        "maybe_value%5#0",
+        "aggregate%val_as_bytes%2#0",
+        "aggregate%head%1#0"
+      ]
+    },
+    "428": {
+      "op": "uncover 2",
+      "stack_out": [
+        "aggregate%val_as_bytes%2#0",
+        "aggregate%head%1#0",
+        "maybe_value%5#0"
+      ]
+    },
+    "430": {
+      "op": "concat",
+      "defined_out": [
+        "aggregate%head%2#0",
+        "aggregate%val_as_bytes%2#0"
+      ],
+      "stack_out": [
+        "aggregate%val_as_bytes%2#0",
+        "aggregate%head%2#0"
+      ]
+    },
+    "431": {
+      "op": "swap",
+      "stack_out": [
+        "aggregate%head%2#0",
+        "aggregate%val_as_bytes%2#0"
+      ]
+    },
+    "432": {
+      "op": "concat",
+      "defined_out": [
+        "aggregate%head%3#0"
+      ],
+      "stack_out": [
+        "aggregate%head%3#0"
+      ]
+    },
+    "433": {
+      "op": "pushbytes 0xbeba0636 // method \"Fired(uint64,uint64,address,uint64)\"",
+      "defined_out": [
+        "Method(Fired(uint64,uint64,address,uint64))",
+        "aggregate%head%3#0"
+      ],
+      "stack_out": [
+        "aggregate%head%3#0",
+        "Method(Fired(uint64,uint64,address,uint64))"
+      ]
+    },
+    "439": {
+      "op": "swap",
+      "stack_out": [
+        "Method(Fired(uint64,uint64,address,uint64))",
+        "aggregate%head%3#0"
+      ]
+    },
+    "440": {
+      "op": "concat",
+      "defined_out": [
+        "event%0#0"
+      ],
+      "stack_out": [
+        "event%0#0"
+      ]
+    },
+    "441": {
+      "op": "log",
+      "stack_out": []
+    },
+    "442": {
+      "op": "intc_0 // 0",
+      "stack_out": [
+        "0"
+      ]
+    },
+    "443": {
+      "op": "bytec_1 // \"fired_round\"",
+      "stack_out": [
+        "0",
+        "\"fired_round\""
+      ]
+    },
+    "444": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "maybe_exists%7#0",
+        "maybe_value%7#0"
+      ],
+      "stack_out": [
+        "maybe_value%7#0",
+        "maybe_exists%7#0"
+      ]
+    },
+    "445": {
+      "error": "check self.fired_round exists",
+      "op": "assert // check self.fired_round exists",
+      "defined_out": [
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0"
+      ]
+    },
+    "446": {
+      "op": "b sweep_after_inlined_smart_contracts.deadman.contract.DeadMan.sweep@6"
+    },
+    "449": {
+      "subroutine": "smart_contracts.deadman.contract.DeadMan.claim[routing]",
+      "params": {},
+      "block": "claim",
+      "stack_in": [],
+      "op": "intc_0 // 0",
+      "defined_out": [
+        "0"
+      ],
+      "stack_out": [
+        "0"
+      ]
+    },
+    "450": {
+      "op": "bytec_1 // \"fired_round\"",
+      "defined_out": [
+        "\"fired_round\"",
+        "0"
+      ],
+      "stack_out": [
+        "0",
+        "\"fired_round\""
+      ]
+    },
+    "451": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "maybe_exists%0#0",
+        "maybe_value%0#0"
+      ],
+      "stack_out": [
+        "maybe_value%0#0",
+        "maybe_exists%0#0"
+      ]
+    },
+    "452": {
+      "error": "check self.fired_round exists",
+      "op": "assert // check self.fired_round exists",
+      "stack_out": [
+        "maybe_value%0#0"
+      ]
+    },
+    "453": {
+      "error": "Switch has not fired",
+      "op": "assert // Switch has not fired",
+      "stack_out": []
+    },
+    "454": {
+      "op": "txn Sender",
+      "defined_out": [
+        "tmp%1#1"
+      ],
+      "stack_out": [
+        "tmp%1#1"
+      ]
+    },
+    "456": {
+      "op": "intc_0 // 0",
+      "stack_out": [
+        "tmp%1#1",
+        "0"
+      ]
+    },
+    "457": {
+      "op": "bytec 6 // \"beneficiary\"",
+      "defined_out": [
+        "\"beneficiary\"",
+        "0",
+        "tmp%1#1"
+      ],
+      "stack_out": [
+        "tmp%1#1",
+        "0",
+        "\"beneficiary\""
+      ]
+    },
+    "459": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "maybe_exists%1#0",
+        "maybe_value%1#0",
+        "tmp%1#1"
+      ],
+      "stack_out": [
+        "tmp%1#1",
+        "maybe_value%1#0",
+        "maybe_exists%1#0"
+      ]
+    },
+    "460": {
+      "error": "check self.beneficiary exists",
+      "op": "assert // check self.beneficiary exists",
+      "stack_out": [
+        "tmp%1#1",
+        "maybe_value%1#0"
+      ]
+    },
+    "461": {
+      "op": "==",
+      "defined_out": [
+        "tmp%2#1"
+      ],
+      "stack_out": [
+        "tmp%2#1"
+      ]
+    },
+    "462": {
+      "error": "Only the beneficiary can claim",
+      "op": "assert // Only the beneficiary can claim",
+      "stack_out": []
+    },
+    "463": {
+      "op": "intc_0 // 0",
+      "stack_out": [
+        "0"
+      ]
+    },
+    "464": {
+      "op": "bytec 5 // \"allocated\"",
+      "defined_out": [
+        "\"allocated\"",
+        "0"
+      ],
+      "stack_out": [
+        "0",
+        "\"allocated\""
+      ]
+    },
+    "466": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "amount#0",
+        "maybe_exists%2#0"
+      ],
+      "stack_out": [
+        "amount#0",
+        "maybe_exists%2#0"
+      ]
+    },
+    "467": {
+      "error": "check self.allocated exists",
+      "op": "assert // check self.allocated exists",
+      "stack_out": [
+        "amount#0"
+      ]
+    },
+    "468": {
+      "op": "dup",
+      "defined_out": [
+        "amount#0",
+        "amount#0 (copy)"
+      ],
+      "stack_out": [
+        "amount#0",
+        "amount#0 (copy)"
+      ]
+    },
+    "469": {
+      "error": "Nothing left to claim",
+      "op": "assert // Nothing left to claim",
+      "stack_out": [
+        "amount#0"
+      ]
+    },
+    "470": {
+      "op": "bytec 5 // \"allocated\"",
+      "stack_out": [
+        "amount#0",
+        "\"allocated\""
+      ]
+    },
+    "472": {
+      "op": "intc_0 // 0",
+      "stack_out": [
+        "amount#0",
+        "\"allocated\"",
+        "0"
+      ]
+    },
+    "473": {
+      "op": "app_global_put",
+      "stack_out": [
+        "amount#0"
+      ]
+    },
+    "474": {
+      "op": "itxn_begin"
+    },
+    "475": {
+      "op": "txn Sender",
+      "defined_out": [
+        "amount#0",
+        "inner_txn_params%0%%param_Receiver_idx_0#0"
+      ],
+      "stack_out": [
+        "amount#0",
+        "inner_txn_params%0%%param_Receiver_idx_0#0"
+      ]
+    },
+    "477": {
+      "op": "dig 1",
+      "stack_out": [
+        "amount#0",
+        "inner_txn_params%0%%param_Receiver_idx_0#0",
+        "amount#0 (copy)"
+      ]
+    },
+    "479": {
+      "op": "itxn_field Amount",
+      "stack_out": [
+        "amount#0",
+        "inner_txn_params%0%%param_Receiver_idx_0#0"
+      ]
+    },
+    "481": {
+      "op": "itxn_field Receiver",
+      "stack_out": [
+        "amount#0"
+      ]
+    },
+    "483": {
+      "op": "intc_1 // pay",
+      "defined_out": [
+        "amount#0",
+        "pay"
+      ],
+      "stack_out": [
+        "amount#0",
+        "pay"
+      ]
+    },
+    "484": {
+      "op": "itxn_field TypeEnum",
+      "stack_out": [
+        "amount#0"
+      ]
+    },
+    "486": {
+      "op": "intc_0 // 0",
+      "stack_out": [
+        "amount#0",
+        "0"
+      ]
+    },
+    "487": {
+      "op": "itxn_field Fee",
+      "stack_out": [
+        "amount#0"
+      ]
+    },
+    "489": {
+      "op": "itxn_submit"
+    },
+    "490": {
+      "op": "itob",
+      "defined_out": [
+        "aggregate%val_as_bytes%0#0"
+      ],
+      "stack_out": [
+        "aggregate%val_as_bytes%0#0"
+      ]
+    },
+    "491": {
+      "op": "bytec_2 // 0x151f7c75",
+      "defined_out": [
+        "0x151f7c75",
+        "aggregate%val_as_bytes%0#0"
+      ],
+      "stack_out": [
+        "aggregate%val_as_bytes%0#0",
+        "0x151f7c75"
+      ]
+    },
+    "492": {
+      "op": "swap",
+      "stack_out": [
+        "0x151f7c75",
+        "aggregate%val_as_bytes%0#0"
+      ]
+    },
+    "493": {
+      "op": "concat",
+      "defined_out": [
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "tmp%2#0"
+      ]
+    },
+    "494": {
+      "op": "log",
+      "stack_out": []
+    },
+    "495": {
+      "op": "intc_1 // 1",
+      "defined_out": [
+        "1"
+      ],
+      "stack_out": [
+        "1"
+      ]
+    },
+    "496": {
+      "op": "return",
+      "stack_out": []
+    },
+    "497": {
+      "subroutine": "smart_contracts.deadman.contract.DeadMan.rounds_remaining[routing]",
+      "params": {},
+      "block": "rounds_remaining",
+      "stack_in": [],
+      "op": "intc_0 // 0",
+      "defined_out": [
+        "0"
+      ],
+      "stack_out": [
+        "0"
+      ]
+    },
+    "498": {
+      "op": "bytec_1 // \"fired_round\"",
+      "defined_out": [
+        "\"fired_round\"",
+        "0"
+      ],
+      "stack_out": [
+        "0",
+        "\"fired_round\""
+      ]
+    },
+    "499": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "maybe_exists%0#0",
+        "maybe_value%0#0"
+      ],
+      "stack_out": [
+        "maybe_value%0#0",
+        "maybe_exists%0#0"
+      ]
+    },
+    "500": {
+      "error": "check self.fired_round exists",
+      "op": "assert // check self.fired_round exists",
+      "stack_out": [
+        "maybe_value%0#0"
+      ]
+    },
+    "501": {
+      "op": "bnz rounds_remaining_if_body@3",
+      "stack_out": []
+    },
+    "504": {
+      "op": "global Round",
+      "defined_out": [
+        "tmp%1#1"
+      ],
+      "stack_out": [
+        "tmp%1#1"
+      ]
+    },
+    "506": {
+      "op": "intc_0 // 0",
+      "stack_out": [
+        "tmp%1#1",
+        "0"
+      ]
+    },
+    "507": {
+      "op": "bytec_0 // \"deadline\"",
+      "defined_out": [
+        "\"deadline\"",
+        "0",
+        "tmp%1#1"
+      ],
+      "stack_out": [
+        "tmp%1#1",
+        "0",
+        "\"deadline\""
+      ]
+    },
+    "508": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "maybe_exists%1#0",
+        "maybe_value%1#0",
+        "tmp%1#1"
+      ],
+      "stack_out": [
+        "tmp%1#1",
+        "maybe_value%1#0",
+        "maybe_exists%1#0"
+      ]
+    },
+    "509": {
+      "error": "check self.deadline exists",
+      "op": "assert // check self.deadline exists",
+      "stack_out": [
+        "tmp%1#1",
+        "maybe_value%1#0"
+      ]
+    },
+    "510": {
+      "op": ">=",
+      "defined_out": [
+        "tmp%2#1"
+      ],
+      "stack_out": [
+        "tmp%2#1"
+      ]
+    },
+    "511": {
+      "op": "bz rounds_remaining_after_if_else@4",
+      "stack_out": []
+    },
+    "514": {
+      "block": "rounds_remaining_if_body@3",
+      "stack_in": [],
+      "op": "intc_0 // 0",
+      "defined_out": [
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0"
+      ]
+    },
+    "515": {
+      "block": "rounds_remaining_after_inlined_smart_contracts.deadman.contract.DeadMan.rounds_remaining@5",
+      "stack_in": [
+        "tmp%0#0"
+      ],
+      "op": "itob",
+      "defined_out": [
+        "aggregate%val_as_bytes%0#0"
+      ],
+      "stack_out": [
+        "aggregate%val_as_bytes%0#0"
+      ]
+    },
+    "516": {
+      "op": "bytec_2 // 0x151f7c75",
+      "defined_out": [
+        "0x151f7c75",
+        "aggregate%val_as_bytes%0#0"
+      ],
+      "stack_out": [
+        "aggregate%val_as_bytes%0#0",
+        "0x151f7c75"
+      ]
+    },
+    "517": {
+      "op": "swap",
+      "stack_out": [
+        "0x151f7c75",
+        "aggregate%val_as_bytes%0#0"
+      ]
+    },
+    "518": {
+      "op": "concat",
+      "defined_out": [
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "tmp%2#0"
+      ]
+    },
+    "519": {
+      "op": "log",
+      "stack_out": []
+    },
+    "520": {
+      "op": "intc_1 // 1",
+      "defined_out": [
+        "1"
+      ],
+      "stack_out": [
+        "1"
+      ]
+    },
+    "521": {
+      "op": "return",
+      "stack_out": []
+    },
+    "522": {
+      "block": "rounds_remaining_after_if_else@4",
+      "stack_in": [],
+      "op": "intc_0 // 0",
+      "defined_out": [
+        "0"
+      ],
+      "stack_out": [
+        "0"
+      ]
+    },
+    "523": {
+      "op": "bytec_0 // \"deadline\"",
+      "defined_out": [
+        "\"deadline\"",
+        "0"
+      ],
+      "stack_out": [
+        "0",
+        "\"deadline\""
+      ]
+    },
+    "524": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "maybe_exists%2#0",
+        "maybe_value%2#0"
+      ],
+      "stack_out": [
+        "maybe_value%2#0",
+        "maybe_exists%2#0"
+      ]
+    },
+    "525": {
+      "error": "check self.deadline exists",
+      "op": "assert // check self.deadline exists",
+      "stack_out": [
+        "maybe_value%2#0"
+      ]
+    },
+    "526": {
+      "op": "global Round",
+      "defined_out": [
+        "maybe_value%2#0",
+        "tmp%3#0"
+      ],
+      "stack_out": [
+        "maybe_value%2#0",
+        "tmp%3#0"
+      ]
+    },
+    "528": {
+      "op": "-",
+      "defined_out": [
+        "tmp%0#0"
+      ],
+      "stack_out": [
+        "tmp%0#0"
+      ]
+    },
+    "529": {
+      "op": "b rounds_remaining_after_inlined_smart_contracts.deadman.contract.DeadMan.rounds_remaining@5"
+    },
+    "532": {
+      "subroutine": "smart_contracts.deadman.contract.DeadMan.has_fired[routing]",
+      "params": {},
+      "block": "has_fired",
+      "stack_in": [],
+      "op": "intc_0 // 0",
+      "defined_out": [
+        "0"
+      ],
+      "stack_out": [
+        "0"
+      ]
+    },
+    "533": {
+      "op": "bytec_1 // \"fired_round\"",
+      "defined_out": [
+        "\"fired_round\"",
+        "0"
+      ],
+      "stack_out": [
+        "0",
+        "\"fired_round\""
+      ]
+    },
+    "534": {
+      "op": "app_global_get_ex",
+      "defined_out": [
+        "maybe_exists%0#0",
+        "maybe_value%0#0"
+      ],
+      "stack_out": [
+        "maybe_value%0#0",
+        "maybe_exists%0#0"
+      ]
+    },
+    "535": {
+      "error": "check self.fired_round exists",
+      "op": "assert // check self.fired_round exists",
+      "stack_out": [
+        "maybe_value%0#0"
+      ]
+    },
+    "536": {
+      "op": "intc_0 // 0",
+      "stack_out": [
+        "maybe_value%0#0",
+        "0"
+      ]
+    },
+    "537": {
+      "op": ">",
+      "defined_out": [
+        "tmp%0#1"
+      ],
+      "stack_out": [
+        "tmp%0#1"
+      ]
+    },
+    "538": {
+      "op": "pushbytes 0x00",
+      "defined_out": [
+        "0x00",
+        "tmp%0#1"
+      ],
+      "stack_out": [
+        "tmp%0#1",
+        "0x00"
+      ]
+    },
+    "541": {
+      "op": "intc_0 // 0",
+      "stack_out": [
+        "tmp%0#1",
+        "0x00",
+        "0"
+      ]
+    },
+    "542": {
+      "op": "uncover 2",
+      "stack_out": [
+        "0x00",
+        "0",
+        "tmp%0#1"
+      ]
+    },
+    "544": {
+      "op": "setbit",
+      "defined_out": [
+        "aggregate%encoded_bool%0#0"
+      ],
+      "stack_out": [
+        "aggregate%encoded_bool%0#0"
+      ]
+    },
+    "545": {
+      "op": "bytec_2 // 0x151f7c75",
+      "defined_out": [
+        "0x151f7c75",
+        "aggregate%encoded_bool%0#0"
+      ],
+      "stack_out": [
+        "aggregate%encoded_bool%0#0",
+        "0x151f7c75"
+      ]
+    },
+    "546": {
+      "op": "swap",
+      "stack_out": [
+        "0x151f7c75",
+        "aggregate%encoded_bool%0#0"
+      ]
+    },
+    "547": {
+      "op": "concat",
+      "defined_out": [
+        "tmp%2#0"
+      ],
+      "stack_out": [
+        "tmp%2#0"
+      ]
+    },
+    "548": {
+      "op": "log",
+      "stack_out": []
+    },
+    "549": {
+      "op": "intc_1 // 1",
+      "defined_out": [
+        "1"
+      ],
+      "stack_out": [
+        "1"
+      ]
+    },
+    "550": {
+      "op": "return",
+      "stack_out": []
+    }
+  }
+}
