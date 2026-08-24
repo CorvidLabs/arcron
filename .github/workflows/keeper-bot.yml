@@ -1,0 +1,51 @@
+# A cron-driven keeper, as a starting point rather than the end state.
+#
+# Deliberately manual-only: enabling the schedule below without setting the
+# KEEPER_MNEMONIC secret would fail every five minutes and train everyone to
+# ignore this workflow. Uncomment the schedule once the secret exists.
+#
+# Note the trade-offs before relying on it:
+#   * GitHub's cron granularity is ~5 minutes and runs are best-effort, so
+#     upkeeps with short intervals will be serviced late or missed.
+#   * Each run is a fresh process, so a failing upkeep is retried every time.
+#   * The mnemonic lives in repository secrets.
+# A long-lived process (deploy/compose.yaml) avoids all three.
+
+name: Keeper bot
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_id:
+        description: Keeper app id to service
+        required: false
+        default: "769802474"
+  # schedule:
+  #   - cron: "*/5 * * * *"
+
+concurrency:
+  group: keeper-bot
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: |
+          pip install "poetry>=2.0,<3.0"
+          poetry install --only main --no-root --no-interaction
+
+      - name: Service due upkeeps
+        env:
+          KEEPER_MNEMONIC: ${{ secrets.KEEPER_MNEMONIC }}
+          KEEPER_APP_ID: ${{ inputs.app_id || '769802474' }}
+          ALGOD_SERVER: https://testnet-api.algonode.cloud
+        run: poetry run python -m scripts.keeper_bot --once --network testnet --log-format json

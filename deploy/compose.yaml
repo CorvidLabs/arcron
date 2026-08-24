@@ -1,0 +1,29 @@
+# An always-on keeper for the TestNet deployment.
+#
+#   cp deploy/keeper.env.example deploy/keeper.env   # add KEEPER_MNEMONIC
+#   docker compose -f deploy/compose.yaml up -d
+#   docker compose -f deploy/compose.yaml logs -f
+#
+# The bot earns its own fees, so a funded account is self-sustaining while the
+# registry is busy — but it cannot earn its way back from empty. Watch the
+# balance (see docs/archon.md, "Operating a bot").
+
+services:
+  keeper:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: archon-keeper
+    # Survive algod hiccups, node restarts and reboots. The bot backs off
+    # internally too, so this is the last line of defence, not the first.
+    restart: unless-stopped
+    env_file: keeper.env
+    command: ["--network", "testnet", "--log-format", "json"]
+    # SIGTERM lets it finish the scan in flight before exiting.
+    stop_signal: SIGTERM
+    stop_grace_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
