@@ -5,6 +5,10 @@ a scheduled contract call, any keeper executes it for the fee. By
 [CorvidLabs](https://github.com/CorvidLabs), built with Algorand Python
 (Puya) and AlgoKit. Live on TestNet.
 
+*An archon was an Athenian magistrate — an annual office responsible for the
+city's business happening at its appointed time. The office mattered; whoever
+filled it did not, and nobody owned it.*
+
 | Contract | What it is | Status |
 |----------|-----------|--------|
 | [`smart_contracts/keeper`](smart_contracts/keeper/contract.py) | The Archon network: upkeep scheduling with ALGO escrow and keeper rewards | **Live on TestNet** — app [`769772891`](https://testnet.explorer.perawallet.app/application/769772891)¹ |
