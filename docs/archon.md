@@ -539,6 +539,10 @@ that look like they need multi-arg calls do not, once payouts are pull-based.
   [`3225439167`](https://explorer.perawallet.app/asset/3225439167) (6 decimals).
 - Single-arg NoOp call shape; no multi-arg or foreign-array calls.
 - No catch-up clamp: long-missed upkeeps fire once per round until caught up.
+  A per-upkeep policy is designed in
+  [docs/design/scheduling-and-fees.md](design/scheduling-and-fees.md), together
+  with fee escalation — the two interact badly if designed apart, and both need
+  a redeployment because the contract has no upgrade path.
 - Unaudited. TestNet throwaway deployer — redeploy fresh for mainnet.
 
 ## CI
