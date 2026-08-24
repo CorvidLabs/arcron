@@ -83,9 +83,10 @@ cd web && bun install && bun run ng serve      # http://localhost:4200
 
 A dashboard of the upkeep registry — read straight from algod, so it needs no
 wallet and no indexer — plus the keeper controls: register, top up, execute a
-due upkeep, cancel your own. It opens on LocalNet, where signing goes through
-KMD so nothing has to be pasted into a browser; TestNet is read-only until a
-wallet adapter is wired. Amounts read in ALGO and cadences read as time
+due upkeep, cancel your own. Signing goes through
+[use-wallet](https://github.com/TxnLab/use-wallet): Pera, Defly, Lute, Exodus
+and Kibisis, plus KMD on LocalNet so a browser can sign with nothing
+installed. Amounts read in ALGO and cadences read as time
 ("every 1,286 rounds · ~1 h"). Built on the
 [CorvidLabs design system](https://github.com/CorvidLabs/design-system);
 see [`web/README.md`](web/README.md).
@@ -214,5 +215,5 @@ fails if code drifts from the documented public API.
 - [x] End-to-end verification on LocalNet (`fledge lanes run local`) — found and fixed an 800 µALGO box-MBR undercharge
 - [ ] Redeploy TestNet with the box-MBR fix (current app 769772891 predates it)
 - [x] Web front end: registry dashboard + keeper console — `web/`
-- [ ] TestNet signing in the console (wallet adapter; LocalNet signs via KMD)
+- [x] Wallet signing (Pera, Defly, Lute, Exodus, Kibisis; KMD on LocalNet)
 - [ ] Multi-arg / foreign-array call shapes, if real use cases demand them
