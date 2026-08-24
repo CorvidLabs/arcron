@@ -4,10 +4,10 @@
 // algopy.arc4.ARC4Contract.approval_program() -> uint64:
 main:
     intcblock 0 1 8 4
-    bytecblock "probes_run" "last_reading" 0x151f7c75 "subject" "subject_asset" "subject_app" "last_number" "last_text"
+    bytecblock "probes_run" "last_reading" 0x151f7c75 "subject" "subject_asset" "subject_app" "last_number" "last_text" "last_caller"
     txn ApplicationID
     bnz main_after_if_else@2
-    // smart_contracts/resource_probe/contract.py:33-36
+    // smart_contracts/resource_probe/contract.py:34-37
     // # The resources to reach for, fixed at configuration time so that a
     // # probe call carries nothing but its own selector — exactly the shape
     // # Archon can send.
@@ -15,56 +15,63 @@ main:
     bytec_3 // "subject"
     global ZeroAddress
     app_global_put
-    // smart_contracts/resource_probe/contract.py:37
+    // smart_contracts/resource_probe/contract.py:38
     // self.subject_asset = GlobalState(UInt64(0))
     bytec 4 // "subject_asset"
     intc_0 // 0
     app_global_put
-    // smart_contracts/resource_probe/contract.py:38
+    // smart_contracts/resource_probe/contract.py:39
     // self.subject_app = GlobalState(UInt64(0))
     bytec 5 // "subject_app"
     intc_0 // 0
     app_global_put
-    // smart_contracts/resource_probe/contract.py:39-40
+    // smart_contracts/resource_probe/contract.py:40-41
     // # Evidence a probe ran, for the cases where success is silent.
     // self.probes_run = GlobalState(UInt64(0))
     bytec_0 // "probes_run"
     intc_0 // 0
     app_global_put
-    // smart_contracts/resource_probe/contract.py:41
+    // smart_contracts/resource_probe/contract.py:42
     // self.last_reading = GlobalState(UInt64(0))
     bytec_1 // "last_reading"
     intc_0 // 0
     app_global_put
-    // smart_contracts/resource_probe/contract.py:42-44
+    // smart_contracts/resource_probe/contract.py:43-45
     // # What `absorb` was handed, so a multi-arg call can be checked for
     // # having delivered every argument rather than merely succeeding.
     // self.last_number = GlobalState(UInt64(0))
     bytec 6 // "last_number"
     intc_0 // 0
     app_global_put
-    // smart_contracts/resource_probe/contract.py:45
+    // smart_contracts/resource_probe/contract.py:46
     // self.last_text = GlobalState(String(""))
     bytec 7 // "last_text"
     pushbytes ""
     app_global_put
+    // smart_contracts/resource_probe/contract.py:47-49
+    // # Who the target sees as its caller, which is not who sent the
+    // # transaction once Archon is in the middle.
+    // self.last_caller = GlobalState(Account())
+    bytec 8 // "last_caller"
+    global ZeroAddress
+    app_global_put
 
 main_after_if_else@2:
-    // smart_contracts/resource_probe/contract.py:29
+    // smart_contracts/resource_probe/contract.py:30
     // class ResourceProbe(ARC4Contract):
     txn NumAppArgs
-    bz main___algopy_default_create@18
+    bz main___algopy_default_create@19
     txn OnCompletion
     !
     assert
     txn ApplicationID
     assert
-    pushbytess 0x88605403 0x45c71419 0x464621b1 0x21cbd746 0xcd2d6670 0xfa171a4f 0xdc197f6c 0xcb782a48 0xeda1da47 // method "configure(address,uint64,uint64)void", method "opt_in_to_asset()void", method "probe_payment()uint64", method "probe_asset_transfer()uint64", method "probe_read_balance()uint64", method "probe_read_holding()uint64", method "report_budget()uint64", method "absorb(uint64,string)uint64", method "probe_app_call()uint64"
+    pushbytess 0x88605403 0x45c71419 0x464621b1 0x21cbd746 0xcd2d6670 0xfa171a4f 0xdc197f6c 0xcb782a48 0xdd204aa9 0xeda1da47 // method "configure(address,uint64,uint64)void", method "opt_in_to_asset()void", method "probe_payment()uint64", method "probe_asset_transfer()uint64", method "probe_read_balance()uint64", method "probe_read_holding()uint64", method "report_budget()uint64", method "absorb(uint64,string)uint64", method "report_caller()address", method "probe_app_call()uint64"
     txna ApplicationArgs 0
-    match configure opt_in_to_asset probe_payment probe_asset_transfer probe_read_balance probe_read_holding report_budget absorb probe_app_call
+    match configure opt_in_to_asset probe_payment probe_asset_transfer probe_read_balance probe_read_holding report_budget absorb report_caller probe_app_call
     err
 
-main___algopy_default_create@18:
+main___algopy_default_create@19:
     txn OnCompletion
     !
     txn ApplicationID
@@ -75,7 +82,7 @@ main___algopy_default_create@18:
 
 // smart_contracts.resource_probe.contract.ResourceProbe.configure[routing]() -> void:
 configure:
-    // smart_contracts/resource_probe/contract.py:47
+    // smart_contracts/resource_probe/contract.py:51
     // @abimethod()
     txna ApplicationArgs 1
     dup
@@ -97,22 +104,22 @@ configure:
     ==
     assert // invalid number of bytes for arc4.uint64
     btoi
-    // smart_contracts/resource_probe/contract.py:52
+    // smart_contracts/resource_probe/contract.py:56
     // self.subject.value = subject.native
     bytec_3 // "subject"
     uncover 3
     app_global_put
-    // smart_contracts/resource_probe/contract.py:53
+    // smart_contracts/resource_probe/contract.py:57
     // self.subject_asset.value = asset
     bytec 4 // "subject_asset"
     uncover 2
     app_global_put
-    // smart_contracts/resource_probe/contract.py:54
+    // smart_contracts/resource_probe/contract.py:58
     // self.subject_app.value = app
     bytec 5 // "subject_app"
     swap
     app_global_put
-    // smart_contracts/resource_probe/contract.py:47
+    // smart_contracts/resource_probe/contract.py:51
     // @abimethod()
     intc_1 // 1
     return
@@ -120,42 +127,42 @@ configure:
 
 // smart_contracts.resource_probe.contract.ResourceProbe.opt_in_to_asset[routing]() -> void:
 opt_in_to_asset:
-    // smart_contracts/resource_probe/contract.py:59-63
+    // smart_contracts/resource_probe/contract.py:63-67
     // itxn.AssetTransfer(
     //     xfer_asset=self.subject_asset.value,
     //     asset_receiver=Global.current_application_address,
     //     asset_amount=0,
     // ).submit()
     itxn_begin
-    // smart_contracts/resource_probe/contract.py:60
+    // smart_contracts/resource_probe/contract.py:64
     // xfer_asset=self.subject_asset.value,
     intc_0 // 0
     bytec 4 // "subject_asset"
     app_global_get_ex
     assert // check self.subject_asset exists
-    // smart_contracts/resource_probe/contract.py:61
+    // smart_contracts/resource_probe/contract.py:65
     // asset_receiver=Global.current_application_address,
     global CurrentApplicationAddress
-    // smart_contracts/resource_probe/contract.py:62
+    // smart_contracts/resource_probe/contract.py:66
     // asset_amount=0,
     intc_0 // 0
     itxn_field AssetAmount
     itxn_field AssetReceiver
     itxn_field XferAsset
-    // smart_contracts/resource_probe/contract.py:59
+    // smart_contracts/resource_probe/contract.py:63
     // itxn.AssetTransfer(
     intc_3 // axfer
     itxn_field TypeEnum
     intc_0 // 0
     itxn_field Fee
-    // smart_contracts/resource_probe/contract.py:59-63
+    // smart_contracts/resource_probe/contract.py:63-67
     // itxn.AssetTransfer(
     //     xfer_asset=self.subject_asset.value,
     //     asset_receiver=Global.current_application_address,
     //     asset_amount=0,
     // ).submit()
     itxn_submit
-    // smart_contracts/resource_probe/contract.py:56
+    // smart_contracts/resource_probe/contract.py:60
     // @abimethod()
     intc_1 // 1
     return
@@ -163,7 +170,7 @@ opt_in_to_asset:
 
 // smart_contracts.resource_probe.contract.ResourceProbe.probe_payment[routing]() -> void:
 probe_payment:
-    // smart_contracts/resource_probe/contract.py:68
+    // smart_contracts/resource_probe/contract.py:72
     // itxn.Payment(receiver=self.subject.value, amount=0).submit()
     itxn_begin
     intc_0 // 0
@@ -178,7 +185,7 @@ probe_payment:
     intc_0 // 0
     itxn_field Fee
     itxn_submit
-    // smart_contracts/resource_probe/contract.py:69
+    // smart_contracts/resource_probe/contract.py:73
     // self.probes_run.value += 1
     intc_0 // 0
     bytec_0 // "probes_run"
@@ -189,7 +196,7 @@ probe_payment:
     bytec_0 // "probes_run"
     dig 1
     app_global_put
-    // smart_contracts/resource_probe/contract.py:65
+    // smart_contracts/resource_probe/contract.py:69
     // @abimethod()
     itob
     bytec_2 // 0x151f7c75
@@ -202,45 +209,45 @@ probe_payment:
 
 // smart_contracts.resource_probe.contract.ResourceProbe.probe_asset_transfer[routing]() -> void:
 probe_asset_transfer:
-    // smart_contracts/resource_probe/contract.py:75-79
+    // smart_contracts/resource_probe/contract.py:79-83
     // itxn.AssetTransfer(
     //     xfer_asset=self.subject_asset.value,
     //     asset_receiver=self.subject.value,
     //     asset_amount=0,
     // ).submit()
     itxn_begin
-    // smart_contracts/resource_probe/contract.py:76
+    // smart_contracts/resource_probe/contract.py:80
     // xfer_asset=self.subject_asset.value,
     intc_0 // 0
     bytec 4 // "subject_asset"
     app_global_get_ex
     assert // check self.subject_asset exists
-    // smart_contracts/resource_probe/contract.py:77
+    // smart_contracts/resource_probe/contract.py:81
     // asset_receiver=self.subject.value,
     intc_0 // 0
     bytec_3 // "subject"
     app_global_get_ex
     assert // check self.subject exists
-    // smart_contracts/resource_probe/contract.py:78
+    // smart_contracts/resource_probe/contract.py:82
     // asset_amount=0,
     intc_0 // 0
     itxn_field AssetAmount
     itxn_field AssetReceiver
     itxn_field XferAsset
-    // smart_contracts/resource_probe/contract.py:75
+    // smart_contracts/resource_probe/contract.py:79
     // itxn.AssetTransfer(
     intc_3 // axfer
     itxn_field TypeEnum
     intc_0 // 0
     itxn_field Fee
-    // smart_contracts/resource_probe/contract.py:75-79
+    // smart_contracts/resource_probe/contract.py:79-83
     // itxn.AssetTransfer(
     //     xfer_asset=self.subject_asset.value,
     //     asset_receiver=self.subject.value,
     //     asset_amount=0,
     // ).submit()
     itxn_submit
-    // smart_contracts/resource_probe/contract.py:80
+    // smart_contracts/resource_probe/contract.py:84
     // self.probes_run.value += 1
     intc_0 // 0
     bytec_0 // "probes_run"
@@ -251,7 +258,7 @@ probe_asset_transfer:
     bytec_0 // "probes_run"
     dig 1
     app_global_put
-    // smart_contracts/resource_probe/contract.py:72
+    // smart_contracts/resource_probe/contract.py:76
     // @abimethod()
     itob
     bytec_2 // 0x151f7c75
@@ -264,7 +271,7 @@ probe_asset_transfer:
 
 // smart_contracts.resource_probe.contract.ResourceProbe.probe_read_balance[routing]() -> void:
 probe_read_balance:
-    // smart_contracts/resource_probe/contract.py:86
+    // smart_contracts/resource_probe/contract.py:90
     // self.last_reading.value = self.subject.value.balance
     intc_0 // 0
     bytec_3 // "subject"
@@ -275,7 +282,7 @@ probe_read_balance:
     bytec_1 // "last_reading"
     swap
     app_global_put
-    // smart_contracts/resource_probe/contract.py:87
+    // smart_contracts/resource_probe/contract.py:91
     // self.probes_run.value += 1
     intc_0 // 0
     bytec_0 // "probes_run"
@@ -286,13 +293,13 @@ probe_read_balance:
     bytec_0 // "probes_run"
     swap
     app_global_put
-    // smart_contracts/resource_probe/contract.py:88
+    // smart_contracts/resource_probe/contract.py:92
     // return self.last_reading.value
     intc_0 // 0
     bytec_1 // "last_reading"
     app_global_get_ex
     assert // check self.last_reading exists
-    // smart_contracts/resource_probe/contract.py:83
+    // smart_contracts/resource_probe/contract.py:87
     // @abimethod()
     itob
     bytec_2 // 0x151f7c75
@@ -305,13 +312,13 @@ probe_read_balance:
 
 // smart_contracts.resource_probe.contract.ResourceProbe.probe_read_holding[routing]() -> void:
 probe_read_holding:
-    // smart_contracts/resource_probe/contract.py:93
+    // smart_contracts/resource_probe/contract.py:97
     // asset = Asset(self.subject_asset.value)
     intc_0 // 0
     bytec 4 // "subject_asset"
     app_global_get_ex
     assert // check self.subject_asset exists
-    // smart_contracts/resource_probe/contract.py:94
+    // smart_contracts/resource_probe/contract.py:98
     // self.last_reading.value = asset.balance(self.subject.value)
     intc_0 // 0
     bytec_3 // "subject"
@@ -323,7 +330,7 @@ probe_read_holding:
     bytec_1 // "last_reading"
     swap
     app_global_put
-    // smart_contracts/resource_probe/contract.py:95
+    // smart_contracts/resource_probe/contract.py:99
     // self.probes_run.value += 1
     intc_0 // 0
     bytec_0 // "probes_run"
@@ -334,13 +341,13 @@ probe_read_holding:
     bytec_0 // "probes_run"
     swap
     app_global_put
-    // smart_contracts/resource_probe/contract.py:96
+    // smart_contracts/resource_probe/contract.py:100
     // return self.last_reading.value
     intc_0 // 0
     bytec_1 // "last_reading"
     app_global_get_ex
     assert // check self.last_reading exists
-    // smart_contracts/resource_probe/contract.py:90
+    // smart_contracts/resource_probe/contract.py:94
     // @abimethod()
     itob
     bytec_2 // 0x151f7c75
@@ -353,12 +360,12 @@ probe_read_holding:
 
 // smart_contracts.resource_probe.contract.ResourceProbe.report_budget[routing]() -> void:
 report_budget:
-    // smart_contracts/resource_probe/contract.py:106
+    // smart_contracts/resource_probe/contract.py:110
     // self.last_reading.value = Global.opcode_budget()
     bytec_1 // "last_reading"
     global OpcodeBudget
     app_global_put
-    // smart_contracts/resource_probe/contract.py:107
+    // smart_contracts/resource_probe/contract.py:111
     // self.probes_run.value += 1
     intc_0 // 0
     bytec_0 // "probes_run"
@@ -369,13 +376,13 @@ report_budget:
     bytec_0 // "probes_run"
     swap
     app_global_put
-    // smart_contracts/resource_probe/contract.py:108
+    // smart_contracts/resource_probe/contract.py:112
     // return self.last_reading.value
     intc_0 // 0
     bytec_1 // "last_reading"
     app_global_get_ex
     assert // check self.last_reading exists
-    // smart_contracts/resource_probe/contract.py:98
+    // smart_contracts/resource_probe/contract.py:102
     // @abimethod()
     itob
     bytec_2 // 0x151f7c75
@@ -388,7 +395,7 @@ report_budget:
 
 // smart_contracts.resource_probe.contract.ResourceProbe.absorb[routing]() -> void:
 absorb:
-    // smart_contracts/resource_probe/contract.py:110
+    // smart_contracts/resource_probe/contract.py:114
     // @abimethod()
     txna ApplicationArgs 1
     dup
@@ -407,25 +414,25 @@ absorb:
     len
     ==
     assert // invalid number of bytes for arc4.dynamic_array<arc4.uint8>
-    // smart_contracts/resource_probe/contract.py:121-123
+    // smart_contracts/resource_probe/contract.py:125-127
     // # Read the budget first, so this is comparable with `report_budget`:
     // # both report what the target was handed, not what it has left.
     // self.last_reading.value = Global.opcode_budget()
     bytec_1 // "last_reading"
     global OpcodeBudget
     app_global_put
-    // smart_contracts/resource_probe/contract.py:124
+    // smart_contracts/resource_probe/contract.py:128
     // self.last_number.value = number
     bytec 6 // "last_number"
     uncover 2
     app_global_put
-    // smart_contracts/resource_probe/contract.py:125
+    // smart_contracts/resource_probe/contract.py:129
     // self.last_text.value = text.native
     extract 2 0
     bytec 7 // "last_text"
     swap
     app_global_put
-    // smart_contracts/resource_probe/contract.py:126
+    // smart_contracts/resource_probe/contract.py:130
     // self.probes_run.value += 1
     intc_0 // 0
     bytec_0 // "probes_run"
@@ -436,13 +443,13 @@ absorb:
     bytec_0 // "probes_run"
     swap
     app_global_put
-    // smart_contracts/resource_probe/contract.py:127
+    // smart_contracts/resource_probe/contract.py:131
     // return self.last_reading.value
     intc_0 // 0
     bytec_1 // "last_reading"
     app_global_get_ex
     assert // check self.last_reading exists
-    // smart_contracts/resource_probe/contract.py:110
+    // smart_contracts/resource_probe/contract.py:114
     // @abimethod()
     itob
     bytec_2 // 0x151f7c75
@@ -453,44 +460,76 @@ absorb:
     return
 
 
+// smart_contracts.resource_probe.contract.ResourceProbe.report_caller[routing]() -> void:
+report_caller:
+    // smart_contracts/resource_probe/contract.py:142
+    // self.last_caller.value = Txn.sender
+    bytec 8 // "last_caller"
+    txn Sender
+    app_global_put
+    // smart_contracts/resource_probe/contract.py:143
+    // self.probes_run.value += 1
+    intc_0 // 0
+    bytec_0 // "probes_run"
+    app_global_get_ex
+    assert // check self.probes_run exists
+    intc_1 // 1
+    +
+    bytec_0 // "probes_run"
+    swap
+    app_global_put
+    // smart_contracts/resource_probe/contract.py:133
+    // @abimethod()
+    bytec_2 // 0x151f7c75
+    // smart_contracts/resource_probe/contract.py:144
+    // return arc4.Address(Txn.sender)
+    txn Sender
+    // smart_contracts/resource_probe/contract.py:133
+    // @abimethod()
+    concat
+    log
+    intc_1 // 1
+    return
+
+
 // smart_contracts.resource_probe.contract.ResourceProbe.probe_app_call[routing]() -> void:
 probe_app_call:
-    // smart_contracts/resource_probe/contract.py:132-136
+    // smart_contracts/resource_probe/contract.py:149-153
     // itxn.ApplicationCall(
     //     app_id=Application(self.subject_app.value),
     //     app_args=(arc4.arc4_signature("tick()uint64"),),
     //     on_completion=OnCompleteAction.NoOp,
     // ).submit()
     itxn_begin
-    // smart_contracts/resource_probe/contract.py:133
+    // smart_contracts/resource_probe/contract.py:150
     // app_id=Application(self.subject_app.value),
     intc_0 // 0
     bytec 5 // "subject_app"
     app_global_get_ex
     assert // check self.subject_app exists
-    // smart_contracts/resource_probe/contract.py:135
+    // smart_contracts/resource_probe/contract.py:152
     // on_completion=OnCompleteAction.NoOp,
     intc_0 // NoOp
     itxn_field OnCompletion
-    // smart_contracts/resource_probe/contract.py:134
+    // smart_contracts/resource_probe/contract.py:151
     // app_args=(arc4.arc4_signature("tick()uint64"),),
     pushbytes 0x4d4d5f0b // method "tick()uint64"
     itxn_field ApplicationArgs
     itxn_field ApplicationID
-    // smart_contracts/resource_probe/contract.py:132
+    // smart_contracts/resource_probe/contract.py:149
     // itxn.ApplicationCall(
     pushint 6 // appl
     itxn_field TypeEnum
     intc_0 // 0
     itxn_field Fee
-    // smart_contracts/resource_probe/contract.py:132-136
+    // smart_contracts/resource_probe/contract.py:149-153
     // itxn.ApplicationCall(
     //     app_id=Application(self.subject_app.value),
     //     app_args=(arc4.arc4_signature("tick()uint64"),),
     //     on_completion=OnCompleteAction.NoOp,
     // ).submit()
     itxn_submit
-    // smart_contracts/resource_probe/contract.py:137
+    // smart_contracts/resource_probe/contract.py:154
     // self.probes_run.value += 1
     intc_0 // 0
     bytec_0 // "probes_run"
@@ -501,7 +540,7 @@ probe_app_call:
     bytec_0 // "probes_run"
     dig 1
     app_global_put
-    // smart_contracts/resource_probe/contract.py:129
+    // smart_contracts/resource_probe/contract.py:146
     // @abimethod()
     itob
     bytec_2 // 0x151f7c75
