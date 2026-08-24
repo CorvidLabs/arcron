@@ -39,9 +39,11 @@ arg and no foreign arrays — the standard "tick/settle/harvest" hook shape.
 Fees ≥ 4000 µALGO (keepers pay ~3000 µALGO in group fees per execution).
 Interval ≥ 10 rounds.
 
-**Proven end-to-end on TestNet**: upkeep registered against `Pulse.tick`,
-executed at the due round first by the demo script (round 66610411) and then
-by the keeper bot (round 66611741); `Pulse.beats = 2` verified on-chain.
+**Proven end-to-end on TestNet**: upkeeps registered against `Pulse.tick`
+(both by the demo script and the `examples/` flow) have been executed by
+permissionless callers at their due rounds — `Pulse.beats` incremented by
+every execution (rounds 66610411, 66611741, 66625540+, all verifiable on the
+explorer). Full reference: [`docs/keeper-network.md`](docs/keeper-network.md).
 
 ## Development
 
@@ -71,14 +73,20 @@ smart_contracts/
   pulse/             # demo target
   corvid_vault/      # vault + operator relay (parked experiment)
   artifacts/         # compiled TEAL, ARC-56 specs, typed clients (generated)
-tests/               # algorand-python-testing unit tests
+tests/               # unit tests (algorand-python-testing mocks + bot decoder vectors)
 specs/               # spec-sync specs (keeper, pulse, vault) — strict mode
+docs/
+  keeper-network.md  # hand-off reference: API, box encoding, economics, operations
+examples/
+  register_upkeep.py # minimal: register an upkeep on the TestNet keeper app
+  README.md          # the two integration paths (automate your app / earn fees)
 scripts/
   keeper_testnet_demo.py  # full TestNet e2e: deploy, register, execute, verify
   keeper_bot.py           # permissionless keeper bot: scans boxes, executes due upkeeps
   smoke_localnet.py       # vault LocalNet e2e
 fledge.toml          # fledge lanes (ci, local)
 .specsync/           # spec-sync config
+AGENTS.md / CLAUDE.md # agent guidance (keep in sync)
 ```
 
 ## TestNet
