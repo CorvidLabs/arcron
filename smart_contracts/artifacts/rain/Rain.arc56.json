@@ -81,7 +81,7 @@
                 ]
             },
             "readonly": false,
-            "desc": "Open a draw. Zero arguments \u2014 this is what Archon calls.\nA no-op returning 0 when there is nothing to draw for, because a scheduled call that fails would trip keeper backoff and stop the whole demo. Being called on a quiet week must be uneventful, not an error.",
+            "desc": "Open a draw. Zero arguments \u2014 this is what Arcron calls.\nA no-op returning 0 when there is nothing to draw for, because a scheduled call that fails would trip keeper backoff and stop the whole demo. Being called on a quiet week must be uneventful, not an error.",
             "events": [
                 {
                     "name": "Drawn",

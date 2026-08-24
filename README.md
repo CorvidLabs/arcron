@@ -1,24 +1,24 @@
-# archon
+# arcron
 
-**Archon** is a permissionless keeper network for Algorand — anyone registers
+**Arcron** is a permissionless keeper network for Algorand — anyone registers
 a scheduled contract call, any keeper executes it for the fee. By
 [CorvidLabs](https://github.com/CorvidLabs), built with Algorand Python
 (Puya) and AlgoKit. Live on TestNet.
 
-*An archon was an Athenian magistrate — an annual office responsible for the
+*An arcron was an Athenian magistrate — an annual office responsible for the
 city's business happening at its appointed time. The office mattered; whoever
 filled it did not, and nobody owned it.*
 
 | Contract | What it is | Status |
 |----------|-----------|--------|
-| [`smart_contracts/keeper`](smart_contracts/keeper/contract.py) | The Archon network: upkeep scheduling with ALGO escrow and keeper rewards | **Live on TestNet** — app [`769802474`](https://testnet.explorer.perawallet.app/application/769802474) |
+| [`smart_contracts/keeper`](smart_contracts/keeper/contract.py) | The Arcron network: upkeep scheduling with ALGO escrow and keeper rewards | **Live on TestNet** — app [`769802474`](https://testnet.explorer.perawallet.app/application/769802474) |
 | [`smart_contracts/pulse`](smart_contracts/pulse/contract.py) | Demo upkeep target (heartbeat counter) | Live on TestNet — app `769772906` |
 | [`web`](web/) | The console: registry dashboard + keeper controls | Runs against LocalNet and TestNet |
 
 App [`769772891`](https://testnet.explorer.perawallet.app/application/769772891) is the
 **deprecated** predecessor: it predates the box-MBR fix of 2026-08-24 and should
 not be used. Its registry is empty and its remaining escrow has been reclaimed —
-see [migration](docs/archon.md#migrating-off-the-deprecated-app) if you
+see [migration](docs/arcron.md#migrating-off-the-deprecated-app) if you
 registered anything against it.
 
 **Building on it?** [`docs/integrating.md`](docs/integrating.md) is the whole
@@ -59,7 +59,7 @@ Interval ≥ 10 rounds.
 
 Nobody, and that is the point. There is no on-chain timer — a smart contract
 cannot wake itself, so every execution is a transaction somebody sent. What
-Archon adds is that "somebody" can be *anyone*, and that they are paid
+Arcron adds is that "somebody" can be *anyone*, and that they are paid
 atomically for it: the fee moves only alongside a real execution, so keepers
 need no trust and creators need no relationship with them.
 
@@ -80,13 +80,13 @@ Cadences are counted in rounds, not wall-clock time (~2.8 s per round, and it
 drifts), so "daily" means "every ~30,857 rounds" and slides slowly against the
 calendar.
 
-### What Archon can and cannot do
+### What Arcron can and cannot do
 
-Archon is the clock, not the eyes.
+Arcron is the clock, not the eyes.
 
 **It cannot** fetch anything off-chain — no APIs, no RSS, no web pages, no
 price feeds. Smart contracts have no network access, and `execute` fires an
-inner app call to another app on the same chain. Archon can wake your contract
+inner app call to another app on the same chain. Arcron can wake your contract
 up; it cannot tell it what is happening in the world. `call_args` is frozen at
 registration, so keepers have no discretion over what gets called — which is
 exactly why they need no trust.
@@ -96,8 +96,8 @@ server: deadlines, unlocks, settlements, expiries, accrual, draws — any
 on-chain state machine that has to advance on time.
 
 **Paired with an oracle** it does the half that is otherwise hard. A reporter
-pushes data into an oracle contract, Archon triggers `settle()` on a cadence,
-and settlement reads the stored value. Archon's contribution is not the data;
+pushes data into an oracle contract, Arcron triggers `settle()` on a cadence,
+and settlement reads the stored value. Arcron's contribution is not the data;
 it is that settlement cannot be stalled, delayed or selectively timed by an
 interested party.
 
@@ -105,7 +105,7 @@ interested party.
 (both by the e2e script and the `examples/` flow) have been executed by
 permissionless callers at their due rounds — `Pulse.beats` incremented by
 every execution (rounds 66610411, 66611741, 66625540+, all verifiable on the
-explorer). Full reference: [`docs/archon.md`](docs/archon.md).
+explorer). Full reference: [`docs/arcron.md`](docs/arcron.md).
 
 ## Development
 
@@ -186,7 +186,7 @@ and the app account can still pay out everything it holds. A 2-minute run
 does ~170 consecutive executions.
 
 Every script picks its chain with `--network localnet|testnet` (or
-`ARCHON_NETWORK`), loads the matching `.env.<network>`, and then verifies the
+`ARCRON_NETWORK`), loads the matching `.env.<network>`, and then verifies the
 node's genesis id — so a stale `ALGOD_SERVER` can't quietly point a "localnet"
 run at TestNet.
 
@@ -201,7 +201,7 @@ tests/               # unit tests (algorand-python-testing mocks + bot decoder v
 specs/               # spec-sync specs (keeper, pulse) — strict mode
 web/                 # the console (Angular + Bun + algosdk, CorvidLabs design system)
 docs/
-  archon.md          # hand-off reference: API, box encoding, economics, operations
+  arcron.md          # hand-off reference: API, box encoding, economics, operations
 examples/
   register_upkeep.py # minimal: register an upkeep on the TestNet keeper app
   README.md          # the two integration paths (automate your app / earn fees)

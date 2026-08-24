@@ -4,15 +4,15 @@
 The scheduled call does **accounting only**. `draw` locks a prize, snapshots
 the ticket count and fixes a future beacon round; it moves no money, calls no
 other app, and touches nothing it cannot reach. That is what makes it callable
-by a bare Archon upkeep.
+by a bare Arcron upkeep.
 
 Everything that needs a resource happens in a transaction somebody sends for
 themselves:
 
 * `resolve` inner-calls the randomness beacon, so its caller attaches the
-  beacon reference — a scheduled call could not, because an Archon inner call
+  beacon reference — a scheduled call could not, because an Arcron inner call
   reaches only what the keeper's transaction makes available (measured in
-  `docs/archon.md`).
+  `docs/arcron.md`).
 * `claim` pays the winner, who is the sender, and is therefore always
   available.
 
@@ -131,7 +131,7 @@ class Rain(ARC4Contract):
 
     @abimethod()
     def draw(self) -> UInt64:
-        """Open a draw. Zero arguments — this is what Archon calls.
+        """Open a draw. Zero arguments — this is what Arcron calls.
 
         A no-op returning 0 when there is nothing to draw for, because a
         scheduled call that fails would trip keeper backoff and stop the whole

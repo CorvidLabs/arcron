@@ -1,6 +1,6 @@
-"""Network selection for the Archon scripts.
+"""Network selection for the Arcron scripts.
 
-Every script picks its network with `--network` (or `ARCHON_NETWORK`), which
+Every script picks its network with `--network` (or `ARCRON_NETWORK`), which
 loads the matching `.env.<network>` file *before* algokit-utils reads the
 environment, then verifies the node it reached really is that network.
 
@@ -30,8 +30,8 @@ _GENESIS_IDS = {
 
 
 def default_network() -> str:
-    """The network to use when no flag is given (`ARCHON_NETWORK`, else TestNet)."""
-    return os.environ.get("ARCHON_NETWORK", TESTNET)
+    """The network to use when no flag is given (`ARCRON_NETWORK`, else TestNet)."""
+    return os.environ.get("ARCRON_NETWORK", TESTNET)
 
 
 def add_network_argument(parser: argparse.ArgumentParser) -> None:
@@ -39,7 +39,7 @@ def add_network_argument(parser: argparse.ArgumentParser) -> None:
         "--network",
         choices=NETWORKS,
         default=default_network(),
-        help="network to talk to (default: %(default)s; env ARCHON_NETWORK)",
+        help="network to talk to (default: %(default)s; env ARCRON_NETWORK)",
     )
 
 
@@ -118,7 +118,7 @@ def wait_for_round(
                     sender=poker.address,
                     receiver=poker.address,
                     amount=algokit_utils.AlgoAmount(micro_algo=0),
-                    note=b"archon: advance round",
+                    note=b"arcron: advance round",
                 )
             )
         else:

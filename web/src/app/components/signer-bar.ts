@@ -1,11 +1,11 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 
-import { ArchonService } from '../core/archon.service';
+import { ArcronService } from '../core/arcron.service';
 import { shortAddress } from '../core/format';
 import { WalletService } from '../core/wallet.service';
 
 @Component({
-  selector: 'archon-signer-bar',
+  selector: 'arcron-signer-bar',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="signer">
@@ -90,10 +90,10 @@ import { WalletService } from '../core/wallet.service';
 })
 export class SignerBar {
   protected readonly wallet = inject(WalletService);
-  private readonly archon = inject(ArchonService);
+  private readonly arcron = inject(ArcronService);
 
   protected readonly prompt = computed(() =>
-    this.archon.network() === 'localnet'
+    this.arcron.network() === 'localnet'
       ? 'LocalNet accounts come from KMD — no extension, no mnemonic. Any wallet below works too.'
       : 'Reads are permissionless; connect a wallet to register, execute or cancel upkeeps.',
   );

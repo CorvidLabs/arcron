@@ -1,6 +1,6 @@
-# Archon — keeper network technical reference
+# Arcron — keeper network technical reference
 
-Hand-off document for Archon, the permissionless keeper network. For the
+Hand-off document for Arcron, the permissionless keeper network. For the
 quick overview see `../README.md`; for runnable flows see `../examples/`.
 
 ## TestNet deployment
@@ -159,7 +159,7 @@ cannot drift apart.
 
 ## Liveness
 
-Archon does not execute itself. There is no on-chain timer on Algorand, so
+Arcron does not execute itself. There is no on-chain timer on Algorand, so
 every execution is a transaction some account sent and paid for — `execute` is
 an external entry point that anyone may call once an upkeep is due.
 `README.md` covers why that is the design; this is what it means to operate.
@@ -223,7 +223,7 @@ A "daily" upkeep therefore slides about **35 hours** — a day and a half —
 against the calendar over thirty cycles, and which way it slides depends on
 how busy the network is.
 
-Archon promises "not before this round". It does not promise "at 00:00 UTC",
+Arcron promises "not before this round". It does not promise "at 00:00 UTC",
 and nothing built on it should assume otherwise. Anything that must happen at
 a wall-clock time needs the *target* to check the time and no-op if it is
 early, with the upkeep firing often enough to catch the window.
@@ -276,7 +276,7 @@ poetry run python -m scripts.keeper_bot --app-id N # other keeper instance
 
 ### Running one continuously
 
-The contract is passive, so "Archon is running" means *somebody's bot is
+The contract is passive, so "Arcron is running" means *somebody's bot is
 running*. Two supported shapes, both in `deploy/`:
 
 **Container (recommended).**
@@ -294,7 +294,7 @@ exits — a redeploy never abandons a half-signed execution. A second signal
 exits immediately.
 
 **systemd**, for a host that already runs Python: `deploy/keeper-bot.service`,
-with the mnemonic in `/etc/archon/keeper.env` (chmod 600).
+with the mnemonic in `/etc/arcron/keeper.env` (chmod 600).
 
 **GitHub Actions** (`.github/workflows/keeper-bot.yml`) runs `--once` on a
 schedule. It is deliberately manual-dispatch-only until someone sets the
@@ -436,7 +436,7 @@ fledge lanes run local    # ci + LocalNet e2e smoke
 
 ## Capability boundary
 
-Archon is the clock, not the eyes. It schedules on-chain calls; it cannot
+Arcron is the clock, not the eyes. It schedules on-chain calls; it cannot
 observe the world.
 
 - No off-chain access. Contracts have no network access, and `execute` fires an
@@ -446,8 +446,8 @@ observe the world.
   trustless, and it is also why no keeper can inject fresh data.
 
 **Oracle pairing** is the supported answer for data-driven automation: a
-reporter pushes values into an oracle contract, an Archon upkeep triggers
-`settle()` on a cadence, and settlement reads the stored value. Archon supplies
+reporter pushes values into an oracle contract, an Arcron upkeep triggers
+`settle()` on a cadence, and settlement reads the stored value. Arcron supplies
 the timing guarantee — that settlement cannot be stalled, delayed or
 selectively timed by an interested party — not the data.
 
@@ -455,16 +455,16 @@ One case needs no oracle trust at all: a **staleness check** that compares the
 feed's last-updated round against the current round and flags the feed if it
 has gone quiet. Comparing timestamps cannot be lied to.
 
-### Reference: Archon plus an oracle
+### Reference: Arcron plus an oracle
 
 `smart_contracts/watchdog/` is the worked example, and the division of labour
 is the point:
 
 | Concern | Who supplies it | Can they lie? |
 |---------|-----------------|---------------|
-| The value | the reporter | yes — this is oracle trust, and Archon does not reduce it |
+| The value | the reporter | yes — this is oracle trust, and Arcron does not reduce it |
 | That a value arrived | the chain | no |
-| That nobody has noticed the silence | **Archon** | no — it only compares rounds |
+| That nobody has noticed the silence | **Arcron** | no — it only compares rounds |
 
 The watchdog never inspects the reported value, so it cannot be fed a wrong
 price. It answers one question — has an update landed within the threshold? —
@@ -482,7 +482,7 @@ Two design choices worth copying:
   caused it, or an admin, which reintroduces the operator the design removes.
   Recording `stale_episodes` and `last_recovery_round` lets a cautious consumer
   impose its own cool-down without anyone's permission.
-- **The threshold is in rounds and cannot be tighter than 30.** Archon's own
+- **The threshold is in rounds and cannot be tighter than 30.** Arcron's own
   cadence minimum is 10 rounds, so a tighter threshold would flag ordinary
   keeper lateness as a provider outage. Rounds are also not wall-clock time —
   a "one hour" threshold drifts (see [Liveness](#liveness)), so leave margin.
@@ -492,7 +492,7 @@ quiet unflagged. A consumer that can do the arithmetic itself should. What the
 watchdog adds is an on-chain record made by a party with no stake in hiding it,
 and an event a monitor can alert on.
 
-### What an Archon-triggered call can reach
+### What an Arcron-triggered call can reach
 
 `execute` submits its inner app call with no foreign arrays, which was recorded
 as a limitation without anyone establishing what it forbids. Measured on
@@ -510,7 +510,7 @@ answer stays reproducible:
 | Inner call to an unreferenced app | fails — `unavailable App …` | **works** |
 
 **Availability flows down from the keeper's transaction.** Resource references
-attached to the keeper's own `execute` call reach Archon's inner call *and* the
+attached to the keeper's own `execute` call reach Arcron's inner call *and* the
 target's own inner transactions, two levels down. So a keeper can supply
 *availability* without supplying *data* — and the trust model does not move,
 because `call_args` is still fixed at registration and the keeper still cannot
@@ -520,7 +520,7 @@ That makes far more buildable today than "no foreign arrays" suggests: a target
 can pay an arbitrary address, move an ASA, read a balance or call another app,
 provided some keeper attaches the reference.
 
-**The budget is 8 references per transaction.** Archon spends two of them — the
+**The budget is 8 references per transaction.** Arcron spends two of them — the
 upkeep's box and the target app — leaving **six** for the keeper to fill with
 accounts, assets or apps in any mix. (Six accounts were accepted at this
 protocol version, so the old four-account cap no longer binds separately.)
@@ -566,7 +566,7 @@ it in a transaction they send themselves, supplying their own resources. That
 also sidesteps the failure mode where one unreachable account breaks the whole
 execution for everybody.
 
-## Building on Archon
+## Building on Arcron
 
 The v1 hook shape is a NoOp ABI method taking no arguments of its own, called
 with just its selector. Two properties matter when writing one:
@@ -580,7 +580,7 @@ with just its selector. Two properties matter when writing one:
 counterparties claim in transactions they send themselves:
 
 ```
-scheduled_call()  # zero-arg, Archon calls this. Records allocations, moves nothing.
+scheduled_call()  # zero-arg, Arcron calls this. Records allocations, moves nothing.
 claim()           # the recipient calls this and pulls their funds.
 ```
 

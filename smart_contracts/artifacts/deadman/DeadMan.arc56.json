@@ -62,7 +62,7 @@
                 ]
             },
             "readonly": false,
-            "desc": "Fire if the owner has gone quiet. Zero arguments \u2014 Archon's shape.\nReturns the round it fired in, or 0 for the ordinary case where there is nothing to do. Never fails: a failing target would trip keeper backoff and stop the switch being watched at all, which is the one outcome that must not happen.",
+            "desc": "Fire if the owner has gone quiet. Zero arguments \u2014 Arcron's shape.\nReturns the round it fired in, or 0 for the ordinary case where there is nothing to do. Never fails: a failing target would trip keeper backoff and stop the switch being watched at all, which is the one outcome that must not happen.",
             "events": [
                 {
                     "name": "Fired",

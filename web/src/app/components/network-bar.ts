@@ -1,11 +1,11 @@
 import { afterNextRender, ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 
-import { ArchonService } from '../core/archon.service';
+import { ArcronService } from '../core/arcron.service';
 import { duration } from '../core/format';
 import type { NetworkKey } from '../core/networks';
 
 @Component({
-  selector: 'archon-network-bar',
+  selector: 'arcron-network-bar',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="bar">
@@ -15,7 +15,7 @@ import type { NetworkKey } from '../core/networks';
           <path d="M33 21.5 L58.5 29.5 L33 39.5 Z" fill="currentColor" />
           <circle cx="27.5" cy="26" r="3" fill="var(--paper)" />
         </svg>
-        <h1 class="wordmark">Archon</h1>
+        <h1 class="wordmark">Arcron</h1>
         <span class="tagline">keeper network console</span>
       </div>
 
@@ -23,13 +23,13 @@ import type { NetworkKey } from '../core/networks';
         <fieldset class="networks">
           <legend class="sr-only">Network</legend>
           @for (option of networks; track option.key) {
-            <label class="network" [class.active]="archon.network() === option.key">
+            <label class="network" [class.active]="arcron.network() === option.key">
               <input
                 type="radio"
                 name="network"
                 class="sr-only"
                 [value]="option.key"
-                [checked]="archon.network() === option.key"
+                [checked]="arcron.network() === option.key"
                 (change)="selectNetwork(option.key)"
               />
               {{ option.label }}
@@ -42,7 +42,7 @@ import type { NetworkKey } from '../core/networks';
           <input
             type="number"
             inputmode="numeric"
-            [value]="archon.appId() ?? ''"
+            [value]="arcron.appId() ?? ''"
             placeholder="app id"
             aria-label="Keeper app id"
             (change)="setAppId($event)"
@@ -141,7 +141,7 @@ import type { NetworkKey } from '../core/networks';
   `,
 })
 export class NetworkBar {
-  protected readonly archon = inject(ArchonService);
+  protected readonly arcron = inject(ArcronService);
 
   constructor() {
     // brand/theme.js wires every [data-corvid-theme-toggle] once, when it
@@ -160,28 +160,28 @@ export class NetworkBar {
   ];
 
   protected readonly statusClass = computed(() => {
-    if (this.archon.status() === 'error') return 'bad';
-    if (this.archon.genesisMatches() === false) return 'bad';
-    if (this.archon.status() === 'connecting') return 'warn';
+    if (this.arcron.status() === 'error') return 'bad';
+    if (this.arcron.genesisMatches() === false) return 'bad';
+    if (this.arcron.status() === 'connecting') return 'warn';
     return 'ready';
   });
 
   protected readonly statusLabel = computed(() => {
-    const genesis = this.archon.genesisId();
-    if (this.archon.status() === 'error') return 'node unreachable';
-    if (this.archon.genesisMatches() === false) return `wrong chain: ${genesis}`;
-    if (this.archon.status() === 'connecting') return 'connecting…';
-    const seconds = this.archon.secondsPerRound();
-    const basis = this.archon.paceSource() === 'measured' ? '' : ' nominal';
-    return `${genesis} · round ${this.archon.round()} · ${seconds.toFixed(1)} s/round${basis}`;
+    const genesis = this.arcron.genesisId();
+    if (this.arcron.status() === 'error') return 'node unreachable';
+    if (this.arcron.genesisMatches() === false) return `wrong chain: ${genesis}`;
+    if (this.arcron.status() === 'connecting') return 'connecting…';
+    const seconds = this.arcron.secondsPerRound();
+    const basis = this.arcron.paceSource() === 'measured' ? '' : ' nominal';
+    return `${genesis} · round ${this.arcron.round()} · ${seconds.toFixed(1)} s/round${basis}`;
   });
 
   protected selectNetwork(network: NetworkKey): void {
-    this.archon.setNetwork(network);
+    this.arcron.setNetwork(network);
   }
 
   protected setAppId(event: Event): void {
     const value = (event.target as HTMLInputElement).value.trim();
-    this.archon.setAppId(value === '' ? null : Number(value));
+    this.arcron.setAppId(value === '' ? null : Number(value));
   }
 }

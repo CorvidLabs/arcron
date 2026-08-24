@@ -3,7 +3,7 @@ import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { KeeperService } from '../core/keeper.service';
 
 @Component({
-  selector: 'archon-activity-log',
+  selector: 'arcron-activity-log',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section class="panel">

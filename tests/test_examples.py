@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 EXAMPLE = Path("examples/minimal_target.py")
-# The hook Archon calls: no arguments of its own, so a keeper can call it with
+# The hook Arcron calls: no arguments of its own, so a keeper can call it with
 # just the selector.
 HOOK = "run"
 
@@ -40,7 +40,7 @@ def test_the_example_compiles(compiled: dict) -> None:
 def test_the_hook_takes_no_arguments_of_its_own(compiled: dict) -> None:
     """The whole point of the v1 call shape.
 
-    Archon calls a target with exactly one application argument — the method
+    Arcron calls a target with exactly one application argument — the method
     selector — so the hook must declare no arguments. An example that broke
     this rule would teach the one thing an integrator must not do.
     """

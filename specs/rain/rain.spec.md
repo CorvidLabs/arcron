@@ -16,14 +16,14 @@ depends_on: []
 A pot that pays a random ticket holder on a schedule, run by nobody.
 
 It is the reference implementation of the technique that makes real
-applications buildable on Archon's v1 call shape: **the scheduled call does
+applications buildable on Arcron's v1 call shape: **the scheduled call does
 accounting only.** `draw` locks a prize, snapshots the ticket count and fixes a
 future beacon round. It moves no money, calls no other app, and touches nothing
-it cannot reach — which is exactly what a bare Archon inner call can do.
+it cannot reach — which is exactly what a bare Arcron inner call can do.
 
 Everything needing a resource happens in a transaction somebody sends for
 themselves. `resolve` inner-calls the randomness beacon, so its *caller*
-attaches the beacon reference; a scheduled call could not, because an Archon
+attaches the beacon reference; a scheduled call could not, because an Arcron
 inner call reaches only what the keeper's own transaction makes available.
 `claim` pays the winner, who is the sender and therefore always available.
 
@@ -57,7 +57,7 @@ account would fail the whole execution and stall the schedule for everyone.
 | `configure` | `beacon_app: uint64` | `void` | Creator-only, once. Points at the randomness beacon for this network. |
 | `enter` | `mbr_payment: pay` | `uint64` | Buys one ticket for the sender; returns its index. Tickets persist across draws. |
 | `deposit` | `payment: pay` | `uint64` | Adds to the pot, from anyone; returns the new pot. |
-| `draw` | — | `uint64` | Zero-argument, the shape Archon calls. Opens a draw and returns its id, or `0` when there is nothing to draw for. |
+| `draw` | — | `uint64` | Zero-argument, the shape Arcron calls. Opens a draw and returns its id, or `0` when there is nothing to draw for. |
 | `resolve` | — | `address` | Permissionless. Reads the beacon for the committed round, picks the winning ticket, credits the allocation. |
 | `claim` | — | `uint64` | The winner pulls their prize; returns the amount. |
 | `allocation_of` | `who: address` | `uint64` | Readonly. What `who` can claim right now. |
@@ -78,7 +78,7 @@ account would fail the whole execution and stall the schedule for everyone.
 ### Scenario: A scheduled draw on a quiet week
 
 - **Given** a rain app with tickets but an empty pot
-- **When** Archon calls `draw` on its cadence
+- **When** Arcron calls `draw` on its cadence
 - **Then** it returns `0`, changes nothing, and the keeper is paid — a failure here would trip keeper backoff and stop the draw permanently
 
 ### Scenario: A draw nobody can predict
@@ -126,4 +126,4 @@ account would fail the whole execution and stall the schedule for everyone.
 
 | Date | Author | Change |
 |------|--------|--------|
-| 2026-08-24 | CorvidLabs | Initial scheduled draw (issue #25). Two-phase by necessity: `draw` is accounting-only because an Archon inner call cannot reach the beacon, so `resolve` is sent by a participant who can. |
+| 2026-08-24 | CorvidLabs | Initial scheduled draw (issue #25). Two-phase by necessity: `draw` is accounting-only because an Arcron inner call cannot reach the beacon, so `resolve` is sent by a participant who can. |

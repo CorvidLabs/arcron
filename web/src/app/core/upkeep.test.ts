@@ -2,7 +2,7 @@
  * The TypeScript decoder must agree with the Python one, byte for byte.
  *
  * The vector is the same recorded box used by tests/test_keeper_bot.py —
- * upkeep 0 on LocalNet app 18775 after its first execution. Every field the
+ * upkeep 0 on LocalNet app 20153 after its first execution. Every field the
  * 1.0 batch added holds a non-zero value: SKIP_AHEAD, a 12,000 µALGO ceiling,
  * a three-argument call, and an ASA bonus that was actually paid. If the
  * struct changes, both tests change together.
@@ -27,21 +27,21 @@ import {
 
 const LIVE_BOX_HEX =
   '5defa167e82d6882b1a57beb7d3bb8583440a2e2e19a27358c94744a4fa7e3cf' +
-  '0000000000004959' + // target_app = 18777
-  '0082' + //             tail offset = 130
+  '0000000000004ebb' + // target_app = 20155
+  '0082' + //     tail offset = 130
   '000000000000000a' + // interval_rounds = 10
-  '0000000000003698' + // next_execution_round = 13976
+  '0000000000003acf' + // next_execution_round = 15055
   '0000000000000fa0' + // fee_per_execution = 4000
   '0000000000008980' + // balance = 35200
   '0000000000000001' + // times_executed = 1
   '0000000000000001' + // policy = SKIP_AHEAD
   '0000000000002ee0' + // fee_cap = 12000
-  '000000000000368f' + // last_serviced_round = 13967
-  '000000000000495a' + // fee_asset = 18778
+  '0000000000003ac6' + // last_serviced_round = 15046
+  '0000000000004ebc' + // fee_asset = 20156
   '000000000003d090' + // asset_fee = 250000
   '00000000000b71b0' + // asset_balance = 750000
-  // tail: byte[][] of absorb(uint64,string)'s selector, 7777 and "archon"
-  '00030006000c00160004cb782a4800080000000000001e6100080006617263686f6e';
+  // tail: byte[][] of absorb(uint64,string)'s selector, 7777 and "arcron"
+  '00030006000c00160004cb782a4800080000000000001e6100080006617263726f6e';
 
 function fromHex(hex: string): Uint8Array {
   return Uint8Array.from(hex.match(/.{2}/g)!.map((byte) => parseInt(byte, 16)));
@@ -52,16 +52,16 @@ describe('decodeUpkeep', () => {
 
   test('reads every field of a real box', () => {
     expect(upkeep.id).toBe(0n);
-    expect(upkeep.targetApp).toBe(18777n);
+    expect(upkeep.targetApp).toBe(20155n);
     expect(upkeep.intervalRounds).toBe(10n);
-    expect(upkeep.nextExecutionRound).toBe(13976n);
+    expect(upkeep.nextExecutionRound).toBe(15055n);
     expect(upkeep.feePerExecution).toBe(4000n);
     expect(upkeep.balance).toBe(35200n);
     expect(upkeep.timesExecuted).toBe(1n);
     expect(upkeep.policy).toBe(SKIP_AHEAD);
     expect(upkeep.feeCap).toBe(12000n);
-    expect(upkeep.lastServicedRound).toBe(13967n);
-    expect(upkeep.feeAsset).toBe(18778n);
+    expect(upkeep.lastServicedRound).toBe(15046n);
+    expect(upkeep.feeAsset).toBe(20156n);
     expect(upkeep.assetFee).toBe(250_000n);
     expect(upkeep.assetBalance).toBe(750_000n);
   });
@@ -71,7 +71,7 @@ describe('decodeUpkeep', () => {
     expect(upkeep.callArgs.map(toHex)).toEqual([
       'cb782a48', // absorb(uint64,string) selector
       '0000000000001e61', // 7777
-      '0006617263686f6e', // "archon"
+      '0006617263726f6e', // "arcron"
     ]);
   });
 
@@ -126,25 +126,25 @@ describe('derived state', () => {
   });
 
   test('is executable once the due round passes', () => {
-    expect(isExecutable(upkeep, 13975n)).toBe(false);
-    expect(isExecutable(upkeep, 13976n)).toBe(true);
-    expect(roundsUntilDue(upkeep, 13966n)).toBe(10n);
-    expect(roundsUntilDue(upkeep, 13986n)).toBe(-10n);
+    expect(isExecutable(upkeep, 15054n)).toBe(false);
+    expect(isExecutable(upkeep, 15055n)).toBe(true);
+    expect(roundsUntilDue(upkeep, 15045n)).toBe(10n);
+    expect(roundsUntilDue(upkeep, 15065n)).toBe(-10n);
   });
 
   test('is not executable when the escrow cannot cover a fee', () => {
-    expect(isExecutable({ ...upkeep, balance: 3_999n }, 13976n)).toBe(false);
+    expect(isExecutable({ ...upkeep, balance: 3_999n }, 15055n)).toBe(false);
   });
 
   test('an escrow that cannot reach the ceiling pays base and stays executable', () => {
     // 5,000 µALGO clears the base fee but not the escalated one, so the
     // contract charges base rather than freezing the upkeep for good.
     const thin = { ...upkeep, balance: 5_000n };
-    expect(isExecutable(thin, 13976n)).toBe(true);
-    expect(isExecutable(thin, 13967n + 20n)).toBe(true);
-    expect(effectiveFee(thin, 13967n + 20n)).toBe(4_000n);
+    expect(isExecutable(thin, 15055n)).toBe(true);
+    expect(isExecutable(thin, 15046n + 20n)).toBe(true);
+    expect(effectiveFee(thin, 15046n + 20n)).toBe(4_000n);
     // Below the base fee there is nothing anyone can be paid.
-    expect(isExecutable({ ...upkeep, balance: 3_999n }, 13976n)).toBe(false);
+    expect(isExecutable({ ...upkeep, balance: 3_999n }, 15055n)).toBe(false);
   });
 
   test('a replay of a backlog never escalates', () => {

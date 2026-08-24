@@ -1,4 +1,4 @@
-"""Spike: does Archon work for a post-quantum account, and what does it cost?
+"""Spike: does Arcron work for a post-quantum account, and what does it cost?
 
 Algorand 5 adds post-quantum accounts: a Falcon-1024 public key is hashed into
 a 32-byte address that is deliberately *not* an ed25519 curve point, so no
@@ -65,7 +65,7 @@ def main(argv: list[str] | None = None) -> None:
     # ---------------------------------------------------------------- A
     logger.info("")
     logger.info("Part A — a post-quantum address is an ordinary address")
-    address, salt, public_key = _pq_address(b"archon-falcon-1024-stand-in-key")
+    address, salt, public_key = _pq_address(b"arcron-falcon-1024-stand-in-key")
     logger.info(f"  address           {address}")
     logger.info(f"  canonical salt    {salt}")
     logger.info(f"  public key        {len(public_key)} bytes")
@@ -143,7 +143,7 @@ def main(argv: list[str] | None = None) -> None:
 
     logger.info("")
     logger.info(
-        "Archon stores `creator` as a 32-byte address and pays `Txn.sender`, so "
+        "Arcron stores `creator` as a 32-byte address and pays `Txn.sender`, so "
         "nothing in the contract distinguishes the two account kinds. The one "
         "thing to watch is the size: MIN_UPKEEP_FEE is permanent, and it covers "
         "a post-quantum keeper only while Algorand's per-byte fee is zero."

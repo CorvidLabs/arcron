@@ -63,7 +63,7 @@
                 ]
             },
             "readonly": false,
-            "desc": "Divide what has accumulated. Zero arguments \u2014 Archon's shape.\nReturns the amount allocated, or 0 when there is nothing to do. Never fails: a quiet period must be uneventful, because a failing hook trips keeper backoff and would end the schedule entirely.",
+            "desc": "Divide what has accumulated. Zero arguments \u2014 Arcron's shape.\nReturns the amount allocated, or 0 when there is nothing to do. Never fails: a quiet period must be uneventful, because a failing hook trips keeper backoff and would end the schedule entirely.",
             "events": [
                 {
                     "name": "Distributed",

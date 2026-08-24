@@ -4,7 +4,7 @@ A pot. Tickets. A draw on a cadence. No operator who can pick the winner,
 stall the draw, or walk off with the money.
 
 `smart_contracts/rain/` is also the reference for the technique that makes
-real applications work on Archon's v1 call shape, so it is worth reading even
+real applications work on Arcron's v1 call shape, so it is worth reading even
 if you never want a prize draw.
 
 ## The shape
@@ -12,7 +12,7 @@ if you never want a prize draw.
 ```
 enter()    a ticket, recorded in a box; the buyer pays its MBR
 deposit()  anyone adds to the pot
-draw()     ZERO ARGS — what Archon calls. Locks the prize, snapshots the
+draw()     ZERO ARGS — what Arcron calls. Locks the prize, snapshots the
            ticket count, fixes a future beacon round. Moves nothing.
 resolve()  a participant calls this after that round, attaching the beacon
            reference, and the winner falls out
@@ -21,10 +21,10 @@ claim()    the winner pulls their prize
 
 The scheduled call does **accounting only**. That is not an aesthetic choice:
 
-- An Archon inner call reaches only what the keeper's own transaction makes
+- An Arcron inner call reaches only what the keeper's own transaction makes
   available, and nothing tells a keeper to attach a randomness beacon. A
   `draw()` that read the beacon would simply fail. (Measured — see the
-  resource table in [`docs/archon.md`](../docs/archon.md).)
+  resource table in [`docs/arcron.md`](../docs/arcron.md).)
 - Even if it worked, it would put a third-party app in the path of every
   scheduled execution. A beacon outage would stall the draw for everybody.
 - The same argument applies to paying the winner directly: a push to a closed
@@ -70,7 +70,7 @@ poetry run python -m scripts.rain_demo --network localnet
 
 ## Two details worth stealing
 
-**The quiet path must be a no-op, not a failure.** Archon calls `draw()` on
+**The quiet path must be a no-op, not a failure.** Arcron calls `draw()` on
 every cadence whether or not there is anything to draw for. A failing target
 trips keeper backoff, and a demo that stops drawing because nobody deposited
 last week is worse than no demo. `draw()` returns `0` and changes nothing when

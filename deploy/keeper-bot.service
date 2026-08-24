@@ -3,20 +3,20 @@
 #   sudo cp deploy/keeper-bot.service /etc/systemd/system/
 #   sudo systemctl enable --now keeper-bot
 #
-# Expects the repository at /opt/archon with its Poetry environment installed,
-# and /etc/archon/keeper.env holding KEEPER_MNEMONIC (chmod 600).
+# Expects the repository at /opt/arcron with its Poetry environment installed,
+# and /etc/arcron/keeper.env holding KEEPER_MNEMONIC (chmod 600).
 
 [Unit]
-Description=Archon keeper bot
-Documentation=https://github.com/CorvidLabs/archon/blob/main/docs/archon.md
+Description=Arcron keeper bot
+Documentation=https://github.com/CorvidLabs/archon/blob/main/docs/arcron.md
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
 User=keeper
-WorkingDirectory=/opt/archon
-EnvironmentFile=/etc/archon/keeper.env
+WorkingDirectory=/opt/arcron
+EnvironmentFile=/etc/arcron/keeper.env
 ExecStart=/usr/local/bin/poetry run python -m scripts.keeper_bot --network testnet --log-format json
 # Finish the scan in flight, then exit.
 KillSignal=SIGTERM

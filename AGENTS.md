@@ -4,7 +4,7 @@ Guidance for AI agents working in this repo. Also see `README.md`.
 
 ## What this is
 
-Archon — Algorand smart contracts (Algorand Python / Puya + AlgoKit). Main
+Arcron — Algorand smart contracts (Algorand Python / Puya + AlgoKit). Main
 project: `smart_contracts/keeper/` — a permissionless keeper network, live on
 TestNet (app 769802474; 769772891 is its deprecated predecessor, which predates
 the box-MBR fix). `pulse/` is its demo target.
@@ -46,7 +46,7 @@ because these are easy to get wrong from memory:
 ## Conventions
 
 - Every contract has a spec-sync spec in `specs/<name>/` (strict mode). Update the spec's Public API tables, requirements, testing.md and Change Log whenever the contract's surface changes; `specsync check --strict` must stay green.
-- Every script picks its network with `--network` / `ARCHON_NETWORK` (`scripts/network.py`), which loads `.env.<network>` and then verifies the node's genesis id. LocalNet needs no mnemonics — accounts come from KMD.
+- Every script picks its network with `--network` / `ARCRON_NETWORK` (`scripts/network.py`), which loads `.env.<network>` and then verifies the node's genesis id. LocalNet needs no mnemonics — accounts come from KMD.
 - Tests use `algorand-python-testing` mocks. Three mock limits to know: it records but does not *execute* inner app calls, it does not enforce minimum balances (an app that cannot pay looks fine), and its `UInt64()` accepts only plain `int`. Anything depending on those belongs in `scripts/keeper_e2e.py`.
 - LocalNet runs algod in dev mode: no blocks are produced on their own. Use `scripts/network.py::wait_for_round`, which pokes the chain with self-payments.
 - Contracts requiring inner-txn fees rely on group fee pooling — callers add extra fee (see `scripts/keeper_e2e.py`).

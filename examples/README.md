@@ -1,7 +1,7 @@
 # Examples
 
-Two ways to use Archon, the keeper network, depending on which side you're on
-— plus `minimal_target.py`, the smallest contract Archon can drive, for
+Two ways to use Arcron, the keeper network, depending on which side you're on
+— plus `minimal_target.py`, the smallest contract Arcron can drive, for
 copying into your own project. The full integration guide is
 [`../docs/integrating.md`](../docs/integrating.md).
 

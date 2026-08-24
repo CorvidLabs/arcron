@@ -18,8 +18,8 @@ const POLL_INTERVAL_MS = 2_500;
 const RATE_SAMPLES = 48;
 /** Below this the sample window is too short to divide by. */
 const MIN_RATE_WINDOW_MS = 8_000;
-const NETWORK_STORAGE_KEY = 'archon.network';
-const APP_ID_STORAGE_KEY = (network: NetworkKey) => `archon.appId.${network}`;
+const NETWORK_STORAGE_KEY = 'arcron.network';
+const APP_ID_STORAGE_KEY = (network: NetworkKey) => `arcron.appId.${network}`;
 
 export interface AppAccount {
   readonly address: string;
@@ -32,7 +32,7 @@ export interface AppAccount {
 export type ConnectionStatus = 'connecting' | 'ready' | 'error';
 
 @Injectable({ providedIn: 'root' })
-export class ArchonService {
+export class ArcronService {
   private timer: ReturnType<typeof setInterval> | null = null;
 
   readonly network = signal<NetworkKey>(readNetwork());

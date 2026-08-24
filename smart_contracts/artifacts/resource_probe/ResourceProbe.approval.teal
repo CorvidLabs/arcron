@@ -10,7 +10,7 @@ main:
     // smart_contracts/resource_probe/contract.py:35-38
     // # The resources to reach for, fixed at configuration time so that a
     // # probe call carries nothing but its own selector — exactly the shape
-    // # Archon can send.
+    // # Arcron can send.
     // self.subject = GlobalState(Account())
     bytec_3 // "subject"
     global ZeroAddress
@@ -50,7 +50,7 @@ main:
     app_global_put
     // smart_contracts/resource_probe/contract.py:48-50
     // # Who the target sees as its caller, which is not who sent the
-    // # transaction once Archon is in the middle.
+    // # transaction once Arcron is in the middle.
     // self.last_caller = GlobalState(Account())
     bytec 10 // "last_caller"
     global ZeroAddress

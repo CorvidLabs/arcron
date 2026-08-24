@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 
-import { ArchonService } from '../core/archon.service';
+import { ArcronService } from '../core/arcron.service';
 import { type BoardEntry, type SortKey, sortEntries, summarise, toEntry } from '../core/board';
 import { algos, dueLabel, intervalLabel, microAlgos, rounds, runwayLabel } from '../core/format';
 import { KeeperService } from '../core/keeper.service';
@@ -32,7 +32,7 @@ const SORTS: readonly { key: SortKey; label: string }[] = [
 ];
 
 @Component({
-  selector: 'archon-upkeep-board',
+  selector: 'arcron-upkeep-board',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section class="panel">
@@ -202,7 +202,7 @@ const SORTS: readonly { key: SortKey; label: string }[] = [
   `,
 })
 export class UpkeepBoard {
-  private readonly archon = inject(ArchonService);
+  private readonly arcron = inject(ArcronService);
   protected readonly keeper = inject(KeeperService);
   protected readonly wallet = inject(WalletService);
 
@@ -211,9 +211,9 @@ export class UpkeepBoard {
   protected readonly executionCost = microAlgos(3_000n);
 
   private readonly entries = computed(() => {
-    const round = this.archon.round();
+    const round = this.arcron.round();
     return sortEntries(
-      this.archon.upkeeps().map((upkeep) => toEntry(upkeep, round)),
+      this.arcron.upkeeps().map((upkeep) => toEntry(upkeep, round)),
       this.sort(),
     );
   });
@@ -239,8 +239,8 @@ export class UpkeepBoard {
   }
 
   private rowsFor(availability: BoardEntry['availability']): Row[] {
-    const round = this.archon.round();
-    const pace = this.archon.secondsPerRound();
+    const round = this.arcron.round();
+    const pace = this.arcron.secondsPerRound();
     const canSign = this.wallet.connected();
     return this.entries()
       .filter((entry) => entry.availability === availability)

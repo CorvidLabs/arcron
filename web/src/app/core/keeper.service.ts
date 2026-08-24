@@ -8,7 +8,7 @@
 
 import { computed, Injectable, inject, signal } from '@angular/core';
 
-import { ArchonService, describe } from './archon.service';
+import { ArcronService, describe } from './arcron.service';
 import { algos } from './format';
 import { WalletService } from './wallet.service';
 import * as txns from './keeper-txns';
@@ -26,7 +26,7 @@ export interface Activity {
 
 @Injectable({ providedIn: 'root' })
 export class KeeperService {
-  private readonly archon = inject(ArchonService);
+  private readonly arcron = inject(ArcronService);
   private readonly wallet = inject(WalletService);
 
   readonly busy = signal<Operation | null>(null);
@@ -96,12 +96,12 @@ export class KeeperService {
     operation: Operation,
     upkeepId: bigint | null,
     call: (
-      algod: ReturnType<ArchonService['algod']>,
+      algod: ReturnType<ArcronService['algod']>,
       appId: number,
       signing: txns.Signing,
     ) => Promise<{ result: txns.CallResult; message: string }>,
   ): Promise<void> {
-    const appId = this.archon.appId();
+    const appId = this.arcron.appId();
     const signing = this.wallet.signing();
     if (appId === null) {
       this.error.set('Set a keeper app id first');
@@ -114,11 +114,11 @@ export class KeeperService {
     this.busy.set(operation);
     this.error.set(null);
     try {
-      const { result, message } = await call(this.archon.algod(), appId, signing);
+      const { result, message } = await call(this.arcron.algod(), appId, signing);
       this.activity.update((entries) =>
         [{ operation, upkeepId, message, txId: result.txId, round: result.confirmedRound }, ...entries].slice(0, 8),
       );
-      await this.archon.refresh();
+      await this.arcron.refresh();
     } catch (cause) {
       this.error.set(describe(cause));
     } finally {

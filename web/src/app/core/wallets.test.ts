@@ -51,9 +51,9 @@ describe('wallet catalogue', () => {
 
   test('includes WalletConnect only when a project id is configured', () => {
     expect(publicWallets().map((wallet) => String(wallet.id))).not.toContain('walletconnect');
-    dom.window.__ARCHON__ = { walletConnectProjectId: 'test-project-id' };
+    dom.window.__ARCRON__ = { walletConnectProjectId: 'test-project-id' };
     expect(publicWallets().map((wallet) => String(wallet.id))).toContain('walletconnect');
-    dom.window.__ARCHON__ = undefined;
+    dom.window.__ARCRON__ = undefined;
   });
 
   test('use-wallet accepts the whole set and offers it as a picker', async () => {

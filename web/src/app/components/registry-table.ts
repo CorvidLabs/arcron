@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 
-import { ArchonService } from '../core/archon.service';
+import { ArcronService } from '../core/arcron.service';
 import { algos, dueLabel, intervalLabel, microAlgos, runwayLabel, shortAddress } from '../core/format';
 import { KeeperService } from '../core/keeper.service';
 import { WalletService } from '../core/wallet.service';
@@ -42,7 +42,7 @@ interface Row {
 }
 
 @Component({
-  selector: 'archon-registry-table',
+  selector: 'arcron-registry-table',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section class="panel">
@@ -56,11 +56,11 @@ interface Row {
         <p class="eyebrow">{{ summary() }}</p>
       </header>
 
-      @if (archon.appId() === null) {
+      @if (arcron.appId() === null) {
         <p class="empty">Enter a keeper app id to load its registry.</p>
       } @else if (rows().length === 0) {
         <p class="empty">
-          No upkeeps on app {{ archon.appId() }} yet. Register one below to watch the network
+          No upkeeps on app {{ arcron.appId() }} yet. Register one below to watch the network
           work.
         </p>
       } @else {
@@ -259,18 +259,18 @@ interface Row {
   `,
 })
 export class RegistryTable {
-  protected readonly archon = inject(ArchonService);
+  protected readonly arcron = inject(ArcronService);
   protected readonly keeper = inject(KeeperService);
   private readonly wallet = inject(WalletService);
 
   protected readonly expanded = signal<bigint | null>(null);
 
   protected readonly rows = computed<Row[]>(() => {
-    const round = this.archon.round();
-    const pace = this.archon.secondsPerRound();
+    const round = this.arcron.round();
+    const pace = this.arcron.secondsPerRound();
     const signedInAs = this.wallet.activeAddress();
     const canSign = this.wallet.connected();
-    return this.archon.upkeeps().map((upkeep) => {
+    return this.arcron.upkeeps().map((upkeep) => {
       const executable = isExecutable(upkeep, round);
       const fee = effectiveFee(upkeep, round);
       // Against the escalated fee: an upkeep can starve at a balance its

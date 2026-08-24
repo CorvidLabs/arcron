@@ -82,7 +82,7 @@
                 ]
             },
             "readonly": false,
-            "desc": "Flag the feed if it has gone quiet. Zero arguments \u2014 Archon's shape.\nReturns the round it flagged in, or 0 for the ordinary case where the feed is fine or already flagged. Never fails: a failing target would trip keeper backoff and leave nobody watching, which is the one outcome this contract exists to prevent.",
+            "desc": "Flag the feed if it has gone quiet. Zero arguments \u2014 Arcron's shape.\nReturns the round it flagged in, or 0 for the ordinary case where the feed is fine or already flagged. Never fails: a failing target would trip keeper backoff and leave nobody watching, which is the one outcome this contract exists to prevent.",
             "events": [
                 {
                     "name": "WentStale",

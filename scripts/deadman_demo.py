@@ -168,7 +168,7 @@ def main(argv: list[str] | None = None) -> None:
 
     # ------------------------------------------------------------------
     logger.info("── 7. A fired switch is inert, and the upkeep should be cancelled ──")
-    # This is the escrow-waste failure mode: Archon keeps calling and keeps
+    # This is the escrow-waste failure mode: Arcron keeps calling and keeps
     # paying keepers for a switch that has already done its one job.
     before_sweeps, _ = _read_upkeep(algorand, keeper_client.app_id, upkeep_id)
     sweep_once()
