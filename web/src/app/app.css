@@ -75,3 +75,14 @@ footer.chrome {
 footer p {
   margin: 0;
 }
+
+.views {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.views .current {
+  border-color: var(--sheen);
+  color: var(--sheen);
+  font-weight: 500;
+}

@@ -12,7 +12,26 @@
 
   <archon-signer-bar />
   <archon-stat-tiles />
-  <archon-registry-table />
+
+  <nav class="views" aria-label="View">
+    @for (option of views; track option.key) {
+      <button
+        type="button"
+        class="ghost small"
+        [class.current]="view() === option.key"
+        [attr.aria-current]="view() === option.key ? 'true' : null"
+        (click)="show(option.key)"
+      >
+        {{ option.label }}
+      </button>
+    }
+  </nav>
+
+  @if (view() === 'registry') {
+    <archon-registry-table />
+  } @else {
+    <archon-upkeep-board />
+  }
 
   <div class="columns">
     <archon-register-form />
