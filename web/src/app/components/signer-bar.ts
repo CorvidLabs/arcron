@@ -45,14 +45,17 @@ import { WalletService } from '../core/wallet.service';
             <button
               type="button"
               class="ghost small wallet"
-              [disabled]="wallet.connecting() !== null"
+              [class.pending]="wallet.connecting() === option.id"
               (click)="connect(option.id)"
             >
               @if (option.icon; as icon) {
                 <img class="icon" [src]="icon" alt="" width="18" height="18" />
               }
-              {{ wallet.connecting() === option.id ? 'Connecting…' : option.name }}
+              {{ wallet.connecting() === option.id ? 'Waiting…' : option.name }}
             </button>
+          }
+          @if (wallet.connecting() !== null) {
+            <button type="button" class="ghost small" (click)="cancel()">Cancel</button>
           }
         </div>
       }
@@ -80,6 +83,7 @@ import { WalletService } from '../core/wallet.service';
     .prompt .eyebrow { margin-right: 0.4rem; }
     .choices { display: flex; flex-wrap: wrap; gap: 0.4rem; }
     .wallet { display: inline-flex; align-items: center; gap: 0.4rem; }
+    .wallet.pending { border-color: var(--sheen); color: var(--sheen); }
     .icon { border-radius: 3px; }
     .error { margin: 0; flex-basis: 100%; color: var(--danger); font-size: 0.82rem; }
   `,
@@ -96,6 +100,10 @@ export class SignerBar {
 
   protected connect(walletId: string): void {
     void this.wallet.connect(walletId);
+  }
+
+  protected cancel(): void {
+    this.wallet.cancelConnecting();
   }
 
   protected disconnect(): void {

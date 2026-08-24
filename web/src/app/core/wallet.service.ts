@@ -17,6 +17,17 @@ import { ArchonService, describe } from './archon.service';
 import type { Signing } from './keeper-txns';
 import { managerNetworks, walletsFor } from './wallets';
 
+/** Closing a wallet's modal is a decision, not a failure. */
+function isDismissal(cause: unknown): boolean {
+  const message = (cause instanceof Error ? cause.message : String(cause)).toLowerCase();
+  return (
+    message.includes('closed') ||
+    message.includes('cancel') ||
+    message.includes('rejected') ||
+    message.includes('declined')
+  );
+}
+
 export interface WalletOption {
   readonly id: string;
   readonly name: string;
@@ -53,6 +64,8 @@ export class WalletService {
 
   async connect(walletId: string): Promise<void> {
     const manager = this.manager();
+    // Starting a second wallet abandons the first attempt rather than queueing
+    // behind it — a QR waiting to be scanned must never lock the picker.
     this.connecting.set(walletId);
     this.error.set(null);
     try {
@@ -67,10 +80,22 @@ export class WalletService {
       else await wallet.connect();
       this.sync();
     } catch (cause) {
-      this.error.set(describe(cause));
+      // A wallet the user closed or declined is not an error worth shouting
+      // about; anything else is.
+      if (!isDismissal(cause)) this.error.set(describe(cause));
     } finally {
-      this.connecting.set(null);
+      // Only clear the flag if this attempt is still the current one.
+      if (untracked(this.connecting) === walletId) this.connecting.set(null);
     }
+  }
+
+  /**
+   * Give up waiting on a wallet. If it connects later anyway, the manager's
+   * own subscription still picks it up.
+   */
+  cancelConnecting(): void {
+    this.connecting.set(null);
+    this.error.set(null);
   }
 
   async disconnect(): Promise<void> {
