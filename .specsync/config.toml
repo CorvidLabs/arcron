@@ -3,7 +3,7 @@
 
 specs_dir = "specs"
 source_dirs = ["."]
-exclude_dirs = ["__tests__", ".venv", ".algokit", ".vscode", ".tours", "artifacts", "__pycache__"]
-exclude_patterns = ["**/__tests__/**", "**/*.test.ts", "**/*.spec.ts", "**/.venv/**", "**/artifacts/**", "**/__pycache__/**"]
+exclude_dirs = ["__tests__", ".venv", ".algokit", ".vscode", ".tours", "artifacts", "__pycache__", "node_modules", "dist", ".angular"]
+exclude_patterns = ["**/__tests__/**", "**/*.test.ts", "**/*.spec.ts", "**/.venv/**", "**/artifacts/**", "**/__pycache__/**", "**/node_modules/**", "**/dist/**", "**/.angular/**"]
 required_sections = ["Purpose", "Public API", "Invariants", "Behavioral Examples", "Error Cases", "Dependencies", "Change Log"]
 enforcement = "strict"

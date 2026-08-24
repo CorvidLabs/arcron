@@ -9,12 +9,11 @@ Archon — Algorand smart contracts (Algorand Python / Puya + AlgoKit). Main
 project: `smart_contracts/keeper/` — a permissionless keeper network, live on
 TestNet (app 769772891 — deployed before the box-MBR fix; a redeploy is
 pending). `pulse/` is its demo target (app 769772906).
-`corvid_vault/` is a parked experiment — don't extend it without being asked.
 
 ## Commands
 
 - Everything: `fledge lanes run ci` (build + unit tests + spec check — must stay green)
-- On a real chain: `fledge lanes run local` (ci + keeper e2e + vault smoke; needs `algokit localnet start`)
+- On a real chain: `fledge lanes run local` (ci + the keeper e2e; needs `algokit localnet start`)
 - Build: `poetry run python -m smart_contracts build` (always rebuild after contract changes)
 - Test: `poetry run pytest tests/ -q`
 - Specs: `specsync check --strict`

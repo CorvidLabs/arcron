@@ -116,15 +116,14 @@ fledge lanes run local    # ci + LocalNet e2e smoke
 - Unit tests (`tests/`) use `algorand-python-testing` mocks. Note the mocks
   record but do not *execute* inner app calls — the Pulse counter increment
   was proven with the TestNet e2e (`scripts/keeper_testnet_demo.py`).
-- Specs (`specs/keeper/`, `specs/pulse/`, `specs/vault/`) are enforced by
+- Specs (`specs/keeper/`, `specs/pulse/`) are enforced by
   `specsync check --strict`; update them with any contract surface change.
 
 ## Known limitations (v1)
 
 - ALGO escrow only (no ASA-denominated fees yet). First candidate: CORVID,
   CorvidLabs' ASA — mainnet asset
-  [`3225439167`](https://explorer.perawallet.app/asset/3225439167) (6
-  decimals; the LocalNet mock in `corvid_vault/deploy_config.py` matches).
+  [`3225439167`](https://explorer.perawallet.app/asset/3225439167) (6 decimals).
 - Single-arg NoOp call shape; no multi-arg or foreign-array calls.
 - No catch-up clamp: long-missed upkeeps fire once per round until caught up.
 - Unaudited. TestNet throwaway deployer — redeploy fresh for mainnet.

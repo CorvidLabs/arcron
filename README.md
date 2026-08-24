@@ -9,7 +9,6 @@ a scheduled contract call, any keeper executes it for the fee. By
 |----------|-----------|--------|
 | [`smart_contracts/keeper`](smart_contracts/keeper/contract.py) | The Archon network: upkeep scheduling with ALGO escrow and keeper rewards | **Live on TestNet** — app [`769772891`](https://testnet.explorer.perawallet.app/application/769772891)¹ |
 | [`smart_contracts/pulse`](smart_contracts/pulse/contract.py) | Demo upkeep target (heartbeat counter) | Live on TestNet — app `769772906` |
-| [`smart_contracts/corvid_vault`](smart_contracts/corvid_vault/contract.py) | Earlier experiment: CORVID ASA vault + stake-gated sealed-envelope relay (AlgoChat) | Built, tested, LocalNet-only (parked) |
 
 ¹ The deployed app predates the box-MBR fix of 2026-08-24 (it undercharges MBR
 by 800 µALGO per box and does not refund box MBR on cancel). The contract in
@@ -32,8 +31,8 @@ is that missing piece.
    The contract performs the registered call as an **inner app call** and pays
    the keeper from the escrow — atomically, so the fee is only paid if the
    upkeep actually ran.
-3. **Top up / cancel** — anyone can add funding; only the creator can cancel
-   and reclaim the remaining escrow.
+3. **Top up / cancel** — anyone can add funding; only the creator can cancel,
+   reclaiming the remaining escrow plus the box MBR the deletion releases.
 
 Ownerless, no protocol rake, no token required — plain ALGO escrow so any
 group can use it. Upkeep records are `arc4.Struct`s in boxes, so reading the
@@ -45,7 +44,7 @@ Fees ≥ 4000 µALGO (keepers pay ~3000 µALGO in group fees per execution).
 Interval ≥ 10 rounds.
 
 **Proven end-to-end on TestNet**: upkeeps registered against `Pulse.tick`
-(both by the demo script and the `examples/` flow) have been executed by
+(both by the e2e script and the `examples/` flow) have been executed by
 permissionless callers at their due rounds — `Pulse.beats` incremented by
 every execution (rounds 66610411, 66611741, 66625540+, all verifiable on the
 explorer). Full reference: [`docs/archon.md`](docs/archon.md).
@@ -58,7 +57,7 @@ Poetry, Docker (LocalNet only).
 ```bash
 poetry install
 
-fledge lanes run ci      # build all contracts → 33 unit tests → spec-sync check
+fledge lanes run ci      # build all contracts → 15 unit tests → spec-sync check
 fledge lanes run local   # ci + the LocalNet end-to-end tests
 ```
 
@@ -105,10 +104,9 @@ run at TestNet.
 smart_contracts/
   keeper/            # the keeper network (contract.py, deploy_config.py)
   pulse/             # demo target
-  corvid_vault/      # vault + operator relay (parked experiment)
   artifacts/         # compiled TEAL, ARC-56 specs, typed clients (generated)
 tests/               # unit tests (algorand-python-testing mocks + bot decoder vectors)
-specs/               # spec-sync specs (keeper, pulse, vault) — strict mode
+specs/               # spec-sync specs (keeper, pulse) — strict mode
 docs/
   archon.md          # hand-off reference: API, box encoding, economics, operations
 examples/
@@ -119,7 +117,6 @@ scripts/
   keeper_bot.py           # permissionless keeper bot: scans boxes, executes due upkeeps
   network.py              # --network selection, genesis check, dev-mode round advance
   keeper_testnet_demo.py  # alias for `keeper_e2e --network testnet`
-  smoke_localnet.py       # vault LocalNet e2e
 fledge.toml          # fledge lanes (ci, local)
 .specsync/           # spec-sync config
 AGENTS.md / CLAUDE.md # agent guidance (keep in sync)
@@ -164,7 +161,7 @@ intervals stays due until it has caught up one execution per interval.
 - **Suggested-params cache**: public TestNet endpoints are slow enough that
   algokit-utils' cached suggested params can expire before simulate/broadcast.
   Deploy configs disable the cache (`set_suggested_params_cache_timeout(0)`)
-  and the demo pins explicit validity rounds.
+  and the e2e pins explicit validity rounds.
 
 ## Spec-driven development
 
@@ -178,7 +175,6 @@ fails if code drifts from the documented public API.
 
 - [x] Off-chain keeper bot (watches rounds, executes due upkeeps) — `scripts/keeper_bot.py`
 - [ ] ASA-denominated upkeep fees (CORVID — mainnet ASA [`3225439167`](https://explorer.perawallet.app/asset/3225439167))
-- [x] ~~Cancel leftover demo upkeeps 0–3 on TestNet~~ — done, 0.08 ALGO escrow reclaimed
 - [x] End-to-end verification on LocalNet (`fledge lanes run local`) — found and fixed an 800 µALGO box-MBR undercharge
 - [ ] Redeploy TestNet with the box-MBR fix (current app 769772891 predates it)
 - [ ] Web front end: registry dashboard + keeper console
