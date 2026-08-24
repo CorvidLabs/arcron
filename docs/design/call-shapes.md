@@ -1,8 +1,8 @@
 # Design: call shapes — multi-argument and foreign arrays
 
 **Status:** implemented at a fan-out ceiling of 3. The foreign-array half is a documented convention, not code — see `docs/integrating.md`.
-**Issue:** [#8](https://github.com/CorvidLabs/archon/issues/8)
-**Depends on:** [#24](https://github.com/CorvidLabs/archon/issues/24) (measured), and shares a struct with [#7 and #14](scheduling-and-fees.md)
+**Issue:** [#8](https://github.com/CorvidLabs/arcron/issues/8)
+**Depends on:** [#24](https://github.com/CorvidLabs/arcron/issues/24) (measured), and shares a struct with [#7 and #14](scheduling-and-fees.md)
 **Reproduce every number here:** `poetry run python -m scripts.spike_multiarg --network localnet`, and the batch table with `poetry run python -m scripts.spike_asa_fee --network localnet`
 
 Arcron executes exactly one call shape: a NoOp app call carrying a single app
@@ -17,7 +17,7 @@ splits them.
 
 ## The foreign-array half is already solved, and not by the struct
 
-[#24](https://github.com/CorvidLabs/archon/issues/24) measured what an
+[#24](https://github.com/CorvidLabs/arcron/issues/24) measured what an
 Arcron-triggered inner call can reach. Resource availability supplied on the
 *keeper's* transaction flows two levels down: to Arcron's inner call, and to
 the target's own inner transactions. Five patterns — inner payment, inner
@@ -28,7 +28,7 @@ So the capability #8 wants **already exists**, without a struct change, without
 a call-shape change, and without touching the trust model: the creator still
 fixes the call at registration, and the keeper supplies availability, never
 data. (That line is what separates this issue from
-[#22](https://github.com/CorvidLabs/archon/issues/22), which is out of 1.0.)
+[#22](https://github.com/CorvidLabs/arcron/issues/22), which is out of 1.0.)
 
 What is missing is **discovery**. Nothing on chain tells a keeper which
 resources an upkeep needs, so a keeper has to know out of band. That is the
@@ -102,7 +102,7 @@ three-argument call. The encoding costs **4 bytes per argument** (a 2-byte
 offset and a 2-byte length), which is 1,600 µALGO of box MBR each.
 
 (The 1,210 baseline is itself down from the 1,250 measured in
-[#26](https://github.com/CorvidLabs/archon/issues/26): #7 and #14's escalation
+[#26](https://github.com/CorvidLabs/arcron/issues/26): #7 and #14's escalation
 arithmetic costs the target about 40 opcodes.)
 
 And `absorb` received `number=7777`, `text='arcron'` — a hook with real
@@ -183,7 +183,7 @@ Three properties make the convention safe:
 
 - **References grant availability, not authority.** The target already decides
   what it touches, and the call is still fixed by the creator.
-- **A wrong answer is free.** [#13](https://github.com/CorvidLabs/archon/issues/13)
+- **A wrong answer is free.** [#13](https://github.com/CorvidLabs/arcron/issues/13)
   measured that a rejected execution costs a keeper nothing — the transaction
   never commits. A keeper can simulate and skip.
 - **The 6-reference ceiling still binds**, and `resources()` lets a keeper
@@ -235,7 +235,7 @@ Nothing here needs a second program page or a second box.
 
 ## What has to move together
 
-The five-file lockstep from [#31](https://github.com/CorvidLabs/archon/issues/31),
+The five-file lockstep from [#31](https://github.com/CorvidLabs/arcron/issues/31),
 plus what the shape change touches beyond it:
 
 1. `smart_contracts/keeper/contract.py` — struct, `register` bounds, the `execute` fan-out, `BOX_MBR_FIXED` 93 → 91

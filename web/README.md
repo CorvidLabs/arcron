@@ -75,7 +75,7 @@ empty state rather than breaking the page.
 
 On-chain keeper stats are rejected for now: taxing every execution to power a
 UI is a bad trade. It becomes a reasonable one only if
-[#15](https://github.com/CorvidLabs/archon/issues/15) proceeds, since staking
+[#15](https://github.com/CorvidLabs/arcron/issues/15) proceeds, since staking
 would give keeper reputation a mechanical use rather than a decorative one.
 
 ## Layout

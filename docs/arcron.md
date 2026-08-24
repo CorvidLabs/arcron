@@ -205,7 +205,7 @@ each and collecting the fee each time. The creator pays for executions that
 happened late rather than at the intended moments. Whether that is right
 depends on the upkeep — a missed distribution should probably catch up, a
 missed prize draw probably should not — which is the argument in
-[issue #7](https://github.com/CorvidLabs/archon/issues/7).
+[issue #7](https://github.com/CorvidLabs/arcron/issues/7).
 
 ### Rounds are not a clock
 
@@ -530,7 +530,7 @@ a keeper which resources an upkeep needs; the reference list is not part of the
 `Upkeep` struct, so a keeper would have to know out of band. Any design that
 wants keeper-supplied resources needs somewhere for the creator to declare
 them — which is a smaller and different problem than changing the call shape.
-See [issue #8](https://github.com/CorvidLabs/archon/issues/8).
+See [issue #8](https://github.com/CorvidLabs/arcron/issues/8).
 
 **Pull the resource, not just the payment.** The pull-payment pattern above
 extends past money: any step needing a resource the keeper cannot supply

@@ -116,7 +116,7 @@ several times in quick succession.
 Make it idempotent, or make each call's effect depend only on current state.
 If replaying missed periods is wrong for your use case — a prize draw, say —
 say so on
-[issue #7](https://github.com/CorvidLabs/archon/issues/7), which is deciding
+[issue #7](https://github.com/CorvidLabs/arcron/issues/7), which is deciding
 that policy and needs concrete cases.
 
 ### Rounds are not a clock
@@ -171,7 +171,7 @@ A scheduled call can only touch what the executing transaction makes
 available. Arcron stores no foreign arrays — but it does not need to. Resource
 availability supplied on the *keeper's* transaction reaches two levels down:
 to Arcron's inner call, and to your own inner transactions from it. Measured
-in [#24](https://github.com/CorvidLabs/archon/issues/24), across payments,
+in [#24](https://github.com/CorvidLabs/arcron/issues/24), across payments,
 asset transfers, balance reads, holding reads and inner app calls.
 
 The budget is **8 references per transaction**. Arcron spends two — the upkeep
@@ -203,7 +203,7 @@ Three things make this safe, and worth knowing before you rely on it:
 Not enforced by the contract, and not yet read by `scripts/keeper_bot.py` —
 this is a convention with no user yet, and a convention with no user is one
 that gets the details wrong. If you need it, say so on
-[#8](https://github.com/CorvidLabs/archon/issues/8) and it becomes a keeper
+[#8](https://github.com/CorvidLabs/arcron/issues/8) and it becomes a keeper
 feature rather than a paragraph.
 
 ## Calls with arguments
