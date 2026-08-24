@@ -18,6 +18,7 @@ from algopy import (
     Global,
     GlobalState,
     OnCompleteAction,
+    String,
     UInt64,
     arc4,
     itxn,
@@ -38,6 +39,10 @@ class ResourceProbe(ARC4Contract):
         # Evidence a probe ran, for the cases where success is silent.
         self.probes_run = GlobalState(UInt64(0))
         self.last_reading = GlobalState(UInt64(0))
+        # What `absorb` was handed, so a multi-arg call can be checked for
+        # having delivered every argument rather than merely succeeding.
+        self.last_number = GlobalState(UInt64(0))
+        self.last_text = GlobalState(String(""))
 
     @abimethod()
     def configure(
@@ -99,6 +104,25 @@ class ResourceProbe(ARC4Contract):
         integrator actually has to design against.
         """
         self.last_reading.value = Global.opcode_budget()
+        self.probes_run.value += 1
+        return self.last_reading.value
+
+    @abimethod()
+    def absorb(self, number: UInt64, text: arc4.String) -> UInt64:
+        """A hook with arguments of its own — the shape Archon cannot call.
+
+        Archon stores one blob and sends it as one app arg, and an ARC-4 method
+        with arguments needs the selector and each argument in an app arg of
+        its own. So this method is unreachable through an upkeep today.
+        `scripts/spike_multiarg.py` uses it to measure what a multi-arg call
+        shape would cost, and records both arguments so that a call which
+        loses one is distinguishable from a call that works.
+        """
+        # Read the budget first, so this is comparable with `report_budget`:
+        # both report what the target was handed, not what it has left.
+        self.last_reading.value = Global.opcode_budget()
+        self.last_number.value = number
+        self.last_text.value = text.native
         self.probes_run.value += 1
         return self.last_reading.value
 
