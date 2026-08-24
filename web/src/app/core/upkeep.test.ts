@@ -1,9 +1,10 @@
 /**
  * The TypeScript decoder must agree with the Python one, byte for byte.
  *
- * The vector is the same live TestNet box used by tests/test_keeper_bot.py —
- * upkeep 4 on app 769772891 after its first execution. If the contract's
- * Upkeep struct changes, both tests must change together.
+ * The vector is the same recorded TestNet box used by
+ * tests/test_keeper_bot.py — upkeep 4 on app 769772891, since deprecated,
+ * after its first execution. The struct layout is unchanged, so it still
+ * pins the encoding; if it ever changes, both tests must change together.
  */
 
 import { describe, expect, test } from 'bun:test';

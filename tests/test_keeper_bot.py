@@ -1,9 +1,9 @@
 """Regression tests for the keeper bot's Upkeep box decoder.
 
-The vector is a real box value captured from the TestNet keeper app
-(769772891), upkeep id 4 after its first execution. It locks the ARC-4
-head/tail layout the bot depends on; if the contract's Upkeep struct ever
-changes, this test must change with it.
+The vector is a real box value captured from the first TestNet keeper app
+(769772891, since deprecated), upkeep id 4 after its first execution. The
+struct layout has not changed, so it still pins what the bot must decode; if
+the contract's Upkeep struct ever changes, this test must change with it.
 """
 
 import base64

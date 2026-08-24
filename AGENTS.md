@@ -6,8 +6,8 @@ Guidance for AI agents working in this repo. Also see `README.md`.
 
 Archon — Algorand smart contracts (Algorand Python / Puya + AlgoKit). Main
 project: `smart_contracts/keeper/` — a permissionless keeper network, live on
-TestNet (app 769772891 — note it predates the box-MBR fix; see the Change Log
-in `specs/keeper/keeper.spec.md`). `pulse/` is its demo target.
+TestNet (app 769802474; 769772891 is its deprecated predecessor, which predates
+the box-MBR fix). `pulse/` is its demo target.
 
 ## Commands
 

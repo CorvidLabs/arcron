@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 # The canonical TestNet Keeper app (see README); override with --app-id or
 # KEEPER_APP_ID. LocalNet has no canonical app — pass one.
-DEFAULT_APP_ID = 769772891
+DEFAULT_APP_ID = 769802474
 # Covers the two inner transactions (app call + keeper payment); the outer
 # fee is the standard 1,000 µALGO.
 EXTRA_FEE_MICROALGO = 2_000

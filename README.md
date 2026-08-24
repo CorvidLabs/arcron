@@ -7,13 +7,15 @@ a scheduled contract call, any keeper executes it for the fee. By
 
 | Contract | What it is | Status |
 |----------|-----------|--------|
-| [`smart_contracts/keeper`](smart_contracts/keeper/contract.py) | The Archon network: upkeep scheduling with ALGO escrow and keeper rewards | **Live on TestNet** — app [`769772891`](https://testnet.explorer.perawallet.app/application/769772891)¹ |
+| [`smart_contracts/keeper`](smart_contracts/keeper/contract.py) | The Archon network: upkeep scheduling with ALGO escrow and keeper rewards | **Live on TestNet** — app [`769802474`](https://testnet.explorer.perawallet.app/application/769802474) |
 | [`smart_contracts/pulse`](smart_contracts/pulse/contract.py) | Demo upkeep target (heartbeat counter) | Live on TestNet — app `769772906` |
 | [`web`](web/) | The console: registry dashboard + keeper controls | Runs against LocalNet and TestNet |
 
-¹ The deployed app predates the box-MBR fix of 2026-08-24 (it undercharges MBR
-by 800 µALGO per box and does not refund box MBR on cancel). The contract in
-this repo is fixed and verified on LocalNet; a TestNet redeploy is pending.
+App [`769772891`](https://testnet.explorer.perawallet.app/application/769772891) is the
+**deprecated** predecessor: it predates the box-MBR fix of 2026-08-24 and should
+not be used. Its registry is empty and its remaining escrow has been reclaimed —
+see [migration](docs/archon.md#migrating-off-the-deprecated-app) if you
+registered anything against it.
 
 ## The keeper network
 
@@ -229,7 +231,7 @@ poetry run python -m scripts.keeper_bot          # loop block-by-block
 poetry run python -m scripts.keeper_bot --once --network localnet --app-id $APP
 ```
 
-Defaults to the canonical TestNet app `769772891`; override with `--app-id`
+Defaults to the canonical TestNet app `769802474`; override with `--app-id`
 or `KEEPER_APP_ID`. An upkeep that fails to execute is skipped for the rest
 of the run (retrying would burn the outer fee every round). Note the contract
 schedules from the *scheduled* round, so an upkeep that was missed for many
@@ -258,7 +260,7 @@ fails if code drifts from the documented public API.
 - [x] Off-chain keeper bot (watches rounds, executes due upkeeps) — `scripts/keeper_bot.py`
 - [ ] ASA-denominated upkeep fees (CORVID — mainnet ASA [`3225439167`](https://explorer.perawallet.app/asset/3225439167))
 - [x] End-to-end verification on LocalNet (`fledge lanes run local`) — found and fixed an 800 µALGO box-MBR undercharge
-- [ ] Redeploy TestNet with the box-MBR fix (current app 769772891 predates it)
+- [x] Redeploy TestNet with the box-MBR fix — app [`769802474`](https://testnet.explorer.perawallet.app/application/769802474), e2e-verified on-chain
 - [x] Web front end: registry dashboard + keeper console — `web/`
 - [ ] TestNet signing in the console (wallet adapter; LocalNet signs via KMD)
 - [ ] Multi-arg / foreign-array call shapes, if real use cases demand them
