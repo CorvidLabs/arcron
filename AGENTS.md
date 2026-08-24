@@ -32,6 +32,7 @@ the box-MBR fix). `pulse/` is its demo target.
 - On TestNet, disable the suggested-params cache (`set_suggested_params_cache_timeout(0)`) and fund the app account's base MBR (0.1 ALGO) before it can escrow or hold boxes.
 - Upkeep box values are ARC-4 head/tail encoded (32-byte creator, static fields inline, dynamic `call_data` in the tail via the offset at bytes [40:42]). `scripts/keeper_bot.py` has the reference decoder; `web/src/app/core/upkeep.ts` is its TypeScript twin and both are pinned to the same recorded box.
 - The console is styled **only** with the CorvidLabs design system vendored in `web/public/brand/` (tokens, fonts, sun/moon toggle). Never hardcode a colour or re-derive a token; re-vendor with the design system's `sync-to.sh`.
+- Wallets come from `@txnlab/use-wallet` (`web/src/app/core/wallets.ts`), same pattern as our other Algorand front ends: Pera, Defly, Lute, Exodus and Kibisis need no configuration; only the generic WalletConnect entry takes a project id, and it is only offered when one is set.
 - Amounts are shown in ALGO, not µALGO. Round counts are also rendered as human time via the measured (or nominal 2.8 s) round rate.
 
 ## Secrets

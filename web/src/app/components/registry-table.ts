@@ -3,7 +3,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@a
 import { ArchonService } from '../core/archon.service';
 import { algos, dueLabel, intervalLabel, microAlgos, runwayLabel, shortAddress } from '../core/format';
 import { KeeperService } from '../core/keeper.service';
-import { KmdService } from '../core/kmd.service';
+import { WalletService } from '../core/wallet.service';
 import { executionsRemaining, isExecutable, roundsUntilDue, toHex, type Upkeep } from '../core/upkeep';
 
 interface Row {
@@ -227,15 +227,15 @@ interface Row {
 export class RegistryTable {
   protected readonly archon = inject(ArchonService);
   protected readonly keeper = inject(KeeperService);
-  private readonly kmd = inject(KmdService);
+  private readonly wallet = inject(WalletService);
 
   protected readonly expanded = signal<bigint | null>(null);
 
   protected readonly rows = computed<Row[]>(() => {
     const round = this.archon.round();
     const pace = this.archon.secondsPerRound();
-    const signedInAs = this.kmd.activeAddress();
-    const canSign = this.kmd.connected();
+    const signedInAs = this.wallet.activeAddress();
+    const canSign = this.wallet.connected();
     return this.archon.upkeeps().map((upkeep) => {
       const executable = isExecutable(upkeep, round);
       const starved = upkeep.balance < upkeep.feePerExecution;

@@ -1,39 +1,66 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 
 import { ArchonService } from '../core/archon.service';
-import { algos, shortAddress } from '../core/format';
-import { KmdService } from '../core/kmd.service';
+import { shortAddress } from '../core/format';
+import { WalletService } from '../core/wallet.service';
 
 @Component({
   selector: 'archon-signer-bar',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="signer">
-      @if (!kmd.supported()) {
-        <p class="note">
-          <strong>Read-only.</strong> TestNet signing needs a wallet adapter; LocalNet signs
-          through KMD. Switch to LocalNet to register, execute or cancel upkeeps.
-        </p>
-      } @else if (!kmd.connected()) {
-        <button type="button" class="primary" [disabled]="kmd.connecting()" (click)="connect()">
-          {{ kmd.connecting() ? 'Connecting…' : 'Connect LocalNet account' }}
-        </button>
-        <p class="note">Keys stay in KMD — transactions are sent there to be signed.</p>
-      } @else {
-        <label class="account">
-          <span class="sr-only">Signing account</span>
-          <select (change)="use($event)">
-            @for (account of kmd.accounts(); track account.address) {
-              <option [value]="account.address" [selected]="account.address === kmd.activeAddress()">
-                {{ account.walletName }} · {{ label(account.address) }} · {{ balance(account.amount) }}
-              </option>
+      @if (wallet.connected()) {
+        <div class="active">
+          @if (wallet.activeWallet(); as active) {
+            @if (active.icon; as icon) {
+              <img class="icon" [src]="icon" alt="" width="20" height="20" />
             }
-          </select>
-        </label>
-        <button type="button" class="ghost" (click)="disconnect()">Disconnect</button>
+            <span class="name">{{ active.name }}</span>
+          }
+
+          @if (wallet.addresses().length > 1) {
+            <label>
+              <span class="sr-only">Signing account</span>
+              <select (change)="use($event)">
+                @for (address of wallet.addresses(); track address) {
+                  <option [value]="address" [selected]="address === wallet.activeAddress()">
+                    {{ label(address) }}
+                  </option>
+                }
+              </select>
+            </label>
+          } @else {
+            <span class="address mono">{{ label(wallet.activeAddress() ?? '') }}</span>
+          }
+
+          <button type="button" class="ghost small" (click)="disconnect()">Disconnect</button>
+        </div>
+      } @else {
+        <p class="prompt">
+          <span class="eyebrow">Connect</span>
+          {{ prompt() }}
+        </p>
+        <div class="choices">
+          @for (option of wallet.wallets(); track option.id) {
+            <button
+              type="button"
+              class="ghost small wallet"
+              [class.pending]="wallet.connecting() === option.id"
+              (click)="connect(option.id)"
+            >
+              @if (option.icon; as icon) {
+                <img class="icon" [src]="icon" alt="" width="18" height="18" />
+              }
+              {{ wallet.connecting() === option.id ? 'Waiting…' : option.name }}
+            </button>
+          }
+          @if (wallet.connecting() !== null) {
+            <button type="button" class="ghost small" (click)="cancel()">Cancel</button>
+          }
+        </div>
       }
 
-      @if (kmd.error(); as error) {
+      @if (wallet.error(); as error) {
         <p class="error" role="alert">{{ error }}</p>
       }
     </div>
@@ -43,41 +70,51 @@ import { KmdService } from '../core/kmd.service';
       display: flex;
       flex-wrap: wrap;
       align-items: center;
-      gap: 0.75rem;
+      gap: 0.6rem 0.9rem;
       padding: 0.7rem 0.9rem;
       border: 1px solid var(--hairline);
       border-radius: 3px;
       background: var(--ink-06);
     }
-    .note { margin: 0; color: var(--text-faint); font-size: 0.82rem; max-width: 60ch; }
-    .note strong { color: var(--ink); }
-    .account select { min-width: 24rem; }
-    .error { margin: 0; color: var(--danger); font-size: 0.82rem; }
+    .active { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; }
+    .name { font-weight: 500; }
+    .address { color: var(--text-faint); font-size: 0.85rem; }
+    .prompt { margin: 0; color: var(--text-faint); font-size: 0.82rem; max-width: 46ch; }
+    .prompt .eyebrow { margin-right: 0.4rem; }
+    .choices { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+    .wallet { display: inline-flex; align-items: center; gap: 0.4rem; }
+    .wallet.pending { border-color: var(--sheen); color: var(--sheen); }
+    .icon { border-radius: 3px; }
+    .error { margin: 0; flex-basis: 100%; color: var(--danger); font-size: 0.82rem; }
   `,
 })
 export class SignerBar {
-  protected readonly kmd = inject(KmdService);
+  protected readonly wallet = inject(WalletService);
   private readonly archon = inject(ArchonService);
 
-  protected readonly network = computed(() => this.archon.network());
+  protected readonly prompt = computed(() =>
+    this.archon.network() === 'localnet'
+      ? 'LocalNet accounts come from KMD — no extension, no mnemonic. Any wallet below works too.'
+      : 'Reads are permissionless; connect a wallet to register, execute or cancel upkeeps.',
+  );
 
-  protected connect(): void {
-    void this.kmd.connect();
+  protected connect(walletId: string): void {
+    void this.wallet.connect(walletId);
+  }
+
+  protected cancel(): void {
+    this.wallet.cancelConnecting();
   }
 
   protected disconnect(): void {
-    this.kmd.disconnect();
+    void this.wallet.disconnect();
   }
 
   protected use(event: Event): void {
-    this.kmd.use((event.target as HTMLSelectElement).value);
+    this.wallet.use((event.target as HTMLSelectElement).value);
   }
 
   protected label(address: string): string {
-    return shortAddress(address);
-  }
-
-  protected balance(amount: bigint): string {
-    return algos(amount);
+    return address === '' ? '' : shortAddress(address);
   }
 }

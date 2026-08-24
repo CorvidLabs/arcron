@@ -10,7 +10,7 @@ import { computed, Injectable, inject, signal } from '@angular/core';
 
 import { ArchonService, describe } from './archon.service';
 import { algos } from './format';
-import { KmdService } from './kmd.service';
+import { WalletService } from './wallet.service';
 import * as txns from './keeper-txns';
 import type { Upkeep } from './upkeep';
 
@@ -27,12 +27,12 @@ export interface Activity {
 @Injectable({ providedIn: 'root' })
 export class KeeperService {
   private readonly archon = inject(ArchonService);
-  private readonly kmd = inject(KmdService);
+  private readonly wallet = inject(WalletService);
 
   readonly busy = signal<Operation | null>(null);
   readonly error = signal<string | null>(null);
   readonly activity = signal<readonly Activity[]>([]);
-  readonly canSign = computed(() => this.kmd.connected());
+  readonly canSign = computed(() => this.wallet.connected());
 
   async register(params: txns.RegisterParams): Promise<void> {
     await this.send('register', null, async (algod, appId, signing) => {
@@ -82,7 +82,7 @@ export class KeeperService {
     ) => Promise<{ result: txns.CallResult; message: string }>,
   ): Promise<void> {
     const appId = this.archon.appId();
-    const signing = this.kmd.signing();
+    const signing = this.wallet.signing();
     if (appId === null) {
       this.error.set('Set a keeper app id first');
       return;

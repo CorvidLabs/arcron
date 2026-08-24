@@ -44,6 +44,10 @@ predecessor). `pulse/` is its demo target (app 769772906).
   is its TypeScript twin — both pinned to the same recorded box.
 - `web/` is styled only with the CorvidLabs design system vendored in
   `web/public/brand/`: no hardcoded colours, no hand-rolled theme toggle.
+- Wallets come from `@txnlab/use-wallet` (see `web/src/app/core/wallets.ts`),
+  following the house pattern: Pera, Defly, Lute, Exodus and Kibisis need no
+  configuration; only the generic WalletConnect entry takes a project id, and
+  it is added only when one is set.
   Amounts display in ALGO; cadences display as time as well as rounds.
 - `.env.*` files are gitignored and must stay that way. Never commit mnemonics;
   the TestNet deployer is a throwaway — never reuse it on mainnet.

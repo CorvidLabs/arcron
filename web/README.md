@@ -27,15 +27,21 @@ the repo root deploys one and prints its id.
 - **Signing on LocalNet** goes through KMD, which the browser can reach
   directly. Keys never leave KMD — transactions are sent there to be signed,
   so no mnemonic is ever typed into the page.
-- **Signing on TestNet** needs a real wallet. `@txnlab/use-wallet` is
-  installed for it; until an adapter is wired the TestNet view is read-only,
-  and says so.
+- **Signing** goes through [`@txnlab/use-wallet`](https://github.com/TxnLab/use-wallet):
+  Pera, Defly, Lute, Exodus and Kibisis, none of which needs any
+  configuration. The generic WalletConnect entry is the only one that wants a
+  project id, so it is offered only when `window.__ARCHON__.walletConnectProjectId`
+  is set — the same pattern the other CorvidLabs front ends use.
+- **On LocalNet**, KMD is offered as a wallet too, so a browser can sign with
+  nothing installed. Keys never leave KMD.
 
 ## Layout
 
 ```
 src/app/core/
   networks.ts        LocalNet/TestNet config, genesis ids, nominal round time
+  wallets.ts         the wallet catalogue (KMD on LocalNet, five public wallets)
+  wallet.service.ts  connect/disconnect/sign, use-wallet's store as signals
   upkeep.ts          the Upkeep box decoder (mirrors scripts/keeper_bot.py)
   keeper-abi.ts      method signatures, checked against the ARC-56 artifact
   keeper-txns.ts     register / top_up / cancel / execute over algosdk
@@ -47,6 +53,7 @@ src/app/components/  network bar, stat tiles, registry table, register form, act
 scripts/
   dev.ts             poke rounds / seed hour- and day-cadence upkeeps on LocalNet
   localnet-txns.ts   drive the transaction builders headlessly against LocalNet
+  wallet-kmd-e2e.ts  drive a real transaction through use-wallet, headlessly
 ```
 
 ## Units and time
