@@ -3,7 +3,7 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { map } from 'rxjs';
 
-import { ArchonService } from '../core/archon.service';
+import { ArcronService } from '../core/arcron.service';
 import { algos, duration, microAlgos, runwayLabel } from '../core/format';
 import { encodeCall, PULSE_TICK_SIGNATURE } from '../core/keeper-abi';
 import { KeeperService } from '../core/keeper.service';
@@ -27,7 +27,7 @@ const CADENCES = [
 ] as const;
 
 @Component({
-  selector: 'archon-register-form',
+  selector: 'arcron-register-form',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [ReactiveFormsModule],
   template: `
@@ -173,7 +173,7 @@ const CADENCES = [
 })
 export class RegisterForm {
   protected readonly keeper = inject(KeeperService);
-  private readonly archon = inject(ArchonService);
+  private readonly arcron = inject(ArcronService);
   private readonly builder = inject(FormBuilder);
 
   protected readonly minInterval = MIN_INTERVAL_ROUNDS;
@@ -235,7 +235,7 @@ export class RegisterForm {
   );
 
   /** Measured pace where we have it; Algorand's nominal block time otherwise. */
-  private readonly pace = computed(() => this.archon.secondsPerRound());
+  private readonly pace = computed(() => this.arcron.secondsPerRound());
 
   /** The ABI argument types the signature declares, or none if it will not parse. */
   protected readonly argumentTypes = computed<string[]>(() => {
@@ -292,7 +292,7 @@ export class RegisterForm {
   protected readonly cadenceHint = computed(() => {
     const { intervalRounds } = this.value();
     if (intervalRounds < MIN_INTERVAL_ROUNDS) return `minimum ${MIN_INTERVAL_ROUNDS} rounds`;
-    const basis = this.archon.paceSource() === 'measured' ? 'measured' : 'nominal';
+    const basis = this.arcron.paceSource() === 'measured' ? 'measured' : 'nominal';
     return `≈ every ${duration(intervalRounds * this.pace())} at ${this.pace().toFixed(1)} s/round (${basis})`;
   });
 

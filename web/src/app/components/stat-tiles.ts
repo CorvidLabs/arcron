@@ -1,17 +1,17 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 
-import { ArchonService } from '../core/archon.service';
+import { ArcronService } from '../core/arcron.service';
 import { algos, duration, microAlgos } from '../core/format';
 import { isExecutable } from '../core/upkeep';
 
 @Component({
-  selector: 'archon-stat-tiles',
+  selector: 'arcron-stat-tiles',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <dl class="tiles">
       <div class="tile">
         <dt class="eyebrow">Upkeeps</dt>
-        <dd class="mono">{{ archon.upkeeps().length }}</dd>
+        <dd class="mono">{{ arcron.upkeeps().length }}</dd>
         <dd class="hint">{{ scheduleHint() }}</dd>
       </div>
 
@@ -27,7 +27,7 @@ import { isExecutable } from '../core/upkeep';
         <dd class="hint">{{ escrowedExact() }}</dd>
       </div>
 
-      <div class="tile" [class.bad]="archon.solvent() === false">
+      <div class="tile" [class.bad]="arcron.solvent() === false">
         <dt class="eyebrow">App spendable</dt>
         <dd class="mono">{{ spendable() }}</dd>
         <dd class="hint">{{ solvencyHint() }}</dd>
@@ -64,30 +64,30 @@ import { isExecutable } from '../core/upkeep';
   `,
 })
 export class StatTiles {
-  protected readonly archon = inject(ArchonService);
+  protected readonly arcron = inject(ArcronService);
 
   protected readonly dueNow = computed(() => {
-    const round = this.archon.round();
-    return this.archon.upkeeps().filter((upkeep) => isExecutable(upkeep, round)).length;
+    const round = this.arcron.round();
+    return this.arcron.upkeeps().filter((upkeep) => isExecutable(upkeep, round)).length;
   });
 
-  protected readonly escrowed = computed(() => algos(this.archon.totalEscrowed()));
-  protected readonly escrowedExact = computed(() => microAlgos(this.archon.totalEscrowed()));
+  protected readonly escrowed = computed(() => algos(this.arcron.totalEscrowed()));
+  protected readonly escrowedExact = computed(() => microAlgos(this.arcron.totalEscrowed()));
 
   protected readonly spendable = computed(() => {
-    const account = this.archon.appAccount();
+    const account = this.arcron.appAccount();
     return account === null ? '—' : algos(account.spendable);
   });
 
   /** The tightest cadence on the app, as time — "a heartbeat every ~28 s". */
   protected readonly scheduleHint = computed(() => {
-    const upkeeps = this.archon.upkeeps();
+    const upkeeps = this.arcron.upkeeps();
     if (upkeeps.length === 0) return 'nothing scheduled';
     const fastest = upkeeps.reduce(
       (best, upkeep) => (upkeep.intervalRounds < best ? upkeep.intervalRounds : best),
       upkeeps[0].intervalRounds,
     );
-    return `fastest every ~${duration(Number(fastest) * this.archon.secondsPerRound())}`;
+    return `fastest every ~${duration(Number(fastest) * this.arcron.secondsPerRound())}`;
   });
 
   protected readonly dueHint = computed(() =>
@@ -95,7 +95,7 @@ export class StatTiles {
   );
 
   protected readonly solvencyHint = computed(() => {
-    const solvent = this.archon.solvent();
+    const solvent = this.arcron.solvent();
     if (solvent === null) return 'no app selected';
     return solvent ? 'covers every escrow' : 'below total escrow';
   });

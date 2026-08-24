@@ -4,7 +4,7 @@ Scans the Keeper app's upkeep boxes each round, executes every upkeep that
 is due and funded, and collects the per-execution fees. Loops block-by-block
 by default, or runs a single scan with --once.
 
-Picks its network with --network (or ARCHON_NETWORK), loading .env.localnet
+Picks its network with --network (or ARCRON_NETWORK), loading .env.localnet
 or .env.testnet. Signs as the account from KEEPER_MNEMONIC if set, else
 DEPLOYER_MNEMONIC; execution fees are paid to that account. On LocalNet both
 come from KMD, so no mnemonic is needed.
@@ -376,7 +376,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--log-format",
         choices=("text", "json"),
-        default=os.environ.get("ARCHON_LOG_FORMAT", "text"),
+        default=os.environ.get("ARCRON_LOG_FORMAT", "text"),
         help="one JSON object per line for log shipping (default: %(default)s)",
     )
     args = parser.parse_args(argv)

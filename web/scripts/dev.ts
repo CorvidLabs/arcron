@@ -42,7 +42,7 @@ if (command === 'poke') {
       receiver: account.address,
       amount: 0,
       suggestedParams: await algod.getTransactionParams().do(),
-      note: new TextEncoder().encode(`archon: advance ${i}`),
+      note: new TextEncoder().encode(`arcron: advance ${i}`),
     });
     await algod.sendRawTransaction(await kmd.signTransaction(account.handle, '', txn)).do();
   }

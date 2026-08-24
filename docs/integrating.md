@@ -1,4 +1,4 @@
-# Hooking your contract into Archon
+# Hooking your contract into Arcron
 
 Integration is one method. This is everything else you need to know, in one
 pass, so you do not have to assemble it from five places.
@@ -24,7 +24,7 @@ def run(self) -> UInt64:
     ...
 ```
 
-Archon calls it with exactly one application argument — the method selector —
+Arcron calls it with exactly one application argument — the method selector —
 and no foreign arrays. That is the whole call shape. `tick()uint64`,
 `publish()uint64`, `distribute()uint64` and `sweep()uint64` in this repo are
 all the same shape.
@@ -44,7 +44,7 @@ Two choices, and most integrations should take the first.
 assert Txn.sender == Application(self.keeper_app.value).address, "Only the keeper app"
 ```
 
-Archon's inner call comes from the keeper application's account, so that is the
+Arcron's inner call comes from the keeper application's account, so that is the
 sender to check. Derive the address off-chain with
 `algosdk.logic.get_application_address(app_id)`, or in Python:
 
@@ -55,7 +55,7 @@ get_application_address(769802474)
 
 **Leave it permissionless** — anyone may call the hook, as `Pulse` and the
 timed-release demo do. Correct when the hook is idempotent and its timing is
-the only thing that matters: it means your contract still works if Archon
+the only thing that matters: it means your contract still works if Arcron
 disappears, and anybody can push it along. It is the wrong default when the
 hook's effects depend on *when* it runs, because then anyone can choose the
 moment.
@@ -70,7 +70,7 @@ This is the part integrations get wrong.
 
 ### Your hook is called whether or not there is work
 
-Archon calls on every cadence, forever. The no-op path is the common path, so
+Arcron calls on every cadence, forever. The no-op path is the common path, so
 make it cheap and make it **return** rather than fail:
 
 ```python
@@ -87,23 +87,23 @@ failing and you are simply not serviced any more, quietly.
 
 Failing costs the keeper nothing — Algorand rejects the transaction before it
 reaches a block, so no fee is charged (measured; see
-[Operating a bot](archon.md#operating-a-bot)) — but it costs *you* the
+[Operating a bot](arcron.md#operating-a-bot)) — but it costs *you* the
 schedule. Fail soft. Record the problem in state and return.
 
 ### You have more opcode budget than you think
 
-Opcode budget pools across the app calls in a group, and an Archon execution
-contains two — Archon's own call and the inner call to you. Measured on
+Opcode budget pools across the app calls in a group, and an Arcron execution
+contains two — Arcron's own call and the inner call to you. Measured on
 LocalNet with `smart_contracts/resource_probe/`:
 
 | Called | Budget remaining at method entry |
 |--------|----------------------------------|
 | Directly, as a plain app call | **684** |
-| Through an Archon upkeep | **1,250** |
+| Through an Arcron upkeep | **1,250** |
 
-So a hook driven by Archon has roughly **1.8× the budget** of the same method
-called directly. It is not competing with Archon for budget; it inherits the
-pool Archon's own call contributed to. Reach for `algopy.ensure_budget` only
+So a hook driven by Arcron has roughly **1.8× the budget** of the same method
+called directly. It is not competing with Arcron for budget; it inherits the
+pool Arcron's own call contributed to. Reach for `algopy.ensure_budget` only
 if you exceed that.
 
 ### Assume it may run more than once, and in bursts
@@ -123,13 +123,13 @@ that policy and needs concrete cases.
 
 A cadence is a round count. A round is ~2.8 s nominally, less in practice
 (TestNet measured 2.66 s), so "daily" means "every ~30,857 rounds" and slides
-against the calendar — about a day and a half over thirty cycles. Archon
+against the calendar — about a day and a half over thirty cycles. Arcron
 promises "not before this round", never "at 09:00". If a wall-clock moment
 matters, have the *hook* check the time and no-op when early, and schedule it
 often enough to catch the window.
 
 Related: do not set a cadence so tight that ordinary keeper lateness looks
-like a real condition. Archon's minimum interval is 10 rounds, and the demos
+like a real condition. Arcron's minimum interval is 10 rounds, and the demos
 here use a floor of 30 rounds for anything that treats lateness as a signal.
 
 ## The pull pattern
@@ -140,12 +140,12 @@ own transactions.**
 If you take one thing from this guide, take that. Every demo in this repo is
 shaped by it, and not for stylistic reasons:
 
-**Resource availability.** An Archon inner call reaches only what the keeper's
+**Resource availability.** An Arcron inner call reaches only what the keeper's
 own transaction makes available — and nothing tells a keeper what your hook
 needs. A scheduled call that tries to pay an arbitrary account, read a
 balance, or call another app **fails**, because those resources are not
 available to it. (Measured; the table is in
-[archon.md](archon.md#what-an-archon-triggered-call-can-reach).)
+[arcron.md](arcron.md#what-an-arcron-triggered-call-can-reach).)
 
 **Failure isolation.** A push payout to a closed or hostile account fails the
 whole execution, which wedges the schedule for *everyone* your contract serves.
@@ -168,17 +168,17 @@ then claim. `smart_contracts/deadman/` allocates to a beneficiary who claims.
 ## Reaching resources your hook cannot name
 
 A scheduled call can only touch what the executing transaction makes
-available. Archon stores no foreign arrays — but it does not need to. Resource
+available. Arcron stores no foreign arrays — but it does not need to. Resource
 availability supplied on the *keeper's* transaction reaches two levels down:
-to Archon's inner call, and to your own inner transactions from it. Measured
+to Arcron's inner call, and to your own inner transactions from it. Measured
 in [#24](https://github.com/CorvidLabs/archon/issues/24), across payments,
 asset transfers, balance reads, holding reads and inner app calls.
 
-The budget is **8 references per transaction**. Archon spends two — the upkeep
+The budget is **8 references per transaction**. Arcron spends two — the upkeep
 box and your app — leaving **6** in any mix of accounts, assets and apps.
 
 What is missing is discovery: nothing on chain tells a keeper which resources
-your upkeep needs. The convention Archon proposes is a readonly view a keeper
+your upkeep needs. The convention Arcron proposes is a readonly view a keeper
 simulates before executing:
 
 ```
@@ -231,7 +231,7 @@ def settle(self, settlement: Settlement) -> UInt64: ...
 
 Every argument is fixed at registration. If your hook needs a value that
 changes between runs, it has to derive it — from its own state, from a
-resource it pulls, or from the round. Archon will not supply it, by design.
+resource it pulls, or from the round. Arcron will not supply it, by design.
 
 ## An ASA bonus
 
@@ -278,7 +278,7 @@ an upkeep has every reason to wait for the fee to peak before executing. It
 clears a market only when there is a market: with several keepers competing,
 one of them takes the work early at a lower price, and the ceiling is rarely
 reached. With one keeper, the ceiling *is* the price, and the cadence is
-roughly half what you asked for. Archon's TestNet deployment currently has one
+roughly half what you asked for. Arcron's TestNet deployment currently has one
 keeper.
 
 So: leave the ceiling at zero unless an upkeep is genuinely going unserviced.

@@ -7,7 +7,7 @@ import { RegistryTable } from './components/registry-table';
 import { SignerBar } from './components/signer-bar';
 import { StatTiles } from './components/stat-tiles';
 import { UpkeepBoard } from './components/upkeep-board';
-import { ArchonService } from './core/archon.service';
+import { ArcronService } from './core/arcron.service';
 import { shortAddress } from './core/format';
 
 @Component({
@@ -18,7 +18,7 @@ import { shortAddress } from './core/format';
   styleUrl: './app.css',
 })
 export class App {
-  protected readonly archon = inject(ArchonService);
+  protected readonly arcron = inject(ArcronService);
 
   /** Two jobs, one state: watching your own upkeeps, or finding work. */
   protected readonly view = signal<'registry' | 'board'>('registry');
@@ -32,14 +32,14 @@ export class App {
   }
 
   protected readonly appAddress = computed(() => {
-    const account = this.archon.appAccount();
+    const account = this.arcron.appAccount();
     return account === null ? null : shortAddress(account.address);
   });
 
   protected readonly nodeError = computed(() => {
-    if (this.archon.genesisMatches() === false) {
-      return `The node answering for ${this.archon.config().label} reports genesis ${this.archon.genesisId()}. Check the endpoint before trusting anything on this page.`;
+    if (this.arcron.genesisMatches() === false) {
+      return `The node answering for ${this.arcron.config().label} reports genesis ${this.arcron.genesisId()}. Check the endpoint before trusting anything on this page.`;
     }
-    return this.archon.error();
+    return this.arcron.error();
   });
 }

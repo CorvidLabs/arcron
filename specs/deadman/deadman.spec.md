@@ -23,10 +23,10 @@ that a cron job cannot: the scenario *is* that your infrastructure went away,
 so a scheduler you run yourself is worth nothing.
 
 `sweep` does not pay anyone. Paying the beneficiary from a scheduled call
-would mean reaching an account that call cannot reach — an Archon inner call
+would mean reaching an account that call cannot reach — an Arcron inner call
 sees only what the keeper's own transaction makes available. Firing therefore
 *allocates*, and the beneficiary *pulls*. See "pull the resource" in
-`docs/archon.md`.
+`docs/arcron.md`.
 
 ## Public API
 
@@ -34,7 +34,7 @@ sees only what the keeper's own transaction makes available. Firing therefore
 
 | Constant | Value | Description |
 |----------|-------|-------------|
-| `MIN_INTERVAL_ROUNDS` | `30` | Shortest check-in interval. Archon's own minimum cadence is 10 rounds, so a shorter interval could fire on a keeper's ordinary lateness rather than on the owner's absence. |
+| `MIN_INTERVAL_ROUNDS` | `30` | Shortest check-in interval. Arcron's own minimum cadence is 10 rounds, so a shorter interval could fire on a keeper's ordinary lateness rather than on the owner's absence. |
 
 ### Exported Types
 
@@ -49,7 +49,7 @@ sees only what the keeper's own transaction makes available. Firing therefore
 |--------|-----------|---------|-------------|
 | `arm` | `deposit: pay, beneficiary: address, interval_rounds: uint64` | `uint64` | Owner only, once. Deposits the escrow and returns the first deadline. |
 | `check_in` | — | `uint64` | Owner only. Pushes the deadline out; returns the new one. |
-| `sweep` | — | `uint64` | Zero-argument, permissionless — Archon's shape. Returns the round it fired in, or `0` when there is nothing to do. |
+| `sweep` | — | `uint64` | Zero-argument, permissionless — Arcron's shape. Returns the round it fired in, or `0` when there is nothing to do. |
 | `claim` | — | `uint64` | The beneficiary pulls what was released. |
 | `rounds_remaining` | — | `uint64` | Readonly. Rounds until firing, or zero once due or fired. |
 | `has_fired` | — | `bool` | Readonly. |
@@ -68,7 +68,7 @@ sees only what the keeper's own transaction makes available. Firing therefore
 ### Scenario: The owner is present
 
 - **Given** an armed switch with a deadline 30 rounds out
-- **When** Archon sweeps it every 10 rounds and the owner checks in before the deadline
+- **When** Arcron sweeps it every 10 rounds and the owner checks in before the deadline
 - **Then** every sweep returns `0`, the escrow is untouched, and the deadline moves out
 
 ### Scenario: The owner goes quiet

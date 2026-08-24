@@ -1,6 +1,6 @@
 """A timed release, end to end, driven by a real keeper.
 
-Schedules content for a round in the near future, points an Archon upkeep at
+Schedules content for a round in the near future, points an Arcron upkeep at
 `publish()`, and lets the keeper bot fire it. Along the way it demonstrates the
 three properties that make this worth caring about, and the one it cannot have:
 

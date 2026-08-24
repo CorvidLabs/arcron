@@ -96,7 +96,7 @@ class Embargo(ARC4Contract):
     def publish(self) -> UInt64:
         """Lift the embargo. Permissionless, and callable only once.
 
-        Zero-argument by design: this is the shape an Archon upkeep can call,
+        Zero-argument by design: this is the shape an Arcron upkeep can call,
         so a keeper anywhere in the world can be the one to fire it and be paid
         for doing so.
         """

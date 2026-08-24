@@ -18,7 +18,7 @@ A timed release: content that becomes official at a round nobody controls.
 The author commits content and a release round. From that moment there is no
 method — not for the author, not for anyone — that changes the content, moves
 the round, or cancels the release. `publish` is a zero-argument NoOp, which is
-exactly the call shape an Archon upkeep can make, so any keeper in the world
+exactly the call shape an Arcron upkeep can make, so any keeper in the world
 can be the one to fire it and be paid for doing so.
 
 This is the flagship demonstration of what a keeper network is *for*: a
@@ -55,7 +55,7 @@ you.
 | Method | Parameters | Returns | Description |
 |--------|-----------|---------|-------------|
 | `schedule` | `mbr_payment: pay, content: byte[], release_round: uint64` | `uint64` | Commit content to a release round. Callable once, ever. Returns the release round. |
-| `publish` | — | `uint64` | Permissionless; lifts the embargo at or after the release round and returns the round it happened in. The shape an Archon upkeep calls. |
+| `publish` | — | `uint64` | Permissionless; lifts the embargo at or after the release round and returns the round it happened in. The shape an Arcron upkeep calls. |
 | `is_published` | — | `bool` | Readonly. Whether the embargo has lifted. |
 | `rounds_remaining` | — | `uint64` | Readonly. Rounds until release, or zero once due. |
 
@@ -80,7 +80,7 @@ you.
 ### Scenario: Published by someone other than the author
 
 - **Given** the release round has arrived
-- **When** any keeper calls `publish` via an Archon upkeep
+- **When** any keeper calls `publish` via an Arcron upkeep
 - **Then** `published_round` is set, a `Published` event is emitted naming that keeper, and the keeper collects the upkeep's fee
 
 ### Scenario: The author changes their mind
@@ -102,7 +102,7 @@ you.
 | `publish` twice | Fails with "Already published" |
 | `publish` with nothing scheduled | Fails with "Nothing scheduled" |
 
-Note: when `publish` is reached through an Archon upkeep, the assert's message
+Note: when `publish` is reached through an Arcron upkeep, the assert's message
 does not survive the app boundary — a failure inside an inner call to another
 app is reported as a program counter, because the source map belongs to that
 app. Match on the failing app id when asserting against it.

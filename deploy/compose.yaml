@@ -6,14 +6,14 @@
 #
 # The bot earns its own fees, so a funded account is self-sustaining while the
 # registry is busy — but it cannot earn its way back from empty. Watch the
-# balance (see docs/archon.md, "Operating a bot").
+# balance (see docs/arcron.md, "Operating a bot").
 
 services:
   keeper:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
-    image: archon-keeper
+    image: arcron-keeper
     # Survive algod hiccups, node restarts and reboots. The bot backs off
     # internally too, so this is the last line of defence, not the first.
     restart: unless-stopped
@@ -34,7 +34,7 @@ services:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
-    image: archon-keeper
+    image: arcron-keeper
     restart: unless-stopped
     env_file: notifier.env
     entrypoint: ["python", "-m", "scripts.notifier"]
@@ -43,7 +43,7 @@ services:
     stop_grace_period: 15s
     volumes:
       # Remember what has been announced, so a restart is quiet.
-      - notifier-state:/home/keeper/.local/state/archon
+      - notifier-state:/home/keeper/.local/state/arcron
     logging:
       driver: json-file
       options:

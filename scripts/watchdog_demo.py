@@ -1,7 +1,7 @@
 """A feed goes quiet, and a keeper notices. End to end.
 
 The three states the issue asks for — fresh, gone stale, recovered — driven by
-a real Archon upkeep and a real reporter.
+a real Arcron upkeep and a real reporter.
 
 Run:  poetry run python -m scripts.watchdog_demo [--network localnet]
 """

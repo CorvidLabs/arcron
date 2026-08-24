@@ -25,14 +25,14 @@ import { NETWORKS, type NetworkKey } from './networks';
 /** Set at runtime (window config or a build define) to enable WalletConnect. */
 declare global {
   interface Window {
-    __ARCHON__?: { walletConnectProjectId?: string };
+    __ARCRON__?: { walletConnectProjectId?: string };
   }
 }
 
 const LOCALNET_TOKEN = 'a'.repeat(64);
 
 function walletConnectProjectId(): string {
-  return window.__ARCHON__?.walletConnectProjectId?.trim() ?? '';
+  return window.__ARCRON__?.walletConnectProjectId?.trim() ?? '';
 }
 
 /** Wallets that hold real accounts — the ones that matter off LocalNet. */

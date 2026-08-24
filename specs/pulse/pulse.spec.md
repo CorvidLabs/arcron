@@ -50,7 +50,7 @@ now. Permissionless by design; it is a demo, not a gate.
 
 ### Scenario: A multi-argument upkeep
 
-- **Given** a Keeper upkeep registered with `tick_with`'s selector, `7` and `"archon"`
+- **Given** a Keeper upkeep registered with `tick_with`'s selector, `7` and `"arcron"`
 - **When** the upkeep is executed
 - **Then** `beats` advances by 7 and `last_note` holds the string — every app arg arrived
 
@@ -79,4 +79,4 @@ now. Permissionless by design; it is a demo, not a gate.
 | Date | Author | Change |
 |------|--------|--------|
 | 2026-08-23 | CorvidLabs | Initial demo target: tick heartbeat counter |
-| 2026-08-24 | CorvidLabs | Added `tick_with` for issue #8: the demo target now demonstrates a hook with arguments of its own, which is the shape Archon could not call before. |
+| 2026-08-24 | CorvidLabs | Added `tick_with` for issue #8: the demo target now demonstrates a hook with arguments of its own, which is the shape Arcron could not call before. |

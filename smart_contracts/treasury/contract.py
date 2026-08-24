@@ -1,7 +1,7 @@
 # pyright: reportMissingModuleSource=false
 """A treasury that distributes on a schedule nobody controls.
 
-Deposits arrive from anywhere. On a cadence, Archon calls `distribute`, which
+Deposits arrive from anywhere. On a cadence, Arcron calls `distribute`, which
 snapshots what has accumulated and credits each recipient their fixed share.
 It moves no money: recipients pull their own allocations, for the usual reason
 — a scheduled call cannot reach an account it was not handed, and a push to a
@@ -105,7 +105,7 @@ class Treasury(ARC4Contract):
 
     @abimethod()
     def distribute(self) -> UInt64:
-        """Divide what has accumulated. Zero arguments — Archon's shape.
+        """Divide what has accumulated. Zero arguments — Arcron's shape.
 
         Returns the amount allocated, or 0 when there is nothing to do. Never
         fails: a quiet period must be uneventful, because a failing hook trips

@@ -1,4 +1,4 @@
-"""Spike: can a target re-enter Archon's `execute` from inside its own call?
+"""Spike: can a target re-enter Arcron's `execute` from inside its own call?
 
 `execute` writes the upkeep's state before it submits the inner app call, so a
 re-entrant execution has to satisfy the schedule afresh. Under `SKIP_AHEAD`
@@ -35,8 +35,8 @@ logger = logging.getLogger(__name__)
 
 FEE = 4_000
 INTERVAL = 10
-# Generous: the keeper's call, Archon's inner call to the probe, the probe's
-# re-entrant call, Archon's inner call from *that*, and two payments.
+# Generous: the keeper's call, Arcron's inner call to the probe, the probe's
+# re-entrant call, Arcron's inner call from *that*, and two payments.
 EXECUTE_FEE = 20_000
 CALL_SIGNATURE = "reenter()uint64"
 

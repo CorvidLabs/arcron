@@ -61,7 +61,7 @@ def default_state_path(network: str, app_id: int) -> Path:
     """Per-network, per-app, and outside the repo so it is never committed."""
     base = os.environ.get("XDG_STATE_HOME")
     root = Path(base) if base else Path.home() / ".local" / "state"
-    return root / "archon" / f"keeper-backoff-{network}-{app_id}.json"
+    return root / "arcron" / f"keeper-backoff-{network}-{app_id}.json"
 
 
 class Backoff:

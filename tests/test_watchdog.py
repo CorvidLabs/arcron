@@ -89,7 +89,7 @@ def test_one_round_past_the_threshold_flags_it(context, watchdog) -> None:
 
 
 def test_flagging_happens_once_per_episode(context, watchdog) -> None:
-    """Archon keeps calling; a flagged feed must stop doing work.
+    """Arcron keeps calling; a flagged feed must stop doing work.
 
     Re-flagging every cadence would spend opcode budget and emit an event per
     sweep for a condition that has not changed.

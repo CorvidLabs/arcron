@@ -49,7 +49,7 @@ execution and stall the schedule for everyone else.
 |--------|-----------|---------|-------------|
 | `configure` | `mbr_payment: pay, recipients: (address,uint64,uint64)[]` | `uint64` | Creator only, once, forever. Fixes the recipients and shares; returns the count. |
 | `deposit` | `payment: pay` | `uint64` | Contribute from anywhere; returns the balance awaiting distribution. |
-| `distribute` | — | `uint64` | Zero-argument, the shape Archon calls. Allocates the accumulated balance and returns the amount, or `0`. |
+| `distribute` | — | `uint64` | Zero-argument, the shape Arcron calls. Allocates the accumulated balance and returns the amount, or `0`. |
 | `claim` | — | `uint64` | A recipient pulls everything owed to them. |
 | `owed_to` | `who: address` | `uint64` | Readonly. |
 
@@ -77,7 +77,7 @@ stays intact and auditable.
 ### Scenario: A quiet period
 
 - **Given** a configured treasury with nothing deposited
-- **When** Archon calls `distribute`
+- **When** Arcron calls `distribute`
 - **Then** it returns `0`, changes nothing, and the keeper is paid
 
 ### Scenario: A distribution nobody could move
@@ -111,8 +111,8 @@ a DEX and distributing the proceeds. That half is **not** built here, and the
 reason has changed since the issue was written.
 
 It was assumed to need multi-argument calls and foreign arrays. The
-resource-availability spike (issue #24, results in `docs/archon.md`) measured
-otherwise: an Archon-triggered inner call **can** reach an unreferenced app,
+resource-availability spike (issue #24, results in `docs/arcron.md`) measured
+otherwise: an Arcron-triggered inner call **can** reach an unreferenced app,
 account or asset **when the keeper attaches the reference to its own
 transaction**. So the DEX interaction is reachable today in principle.
 

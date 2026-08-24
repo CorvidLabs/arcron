@@ -9,7 +9,7 @@
  *
  * The one thing that does *not*: which keeper earned it. Per-keeper
  * attribution is not stored on-chain, which is why the leaderboard is a
- * separate decision (see docs/archon.md).
+ * separate decision (see docs/arcron.md).
  */
 
 import { EXECUTE_FEE, effectiveFee, escalates, executionsRemaining, type Upkeep } from './upkeep';

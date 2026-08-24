@@ -1,4 +1,4 @@
-"""The smallest contract Archon can drive. Copy this and start editing.
+"""The smallest contract Arcron can drive. Copy this and start editing.
 
 Everything an integration needs and nothing it does not:
 
@@ -47,11 +47,11 @@ class MinimalTarget(ARC4Contract):
 
     @abimethod()
     def run(self) -> UInt64:
-        """The hook. Zero arguments, so Archon can call it.
+        """The hook. Zero arguments, so Arcron can call it.
 
         Returns what it did, which is often nothing — and nothing is fine.
         """
-        # Only the keeper app may drive the schedule. Archon's inner call comes
+        # Only the keeper app may drive the schedule. Arcron's inner call comes
         # from the keeper application's account, so this is the check to make.
         # Leave it out to be permissionless like the Pulse demo; see the guide
         # for when that is the right call.

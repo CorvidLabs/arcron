@@ -1,9 +1,9 @@
-"""Spike: what would ASA-denominated upkeep fees cost Archon?
+"""Spike: what would ASA-denominated upkeep fees cost Arcron?
 
 Issue #9 wants keeper rewards denominated in an ASA (CORVID). Three things
 decide the shape, and none of them can be settled by argument:
 
-1. **Can the target pay the keeper itself?** If a target could, Archon would
+1. **Can the target pay the keeper itself?** If a target could, Arcron would
    never need to hold an ASA and #9 would collapse to documentation. Part A
    asks the target who it thinks called it, directly and through an upkeep.
 2. **What does holding an ASA cost the app account?** Every asset an app can
@@ -219,9 +219,9 @@ REG_ANCHOR = '''    ) -> UInt64:
 # ------------------------------------------- alternative: name the keeper
 
 # Part A shows a target cannot pay the keeper because it never learns who the
-# keeper is. The only fix is for Archon to tell it — append the keeper's
+# keeper is. The only fix is for Arcron to tell it — append the keeper's
 # address as a final app arg. That is priced here rather than dismissed,
-# because it is the one design that needs Archon to hold no asset at all.
+# because it is the one design that needs Arcron to hold no asset at all.
 
 
 def _keeper_arg_source(max_args: int = 3) -> str:
@@ -400,7 +400,7 @@ def part_a(algorand, deployer, keeper, probe, pulse) -> None:
     logger.info(f"  called directly            {encoding.encode_address(direct)}")
     logger.info(f"  called through an upkeep   {encoding.encode_address(via_keeper)}")
     logger.info(f"  the keeper who sent it     {deployer.address}")
-    logger.info(f"  Archon's app account       {keeper.app_address}")
+    logger.info(f"  Arcron's app account       {keeper.app_address}")
 
 
 def part_b(algorand, deployer) -> None:
@@ -642,7 +642,7 @@ def main(argv: list[str] | None = None) -> None:
     probe = deploy_probe()
     pulse = deploy_pulse()
 
-    with tempfile.TemporaryDirectory(prefix="archon-asa-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="arcron-asa-") as tmp:
         out_root = pathlib.Path(tmp)
         part_a(algorand, deployer, keeper, probe, pulse)
         part_b(algorand, deployer)

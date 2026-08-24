@@ -3,12 +3,12 @@
 
 Detecting that data stopped requires someone to be watching, and that someone
 cannot be the data provider: a provider that goes down has no incentive to
-announce it and usually no ability to. Archon supplies a watcher whose payment
+announce it and usually no ability to. Arcron supplies a watcher whose payment
 does not depend on the provider's cooperation.
 
 This contract only ever compares rounds. **It never looks at the value**, so it
 cannot be fed a wrong price — which makes it an honest demonstration of how
-Archon composes with data systems without pretending Archon can supply data.
+Arcron composes with data systems without pretending Arcron can supply data.
 
 Recovery policy — the issue asks for one, with reasons. **The flag clears
 automatically on the next update**, and every episode is recorded:
@@ -37,7 +37,7 @@ from algopy import (
 from algopy.arc4 import abimethod
 
 # A threshold below this cannot be distinguished from ordinary keeper lateness:
-# Archon's minimum cadence is 10 rounds, so a feed must be allowed to be at
+# Arcron's minimum cadence is 10 rounds, so a feed must be allowed to be at
 # least a couple of sweeps late before anyone calls it stale.
 MIN_THRESHOLD_ROUNDS = 30
 
@@ -110,7 +110,7 @@ class Watchdog(ARC4Contract):
 
     @abimethod()
     def check_freshness(self) -> UInt64:
-        """Flag the feed if it has gone quiet. Zero arguments — Archon's shape.
+        """Flag the feed if it has gone quiet. Zero arguments — Arcron's shape.
 
         Returns the round it flagged in, or 0 for the ordinary case where the
         feed is fine or already flagged. Never fails: a failing target would

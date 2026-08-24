@@ -318,7 +318,7 @@ def post(webhook: str | None, message: str) -> None:
 def state_path(network: str, app_id: int) -> Path:
     base = os.environ.get("XDG_STATE_HOME")
     root = Path(base) if base else Path.home() / ".local" / "state"
-    return root / "archon" / f"notifier-{network}-{app_id}.json"
+    return root / "arcron" / f"notifier-{network}-{app_id}.json"
 
 
 def load(path: Path | None) -> Snapshot:

@@ -1,6 +1,6 @@
-# Archon console
+# Arcron console
 
-The web front end for the Archon keeper network: a public dashboard of the
+The web front end for the Arcron keeper network: a public dashboard of the
 upkeep registry, plus a keeper console for registering, funding, executing and
 cancelling upkeeps.
 
@@ -30,7 +30,7 @@ the repo root deploys one and prints its id.
 - **Signing** goes through [`@txnlab/use-wallet`](https://github.com/TxnLab/use-wallet):
   Pera, Defly, Lute, Exodus and Kibisis, none of which needs any
   configuration. The generic WalletConnect entry is the only one that wants a
-  project id, so it is offered only when `window.__ARCHON__.walletConnectProjectId`
+  project id, so it is offered only when `window.__ARCRON__.walletConnectProjectId`
   is set — the same pattern the other CorvidLabs front ends use.
 - **On LocalNet**, KMD is offered as a wallet too, so a browser can sign with
   nothing installed. Keys never leave KMD.
@@ -88,7 +88,7 @@ src/app/core/
   upkeep.ts          the Upkeep box decoder (mirrors scripts/keeper_bot.py)
   keeper-abi.ts      method signatures, checked against the ARC-56 artifact
   keeper-txns.ts     register / top_up / cancel / execute over algosdk
-  archon.service.ts  polling registry state as signals; measures the round rate
+  arcron.service.ts  polling registry state as signals; measures the round rate
   kmd.service.ts     LocalNet signing
   keeper.service.ts  the four calls as UI state
   format.ts          ALGO amounts and rounds-as-time

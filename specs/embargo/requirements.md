@@ -23,7 +23,7 @@ After scheduling, no method SHALL exist that alters the content, the release rou
 `publish` SHALL succeed at most once and SHALL record the round it happened in.
 
 ### REQ-embargo-005
-`publish` SHALL take no arguments beyond its selector, so that an Archon upkeep can call it in the v1 shape.
+`publish` SHALL take no arguments beyond its selector, so that an Arcron upkeep can call it in the v1 shape.
 
 ## Constraints
 

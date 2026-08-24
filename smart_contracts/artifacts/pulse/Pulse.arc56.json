@@ -40,7 +40,7 @@
                 ]
             },
             "readonly": false,
-            "desc": "A hook with arguments of its own; returns the new count.\nUnreachable through an upkeep before #8, because an ARC-4 method needs its selector and each argument in an app arg of its own and Archon could only send one.",
+            "desc": "A hook with arguments of its own; returns the new count.\nUnreachable through an upkeep before #8, because an ARC-4 method needs its selector and each argument in an app arg of its own and Arcron could only send one.",
             "events": [],
             "recommendations": {}
         }
@@ -49,7 +49,7 @@
         22,
         28
     ],
-    "desc": "Demo upkeep target: a public heartbeat counter.\n\n    Designed to be driven by the Keeper contract. `tick` takes no arguments\n    beyond its method selector, which is the only shape Archon could call\n    before #8; `tick_with` takes real arguments, which is the shape it can\n    call now. Permissionless by design \u2014 it is a demo, not a gate.\n    ",
+    "desc": "Demo upkeep target: a public heartbeat counter.\n\n    Designed to be driven by the Keeper contract. `tick` takes no arguments\n    beyond its method selector, which is the only shape Arcron could call\n    before #8; `tick_with` takes real arguments, which is the shape it can\n    call now. Permissionless by design \u2014 it is a demo, not a gate.\n    ",
     "networks": {},
     "state": {
         "schema": {

@@ -39,12 +39,12 @@ reduce #9 to documentation. Part A asks the target who it thinks called it:
 | How the target was called | Caller it sees |
 |---|---|
 | directly | the account that sent the transaction |
-| through an Archon upkeep | **Archon's app account** |
+| through an Arcron upkeep | **Arcron's app account** |
 
-An Archon-executed call arrives as an inner transaction, and an inner
+An Arcron-executed call arrives as an inner transaction, and an inner
 transaction's sender is the app that submitted it. **The target never learns
 who the keeper is.** So a target cannot pay, tip or credit a keeper unless
-Archon tells it who to pay — which is a different design, priced and rejected
+Arcron tells it who to pay — which is a different design, priced and rejected
 below.
 
 ## What an asset costs
@@ -193,7 +193,7 @@ on cancel, not a fee.
   across app ids — keepers would have to watch each deployment — and it makes
   the asset a property of the network rather than of an upkeep, which is
   exactly the commitment 1.0 says not to make.
-- **Let the target pay the keeper.** Requires Archon to name the keeper in the
+- **Let the target pay the keeper.** Requires Arcron to name the keeper in the
   call, since Part A shows the target cannot otherwise know. Priced honestly:
   at a ceiling of 3, #8 plus keeper-naming is **1,628 B** against the ASA
   path's 1,814 — it is **186 bytes cheaper**, because doubling three fan-out
@@ -203,9 +203,9 @@ on cancel, not a fee.
 
   So the rejection rests entirely on the other axis, which is the one that
   matters: **the reward is not escrowed.** A target that runs out of the asset
-  simply stops paying the bonus while Archon keeps paying the ALGO fee, and
-  keepers cannot rely on a promise Archon is not holding the funds for.
-  Archon's whole proposition is that the escrow is trustless; a tip is not.
+  simply stops paying the bonus while Arcron keeps paying the ALGO fee, and
+  keepers cannot rely on a promise Arcron is not holding the funds for.
+  Arcron's whole proposition is that the escrow is trustless; a tip is not.
 - **Pack the three fields into a dynamic tail** so an ALGO-only upkeep pays 4
   bytes instead of 24. Saves 8,000 µALGO — about a fifth of a cent — per
   upkeep, in exchange for a third encoding shape in two decoders and two
@@ -231,7 +231,7 @@ Beyond the struct:
 - **`scripts/keeper_e2e.py`** gains the two rows from Part C — an opted-in
   keeper and an un-opted-in one — because the gate is the part most likely to
   regress silently.
-- **`docs/archon.md`** records the decision, per #9's first acceptance
+- **`docs/arcron.md`** records the decision, per #9's first acceptance
   criterion, and the README roadmap moves the item.
 
 ## Open questions for review

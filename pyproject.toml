@@ -1,7 +1,7 @@
 [tool.poetry]
-name = "archon"
+name = "arcron"
 version = "0.1.0"
-description = "Archon — a permissionless keeper network for Algorand"
+description = "Arcron — a permissionless keeper network for Algorand"
 authors = ["0xLeif <leif.algo@pm.me>"]
 readme = "README.md"
 package-mode = false

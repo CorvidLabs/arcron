@@ -13,7 +13,7 @@
 import { computed, effect, Injectable, inject, signal, untracked } from '@angular/core';
 import { WalletManager } from '@txnlab/use-wallet';
 
-import { ArchonService, describe } from './archon.service';
+import { ArcronService, describe } from './arcron.service';
 import type { Signing } from './keeper-txns';
 import { managerNetworks, walletsFor } from './wallets';
 
@@ -39,7 +39,7 @@ export interface WalletOption {
 
 @Injectable({ providedIn: 'root' })
 export class WalletService {
-  private readonly archon = inject(ArchonService);
+  private readonly arcron = inject(ArcronService);
   private managers = new Map<string, WalletManager>();
   private unsubscribe: (() => void) | null = null;
 
@@ -57,7 +57,7 @@ export class WalletService {
 
   constructor() {
     effect(() => {
-      const network = this.archon.network();
+      const network = this.arcron.network();
       untracked(() => this.useNetwork(network));
     });
   }
@@ -123,7 +123,7 @@ export class WalletService {
   }
 
   private manager(): WalletManager {
-    const network = this.archon.network();
+    const network = this.arcron.network();
     const existing = this.managers.get(network);
     if (existing !== undefined) return existing;
     const manager = new WalletManager({

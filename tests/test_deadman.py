@@ -1,6 +1,6 @@
 """A dead man's switch, where the interesting behaviour is the waiting.
 
-`sweep` is called by Archon on every cadence for the entire life of the
+`sweep` is called by Arcron on every cadence for the entire life of the
 switch, and almost every one of those calls must do nothing, cheaply, without
 failing. A failing target trips keeper backoff — and a switch nobody is
 watching is not a switch. Most of these tests are about that.
@@ -65,7 +65,7 @@ def test_cannot_arm_twice(context, switch, beneficiary) -> None:
 
 
 def test_interval_must_leave_a_keeper_room_to_work(context, switch, beneficiary) -> None:
-    # Archon's own minimum cadence is 10 rounds; a switch that expires faster
+    # Arcron's own minimum cadence is 10 rounds; a switch that expires faster
     # than it can be watched would fire on a keeper's ordinary lateness.
     with pytest.raises(AssertionError, match="Interval below minimum"):
         _arm(context, switch, beneficiary, interval=MIN_INTERVAL_ROUNDS - 1)
@@ -121,7 +121,7 @@ def test_fires_once_the_deadline_passes(context, switch, beneficiary) -> None:
 
 
 def test_a_fired_switch_is_inert_forever_after(context, switch, beneficiary) -> None:
-    """Archon keeps calling; a fired switch must stop doing anything at all.
+    """Arcron keeps calling; a fired switch must stop doing anything at all.
 
     Otherwise the upkeep keeps paying keepers to re-fire a switch that has
     already fired, which is escrow spent on nothing.

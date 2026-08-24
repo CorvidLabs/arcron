@@ -770,7 +770,7 @@ def test_execute_sends_every_registered_argument() -> None:
     """
     selector = _selector("absorb(uint64,string)")
     number = (7_777).to_bytes(8, "big")
-    text = b"\x00\x06archon"
+    text = b"\x00\x06arcron"
     for call_args in ([selector], [selector, number], [selector, number, text]):
         with algopy_testing_context() as ctx:
             local_keeper, local_pulse = Keeper(), Pulse()

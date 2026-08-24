@@ -5,7 +5,7 @@
 **Depends on:** [#24](https://github.com/CorvidLabs/archon/issues/24) (measured), and shares a struct with [#7 and #14](scheduling-and-fees.md)
 **Reproduce every number here:** `poetry run python -m scripts.spike_multiarg --network localnet`, and the batch table with `poetry run python -m scripts.spike_asa_fee --network localnet`
 
-Archon executes exactly one call shape: a NoOp app call carrying a single app
+Arcron executes exactly one call shape: a NoOp app call carrying a single app
 arg. An ARC-4 method with arguments of its own needs the selector *and* each
 argument in an app arg of its own, so today **only zero-argument hooks are
 reachable**. Every demo in this repo is zero-argument because of that, not by
@@ -18,8 +18,8 @@ splits them.
 ## The foreign-array half is already solved, and not by the struct
 
 [#24](https://github.com/CorvidLabs/archon/issues/24) measured what an
-Archon-triggered inner call can reach. Resource availability supplied on the
-*keeper's* transaction flows two levels down: to Archon's inner call, and to
+Arcron-triggered inner call can reach. Resource availability supplied on the
+*keeper's* transaction flows two levels down: to Arcron's inner call, and to
 the target's own inner transactions. Five patterns — inner payment, inner
 asset transfer, balance read, holding read, inner app call — all fail bare and
 all succeed when the keeper attaches references.
@@ -105,7 +105,7 @@ offset and a 2-byte length), which is 1,600 µALGO of box MBR each.
 [#26](https://github.com/CorvidLabs/archon/issues/26): #7 and #14's escalation
 arithmetic costs the target about 40 opcodes.)
 
-And `absorb` received `number=7777`, `text='archon'` — a hook with real
+And `absorb` received `number=7777`, `text='arcron'` — a hook with real
 arguments, executed by a keeper, which today's contract cannot reach at all.
 
 ## Proposal
@@ -113,7 +113,7 @@ arguments, executed by a keeper, which today's contract cannot reach at all.
 ### 1. `call_args: byte[][]` replaces `call_data: byte[]`
 
 One field, same slot, no net field-count change. Element 0 is whatever app
-arg 0 should be — the ARC-4 selector for an ARC-4 target — and Archon stays
+arg 0 should be — the ARC-4 selector for an ARC-4 target — and Arcron stays
 agnostic about what the bytes mean, exactly as it is today.
 
 ### 2. A fan-out ceiling of 3 — decided
@@ -190,7 +190,7 @@ Three properties make the convention safe:
   learn that *before* spending anything, rather than in a rejection.
 
 The honest cost: nothing enforces it, it adds an algod round-trip per due
-upkeep, and it is an Archon convention rather than a standard anyone else
+upkeep, and it is an Arcron convention rather than a standard anyone else
 honours. An ARC is the eventual answer; not in 1.0.
 
 This is the "written decision that it is out of scope, with the reasoning

@@ -13,7 +13,7 @@ depends_on: []
 
 ## Purpose
 
-Keeper is the contract behind Archon, a permissionless keeper network, as an
+Keeper is the contract behind Arcron, a permissionless keeper network, as an
 ARC-4 smart contract (Algorand Python / Puya). Contracts can't wake
 themselves on Algorand, so anyone registers an **upkeep** — "call this app
 with this data every N rounds, paying R µALGO per execution" — escrowing
@@ -114,7 +114,7 @@ contract class, the `Upkeep` struct, and its constants.
 
 ### Scenario: A target method with arguments of its own
 
-- **Given** an upkeep registered against `tick_with(uint64,string)` with the arguments `7` and `"archon"`
+- **Given** an upkeep registered against `tick_with(uint64,string)` with the arguments `7` and `"arcron"`
 - **When** a keeper executes it
 - **Then** the target's counter advances by 7 rather than by 1, and it holds the string — the selector and both arguments each arrived in an app arg of their own
 

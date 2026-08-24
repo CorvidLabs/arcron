@@ -67,7 +67,7 @@ class Upkeep(arc4.Struct):
     creator: arc4.Address
     target_app: arc4.UInt64
     # Every app arg of the registered call, in order. Element 0 is whatever
-    # app arg 0 should be — the ARC-4 selector for an ARC-4 target. Archon
+    # app arg 0 should be — the ARC-4 selector for an ARC-4 target. Arcron
     # stays agnostic about what the bytes mean.
     call_args: arc4.DynamicArray[arc4.DynamicBytes]
     interval_rounds: arc4.UInt64

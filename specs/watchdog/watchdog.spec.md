@@ -17,12 +17,12 @@ A feed that notices when its own data stops arriving.
 
 Detecting that data stopped requires someone to be watching, and that someone
 cannot be the data provider: a provider that goes down has no incentive to
-announce it and usually no ability to. Archon supplies a watcher whose payment
+announce it and usually no ability to. Arcron supplies a watcher whose payment
 does not depend on the provider's cooperation.
 
 The contract **only compares rounds**. It never inspects the reported value,
 so it cannot be fed a wrong price — which makes it an honest demonstration of
-how Archon composes with data systems without pretending Archon can supply
+how Arcron composes with data systems without pretending Arcron can supply
 data. It is the one oracle-adjacent pattern that requires no oracle trust at
 all.
 
@@ -32,7 +32,7 @@ all.
 
 | Constant | Value | Description |
 |----------|-------|-------------|
-| `MIN_THRESHOLD_ROUNDS` | `30` | Shortest silence that may be called stale. Archon's minimum cadence is 10 rounds, so a feed must be allowed to be at least a couple of sweeps late before anyone flags it. |
+| `MIN_THRESHOLD_ROUNDS` | `30` | Shortest silence that may be called stale. Arcron's minimum cadence is 10 rounds, so a feed must be allowed to be at least a couple of sweeps late before anyone flags it. |
 
 ### Exported Types
 
@@ -48,7 +48,7 @@ all.
 |--------|-----------|---------|-------------|
 | `configure` | `reporter: address, threshold_rounds: uint64` | `uint64` | Creator only, once. Names the reporter, sets the tolerance, and starts the clock. |
 | `update` | `value: uint64` | `uint64` | Reporter only. Records a value and clears any stale flag; returns the round. |
-| `check_freshness` | — | `uint64` | Zero-argument, permissionless — Archon's shape. Returns the round it flagged in, or `0`. |
+| `check_freshness` | — | `uint64` | Zero-argument, permissionless — Arcron's shape. Returns the round it flagged in, or `0`. |
 | `is_stale` | — | `bool` | Readonly. The flag as of the last check. |
 | `rounds_since_update` | — | `uint64` | Readonly. |
 | `reading` | — | `uint64` | Readonly. The reported value, which the watchdog itself never inspects. |
@@ -86,7 +86,7 @@ permission or cooperation.
 ### Scenario: A healthy feed
 
 - **Given** a feed updated 10 rounds ago with a 30-round threshold
-- **When** Archon calls `check_freshness`
+- **When** Arcron calls `check_freshness`
 - **Then** it returns `0`, nothing changes, and the keeper is paid
 
 ### Scenario: The reporter goes down

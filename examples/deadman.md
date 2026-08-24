@@ -31,12 +31,12 @@ poetry run python -m scripts.deadman_demo --network localnet
 
 **The scheduled call allocates; the beneficiary pulls.** `sweep()` does not pay
 anyone. Paying would mean reaching an account the scheduled call cannot reach —
-an Archon inner call sees only what the keeper's own transaction makes
+an Arcron inner call sees only what the keeper's own transaction makes
 available. So firing records the allocation, and the beneficiary claims it in a
 transaction they send themselves, where they are the sender and therefore
 always reachable.
 
-**The quiet path is the common path.** Archon sweeps on every cadence for the
+**The quiet path is the common path.** Arcron sweeps on every cadence for the
 entire life of the switch, and almost every one of those calls should do
 nothing. `sweep()` returns `0` — cheaply, never failing — when it is unarmed,
 before the deadline, or already fired. A target that *fails* would trip keeper
@@ -62,11 +62,11 @@ Nothing announces it. From the switch's point of view, "no keeper swept" and
 
 ## Choosing an interval
 
-The minimum is 30 rounds, and that floor exists because Archon's own minimum
+The minimum is 30 rounds, and that floor exists because Arcron's own minimum
 cadence is 10 rounds — a switch that expires faster than it can be swept would
 fire on a keeper's ordinary lateness rather than on your absence.
 
 In practice pick something far longer, and remember rounds are not a clock:
 "weekly" is ~216,000 rounds and drifts against the calendar by hours per cycle
-(see the liveness notes in [`docs/archon.md`](../docs/archon.md)). Leave
+(see the liveness notes in [`docs/arcron.md`](../docs/arcron.md)). Leave
 yourself margin you would be comfortable with on a bad week.

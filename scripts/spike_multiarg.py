@@ -1,6 +1,6 @@
-"""Spike: what would a multi-argument call shape cost Archon?
+"""Spike: what would a multi-argument call shape cost Arcron?
 
-Archon executes exactly one call shape — a NoOp app call carrying a single app
+Arcron executes exactly one call shape — a NoOp app call carrying a single app
 arg. An ARC-4 method with arguments of its own needs the selector *and* each
 argument in an app arg of its own, so today only zero-argument hooks are
 reachable. Issue #8 proposes storing the whole argument list instead.
@@ -52,7 +52,7 @@ KEEPER_SPEC = REPO / "smart_contracts" / "artifacts" / "keeper" / "Keeper.arc56.
 
 FEE = 4_000
 INTERVAL = 10
-# The group carries Archon's inner call to the target and the keeper's payment.
+# The group carries Arcron's inner call to the target and the keeper's payment.
 EXECUTE_FEE = 8_000
 # One TEAL program page. Crossing it costs the deployer another 100,000 µALGO
 # of app minimum balance, permanently.
@@ -351,7 +351,7 @@ def part_c(algorand, deployer, probe_app: int, out_root: pathlib.Path) -> None:
     absorb_parts = [
         absorb.get_selector(),
         (7_777).to_bytes(8, "big"),
-        abi.ABIType.from_string("string").encode("archon"),
+        abi.ABIType.from_string("string").encode("arcron"),
     ]
 
     rows = []
@@ -388,7 +388,7 @@ def main(argv: list[str] | None = None) -> None:
     deployer = algorand.account.from_environment("DEPLOYER")
     logger.info(f"algod build: {algorand.client.algod.versions()['build']}")
 
-    with tempfile.TemporaryDirectory(prefix="archon-multiarg-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="arcron-multiarg-") as tmp:
         out_root = pathlib.Path(tmp)
         part_a(out_root)
         probe = deploy_probe()

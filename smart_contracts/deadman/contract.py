@@ -12,13 +12,13 @@ your infrastructure went away.
 Two shapes worth noting:
 
 * `sweep` is zero-argument, permissionless, cheap when nothing has changed,
-  and permanently inert once fired. Archon calls it on every cadence whether
+  and permanently inert once fired. Arcron calls it on every cadence whether
   or not anything has happened, so the quiet path is the common path.
 * `sweep` does not pay anyone. Paying the beneficiary would mean reaching an
-  account a scheduled call cannot reach — an Archon inner call sees only what
+  account a scheduled call cannot reach — an Arcron inner call sees only what
   the keeper's transaction makes available. So firing *allocates*, and the
   beneficiary pulls. Same reason the rain draw resolves in a separate
-  transaction; see "pull the resource" in docs/archon.md.
+  transaction; see "pull the resource" in docs/arcron.md.
 """
 
 from algopy import (
@@ -34,7 +34,7 @@ from algopy import (
 )
 from algopy.arc4 import abimethod
 
-# A check-in interval shorter than this cannot be serviced reliably: Archon's
+# A check-in interval shorter than this cannot be serviced reliably: Arcron's
 # own minimum cadence is 10 rounds, so a switch must allow more slack than the
 # keeper can possibly deliver.
 MIN_INTERVAL_ROUNDS = 30
@@ -101,7 +101,7 @@ class DeadMan(ARC4Contract):
 
     @abimethod()
     def sweep(self) -> UInt64:
-        """Fire if the owner has gone quiet. Zero arguments — Archon's shape.
+        """Fire if the owner has gone quiet. Zero arguments — Arcron's shape.
 
         Returns the round it fired in, or 0 for the ordinary case where there
         is nothing to do. Never fails: a failing target would trip keeper

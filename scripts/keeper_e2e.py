@@ -1,4 +1,4 @@
-"""End-to-end test for the Archon keeper network against a real node.
+"""End-to-end test for the Arcron keeper network against a real node.
 
 Runs on LocalNet by default and on TestNet with --network testnet. Unlike
 the unit tests (algorand-python-testing mocks, where inner transactions are
@@ -890,7 +890,7 @@ def main(argv: list[str] | None = None) -> None:
     # were reachable: an ARC-4 method needs its selector *and* each argument
     # in an app arg of its own. This registers a real three-arg call and
     # checks the target's state moved by the argument's value, not by one.
-    note = "archon"
+    note = "arcron"
     step = 7
     multi_args = [
         _selector("tick_with(uint64,string)uint64"),

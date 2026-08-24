@@ -1,11 +1,11 @@
-"""Spike: what resources can an Archon-triggered inner call actually reach?
+"""Spike: what resources can an Arcron-triggered inner call actually reach?
 
-Archon's `execute` submits an inner app call with no foreign arrays. The docs
+Arcron's `execute` submits an inner app call with no foreign arrays. The docs
 called that a v1 limitation without establishing what it forbids, so this
 measures it: a probe app reaches for an account, an asset and a third app that
 no argument names, and each pattern is run twice —
 
-1. **bare** — the keeper sends `execute` with only what Archon needs;
+1. **bare** — the keeper sends `execute` with only what Arcron needs;
 2. **keeper-supplied** — the keeper adds resource references to its own
    transaction, supplying *availability* without supplying data.
 
@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 FEE = 4_000
 INTERVAL = 10
-# Generous: the group carries Archon's inner call, the probe's own inner
+# Generous: the group carries Arcron's inner call, the probe's own inner
 # transaction and the keeper's payment.
 EXECUTE_FEE = 8_000
 

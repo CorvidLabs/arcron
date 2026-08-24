@@ -1,6 +1,6 @@
 """The rain draw's accounting.
 
-The scheduled call is the one that must never misbehave: Archon calls `draw`
+The scheduled call is the one that must never misbehave: Arcron calls `draw`
 on every cadence whether or not there is anything to draw for, so the quiet
 path has to be a clean no-op rather than a failure that would trip keeper
 backoff. Most of what follows is about that, and about the money adding up.
@@ -117,7 +117,7 @@ def test_draw_is_a_no_op_while_one_is_already_open(
     _enter(context, rain)
     _deposit(context, rain, 1_000_000)
     assert rain.draw() == 1
-    # Archon will call again on the next cadence, before anyone resolved.
+    # Arcron will call again on the next cadence, before anyone resolved.
     assert rain.draw() == 0
     assert rain.draw_id.value == 1
 

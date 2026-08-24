@@ -5,7 +5,7 @@ The scenario: you have something that must become public at a specific moment
 even if you are asleep, unavailable, or have since changed your mind.
 
 `smart_contracts/embargo/` is a contract that does exactly that, and it is the
-clearest demonstration of what Archon is for.
+clearest demonstration of what Arcron is for.
 
 ## What it guarantees
 
@@ -24,7 +24,7 @@ unstoppable, timestamped publication *event* — not a sealed envelope.
 If the content must be unreadable until it opens, store a hash commitment here
 and keep the payload off-chain. Be clear-eyed about the cost: revealing it
 later requires someone to act, and that someone is exactly what a keeper
-network cannot be for you. Archon can guarantee that a *call* happens; it
+network cannot be for you. Arcron can guarantee that a *call* happens; it
 cannot guarantee that a *secret* is produced.
 
 ## Doing it
@@ -34,7 +34,7 @@ poetry run python -m scripts.embargo_demo --network localnet
 ```
 
 The script deploys a fresh embargo app (one release per instance, by design),
-schedules content 25 rounds out, and points an Archon upkeep at `publish()`
+schedules content 25 rounds out, and points an Arcron upkeep at `publish()`
 with a 10-round interval — deliberately, so the keeper comes due *before* the
 embargo lifts:
 
@@ -84,6 +84,6 @@ right:
   the upkeep needs to still be scheduled when the round arrives. Funding a few
   executions costs 4,000 µALGO each and removes the question.
 - **Rounds are not a clock.** "A day" is ~30,857 rounds, and drifts — see the
-  liveness notes in [`docs/archon.md`](../docs/archon.md). If the exact moment
+  liveness notes in [`docs/arcron.md`](../docs/arcron.md). If the exact moment
   matters more than the guarantee, pick a round you are happy to be early
   against, not the one that maps to a wall-clock time today.

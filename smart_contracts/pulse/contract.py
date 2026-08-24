@@ -7,7 +7,7 @@ class Pulse(ARC4Contract):
     """Demo upkeep target: a public heartbeat counter.
 
     Designed to be driven by the Keeper contract. `tick` takes no arguments
-    beyond its method selector, which is the only shape Archon could call
+    beyond its method selector, which is the only shape Arcron could call
     before #8; `tick_with` takes real arguments, which is the shape it can
     call now. Permissionless by design — it is a demo, not a gate.
     """
@@ -28,7 +28,7 @@ class Pulse(ARC4Contract):
         """A hook with arguments of its own; returns the new count.
 
         Unreachable through an upkeep before #8, because an ARC-4 method needs
-        its selector and each argument in an app arg of its own and Archon
+        its selector and each argument in an app arg of its own and Arcron
         could only send one.
         """
         self.beats.value += beats

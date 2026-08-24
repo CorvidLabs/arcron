@@ -1,6 +1,6 @@
 """A pot that pays a random ticket holder on a schedule, end to end.
 
-Shows the shape that makes this work under Archon's v1 call shape: the
+Shows the shape that makes this work under Arcron's v1 call shape: the
 scheduled call does accounting only, and the step that needs a resource — the
 beacon read — happens in a transaction a participant sends for themselves,
 attaching the reference a keeper could not.

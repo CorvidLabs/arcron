@@ -5,7 +5,7 @@ full picture — keep all three consistent when conventions change.
 
 ## What this is
 
-Archon — Algorand smart contracts (Algorand Python / Puya + AlgoKit). Main
+Arcron — Algorand smart contracts (Algorand Python / Puya + AlgoKit). Main
 project: `smart_contracts/keeper/` — a permissionless keeper network, live on
 TestNet (app 769802474; 769772891 is its deprecated, pre-box-MBR-fix
 predecessor). `pulse/` is its demo target (app 769772906).
@@ -53,7 +53,7 @@ because these are easy to get wrong from memory:
 - Tests use `algorand-python-testing` mocks: inner app calls are recorded, not
   executed, and minimum balances are not enforced (prove both in
   `scripts/keeper_e2e.py` on LocalNet); `UInt64()` takes plain `int` only.
-- Scripts choose their network with `--network` / `ARCHON_NETWORK`
+- Scripts choose their network with `--network` / `ARCRON_NETWORK`
   (`scripts/network.py`); it loads `.env.<network>` and verifies the node's
   genesis id. LocalNet is dev mode — rounds only advance when you send
   transactions (`network.wait_for_round`).

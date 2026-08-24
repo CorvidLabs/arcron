@@ -1,7 +1,7 @@
 <a class="skip" href="#main">Skip to content</a>
 
 <header class="chrome">
-  <archon-network-bar />
+  <arcron-network-bar />
 </header>
 <hr class="iridescent-rule" />
 
@@ -10,8 +10,8 @@
     <p class="banner" role="alert">{{ message }}</p>
   }
 
-  <archon-signer-bar />
-  <archon-stat-tiles />
+  <arcron-signer-bar />
+  <arcron-stat-tiles />
 
   <nav class="views" aria-label="View">
     @for (option of views; track option.key) {
@@ -28,20 +28,20 @@
   </nav>
 
   @if (view() === 'registry') {
-    <archon-registry-table />
+    <arcron-registry-table />
   } @else {
-    <archon-upkeep-board />
+    <arcron-upkeep-board />
   }
 
   <div class="columns">
-    <archon-register-form />
-    <archon-activity-log />
+    <arcron-register-form />
+    <arcron-activity-log />
   </div>
 </main>
 
 <footer class="chrome">
   <p>
-    Archon — permissionless keeper network.
+    Arcron — permissionless keeper network.
     @if (appAddress(); as address) {
       <span>App account {{ address }}</span>
     }
