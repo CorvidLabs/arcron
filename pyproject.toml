@@ -7,7 +7,9 @@ readme = "README.md"
 package-mode = false
 
 [tool.poetry.dependencies]
-python = "^3.12"
+# Upper bound is load-bearing: coincurve publishes no wheels for 3.14, so
+# poetry must refuse it rather than trying to build from source.
+python = ">=3.12,<3.14"
 algokit-utils = "^4.0.0"
 python-dotenv = "^1.0.0"
 algorand-python = "^3"
