@@ -162,10 +162,17 @@ def _register(algorand, keeper_client, deployer, target_app: int, funding: int) 
 
 
 def _register_with_interval(
-    algorand, keeper_client, deployer, target_app: int, funding: int, interval: int
+    algorand,
+    keeper_client,
+    deployer,
+    target_app: int,
+    funding: int,
+    interval: int,
+    call_data: bytes | None = None,
 ) -> int:
     """Register an upkeep at an arbitrary cadence; returns the new upkeep id."""
-    call_data = _selector(CALL_SIGNATURE)
+    if call_data is None:
+        call_data = _selector(CALL_SIGNATURE)
     first_valid = algorand.client.algod.status()["last-round"]
     last_valid = first_valid + 1_000
 
@@ -205,6 +212,51 @@ def _human(rounds: int) -> str:
     if seconds < 86_400:
         return f"{seconds / 3_600:.1f}h"
     return f"{seconds / 86_400:.1f}d"
+
+
+def _first_line(message: str) -> str:
+    return message.strip().splitlines()[0][:110]
+
+
+def _assert_rejected_by_algod(rejection: str) -> None:
+    """The rejection must come from the node, not from our own client.
+
+    Without this, a local encoding mistake reads as "algod refused it" and the
+    experiment quietly proves nothing.
+    """
+    marks = ("logic eval error", "rejected", "TransactionPool", "assert failed", "overspend")
+    assert any(mark.lower() in rejection.lower() for mark in marks), (
+        f"expected an algod rejection, got a client-side error: {_first_line(rejection)}"
+    )
+
+
+def _raw_execute(algorand, app_id: int, account, upkeep_id: int, target_app: int) -> str:
+    """Broadcast `execute` straight to algod, with no simulate beforehand.
+
+    The typed client simulates first, which means a doomed call never reaches
+    the network — exactly what we need to bypass here. To learn what a losing
+    keeper actually pays, the transaction has to be really broadcast.
+
+    Returns the transaction id; raises whatever algod says on rejection.
+    """
+    from algosdk import abi, transaction
+
+    method = abi.Method.from_signature("execute(uint64)uint64")
+    params = algorand.client.algod.suggested_params()
+    params.flat_fee = True
+    params.fee = KEEPER_TXN_COST
+    txn = transaction.ApplicationNoOpTxn(
+        sender=account.address,
+        sp=params,
+        index=app_id,
+        app_args=[method.get_selector(), upkeep_id.to_bytes(8, "big")],
+        boxes=[(0, b"u" + upkeep_id.to_bytes(8, "big"))],
+        foreign_apps=[target_app],
+    )
+    signed = account.signer.sign_transactions([txn], [0])
+    # send_transactions encodes the signed objects; send_raw_transaction wants
+    # bytes and would fail client-side, which would look like a rejection.
+    return algorand.client.algod.send_transactions(signed)
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -345,8 +397,17 @@ def main(argv: list[str] | None = None) -> None:
     beats_before = pulse_client.state.global_state.beats
     keeper_bot.main(["--once", "--network", network, "--app-id", str(app_id)])
     upkeep_after_bot, _ = _read_upkeep(algorand, app_id, upkeep_id)
-    _assert("Pulse.beats after bot run", pulse_client.state.global_state.beats, beats_before + 1)
+    # The bot services every due upkeep on the app, not just this one — the
+    # keeper app may be shared with upkeeps from other work — so this asserts
+    # that ours ran, not that nothing else did.
     _assert("times_executed after bot run", upkeep_after_bot.times_executed, 2)
+    assert pulse_client.state.global_state.beats > beats_before, (
+        "the bot run should have moved Pulse at least once"
+    )
+    logger.info(
+        f"  ✔ Pulse.beats after bot run = {pulse_client.state.global_state.beats} "
+        f"(was {beats_before})"
+    )
 
     # ------------------------------------------------------------------
     logger.info("── 9. Only the creator can cancel; the escrow comes back ──")
@@ -530,6 +591,81 @@ def main(argv: list[str] | None = None) -> None:
             extra_fee=algokit_utils.AlgoAmount(micro_algo=1_000)
         ),
     )
+
+    # ------------------------------------------------------------------
+    logger.info("── 14. What a losing keeper actually pays ──")
+    # Algorand rejects a failing transaction at validation: it never reaches a
+    # block, so its sender pays nothing. That is the opposite of EVM chains,
+    # where a revert still burns gas — and it decides how aggressive a keeper
+    # bot's backoff needs to be, so it is measured here rather than assumed.
+    race_id = _register(algorand, keeper_client, deployer, pulse_client.app_id, FEE * 2)
+    race, _ = _read_upkeep(algorand, app_id, race_id)
+    net.wait_for_round(algorand, race.next_execution_round, poker=deployer)
+
+    # Two keepers, one due upkeep. The stranger wins; the deployer loses.
+    loser_before = _balance(algorand, deployer.address)
+    stranger_client.send.execute(
+        args=ExecuteArgs(upkeep_id=race_id),
+        params=algokit_utils.CommonAppCallParams(
+            extra_fee=algokit_utils.AlgoAmount(micro_algo=keeper_bot.EXTRA_FEE_MICROALGO)
+        ),
+    )
+    lost_txid = None
+    try:
+        with _quiet():
+            lost_txid = _raw_execute(
+                algorand, app_id, deployer, race_id, pulse_client.app_id
+            )
+    except Exception as exc:
+        rejection = str(exc)
+    else:
+        rejection = ""
+    assert rejection != "", "the losing keeper's execute should have been rejected"
+    _assert_rejected_by_algod(rejection)
+    _assert("losing keeper charged", loser_before - _balance(algorand, deployer.address), 0)
+    _assert("losing transaction reached a block", lost_txid, None)
+    logger.info(f"  ✔ algod rejected it outright: {_first_line(rejection)}")
+
+    # The other way to lose: the registered call itself fails. A bogus selector
+    # makes Pulse's router reject the inner call, which fails the whole group.
+    doomed_id = _register_with_interval(
+        algorand,
+        keeper_client,
+        deployer,
+        pulse_client.app_id,
+        FEE * 2,
+        INTERVAL_ROUNDS,
+        call_data=b"\xde\xad\xbe\xef",
+    )
+    doomed, _ = _read_upkeep(algorand, app_id, doomed_id)
+    net.wait_for_round(algorand, doomed.next_execution_round, poker=deployer)
+    keeper_before = _balance(algorand, stranger.address)
+    try:
+        with _quiet():
+            _raw_execute(algorand, app_id, stranger, doomed_id, pulse_client.app_id)
+    except Exception as exc:
+        rejection = str(exc)
+    else:
+        rejection = ""
+    assert rejection != "", "an upkeep whose target rejects should not execute"
+    _assert_rejected_by_algod(rejection)
+    _assert(
+        "keeper charged for a rejecting target",
+        keeper_before - _balance(algorand, stranger.address),
+        0,
+    )
+    still_doomed, _ = _read_upkeep(algorand, app_id, doomed_id)
+    _assert("failed execution changed state", still_doomed.times_executed, 0)
+    _assert("failed execution took escrow", still_doomed.balance, doomed.balance)
+    logger.info("  ✔ a failed execution is free: no fee, no state change")
+
+    for cleanup_id in (race_id, doomed_id):
+        keeper_client.send.cancel(
+            args=CancelArgs(upkeep_id=cleanup_id),
+            params=algokit_utils.CommonAppCallParams(
+                extra_fee=algokit_utils.AlgoAmount(micro_algo=1_000)
+            ),
+        )
 
     # ------------------------------------------------------------------
     # Return the stranger's remaining balance; on TestNet that is real ALGO.

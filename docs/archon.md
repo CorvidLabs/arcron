@@ -102,12 +102,23 @@ poetry run python -m scripts.keeper_bot --app-id N # other keeper instance
 - Signs as `KEEPER_MNEMONIC`, else `DEPLOYER_MNEMONIC`; fees are paid to that
   account, and it pays the outer fees — keep it funded.
 - Multiple competing bots are safe: the contract re-checks due-ness
-  atomically, so exactly one keeper is paid per due round. What the *loser*
-  pays is not yet established — Algorand rejects failing transactions at
-  validation rather than committing them, which suggests a lost race costs
-  nothing on-chain, unlike an EVM revert. Unverified; see issue #13.
-- A failing upkeep (e.g. target rejects the call) is skipped for the rest of
-  the bot run to avoid burning fees every round.
+  atomically, so exactly one keeper is paid per due round. **The loser pays
+  nothing.** Algorand rejects a failing transaction at validation rather than
+  committing it, so it never enters a block and no fee is charged — unlike an
+  EVM revert, which still burns gas.
+
+  Measured, not inferred: `scripts/keeper_e2e.py` stage 14 broadcasts a losing
+  `execute` straight to algod, bypassing the simulate the typed client would
+  otherwise do, and asserts the loser's balance is unchanged. algod answers
+  `TransactionPool.Remember: … logic eval error` and discards it. The same
+  holds for an upkeep whose target rejects the inner call: no fee, no state
+  change, no escrow spent.
+
+  So the barrier to running a keeper is lower than it looks: a bot that loses
+  every race it enters is out nothing but local compute and a round-trip.
+- A failing upkeep (e.g. a target that rejects the call) is still skipped for
+  the rest of the bot run — for latency and transaction-pool hygiene now,
+  not to avoid burning fees, since there are none to burn.
 
 ## Testing and CI
 

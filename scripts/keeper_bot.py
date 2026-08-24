@@ -139,8 +139,10 @@ def main(argv: list[str] | None = None) -> None:
     )
     logger.info(f"Keeper {keeper.address} servicing app {app_id}")
 
-    # Upkeeps that failed this run; retrying every round would just burn the
-    # outer fee (e.g. a target app rejecting the call).
+    # Upkeeps that failed this run. A failed execution is free — Algorand
+    # rejects it before it reaches a block, so nothing is spent — but retrying
+    # a target that keeps rejecting wastes a round-trip every round and
+    # crowds the transaction pool, so it is skipped for the rest of the run.
     failed: set[int] = set()
     while True:
         try:
@@ -175,8 +177,8 @@ def main(argv: list[str] | None = None) -> None:
                 except Exception as exc:
                     failed.add(upkeep.upkeep_id)
                     logger.warning(
-                        f"Upkeep {upkeep.upkeep_id} failed; skipping it for "
-                        f"this run: {exc}"
+                        f"Upkeep {upkeep.upkeep_id} failed (no fee charged); "
+                        f"skipping it for this run: {exc}"
                     )
             if args.once:
                 return
