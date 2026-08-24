@@ -116,6 +116,77 @@ Reference decoder: `scripts/keeper_bot.py::_decode_upkeep`; regression vector:
 - An upkeep is executable while `balance ≥ fee_per_execution`; it goes
   dormant when underfunded and resumes after a `top_up`.
 
+## Liveness
+
+Archon does not execute itself. There is no on-chain timer on Algorand, so
+every execution is a transaction some account sent and paid for — `execute` is
+an external entry point that anyone may call once an upkeep is due.
+`README.md` covers why that is the design; this is what it means to operate.
+
+### Current coverage
+
+| | |
+|---|---|
+| Keeper app | `769802474` (TestNet) |
+| Upkeeps registered | none — the e2e cancels everything it creates |
+| Always-on keeper | **none running** |
+| Last executions | rounds 66629036–66629138, from the deployment verification |
+
+Stated plainly because it would otherwise be inferred wrongly: an upkeep
+registered against this app today would sit due until somebody started a
+keeper. `deploy/` makes that a `docker compose up -d`, but nobody has.
+
+### Funding depth is not liveness
+
+Escrow is rarely what stops an upkeep. At the 4,000 µALGO minimum fee:
+
+| Escrow | Executions | Hourly cadence | Daily cadence |
+|--------|-----------|----------------|---------------|
+| 0.1 ALGO | 25 | ~1 day | ~25 days |
+| 1 ALGO | 250 | ~10 days | ~8 months |
+| 100 ALGO | 25,000 | ~2.8 years | ~68 years |
+
+A well-funded upkeep with no keeper watching does not run, and no amount of
+additional escrow changes that. Conversely a keeper cannot execute an upkeep
+whose escrow has fallen below one fee — `--check` calls that *starved* and
+does not blame keepers for it.
+
+### What an outage looks like afterwards
+
+Scheduling advances from the *scheduled* round, not the round execution
+happened, so nothing is skipped: an upkeep unattended for N intervals is still
+due N times and catches up **one interval per call**.
+
+Operationally that means a keeper restarted after a day-long outage will fire
+a backlog — a 100-round upkeep down for a day is ~300 executions owed, and the
+bot will work through them as fast as it can scan, paying ~3,000 µALGO of fees
+each and collecting the fee each time. The creator pays for executions that
+happened late rather than at the intended moments. Whether that is right
+depends on the upkeep — a missed distribution should probably catch up, a
+missed prize draw probably should not — which is the argument in
+[issue #7](https://github.com/CorvidLabs/archon/issues/7).
+
+### Rounds are not a clock
+
+A cadence is a round count, and rounds are not seconds. TestNet measured
+**2.66 s/round** over a 45-second sample; the nominal figure is 2.8. The gap
+compounds:
+
+| Cadence | Rounds | At 2.8 s | At the measured 2.66 s | Drift per cycle |
+|---------|--------|----------|------------------------|-----------------|
+| hourly | 1,286 | 1.0 h | 1.0 h | ~2 min |
+| daily | 30,857 | 24.0 h | 22.8 h | ~1.2 h |
+| weekly | 216,000 | 168.0 h | 159.7 h | ~8.3 h |
+
+A "daily" upkeep therefore slides about **35 hours** — a day and a half —
+against the calendar over thirty cycles, and which way it slides depends on
+how busy the network is.
+
+Archon promises "not before this round". It does not promise "at 00:00 UTC",
+and nothing built on it should assume otherwise. Anything that must happen at
+a wall-clock time needs the *target* to check the time and no-op if it is
+early, with the upkeep firing often enough to catch the window.
+
 ## Operating a bot
 
 ```bash
