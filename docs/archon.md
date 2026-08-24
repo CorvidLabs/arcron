@@ -1,7 +1,7 @@
-# Keeper network — technical reference
+# Archon — keeper network technical reference
 
-Hand-off document for the permissionless keeper network. For the quick
-overview see `../README.md`; for runnable flows see `../examples/`.
+Hand-off document for Archon, the permissionless keeper network. For the
+quick overview see `../README.md`; for runnable flows see `../examples/`.
 
 ## TestNet deployment
 

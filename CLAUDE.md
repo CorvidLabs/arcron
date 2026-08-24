@@ -5,9 +5,9 @@ full picture — keep all three consistent when conventions change.
 
 ## What this is
 
-Algorand smart contracts (Algorand Python / Puya + AlgoKit). Main project:
-`smart_contracts/keeper/` — a permissionless keeper network, live on TestNet
-(app 769772891). `pulse/` is its demo target (app 769772906).
+Archon — Algorand smart contracts (Algorand Python / Puya + AlgoKit). Main
+project: `smart_contracts/keeper/` — a permissionless keeper network, live on
+TestNet (app 769772891). `pulse/` is its demo target (app 769772906).
 `corvid_vault/` is a parked experiment — don't extend it without being asked.
 
 ## Commands

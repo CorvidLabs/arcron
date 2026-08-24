@@ -1,6 +1,6 @@
 # fledge.toml — project task definitions
 # Docs: https://github.com/CorvidLabs/fledge#task-runner
-# Project: nest — CORVID Vault (Algorand Python / Puya + AlgoKit)
+# Project: archon — Algorand keeper network (Algorand Python / Puya + AlgoKit)
 
 [tasks]
 build = "poetry run python -m smart_contracts build"

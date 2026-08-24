@@ -1,7 +1,7 @@
 [tool.poetry]
-name = "corvid_vault"
+name = "archon"
 version = "0.1.0"
-description = "Algorand smart contracts"
+description = "Archon — a permissionless keeper network for Algorand"
 authors = ["0xLeif <leif.algo@pm.me>"]
 readme = "README.md"
 package-mode = false

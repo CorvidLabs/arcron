@@ -4,10 +4,10 @@ Guidance for AI agents working in this repo. Also see `README.md`.
 
 ## What this is
 
-Algorand smart contracts (Algorand Python / Puya + AlgoKit). Main project:
-`smart_contracts/keeper/` — a permissionless keeper network, live on TestNet
-(app 769772891). `pulse/` is its demo target. `corvid_vault/` is a parked
-experiment (don't extend it without being asked).
+Archon — Algorand smart contracts (Algorand Python / Puya + AlgoKit). Main
+project: `smart_contracts/keeper/` — a permissionless keeper network, live on
+TestNet (app 769772891). `pulse/` is its demo target. `corvid_vault/` is a
+parked experiment (don't extend it without being asked).
 
 ## Commands
 

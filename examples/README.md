@@ -1,6 +1,6 @@
 # Examples
 
-Two ways to use the keeper network, depending on which side you're on.
+Two ways to use Archon, the keeper network, depending on which side you're on.
 
 ## Automate your app (register an upkeep)
 

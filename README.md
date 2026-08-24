@@ -1,12 +1,13 @@
-# nest
+# archon
 
-Smart contracts by [CorvidLabs](https://github.com/CorvidLabs), built with
-Algorand Python (Puya) and AlgoKit. The headline project is a **permissionless
-keeper network for Algorand**, live on TestNet.
+**Archon** is a permissionless keeper network for Algorand — anyone registers
+a scheduled contract call, any keeper executes it for the fee. By
+[CorvidLabs](https://github.com/CorvidLabs), built with Algorand Python
+(Puya) and AlgoKit. Live on TestNet.
 
 | Contract | What it is | Status |
 |----------|-----------|--------|
-| [`smart_contracts/keeper`](smart_contracts/keeper/contract.py) | Permissionless upkeep scheduling with ALGO escrow and keeper rewards | **Live on TestNet** — app [`769772891`](https://testnet.explorer.perawallet.app/application/769772891) |
+| [`smart_contracts/keeper`](smart_contracts/keeper/contract.py) | The Archon network: upkeep scheduling with ALGO escrow and keeper rewards | **Live on TestNet** — app [`769772891`](https://testnet.explorer.perawallet.app/application/769772891) |
 | [`smart_contracts/pulse`](smart_contracts/pulse/contract.py) | Demo upkeep target (heartbeat counter) | Live on TestNet — app `769772906` |
 | [`smart_contracts/corvid_vault`](smart_contracts/corvid_vault/contract.py) | Earlier experiment: CORVID ASA vault + stake-gated sealed-envelope relay (AlgoChat) | Built, tested, LocalNet-only (parked) |
 
@@ -43,7 +44,7 @@ Interval ≥ 10 rounds.
 (both by the demo script and the `examples/` flow) have been executed by
 permissionless callers at their due rounds — `Pulse.beats` incremented by
 every execution (rounds 66610411, 66611741, 66625540+, all verifiable on the
-explorer). Full reference: [`docs/keeper-network.md`](docs/keeper-network.md).
+explorer). Full reference: [`docs/archon.md`](docs/archon.md).
 
 ## Development
 
@@ -76,7 +77,7 @@ smart_contracts/
 tests/               # unit tests (algorand-python-testing mocks + bot decoder vectors)
 specs/               # spec-sync specs (keeper, pulse, vault) — strict mode
 docs/
-  keeper-network.md  # hand-off reference: API, box encoding, economics, operations
+  archon.md          # hand-off reference: API, box encoding, economics, operations
 examples/
   register_upkeep.py # minimal: register an upkeep on the TestNet keeper app
   README.md          # the two integration paths (automate your app / earn fees)

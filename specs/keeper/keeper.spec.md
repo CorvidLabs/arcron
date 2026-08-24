@@ -13,13 +13,13 @@ depends_on: []
 
 ## Purpose
 
-Keeper is a permissionless keeper network as an ARC-4 smart contract
-(Algorand Python / Puya). Contracts can't wake themselves on Algorand, so
-anyone registers an **upkeep** — "call this app with this data every N
-rounds, paying R µALGO per execution" — escrowing ALGO in the contract.
-Any keeper may execute a due upkeep; the contract performs the registered
-inner app call and pays the keeper from the escrow. No owner, no protocol
-rake, token-agnostic (escrow is plain ALGO).
+Keeper is the contract behind Archon, a permissionless keeper network, as an
+ARC-4 smart contract (Algorand Python / Puya). Contracts can't wake
+themselves on Algorand, so anyone registers an **upkeep** — "call this app
+with this data every N rounds, paying R µALGO per execution" — escrowing
+ALGO in the contract. Any keeper may execute a due upkeep; the contract
+performs the registered inner app call and pays the keeper from the escrow.
+No owner, no protocol rake, token-agnostic (escrow is plain ALGO).
 
 ## Public API
 
