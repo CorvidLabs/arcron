@@ -40,8 +40,8 @@ Fees ≥ 4000 µALGO (keepers pay ~3000 µALGO in group fees per execution).
 Interval ≥ 10 rounds.
 
 **Proven end-to-end on TestNet**: upkeep registered against `Pulse.tick`,
-executed at the due round by a permissionless caller; `Pulse.beats = 1`
-verified on-chain (round 66610411).
+executed at the due round first by the demo script (round 66610411) and then
+by the keeper bot (round 66611741); `Pulse.beats = 2` verified on-chain.
 
 ## Development
 
@@ -75,6 +75,7 @@ tests/               # algorand-python-testing unit tests
 specs/               # spec-sync specs (keeper, pulse, vault) — strict mode
 scripts/
   keeper_testnet_demo.py  # full TestNet e2e: deploy, register, execute, verify
+  keeper_bot.py           # permissionless keeper bot: scans boxes, executes due upkeeps
   smoke_localnet.py       # vault LocalNet e2e
 fledge.toml          # fledge lanes (ci, local)
 .specsync/           # spec-sync config
@@ -91,6 +92,24 @@ cp .env.testnet.template .env.testnet   # or: algokit generate env-file -a targe
 # add DEPLOYER_MNEMONIC for a TestNet account (throwaway — never reuse on mainnet)
 poetry run python -m scripts.keeper_testnet_demo
 ```
+
+### Running a keeper bot
+
+The bot services the live keeper app: it scans the upkeep boxes every round
+and calls `execute` on anything due and funded, collecting the fees. It signs
+as `KEEPER_MNEMONIC` if set, else `DEPLOYER_MNEMONIC` — that's the account
+fees are paid to, and it pays the ~1,000 µALGO outer txn fee per execution.
+
+```bash
+poetry run python -m scripts.keeper_bot --once   # single scan (cron-friendly)
+poetry run python -m scripts.keeper_bot          # loop block-by-block
+```
+
+Defaults to the canonical TestNet app `769772891`; override with `--app-id`
+or `KEEPER_APP_ID`. An upkeep that fails to execute is skipped for the rest
+of the run (retrying would burn the outer fee every round). Note the contract
+schedules from the *scheduled* round, so an upkeep that was missed for many
+intervals stays due until it has caught up one execution per interval.
 
 ### Hard-won TestNet notes (already handled in code)
 
@@ -112,7 +131,7 @@ fails if code drifts from the documented public API.
 
 ## Roadmap
 
-- [ ] Off-chain keeper bot (watches rounds, simulates, executes due upkeeps)
+- [x] Off-chain keeper bot (watches rounds, executes due upkeeps) — `scripts/keeper_bot.py`
 - [ ] ASA-denominated upkeep fees (e.g. CORVID)
-- [ ] Cancel leftover demo upkeeps 0–3 on TestNet to reclaim ~0.08 ALGO escrow
+- [x] ~~Cancel leftover demo upkeeps 0–3 on TestNet~~ — done, 0.08 ALGO escrow reclaimed
 - [ ] Multi-arg / foreign-array call shapes, if real use cases demand them

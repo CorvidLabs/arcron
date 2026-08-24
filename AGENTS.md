@@ -15,6 +15,7 @@ experiment (don't extend it without being asked).
 - Build: `poetry run python -m smart_contracts build` (rebuilds artifacts and typed clients — always rebuild after contract changes)
 - Test: `poetry run pytest tests/ -q`
 - Specs: `specsync check --strict`
+- Keeper bot: `poetry run python -m scripts.keeper_bot [--once]` (signs as KEEPER_MNEMONIC, else DEPLOYER_MNEMONIC)
 - Python env: Poetry (`.venv` in project). Python 3.13 — do NOT use 3.14 (coincurve has no wheels).
 
 ## Conventions
@@ -23,6 +24,7 @@ experiment (don't extend it without being asked).
 - Tests use `algorand-python-testing` mocks. Two mock limits to know: it records but does not *execute* inner app calls (prove those on TestNet/LocalNet instead), and its `UInt64()` accepts only plain `int`.
 - Contracts requiring inner-txn fees rely on group fee pooling — callers add extra fee (see smoke/demo scripts).
 - On TestNet, disable the suggested-params cache (`set_suggested_params_cache_timeout(0)`) and fund the app account's base MBR (0.1 ALGO) before it can escrow or hold boxes.
+- Upkeep box values are ARC-4 head/tail encoded (32-byte creator, static fields inline, dynamic `call_data` in the tail via the offset at bytes [40:42]). `scripts/keeper_bot.py` has the reference decoder.
 
 ## Secrets
 
