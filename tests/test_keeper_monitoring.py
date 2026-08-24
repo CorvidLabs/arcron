@@ -122,21 +122,23 @@ def test_a_starved_upkeep_is_not_blamed_on_keepers(caplog) -> None:
     assert "needs a top-up, not a keeper" in caplog.text
 
 
-def test_escalation_can_starve_an_upkeep_that_covers_its_base_fee(caplog) -> None:
-    """The dormancy threshold moves with the fee, so the check has to as well.
+def test_an_upkeep_that_cannot_afford_the_ceiling_is_not_reported_starved(
+    caplog,
+) -> None:
+    """The bot's twin of the contract's fall-back, checked through `--check`.
 
     The pinned upkeep has a 4,000 µALGO fee and a 12,000 µALGO ceiling. An
-    escrow of 5,000 covers the fee its creator wrote down and not the one it is
-    now offering, so it is out of funds rather than unserviced — and blaming
-    keepers for it would be wrong.
+    escrow of 5,000 cannot pay the escalated price, so the contract charges
+    base instead — which means the upkeep is perfectly executable and must not
+    be reported as out of funds.
     """
     name, value = _box(4, balance=5_000)
     algod = FakeAlgod(
         round=_PINNED.last_serviced_round + 2 * UPKEEP_INTERVAL, boxes={name: value}
     )
     with caplog.at_level("INFO"):
-        assert check_registry(algod, 1) == 0
-    assert "escalated fee" in caplog.text
+        check_registry(algod, 1)
+    assert "needs a top-up, not a keeper" not in caplog.text
 
 
 def test_empty_registry_is_healthy() -> None:

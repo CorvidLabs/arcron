@@ -127,6 +127,17 @@ cannot drift apart.
   µALGO (50,900 for a 4-byte selector) + escrowed `funding`. Both come back
   on `cancel`, so registering an upkeep costs only transaction fees in the
   end.
+- **Post-quantum accounts work, with one thing to watch.** Algorand 5 derives a
+  Falcon-1024 account's address as a 32-byte hash chosen not to be an ed25519
+  curve point, so it is an ordinary address and the contract — which only ever
+  compares addresses and pays `Txn.sender` — cannot tell the difference. A
+  creator or a keeper may be post-quantum today (`scripts/spike_quantum.py`
+  confirms algod runs a real Falcon verification). But a Falcon-signed
+  `execute` is **4,384 bytes against ed25519's 340 — 12.9×**, and Algorand
+  charges `max(min_fee, size × fee_per_byte)`. That per-byte rate is zero
+  today, which is the only reason `MIN_UPKEEP_FEE` still covers a
+  post-quantum keeper. The floor is permanent and cannot be raised, so a chain
+  that ever prices bytes would leave post-quantum keepers under-paid.
 - Keeper costs, per execution: 1,000 µALGO outer fee + 2,000 µALGO
   `extra_fee` covering the two inner transactions (fee pooling). Paid fee is
   the effective fee (≥ 4,000), so net ≥ 1,000 µALGO per execution — more when

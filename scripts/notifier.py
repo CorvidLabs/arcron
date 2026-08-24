@@ -78,6 +78,7 @@ class Snapshot:
                     "interval_rounds": upkeep.interval_rounds,
                     "next_execution_round": upkeep.next_execution_round,
                     "target_app": upkeep.target_app,
+                    "policy": upkeep.policy,
                     "fee_cap": upkeep.fee_cap,
                     "last_serviced_round": upkeep.last_serviced_round,
                 }
@@ -208,29 +209,34 @@ def _fee_now(state: dict, current_round: int) -> int:
     # as "no escalation" rather than defaulting the service round to zero,
     # which would make every upkeep in an old state file look maximally late
     # and report the ceiling as the price of everything.
-    if cap <= base or "last_serviced_round" not in state:
+    if (
+        cap <= base
+        or "last_serviced_round" not in state
+        or state["next_execution_round"] <= state["last_serviced_round"]
+    ):
         return base
     interval = max(state["interval_rounds"], 1)
     lateness = max(current_round - state["last_serviced_round"], 0)
     excess = min(max(lateness - interval, 0), interval)
-    return base + (cap - base) * excess // interval
+    fee = base + (cap - base) * excess // interval
+    # An upkeep never bids more than it holds; see the contract's `execute`.
+    return base if state["balance"] < fee else fee
 
 
 def _burst_cost(before: dict, now: dict, runs: int) -> int:
     """What a run of `runs` executions took out of the escrow.
 
-    Only the first execution of a burst is late — escalation is measured from
-    the last service, so once a keeper has arrived the rest of the backlog
-    drains at base. The notifier only sees the burst's final state, so it
-    prices the first run from how long the upkeep had gone unserviced and the
-    remainder at base.
+    The exact answer is the balance delta, and it is sitting in the two
+    snapshots — no model of the fee curve can beat it, and a model would be
+    wrong for a burst whose runs were not all priced the same. Falls back to
+    the curve only when a top-up landed in the same window and made the delta
+    meaningless.
     """
+    drawdown = before["balance"] - now["balance"]
+    if drawdown > 0:
+        return drawdown
     base = now["fee_per_execution"]
-    first = _fee_now(
-        {**before, "fee_cap": now.get("fee_cap", 0)},
-        now.get("last_serviced_round", before.get("last_serviced_round", 0)),
-    )
-    return first + (runs - 1) * base
+    return _fee_now(now, now.get("last_serviced_round", 0)) + (runs - 1) * base
 
 
 def _as_address(sender: object) -> str | None:

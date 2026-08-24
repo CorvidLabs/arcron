@@ -116,11 +116,20 @@ describe('derived state', () => {
     expect(isExecutable({ ...upkeep, balance: 3_999n }, 7898n)).toBe(false);
   });
 
-  test('escalation raises the bar an upkeep has to clear', () => {
-    // 5,000 µALGO clears the base fee but not the escalated one.
+  test('an escrow that cannot reach the ceiling pays base and stays executable', () => {
+    // 5,000 µALGO clears the base fee but not the escalated one, so the
+    // contract charges base rather than freezing the upkeep for good.
     const thin = { ...upkeep, balance: 5_000n };
     expect(isExecutable(thin, 7898n)).toBe(true);
-    expect(isExecutable(thin, 7889n + 20n)).toBe(false);
+    expect(isExecutable(thin, 7889n + 20n)).toBe(true);
+    expect(effectiveFee(thin, 7889n + 20n)).toBe(4_000n);
+    // Below the base fee there is nothing anyone can be paid.
+    expect(isExecutable({ ...upkeep, balance: 3_999n }, 7898n)).toBe(false);
+  });
+
+  test('a replay of a backlog never escalates', () => {
+    const replay = { ...upkeep, nextExecutionRound: 7_800n, lastServicedRound: 7_889n };
+    expect(effectiveFee(replay, 9_000n)).toBe(4_000n);
   });
 });
 

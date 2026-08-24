@@ -302,6 +302,10 @@ def main(argv: list[str] | None = None) -> None:
     # ------------------------------------------------------------------
     logger.info("── 2. Register an upkeep against Pulse.tick ──")
     escrow_before = _balance(algorand, keeper_client.app_address)
+    # Bracket the registration rather than reading the round after it. algod's
+    # last-round can already have moved on by the time the call returns, and
+    # asserting equality against it made this stage fail one run in several.
+    before_round = algorand.client.algod.status()["last-round"]
     upkeep_id = _register(algorand, keeper_client, deployer, pulse_client.app_id, FUNDING)
     registered_round = algorand.client.algod.status()["last-round"]
     upkeep, raw = _read_upkeep(algorand, app_id, upkeep_id)
@@ -314,7 +318,11 @@ def main(argv: list[str] | None = None) -> None:
     _assert("times_executed", upkeep.times_executed, 0)
     _assert("policy", upkeep.policy, keeper_bot.CATCH_UP)
     _assert("fee_cap", upkeep.fee_cap, 0)
-    _assert("last_serviced_round", upkeep.last_serviced_round, registered_round)
+    _assert(
+        "last_serviced_round is the round it registered in",
+        before_round <= upkeep.last_serviced_round <= registered_round,
+        True,
+    )
     # The tail begins where the head ends; read the offset rather than
     # restating it, so a struct change shows up as a decode failure and not as
     # a test quietly checking the wrong bytes.
@@ -827,15 +835,10 @@ def main(argv: list[str] | None = None) -> None:
     )
     at_round = algorand.client.algod.status()["last-round"]
     registry = keeper_bot.scan_upkeeps(algorand.client.algod, app_id)
-    queue = sorted(
-        (
-            u
-            for u in registry
-            if at_round >= u.next_execution_round
-            and u.balance >= keeper_bot.effective_fee(u, at_round)
-        ),
-        key=lambda u: (-keeper_bot.effective_fee(u, at_round), u.upkeep_id),
-    )
+    # The bot's own selection, not a copy of it: this stage exists to catch a
+    # regression to registry order, and a reimplementation here would pass
+    # whatever `keeper_bot` did.
+    queue = keeper_bot.select_due(registry, at_round)
     _assert(
         "the neglected minimum-fee upkeep outranks the richer one",
         queue[0].upkeep_id,

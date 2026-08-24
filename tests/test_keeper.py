@@ -454,15 +454,17 @@ def test_escalation_is_measured_from_the_last_service_not_the_schedule(
     assert sum(fees) < len(fees) * cap
 
 
-def test_escalation_raises_the_bar_an_upkeep_has_to_clear(
+def test_an_escrow_below_the_escalated_fee_falls_back_to_base(
     context: AlgopyTestContext, keeper: Keeper, pulse: Pulse
 ) -> None:
-    """An upkeep can still go dormant at a balance that covers its base fee.
+    """An upkeep bids up to its ceiling but never more than it holds.
 
-    `register` guarantees one capped run at registration, not forever. Once
-    punctual runs have drawn the escrow below the cap, falling behind makes
-    the upkeep unexecutable at a balance its creator would have read as two
-    more runs.
+    Without this the escalated fee is a one-way door: once the escrow drops
+    below it, lateness only grows, so the price the upkeep cannot pay only
+    rises and no keeper can ever execute it again. It would sit holding up to
+    a full ceiling of escrow that nobody could spend, recoverable only by the
+    creator. Falling back to the base fee keeps it executable by anyone until
+    the escrow is genuinely empty.
     """
     base, cap = MIN_UPKEEP_FEE, MIN_UPKEEP_FEE * 3
     start = 1_000
@@ -471,19 +473,76 @@ def test_escalation_raises_the_bar_an_upkeep_has_to_clear(
         context, keeper, pulse, _selector("tick()uint64"), funding=cap, fee_cap=cap
     )
 
-    # One punctual run at the base fee leaves two base fees in escrow.
+    # One punctual run at the base fee leaves two base fees — under the cap.
     due = _read_upkeep(context, keeper, int(upkeep_id)).next_execution_round
     context.ledger.patch_global_fields(round=UInt64(due))
     keeper.execute(upkeep_id)
     upkeep = _read_upkeep(context, keeper, int(upkeep_id))
     assert upkeep.balance == cap - base == base * 2
 
-    # Fall a whole interval behind and no keeper can execute it.
+    # Now fall a whole interval behind. The escalated price would be the cap,
+    # which the escrow cannot cover — so it pays base and still runs.
     context.ledger.patch_global_fields(
         round=UInt64(upkeep.last_serviced_round + 2 * MIN_INTERVAL_ROUNDS)
     )
-    with pytest.raises(AssertionError, match="Insufficient funding"):
+    keeper.execute(upkeep_id)
+    assert _fee_paid(context, keeper) == base
+
+    # And it keeps running until the escrow is actually empty.
+    upkeep = _read_upkeep(context, keeper, int(upkeep_id))
+    context.ledger.patch_global_fields(
+        round=UInt64(upkeep.last_serviced_round + 2 * MIN_INTERVAL_ROUNDS)
+    )
+    keeper.execute(upkeep_id)
+    assert _read_upkeep(context, keeper, int(upkeep_id)).balance == 0
+
+
+def test_a_patient_keeper_cannot_farm_the_ceiling_off_a_backlog(
+    context: AlgopyTestContext, keeper: Keeper, pulse: Pulse
+) -> None:
+    """The attack the "measure from the last service" rule does not stop alone.
+
+    Under CATCH_UP a replay advances the schedule by one interval, so a keeper
+    that waits *two* intervals between replays is late again by its own
+    measure and collects the ceiling every time — while the backlog grows
+    without bound. Measured before the fix: 34 runs took 100% of a 400,000
+    µALGO escrow, 33 of them at the ceiling, and left the upkeep 5,400 rounds
+    further behind than it started.
+
+    The guard is that a replay never escalates: `next_execution_round <=
+    last_serviced_round` means the upkeep was already behind when it last ran,
+    so this call is draining a backlog rather than clearing a market.
+    """
+    base, cap, interval = 4_000, 12_000, 100
+    escrow = 400_000
+    start = 1_000
+    context.ledger.patch_global_fields(round=UInt64(start))
+    upkeep_id = _register(
+        context,
+        keeper,
+        pulse,
+        _selector("tick()uint64"),
+        interval=interval,
+        fee=base,
+        funding=escrow,
+        fee_cap=cap,
+    )
+
+    now = start + 21 * interval  # twenty intervals of genuine neglect
+    fees: list[int] = []
+    while len(fees) < 200:
+        context.ledger.patch_global_fields(round=UInt64(now))
+        upkeep = _read_upkeep(context, keeper, int(upkeep_id))
+        if upkeep.next_execution_round > now or upkeep.balance < base:
+            break
         keeper.execute(upkeep_id)
+        fees.append(_fee_paid(context, keeper))
+        now += 2 * interval  # wait for the fee to peak before each replay
+
+    at_ceiling = fees.count(cap)
+    assert at_ceiling == 1, f"only the first neglect should escalate, {at_ceiling} did"
+    assert len(fees) > 90, f"the escrow should buy ~{escrow // base} runs, bought {len(fees)}"
+    assert sum(fees) <= escrow
 
 
 def test_register_requires_funding_for_one_execution_at_the_cap(

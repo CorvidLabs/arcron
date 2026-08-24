@@ -10,6 +10,7 @@ import { KeeperService } from '../core/keeper.service';
 import {
   boxMbr,
   CATCH_UP,
+  MAX_INTERVAL_ROUNDS,
   MAX_UPKEEP_FEE,
   MIN_INTERVAL_ROUNDS,
   MIN_UPKEEP_FEE,
@@ -160,8 +161,14 @@ export class RegisterForm {
   protected readonly form = this.builder.nonNullable.group({
     targetApp: [0, [Validators.required, Validators.min(1)]],
     signature: [PULSE_TICK_SIGNATURE, Validators.required],
-    intervalRounds: [MIN_INTERVAL_ROUNDS, [Validators.required, Validators.min(MIN_INTERVAL_ROUNDS)]],
-    feePerExecution: [MIN_UPKEEP_FEE / 1e6, [Validators.required, Validators.min(MIN_UPKEEP_FEE / 1e6)]],
+    intervalRounds: [
+      MIN_INTERVAL_ROUNDS,
+      [Validators.required, Validators.min(MIN_INTERVAL_ROUNDS), Validators.max(MAX_INTERVAL_ROUNDS)],
+    ],
+    feePerExecution: [
+      MIN_UPKEEP_FEE / 1e6,
+      [Validators.required, Validators.min(MIN_UPKEEP_FEE / 1e6), Validators.max(MAX_UPKEEP_FEE / 1e6)],
+    ],
     funding: [(MIN_UPKEEP_FEE * 3) / 1e6, [Validators.required, Validators.min(MIN_UPKEEP_FEE / 1e6)]],
     // The encoding keeps CATCH_UP as zero so nothing registered before means
     // something new. The form defaults the other way, because "only the
@@ -249,6 +256,7 @@ export class RegisterForm {
   protected readonly capHint = computed(() => {
     const { feeCap, feePerExecution } = this.value();
     if (feeCap === 0) return 'off — the fee never changes';
+    if (feePerExecution <= 0) return 'set a fee per execution first';
     if (feeCap < feePerExecution) return 'must be at least the fee, or zero';
     const multiple = (feeCap / feePerExecution).toFixed(1);
     // Not a worst case: a keeper with no competition is better off waiting for

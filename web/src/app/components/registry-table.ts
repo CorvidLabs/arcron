@@ -288,7 +288,9 @@ export class RegistryTable {
         nextRound: String(upkeep.nextExecutionRound),
         due: dueLabel(roundsUntilDue(upkeep, round), pace),
         fee: algos(upkeep.feePerExecution),
-        feeExact: microAlgos(fee),
+        // The tooltip has to describe the number it is attached to: the cell
+        // shows the escalated fee when there is one, and the base fee when not.
+        feeExact: microAlgos(fee > upkeep.feePerExecution ? fee : upkeep.feePerExecution),
         feeNow: fee > upkeep.feePerExecution ? algos(fee) : null,
         policy: upkeep.policy === SKIP_AHEAD ? 'skips ahead' : 'catches up',
         ceiling: escalates(upkeep) ? algos(upkeep.feeCap) : null,

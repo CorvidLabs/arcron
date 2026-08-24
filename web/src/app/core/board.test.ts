@@ -7,6 +7,7 @@
 
 import { describe, expect, test } from 'bun:test';
 import { classify, sortEntries, summarise, toEntry } from './board';
+import { effectiveFee } from './upkeep';
 import type { Upkeep } from './upkeep';
 
 function upkeep(overrides: Partial<Upkeep> = {}): Upkeep {
@@ -154,11 +155,25 @@ describe('escalation on the board', () => {
     expect(onTime.escalated).toBe(false);
   });
 
-  test('an upkeep can go dormant at a balance that covers its base fee', () => {
-    // Eight runs at the price the creator wrote down — but not one at the cap.
+  test('an escrow that cannot reach the ceiling falls back to base, not dormant', () => {
+    // Two runs at the price the creator wrote down, none at the ceiling. The
+    // contract charges base rather than freezing the upkeep at a price it can
+    // never pay, so it stays executable.
     const thin = upkeep({ feeCap: 12_000n, balance: 8_000n });
     expect(classify(thin, 1_000n)).toBe('due');
-    expect(classify(thin, 1_010n)).toBe('dormant');
+    expect(classify(thin, 1_010n)).toBe('due');
+    expect(effectiveFee(thin, 1_010n)).toBe(4_000n);
+    // Genuinely empty is still dormant.
+    expect(classify(upkeep({ feeCap: 12_000n, balance: 3_999n }), 1_010n)).toBe('dormant');
+  });
+
+  test('a replay of a backlog never escalates', () => {
+    // nextExecutionRound <= lastServicedRound means this upkeep was already
+    // behind when it last ran, so the call is draining a backlog rather than
+    // clearing a market. Without this a patient keeper collects the ceiling on
+    // every replay while the backlog grows without bound.
+    const replay = upkeep({ feeCap: 12_000n, nextExecutionRound: 1_010n, lastServicedRound: 1_400n });
+    expect(effectiveFee(replay, 1_600n)).toBe(4_000n);
   });
 
   test('reads when an upkeep last ran instead of deriving it from the schedule', () => {

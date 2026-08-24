@@ -91,7 +91,10 @@ def test_collapses_a_burst_into_one_announcement() -> None:
 
     assert len(events) == 2  # the burst, and going dry as a result
     assert "×4" in events[0].text
-    assert "0.016 ALGO paid" in events[0].text
+    # The escrow fell from 12,000 to 0, so 12,000 µALGO is what was paid. The
+    # old estimator modelled it as 4 × the base fee and reported 0.016 ALGO —
+    # more than the upkeep ever held.
+    assert "0.012 ALGO paid" in events[0].text
 
 
 # --- the failures, which are the point --------------------------------

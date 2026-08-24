@@ -21,6 +21,7 @@ export const BOX_MBR_FIXED = 2_500 + 400 * 117;
 export const MIN_UPKEEP_FEE = 4_000;
 export const MAX_UPKEEP_FEE = 1_000_000_000;
 export const MIN_INTERVAL_ROUNDS = 10;
+export const MAX_INTERVAL_ROUNDS = 1_000_000_000;
 /** Outer fee plus the extra fee covering `execute`'s two inner transactions. */
 export const EXECUTE_FEE = 1_000 + 2_000;
 
@@ -93,16 +94,21 @@ export function decodeUpkeep(id: bigint, raw: Uint8Array): Upkeep {
  * scripts/keeper_bot.py. The fee rises linearly from the base to the cap over
  * one missed interval and then holds, and lateness is measured from the last
  * service rather than from the schedule — so a keeper draining a backlog is
- * paid the ceiling once, not once per replay. A zero cap never escalates.
+ * paid the ceiling once, not once per replay. A zero cap never escalates, and
+ * an upkeep never bids more than it holds: an escrow below the escalated fee
+ * drops back to the base fee rather than freezing at a price it cannot pay.
+ * A replay of a backlog never escalates at all — `nextExecutionRound <=
+ * lastServicedRound` means the upkeep was already behind when it last ran.
  */
 export function effectiveFee(upkeep: Upkeep, currentRound: bigint): bigint {
   const base = upkeep.feePerExecution;
   const cap = upkeep.feeCap;
-  if (cap <= base) return base;
+  if (cap <= base || upkeep.nextExecutionRound <= upkeep.lastServicedRound) return base;
   const interval = upkeep.intervalRounds > 0n ? upkeep.intervalRounds : 1n;
   const lateness = max(currentRound - upkeep.lastServicedRound, 0n);
   const excess = min(max(lateness - interval, 0n), interval);
-  return base + ((cap - base) * excess) / interval;
+  const fee = base + ((cap - base) * excess) / interval;
+  return upkeep.balance < fee ? base : fee;
 }
 
 /** True when this upkeep's fee can rise above what its creator wrote down. */
