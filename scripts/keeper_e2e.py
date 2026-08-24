@@ -48,6 +48,15 @@ KEEPER_TXN_COST = 1_000 + keeper_bot.EXTRA_FEE_MICROALGO
 MIN_DEPLOYER_BALANCE = 2_000_000
 STRANGER_FUNDING = 500_000
 CALL_SIGNATURE = "tick()uint64"
+# Algorand's nominal block time, for reading a cadence as human time.
+ROUND_SECONDS = 2.8
+# Cadences a real user would pick, from a heartbeat to a daily settlement.
+CADENCES = (
+    ("30 seconds", 10),
+    ("5 minutes", 107),
+    ("1 hour", 1_286),
+    ("1 day", 30_857),
+)
 
 
 def _selector(signature: str) -> bytes:
@@ -147,6 +156,15 @@ def _fund_deployer(algorand, network: str, deployer) -> None:
 
 def _register(algorand, keeper_client, deployer, target_app: int, funding: int) -> int:
     """Register an upkeep against Pulse.tick; returns the new upkeep id."""
+    return _register_with_interval(
+        algorand, keeper_client, deployer, target_app, funding, INTERVAL_ROUNDS
+    )
+
+
+def _register_with_interval(
+    algorand, keeper_client, deployer, target_app: int, funding: int, interval: int
+) -> int:
+    """Register an upkeep at an arbitrary cadence; returns the new upkeep id."""
     call_data = _selector(CALL_SIGNATURE)
     first_valid = algorand.client.algod.status()["last-round"]
     last_valid = first_valid + 1_000
@@ -168,7 +186,7 @@ def _register(algorand, keeper_client, deployer, target_app: int, funding: int) 
             funding_payment=payment(funding),
             target_app=target_app,
             call_data=call_data,
-            interval_rounds=INTERVAL_ROUNDS,
+            interval_rounds=interval,
             fee_per_execution=FEE,
         ),
         params=algokit_utils.CommonAppCallParams(
@@ -176,6 +194,17 @@ def _register(algorand, keeper_client, deployer, target_app: int, funding: int) 
         ),
     )
     return response.abi_return
+
+
+def _human(rounds: int) -> str:
+    seconds = rounds * ROUND_SECONDS
+    if seconds < 90:
+        return f"{seconds:.0f}s"
+    if seconds < 3_600:
+        return f"{seconds / 60:.0f}min"
+    if seconds < 86_400:
+        return f"{seconds / 3_600:.1f}h"
+    return f"{seconds / 86_400:.1f}d"
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -424,6 +453,83 @@ def main(argv: list[str] | None = None) -> None:
     ).abi_return
     _assert("fresh app back to its base MBR", _balance(algorand, fresh.app_address), 100_000)
     logger.info(f"  ✔ cancel returned {fresh_refund} µALGO (escrow 0 + box MBR)")
+
+    # ------------------------------------------------------------------
+    logger.info("── 12. Cadences from seconds to days ──")
+    # An upkeep is a promise about the future, so the schedule has to be right
+    # at every horizon a user would pick — not just the 10-round minimum the
+    # other stages use.
+    for label, interval in CADENCES:
+        registered = _register_with_interval(
+            algorand, keeper_client, deployer, pulse_client.app_id, FEE * 3, interval
+        )
+        upkeep, _ = _read_upkeep(algorand, app_id, registered)
+        confirmed = algorand.client.algod.status()["last-round"]
+        _assert(
+            f"every {label} ({interval} rounds ≈ {_human(interval)}): next run",
+            upkeep.next_execution_round - upkeep.interval_rounds <= confirmed,
+            True,
+        )
+        _assert(f"every {label}: interval", upkeep.interval_rounds, interval)
+        _assert(f"every {label}: runs funded", upkeep.balance // upkeep.fee_per_execution, 3)
+        # Nothing this far out may be executable, and the bot must agree.
+        current = algorand.client.algod.status()["last-round"]
+        _assert(f"every {label}: due yet", current >= upkeep.next_execution_round, False)
+        due_to_bot = [
+            u
+            for u in keeper_bot.scan_upkeeps(algorand.client.algod, app_id)
+            if u.upkeep_id == registered and current >= u.next_execution_round
+        ]
+        _assert(f"every {label}: bot sees it as due", due_to_bot, [])
+        _expect_failure(
+            f"execute a {label} upkeep early",
+            "Not due",
+            lambda upkeep_id=registered: stranger_client.send.execute(
+                args=ExecuteArgs(upkeep_id=upkeep_id),
+                params=algokit_utils.CommonAppCallParams(
+                    extra_fee=algokit_utils.AlgoAmount(
+                        micro_algo=keeper_bot.EXTRA_FEE_MICROALGO
+                    )
+                ),
+            ),
+        )
+        keeper_client.send.cancel(
+            args=CancelArgs(upkeep_id=registered),
+            params=algokit_utils.CommonAppCallParams(
+                extra_fee=algokit_utils.AlgoAmount(micro_algo=1_000)
+            ),
+        )
+    _assert_solvent(algorand, keeper_client, app_id)
+
+    # ------------------------------------------------------------------
+    logger.info("── 13. A long-missed upkeep catches up one interval at a time ──")
+    # The contract schedules from the *scheduled* round, not the round it was
+    # executed in. An upkeep left unattended for hours therefore stays due
+    # until it has caught up, rather than silently skipping its history.
+    missed_id = _register(algorand, keeper_client, deployer, pulse_client.app_id, FEE * 3)
+    missed, _ = _read_upkeep(algorand, app_id, missed_id)
+    scheduled = missed.next_execution_round
+    # Sleep through three whole intervals.
+    net.wait_for_round(algorand, scheduled + 3 * INTERVAL_ROUNDS, poker=deployer)
+    response = stranger_client.send.execute(
+        args=ExecuteArgs(upkeep_id=missed_id),
+        params=algokit_utils.CommonAppCallParams(
+            extra_fee=algokit_utils.AlgoAmount(micro_algo=keeper_bot.EXTRA_FEE_MICROALGO)
+        ),
+    )
+    _assert("next due after a missed window", response.abi_return, scheduled + INTERVAL_ROUNDS)
+    after, _ = _read_upkeep(algorand, app_id, missed_id)
+    _assert(
+        "still due, still catching up",
+        algorand.client.algod.status()["last-round"] >= after.next_execution_round,
+        True,
+    )
+    keeper_client.send.cancel(
+        args=CancelArgs(upkeep_id=missed_id),
+        params=algokit_utils.CommonAppCallParams(
+            extra_fee=algokit_utils.AlgoAmount(micro_algo=1_000)
+        ),
+    )
 
     # ------------------------------------------------------------------
     # Return the stranger's remaining balance; on TestNet that is real ALGO.
