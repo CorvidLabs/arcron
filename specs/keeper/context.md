@@ -22,7 +22,7 @@ spec: keeper.spec.md
 
 - Implemented and unit-tested: register (+5 validation paths), execute (happy path, not-due, insufficient funding, unknown id), top_up, cancel (+refund, double-cancel).
 - The mock AVM records but does not execute inner app calls, and does not enforce minimum balances — both are covered by `scripts/keeper_e2e.py` on LocalNet.
-- **Live on TestNet**: Keeper app `769772891`, Pulse app `769772906` (deployer `E5M2OH5XNDMNABJ6VOFOUVR2IKRPCGQH43PVC5P3DWQQ2LV2VJV2FJZQ3E`), executed permissionlessly at their due rounds. That deployment predates the 2026-08-24 box-MBR fix; a redeploy is pending.
+- **Live on TestNet**: Keeper app `769802474`, Pulse app `769772906` (deployer `E5M2OH5XNDMNABJ6VOFOUVR2IKRPCGQH43PVC5P3DWQQ2LV2VJV2FJZQ3E`). The full 14-stage e2e passes against it on-chain, including the box-MBR regression and the losing-keeper measurement. App `769772891` is the deprecated predecessor: it predates the box-MBR fix, its registry has been emptied, and 243,000 µALGO of box MBR is stranded there permanently — the fix exists precisely so that cannot happen again.
 
 ## Notes
 

@@ -7,15 +7,40 @@ quick overview see `../README.md`; for runnable flows see `../examples/`.
 
 | Item | Value |
 |------|-------|
-| Keeper app | [`769772891`](https://testnet.explorer.perawallet.app/application/769772891) |
+| Keeper app | [`769802474`](https://testnet.explorer.perawallet.app/application/769802474) |
 | Pulse demo target | [`769772906`](https://testnet.explorer.perawallet.app/application/769772906) |
 | Reference bot | `scripts/keeper_bot.py` |
-| Proof | `Pulse.beats` incremented by permissionless executions at rounds 66610411 (demo) and 66611741 (bot) |
+| Proof | All 14 stages of `scripts/keeper_e2e.py` pass against it on-chain — first permissionless execution at round 66629036, catch-up stage through 66629138 |
+| Deprecated | [`769772891`](https://testnet.explorer.perawallet.app/application/769772891) — see [migration](#migrating-off-the-deprecated-app) |
+
+### Migrating off the deprecated app
+
+App `769772891` was the first TestNet deployment. It predates the box-MBR fix
+of 2026-08-24 and carries both defects that fix addressed:
+
+1. `register` undercharged box MBR by 800 µALGO, so an app account with no
+   surplus could fail to pay out an upkeep's last execution.
+2. `cancel` refunded only the escrow, leaving the box MBR stranded in the app
+   account with no method able to sweep it.
+
+**If you registered an upkeep against it**, call `cancel` and you will get the
+remaining escrow back. You will *not* get the box MBR back — the old contract
+has no path to return it, and it cannot be upgraded. Note the old ABI is
+`cancel(uint64)void`, a different selector from the current
+`cancel(uint64)uint64`, so a client generated from this repo cannot call it;
+build the call from the old signature directly.
+
+Its registry is already empty: the upkeeps registered during development were
+cancelled on 2026-08-24 and 40,000 µALGO of escrow reclaimed. What remains is
+243,000 µALGO of stranded box MBR, permanently. That number is the clearest
+argument for why the fix mattered — on the current app, registering and
+cancelling is balance-neutral, and stage 11 of the e2e asserts the app account
+returns to exactly its base MBR.
 
 ## Architecture
 
 ```
-creator                keeper app (769772891)               target app
+creator                keeper app (769802474)               target app
    | register + escrow ALGO  |                                    |
    |------------------------>|  box "u"+id: Upkeep struct         |
    |                         |                                    |

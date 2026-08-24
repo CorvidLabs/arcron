@@ -57,8 +57,7 @@ export const NETWORKS: Readonly<Record<NetworkKey, NetworkConfig>> = {
     genesisIds: ['testnet-v1.0'],
     nominalRoundSeconds: 2.8,
     explorerApp: (appId) => `https://testnet.explorer.perawallet.app/application/${appId}`,
-    // Predates the 2026-08-24 box-MBR fix; see the README footnote.
-    defaultAppId: 769772891,
+    defaultAppId: 769802474,
   },
 };
 
