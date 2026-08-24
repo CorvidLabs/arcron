@@ -194,6 +194,59 @@ later — it carries the round, the fee collected, what escrow was left and the
 transaction id, so any claim can be checked against the chain. Use
 `--log-format text` for a human at a terminal.
 
+### Knowing it is still alive
+
+A keeper fails silently in two ways, and both take the network down with it.
+
+**It dies.** Nothing on-chain says so; upkeeps just quietly accumulate as due.
+Every twenty scans (and on every `--once` run) the bot emits a heartbeat:
+
+```json
+{"event": "heartbeat", "round": 66629378, "upkeeps": 3, "due": 1,
+ "executed_session": 12, "skipped": 0, "balance": 4192000}
+```
+
+Alert on its absence, not its content — a heartbeat that stops is the signal.
+
+**It runs out of ALGO.** This one is nastier, because a keeper earns fees into
+the same account it spends from: it is self-sustaining while the registry is
+busy, and stuck the moment it is empty, with no way to earn its way back out.
+So the balance is checked before the first scan and at every heartbeat:
+
+- Below `100,000 + 3,000` µALGO — its account minimum plus one execution — the
+  bot **refuses to start**, says why, and exits `2` so a supervisor notices:
+
+  ```
+  Keeper AOOZ…MZ5FOU holds 100000 µALGO, below the 103000 µALGO needed to keep
+  its account and pay for one execution (3000 µALGO). Fund it before starting.
+  ```
+
+- Below `--min-balance` (default ~100 executions of headroom, or
+  `KEEPER_MIN_BALANCE`) it warns each heartbeat with how many executions are
+  left, and keeps working.
+
+### Checking a keeper you do not run
+
+`--check` reads the registry and exits without signing anything, so it works
+as an external probe — you do not need the keeper's account, or its
+cooperation:
+
+```bash
+poetry run python -m scripts.keeper_bot --check --network testnet
+```
+
+```
+Round 3303: 3 upkeeps on app 1180, 1 stalled, 1 starved
+  upkeep 35: escrow 0 µALGO is below its 4000 µALGO fee — needs a top-up, not a keeper
+  upkeep 9: overdue by 1609 rounds (15.0 intervals) — nobody is servicing it
+```
+
+Exit `1` if any upkeep is stalled, `0` otherwise, so it drops straight into
+cron or a monitoring check. The distinction matters: **starved** is the
+creator's problem (escrow below one fee, no keeper can execute it) and
+**stalled** is a keeper problem (funded, due, and nobody came). Blaming
+keepers for starved upkeeps would make the signal useless.
+
 ### Giving it something to do
 
 A bot with an empty registry is correct and useless. Register an upkeep

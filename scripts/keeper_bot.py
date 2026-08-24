@@ -43,6 +43,23 @@ EXTRA_FEE_MICROALGO = 2_000
 # node that is down does not get hammered and a blip costs almost nothing.
 ERROR_RETRY_SECONDS = 5
 MAX_ERROR_RETRY_SECONDS = 60
+# What one execution costs the keeper: the outer fee plus the pooled extra.
+EXECUTION_COST_MICROALGO = 1_000 + EXTRA_FEE_MICROALGO
+# The minimum balance every Algorand account must hold.
+ACCOUNT_MBR_MICROALGO = 100_000
+# Below this a keeper cannot fund even one execution, so it refuses to start
+# rather than looking alive while failing to broadcast.
+HARD_MINIMUM_MICROALGO = ACCOUNT_MBR_MICROALGO + EXECUTION_COST_MICROALGO
+# Default warning floor: about a hundred executions of headroom.
+LOW_BALANCE_MICROALGO = ACCOUNT_MBR_MICROALGO + 100 * EXECUTION_COST_MICROALGO
+# Scans between heartbeats while looping.
+HEARTBEAT_SCANS = 20
+# An upkeep overdue by more than this many of its own intervals is a stall.
+STALL_INTERVALS = 2
+
+
+class UnrecoverableError(RuntimeError):
+    """A condition no amount of retrying fixes — exit non-zero and be noticed."""
 
 
 class Emitter:
@@ -160,6 +177,86 @@ def resolve_app_id(parser: argparse.ArgumentParser, app_id: int | None, network:
     )
 
 
+def check_registry(algod, app_id: int) -> int:
+    """Report how healthy a registry looks. Returns a process exit code.
+
+    Reads public box state only — no account, no signing — so this works as an
+    external probe against a keeper you do not control. An upkeep overdue by
+    more than a couple of its own intervals means nobody is servicing it.
+    """
+    current = algod.status()["last-round"]
+    upkeeps = scan_upkeeps(algod, app_id)
+    stalled: list[tuple[Upkeep, int]] = []
+    starved: list[Upkeep] = []
+    for upkeep in upkeeps:
+        if upkeep.balance < upkeep.fee_per_execution:
+            # Not a liveness problem: no keeper can execute this, and none
+            # should be blamed for it.
+            starved.append(upkeep)
+        elif current - upkeep.next_execution_round > STALL_INTERVALS * upkeep.interval_rounds:
+            stalled.append((upkeep, current - upkeep.next_execution_round))
+
+    emit(
+        "check",
+        f"Round {current}: {len(upkeeps)} upkeeps on app {app_id}, "
+        f"{len(stalled)} stalled, {len(starved)} starved",
+        round=current,
+        app_id=app_id,
+        upkeeps=len(upkeeps),
+        stalled=len(stalled),
+        starved=len(starved),
+    )
+    for upkeep in starved:
+        emit(
+            "starved",
+            f"  upkeep {upkeep.upkeep_id}: escrow {upkeep.balance} µALGO is below its "
+            f"{upkeep.fee_per_execution} µALGO fee — needs a top-up, not a keeper",
+            upkeep_id=upkeep.upkeep_id,
+            balance=upkeep.balance,
+            fee_per_execution=upkeep.fee_per_execution,
+        )
+    for upkeep, overdue in stalled:
+        emit(
+            "stalled",
+            f"  upkeep {upkeep.upkeep_id}: overdue by {overdue} rounds "
+            f"({overdue / max(upkeep.interval_rounds, 1):.1f} intervals) — "
+            f"nobody is servicing it",
+            level=logging.WARNING,
+            upkeep_id=upkeep.upkeep_id,
+            overdue_rounds=overdue,
+            intervals_overdue=round(overdue / max(upkeep.interval_rounds, 1), 1),
+        )
+    return 1 if stalled else 0
+
+
+def guard_balance(algod, address: str, warn_below: int) -> int:
+    """Refuse to run below what it takes to broadcast; warn while it is low.
+
+    A keeper earns its fees into the same account it spends from, so it is
+    normally self-sustaining — right until it is empty, at which point it
+    cannot earn its way back out. That is the failure this catches.
+    """
+    balance = algod.account_info(address)["amount"]
+    if balance < HARD_MINIMUM_MICROALGO:
+        raise UnrecoverableError(
+            f"Keeper {address} holds {balance} µALGO, below the "
+            f"{HARD_MINIMUM_MICROALGO} µALGO needed to keep its account and pay for "
+            f"one execution ({EXECUTION_COST_MICROALGO} µALGO). Fund it before starting."
+        )
+    if balance < warn_below:
+        runs = (balance - ACCOUNT_MBR_MICROALGO) // EXECUTION_COST_MICROALGO
+        emit(
+            "low_balance",
+            f"Keeper balance {balance} µALGO is low: about {runs} execution(s) of "
+            f"headroom. Collected fees top it up, but a quiet registry will not.",
+            level=logging.WARNING,
+            balance=balance,
+            executions_remaining=runs,
+            warn_below=warn_below,
+        )
+    return balance
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -171,6 +268,17 @@ def main(argv: list[str] | None = None) -> None:
         type=int,
         default=None,
         help="Keeper app id (default: KEEPER_APP_ID, else the TestNet app)",
+    )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="report registry health and exit; signs nothing, executes nothing",
+    )
+    parser.add_argument(
+        "--min-balance",
+        type=int,
+        default=int(os.environ.get("KEEPER_MIN_BALANCE", LOW_BALANCE_MICROALGO)),
+        help="warn below this signer balance in µALGO (default: %(default)s)",
     )
     parser.add_argument(
         "--log-format",
@@ -192,11 +300,18 @@ def main(argv: list[str] | None = None) -> None:
 
     algorand = net.connect(args.network)
     app_id = resolve_app_id(parser, args.app_id, args.network)
+    algod = algorand.client.algod
+
+    if args.check:
+        # Nothing below this line needs an account, and a probe should not
+        # require one.
+        raise SystemExit(check_registry(algod, app_id))
+
     try:
         keeper = algorand.account.from_environment("KEEPER")
     except Exception:
         keeper = algorand.account.from_environment("DEPLOYER")
-    algod = algorand.client.algod
+    balance = guard_balance(algod, keeper.address, args.min_balance)
     client = KeeperClient(
         algorand=algorand,
         app_id=app_id,
@@ -209,6 +324,7 @@ def main(argv: list[str] | None = None) -> None:
         keeper=keeper.address,
         app_id=app_id,
         network=args.network,
+        balance=balance,
     )
 
     # Upkeeps that failed this run. A failed execution is free — Algorand
@@ -217,6 +333,8 @@ def main(argv: list[str] | None = None) -> None:
     # crowds the transaction pool, so it is skipped for the rest of the run.
     failed: set[int] = set()
     error_delay = ERROR_RETRY_SECONDS
+    executed_count = 0
+    scans = 0
     while True:
         if shutdown.requested:
             emit("stopped", "Shutting down cleanly")
@@ -232,6 +350,7 @@ def main(argv: list[str] | None = None) -> None:
                 and u.balance >= u.fee_per_execution
             ]
             error_delay = ERROR_RETRY_SECONDS
+            scans += 1
             emit(
                 "scan",
                 f"Round {current}: {len(upkeeps)} upkeeps, {len(due)} due",
@@ -252,6 +371,7 @@ def main(argv: list[str] | None = None) -> None:
                             )
                         ),
                     )
+                    executed_count += 1
                     emit(
                         "executed",
                         f"Executed upkeep {upkeep.upkeep_id} "
@@ -277,9 +397,26 @@ def main(argv: list[str] | None = None) -> None:
                         upkeep_id=upkeep.upkeep_id,
                         reason=str(exc)[:400],
                     )
+            if scans % HEARTBEAT_SCANS == 0 or args.once:
+                # Proof of life, and the number that kills bots silently.
+                balance = guard_balance(algod, keeper.address, args.min_balance)
+                emit(
+                    "heartbeat",
+                    f"Heartbeat: round {current}, {len(upkeeps)} upkeeps, "
+                    f"{len(due)} due, {executed_count} executed this session, "
+                    f"balance {balance} µALGO",
+                    round=current,
+                    upkeeps=len(upkeeps),
+                    due=len(due),
+                    executed_session=executed_count,
+                    skipped=len(failed),
+                    balance=balance,
+                )
             if args.once:
                 return
             algod.status_after_block(current + 1)
+        except UnrecoverableError:
+            raise
         except KeyboardInterrupt:
             emit("stopped", "Interrupted; exiting")
             return
@@ -300,4 +437,10 @@ def main(argv: list[str] | None = None) -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except UnrecoverableError as exc:
+        # Exit non-zero so a supervisor, or a cron job's failure mail,
+        # surfaces it instead of swallowing it.
+        emit("fatal", str(exc), level=logging.ERROR, reason=str(exc))
+        raise SystemExit(2)
