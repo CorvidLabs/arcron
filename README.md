@@ -21,6 +21,11 @@ not be used. Its registry is empty and its remaining escrow has been reclaimed �
 see [migration](docs/archon.md#migrating-off-the-deprecated-app) if you
 registered anything against it.
 
+**Building on it?** [`docs/integrating.md`](docs/integrating.md) is the whole
+integration story in one pass — the hook shape, authorization, the failure
+modes that stop your upkeep being serviced, and the pull pattern everything
+here is built on. Integration is one zero-argument method.
+
 ## The keeper network
 
 Smart contracts can't wake themselves. Everything time-based on Algorand —

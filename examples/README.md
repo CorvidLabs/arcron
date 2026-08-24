@@ -1,6 +1,9 @@
 # Examples
 
-Two ways to use Archon, the keeper network, depending on which side you're on.
+Two ways to use Archon, the keeper network, depending on which side you're on
+— plus `minimal_target.py`, the smallest contract Archon can drive, for
+copying into your own project. The full integration guide is
+[`../docs/integrating.md`](../docs/integrating.md).
 
 ## Automate your app (register an upkeep)
 
@@ -13,18 +16,19 @@ poetry run python -m examples.register_upkeep
 ```
 
 Edit the constants at the top of the script for your app id, method, interval
-and funding. Requirements for your method (v1 call shape):
+and funding.
 
-- NoOp ABI method, called with exactly one application argument — the method
-  selector. Methods that take no args of their own (e.g. `tick()uint64`) fit
-  naturally.
-- It will be called by the keeper app, so authorize
-  `Txn.sender == <keeper app address>` (or leave it permissionless, like the
-  Pulse demo target).
+**Writing the method it calls?** See
+[`../docs/integrating.md`](../docs/integrating.md) — the hook shape,
+authorization, the failure modes that quietly stop your upkeep being serviced,
+escrow sizing, and the pull pattern. `minimal_target.py` here is a complete
+contract to copy.
 
-Keep the escrow topped up: each execution pays the keeper
-`fee_per_execution` from the balance. Anyone can call `top_up`; only you (the
-creator) can `cancel` and reclaim the remainder.
+The short version: a NoOp ABI method taking no arguments of its own, which
+returns rather than fails when there is nothing to do, and authorizes
+`Txn.sender == <keeper app address>` unless being permissionless is a
+deliberate choice. Keep the escrow topped up — anyone can `top_up`, only the
+creator can `cancel` and reclaim the remainder.
 
 ## Earn fees (run a keeper bot)
 

@@ -4,7 +4,7 @@
 // algopy.arc4.ARC4Contract.approval_program() -> uint64:
 main:
     intcblock 0 1 8 4
-    bytecblock "probes_run" "subject" "subject_asset" "last_reading" 0x151f7c75 "subject_app"
+    bytecblock "probes_run" "last_reading" "subject" 0x151f7c75 "subject_asset" "subject_app"
     txn ApplicationID
     bnz main_after_if_else@2
     // smart_contracts/resource_probe/contract.py:32-35
@@ -12,12 +12,12 @@ main:
     // # probe call carries nothing but its own selector — exactly the shape
     // # Archon can send.
     // self.subject = GlobalState(Account())
-    bytec_1 // "subject"
+    bytec_2 // "subject"
     global ZeroAddress
     app_global_put
     // smart_contracts/resource_probe/contract.py:36
     // self.subject_asset = GlobalState(UInt64(0))
-    bytec_2 // "subject_asset"
+    bytec 4 // "subject_asset"
     intc_0 // 0
     app_global_put
     // smart_contracts/resource_probe/contract.py:37
@@ -33,7 +33,7 @@ main:
     app_global_put
     // smart_contracts/resource_probe/contract.py:40
     // self.last_reading = GlobalState(UInt64(0))
-    bytec_3 // "last_reading"
+    bytec_1 // "last_reading"
     intc_0 // 0
     app_global_put
 
@@ -41,18 +41,18 @@ main_after_if_else@2:
     // smart_contracts/resource_probe/contract.py:28
     // class ResourceProbe(ARC4Contract):
     txn NumAppArgs
-    bz main___algopy_default_create@16
+    bz main___algopy_default_create@17
     txn OnCompletion
     !
     assert
     txn ApplicationID
     assert
-    pushbytess 0x88605403 0x45c71419 0x464621b1 0x21cbd746 0xcd2d6670 0xfa171a4f 0xeda1da47 // method "configure(address,uint64,uint64)void", method "opt_in_to_asset()void", method "probe_payment()uint64", method "probe_asset_transfer()uint64", method "probe_read_balance()uint64", method "probe_read_holding()uint64", method "probe_app_call()uint64"
+    pushbytess 0x88605403 0x45c71419 0x464621b1 0x21cbd746 0xcd2d6670 0xfa171a4f 0xdc197f6c 0xeda1da47 // method "configure(address,uint64,uint64)void", method "opt_in_to_asset()void", method "probe_payment()uint64", method "probe_asset_transfer()uint64", method "probe_read_balance()uint64", method "probe_read_holding()uint64", method "report_budget()uint64", method "probe_app_call()uint64"
     txna ApplicationArgs 0
-    match configure opt_in_to_asset probe_payment probe_asset_transfer probe_read_balance probe_read_holding probe_app_call
+    match configure opt_in_to_asset probe_payment probe_asset_transfer probe_read_balance probe_read_holding report_budget probe_app_call
     err
 
-main___algopy_default_create@16:
+main___algopy_default_create@17:
     txn OnCompletion
     !
     txn ApplicationID
@@ -87,12 +87,12 @@ configure:
     btoi
     // smart_contracts/resource_probe/contract.py:47
     // self.subject.value = subject.native
-    bytec_1 // "subject"
+    bytec_2 // "subject"
     uncover 3
     app_global_put
     // smart_contracts/resource_probe/contract.py:48
     // self.subject_asset.value = asset
-    bytec_2 // "subject_asset"
+    bytec 4 // "subject_asset"
     uncover 2
     app_global_put
     // smart_contracts/resource_probe/contract.py:49
@@ -118,7 +118,7 @@ opt_in_to_asset:
     // smart_contracts/resource_probe/contract.py:55
     // xfer_asset=self.subject_asset.value,
     intc_0 // 0
-    bytec_2 // "subject_asset"
+    bytec 4 // "subject_asset"
     app_global_get_ex
     assert // check self.subject_asset exists
     // smart_contracts/resource_probe/contract.py:56
@@ -155,7 +155,7 @@ probe_payment:
     // itxn.Payment(receiver=self.subject.value, amount=0).submit()
     itxn_begin
     intc_0 // 0
-    bytec_1 // "subject"
+    bytec_2 // "subject"
     app_global_get_ex
     assert // check self.subject exists
     intc_0 // 0
@@ -180,7 +180,7 @@ probe_payment:
     // smart_contracts/resource_probe/contract.py:60
     // @abimethod()
     itob
-    bytec 4 // 0x151f7c75
+    bytec_3 // 0x151f7c75
     swap
     concat
     log
@@ -200,13 +200,13 @@ probe_asset_transfer:
     // smart_contracts/resource_probe/contract.py:71
     // xfer_asset=self.subject_asset.value,
     intc_0 // 0
-    bytec_2 // "subject_asset"
+    bytec 4 // "subject_asset"
     app_global_get_ex
     assert // check self.subject_asset exists
     // smart_contracts/resource_probe/contract.py:72
     // asset_receiver=self.subject.value,
     intc_0 // 0
-    bytec_1 // "subject"
+    bytec_2 // "subject"
     app_global_get_ex
     assert // check self.subject exists
     // smart_contracts/resource_probe/contract.py:73
@@ -242,7 +242,7 @@ probe_asset_transfer:
     // smart_contracts/resource_probe/contract.py:67
     // @abimethod()
     itob
-    bytec 4 // 0x151f7c75
+    bytec_3 // 0x151f7c75
     swap
     concat
     log
@@ -255,12 +255,12 @@ probe_read_balance:
     // smart_contracts/resource_probe/contract.py:81
     // self.last_reading.value = self.subject.value.balance
     intc_0 // 0
-    bytec_1 // "subject"
+    bytec_2 // "subject"
     app_global_get_ex
     assert // check self.subject exists
     acct_params_get AcctBalance
     assert // account funded
-    bytec_3 // "last_reading"
+    bytec_1 // "last_reading"
     swap
     app_global_put
     // smart_contracts/resource_probe/contract.py:82
@@ -277,13 +277,13 @@ probe_read_balance:
     // smart_contracts/resource_probe/contract.py:83
     // return self.last_reading.value
     intc_0 // 0
-    bytec_3 // "last_reading"
+    bytec_1 // "last_reading"
     app_global_get_ex
     assert // check self.last_reading exists
     // smart_contracts/resource_probe/contract.py:78
     // @abimethod()
     itob
-    bytec 4 // 0x151f7c75
+    bytec_3 // 0x151f7c75
     swap
     concat
     log
@@ -296,19 +296,19 @@ probe_read_holding:
     // smart_contracts/resource_probe/contract.py:88
     // asset = Asset(self.subject_asset.value)
     intc_0 // 0
-    bytec_2 // "subject_asset"
+    bytec 4 // "subject_asset"
     app_global_get_ex
     assert // check self.subject_asset exists
     // smart_contracts/resource_probe/contract.py:89
     // self.last_reading.value = asset.balance(self.subject.value)
     intc_0 // 0
-    bytec_1 // "subject"
+    bytec_2 // "subject"
     app_global_get_ex
     assert // check self.subject exists
     swap
     asset_holding_get AssetBalance
     assert // account opted into asset
-    bytec_3 // "last_reading"
+    bytec_1 // "last_reading"
     swap
     app_global_put
     // smart_contracts/resource_probe/contract.py:90
@@ -325,13 +325,48 @@ probe_read_holding:
     // smart_contracts/resource_probe/contract.py:91
     // return self.last_reading.value
     intc_0 // 0
-    bytec_3 // "last_reading"
+    bytec_1 // "last_reading"
     app_global_get_ex
     assert // check self.last_reading exists
     // smart_contracts/resource_probe/contract.py:85
     // @abimethod()
     itob
-    bytec 4 // 0x151f7c75
+    bytec_3 // 0x151f7c75
+    swap
+    concat
+    log
+    intc_1 // 1
+    return
+
+
+// smart_contracts.resource_probe.contract.ResourceProbe.report_budget[routing]() -> void:
+report_budget:
+    // smart_contracts/resource_probe/contract.py:101
+    // self.last_reading.value = Global.opcode_budget()
+    bytec_1 // "last_reading"
+    global OpcodeBudget
+    app_global_put
+    // smart_contracts/resource_probe/contract.py:102
+    // self.probes_run.value += 1
+    intc_0 // 0
+    bytec_0 // "probes_run"
+    app_global_get_ex
+    assert // check self.probes_run exists
+    intc_1 // 1
+    +
+    bytec_0 // "probes_run"
+    swap
+    app_global_put
+    // smart_contracts/resource_probe/contract.py:103
+    // return self.last_reading.value
+    intc_0 // 0
+    bytec_1 // "last_reading"
+    app_global_get_ex
+    assert // check self.last_reading exists
+    // smart_contracts/resource_probe/contract.py:93
+    // @abimethod()
+    itob
+    bytec_3 // 0x151f7c75
     swap
     concat
     log
@@ -341,42 +376,42 @@ probe_read_holding:
 
 // smart_contracts.resource_probe.contract.ResourceProbe.probe_app_call[routing]() -> void:
 probe_app_call:
-    // smart_contracts/resource_probe/contract.py:96-100
+    // smart_contracts/resource_probe/contract.py:108-112
     // itxn.ApplicationCall(
     //     app_id=Application(self.subject_app.value),
     //     app_args=(arc4.arc4_signature("tick()uint64"),),
     //     on_completion=OnCompleteAction.NoOp,
     // ).submit()
     itxn_begin
-    // smart_contracts/resource_probe/contract.py:97
+    // smart_contracts/resource_probe/contract.py:109
     // app_id=Application(self.subject_app.value),
     intc_0 // 0
     bytec 5 // "subject_app"
     app_global_get_ex
     assert // check self.subject_app exists
-    // smart_contracts/resource_probe/contract.py:99
+    // smart_contracts/resource_probe/contract.py:111
     // on_completion=OnCompleteAction.NoOp,
     intc_0 // NoOp
     itxn_field OnCompletion
-    // smart_contracts/resource_probe/contract.py:98
+    // smart_contracts/resource_probe/contract.py:110
     // app_args=(arc4.arc4_signature("tick()uint64"),),
     pushbytes 0x4d4d5f0b // method "tick()uint64"
     itxn_field ApplicationArgs
     itxn_field ApplicationID
-    // smart_contracts/resource_probe/contract.py:96
+    // smart_contracts/resource_probe/contract.py:108
     // itxn.ApplicationCall(
     pushint 6 // appl
     itxn_field TypeEnum
     intc_0 // 0
     itxn_field Fee
-    // smart_contracts/resource_probe/contract.py:96-100
+    // smart_contracts/resource_probe/contract.py:108-112
     // itxn.ApplicationCall(
     //     app_id=Application(self.subject_app.value),
     //     app_args=(arc4.arc4_signature("tick()uint64"),),
     //     on_completion=OnCompleteAction.NoOp,
     // ).submit()
     itxn_submit
-    // smart_contracts/resource_probe/contract.py:101
+    // smart_contracts/resource_probe/contract.py:113
     // self.probes_run.value += 1
     intc_0 // 0
     bytec_0 // "probes_run"
@@ -387,10 +422,10 @@ probe_app_call:
     bytec_0 // "probes_run"
     dig 1
     app_global_put
-    // smart_contracts/resource_probe/contract.py:93
+    // smart_contracts/resource_probe/contract.py:105
     // @abimethod()
     itob
-    bytec 4 // 0x151f7c75
+    bytec_3 // 0x151f7c75
     swap
     concat
     log
