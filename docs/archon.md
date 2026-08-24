@@ -398,6 +398,33 @@ wants keeper-supplied resources needs somewhere for the creator to declare
 them — which is a smaller and different problem than changing the call shape.
 See [issue #8](https://github.com/CorvidLabs/archon/issues/8).
 
+**Pull the resource, not just the payment.** The pull-payment pattern above
+extends past money: any step needing a resource the keeper cannot supply
+belongs in a transaction the interested party sends for themselves. The
+scheduled call does accounting only, and someone with skin in the game
+provides the references.
+
+`smart_contracts/rain/` is the worked example. A scheduled `draw()` locks a
+prize and fixes a future randomness-beacon round — no inner calls, nothing
+unreachable. A participant then calls `resolve()`, attaching the beacon
+reference a keeper could not, and the winner calls `claim()`. The beacon is
+never in the path of a scheduled execution, so a beacon outage cannot stall
+the schedule for everyone.
+
+**Randomness beacon app ids**, verified by searching the deployed approval
+programs for the ARC-21 selector rather than trusting documentation:
+
+| Network | App | Notes |
+|---------|-----|-------|
+| MainNet | `1615566206` | implements `must_get(uint64,byte[])byte[]` |
+| TestNet | `600011887` | same program size; the current beacon |
+| MainNet | `947957720` | an older, smaller program; also `must_get` |
+| TestNet | `110096026` | older |
+| LocalNet | — | **no beacon exists**; `smart_contracts/beacon_stub/` stands in |
+
+None of them implement `get(uint64,byte[])(bool,byte[])`, so there is no
+non-throwing variant to fall back on.
+
 **When references are not enough** — more than six resources, or a set that is
 not knowable at registration — use the pull pattern instead: have the upkeep
 record what is owed in the target's own state, and let each counterparty claim

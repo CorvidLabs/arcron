@@ -1,0 +1,738 @@
+#pragma version 11
+#pragma typetrack false
+
+// algopy.arc4.ARC4Contract.approval_program() -> uint64:
+main:
+    intcblock 0 1 18900 8
+    bytecblock "pot" 0x151f7c75 "tickets" "draw_id" "draw_open" "prize" "beacon_app" "commit_round" "tickets_snapshot" "draws_resolved" 0x61 "last_winner"
+    txn ApplicationID
+    bnz main_after_if_else@2
+    // smart_contracts/rain/contract.py:80
+    // self.beacon_app = GlobalState(UInt64(0))
+    bytec 6 // "beacon_app"
+    intc_0 // 0
+    app_global_put
+    // smart_contracts/rain/contract.py:81
+    // self.pot = GlobalState(UInt64(0))
+    bytec_0 // "pot"
+    intc_0 // 0
+    app_global_put
+    // smart_contracts/rain/contract.py:82
+    // self.tickets = GlobalState(UInt64(0))
+    bytec_2 // "tickets"
+    intc_0 // 0
+    app_global_put
+    // smart_contracts/rain/contract.py:83
+    // self.draw_id = GlobalState(UInt64(0))
+    bytec_3 // "draw_id"
+    intc_0 // 0
+    app_global_put
+    // smart_contracts/rain/contract.py:84
+    // self.draw_open = GlobalState(UInt64(0))
+    bytec 4 // "draw_open"
+    intc_0 // 0
+    app_global_put
+    // smart_contracts/rain/contract.py:85
+    // self.commit_round = GlobalState(UInt64(0))
+    bytec 7 // "commit_round"
+    intc_0 // 0
+    app_global_put
+    // smart_contracts/rain/contract.py:86
+    // self.prize = GlobalState(UInt64(0))
+    bytec 5 // "prize"
+    intc_0 // 0
+    app_global_put
+    // smart_contracts/rain/contract.py:87
+    // self.tickets_snapshot = GlobalState(UInt64(0))
+    bytec 8 // "tickets_snapshot"
+    intc_0 // 0
+    app_global_put
+    // smart_contracts/rain/contract.py:88
+    // self.draws_resolved = GlobalState(UInt64(0))
+    bytec 9 // "draws_resolved"
+    intc_0 // 0
+    app_global_put
+    // smart_contracts/rain/contract.py:89
+    // self.last_winner = GlobalState(Account())
+    bytec 11 // "last_winner"
+    global ZeroAddress
+    app_global_put
+
+main_after_if_else@2:
+    // smart_contracts/rain/contract.py:76
+    // class Rain(ARC4Contract):
+    txn NumAppArgs
+    bz main___algopy_default_create@16
+    txn OnCompletion
+    !
+    assert
+    txn ApplicationID
+    assert
+    pushbytess 0x671543f9 0x7a0d6b3e 0x3298e7c0 0x506e5dd0 0xe55f4178 0xcc82ab99 0x176318a8 // method "configure(uint64)void", method "enter(pay)uint64", method "deposit(pay)uint64", method "draw()uint64", method "resolve()address", method "claim()uint64", method "allocation_of(address)uint64"
+    txna ApplicationArgs 0
+    match configure enter deposit draw resolve claim allocation_of
+    err
+
+main___algopy_default_create@16:
+    txn OnCompletion
+    !
+    txn ApplicationID
+    !
+    &&
+    return
+
+
+// smart_contracts.rain.contract.Rain.configure[routing]() -> void:
+configure:
+    // smart_contracts/rain/contract.py:91
+    // @abimethod()
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_3 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    // smart_contracts/rain/contract.py:98
+    // assert Txn.sender == Global.creator_address, "Only the creator can configure"
+    txn Sender
+    global CreatorAddress
+    ==
+    assert // Only the creator can configure
+    // smart_contracts/rain/contract.py:99
+    // assert self.beacon_app.value == 0, "Already configured"
+    intc_0 // 0
+    bytec 6 // "beacon_app"
+    app_global_get_ex
+    assert // check self.beacon_app exists
+    !
+    assert // Already configured
+    // smart_contracts/rain/contract.py:100
+    // assert beacon_app > 0, "Beacon app id required"
+    dup
+    assert // Beacon app id required
+    // smart_contracts/rain/contract.py:101
+    // self.beacon_app.value = beacon_app
+    bytec 6 // "beacon_app"
+    swap
+    app_global_put
+    // smart_contracts/rain/contract.py:91
+    // @abimethod()
+    intc_1 // 1
+    return
+
+
+// smart_contracts.rain.contract.Rain.enter[routing]() -> void:
+enter:
+    // smart_contracts/rain/contract.py:103
+    // @abimethod()
+    txn GroupIndex
+    intc_1 // 1
+    -
+    dup
+    gtxns TypeEnum
+    intc_1 // pay
+    ==
+    assert // transaction type is pay
+    // smart_contracts/rain/contract.py:113
+    // mbr_payment.receiver == Global.current_application_address
+    dup
+    gtxns Receiver
+    global CurrentApplicationAddress
+    ==
+    // smart_contracts/rain/contract.py:112-114
+    // assert (
+    //     mbr_payment.receiver == Global.current_application_address
+    // ), "MBR payment must fund the app account"
+    assert // MBR payment must fund the app account
+    // smart_contracts/rain/contract.py:115
+    // assert mbr_payment.amount >= TICKET_MBR, "MBR payment too small"
+    gtxns Amount
+    intc_2 // 18900
+    >=
+    assert // MBR payment too small
+    // smart_contracts/rain/contract.py:117
+    // index = self.tickets.value
+    intc_0 // 0
+    bytec_2 // "tickets"
+    app_global_get_ex
+    assert // check self.tickets exists
+    // smart_contracts/rain/contract.py:118
+    // Box(Account, key=op.concat(TICKET_PREFIX, op.itob(index))).value = Txn.sender
+    txn Sender
+    dig 1
+    itob
+    pushbytes 0x74
+    dig 1
+    concat
+    uncover 2
+    box_put
+    // smart_contracts/rain/contract.py:119
+    // self.tickets.value = index + 1
+    swap
+    intc_1 // 1
+    +
+    bytec_2 // "tickets"
+    swap
+    app_global_put
+    // smart_contracts/rain/contract.py:103
+    // @abimethod()
+    bytec_1 // 0x151f7c75
+    swap
+    concat
+    log
+    intc_1 // 1
+    return
+
+
+// smart_contracts.rain.contract.Rain.deposit[routing]() -> void:
+deposit:
+    // smart_contracts/rain/contract.py:122
+    // @abimethod()
+    txn GroupIndex
+    intc_1 // 1
+    -
+    dup
+    gtxns TypeEnum
+    intc_1 // pay
+    ==
+    assert // transaction type is pay
+    // smart_contracts/rain/contract.py:126
+    // payment.receiver == Global.current_application_address
+    dup
+    gtxns Receiver
+    global CurrentApplicationAddress
+    ==
+    // smart_contracts/rain/contract.py:125-127
+    // assert (
+    //     payment.receiver == Global.current_application_address
+    // ), "Deposit must go to the app account"
+    assert // Deposit must go to the app account
+    // smart_contracts/rain/contract.py:128
+    // assert payment.amount > 0, "Amount must be positive"
+    gtxns Amount
+    dup
+    assert // Amount must be positive
+    // smart_contracts/rain/contract.py:129
+    // self.pot.value += payment.amount
+    intc_0 // 0
+    bytec_0 // "pot"
+    app_global_get_ex
+    assert // check self.pot exists
+    +
+    bytec_0 // "pot"
+    dig 1
+    app_global_put
+    // smart_contracts/rain/contract.py:122
+    // @abimethod()
+    itob
+    bytec_1 // 0x151f7c75
+    swap
+    concat
+    log
+    intc_1 // 1
+    return
+
+
+// smart_contracts.rain.contract.Rain.draw[routing]() -> void:
+draw:
+    // smart_contracts/rain/contract.py:141
+    // self.draw_open.value == 1
+    intc_0 // 0
+    bytec 4 // "draw_open"
+    app_global_get_ex
+    assert // check self.draw_open exists
+    intc_1 // 1
+    ==
+    // smart_contracts/rain/contract.py:141-143
+    // self.draw_open.value == 1
+    // or self.tickets.value == 0
+    // or self.pot.value <= ALLOCATION_MBR
+    bnz draw_if_body@4
+    // smart_contracts/rain/contract.py:142
+    // or self.tickets.value == 0
+    intc_0 // 0
+    bytec_2 // "tickets"
+    app_global_get_ex
+    assert // check self.tickets exists
+    // smart_contracts/rain/contract.py:141-143
+    // self.draw_open.value == 1
+    // or self.tickets.value == 0
+    // or self.pot.value <= ALLOCATION_MBR
+    bz draw_if_body@4
+    // smart_contracts/rain/contract.py:143
+    // or self.pot.value <= ALLOCATION_MBR
+    intc_0 // 0
+    bytec_0 // "pot"
+    app_global_get_ex
+    assert // check self.pot exists
+    intc_2 // 18900
+    <=
+    // smart_contracts/rain/contract.py:141-143
+    // self.draw_open.value == 1
+    // or self.tickets.value == 0
+    // or self.pot.value <= ALLOCATION_MBR
+    bz draw_after_if_else@5
+
+draw_if_body@4:
+    // smart_contracts/rain/contract.py:145
+    // return UInt64(0)
+    intc_0 // 0
+
+draw_after_inlined_smart_contracts.rain.contract.Rain.draw@6:
+    // smart_contracts/rain/contract.py:132
+    // @abimethod()
+    itob
+    bytec_1 // 0x151f7c75
+    swap
+    concat
+    log
+    intc_1 // 1
+    return
+
+draw_after_if_else@5:
+    // smart_contracts/rain/contract.py:147-150
+    // # Reserve the winner's allocation box out of the pot, so resolving can
+    // # never fail for want of minimum balance. It returns to the pot when
+    // # the prize is claimed.
+    // prize: UInt64 = self.pot.value - ALLOCATION_MBR
+    intc_0 // 0
+    bytec_0 // "pot"
+    app_global_get_ex
+    assert // check self.pot exists
+    intc_2 // 18900
+    -
+    // smart_contracts/rain/contract.py:151
+    // self.pot.value = UInt64(0)
+    bytec_0 // "pot"
+    intc_0 // 0
+    app_global_put
+    // smart_contracts/rain/contract.py:152
+    // self.prize.value = prize
+    bytec 5 // "prize"
+    dig 1
+    app_global_put
+    // smart_contracts/rain/contract.py:153
+    // self.tickets_snapshot.value = self.tickets.value
+    intc_0 // 0
+    bytec_2 // "tickets"
+    app_global_get_ex
+    assert // check self.tickets exists
+    bytec 8 // "tickets_snapshot"
+    swap
+    app_global_put
+    // smart_contracts/rain/contract.py:154
+    // self.commit_round.value = Global.round + BEACON_DELAY
+    global Round
+    intc_3 // 8
+    +
+    bytec 7 // "commit_round"
+    swap
+    app_global_put
+    // smart_contracts/rain/contract.py:155
+    // self.draw_id.value += 1
+    intc_0 // 0
+    bytec_3 // "draw_id"
+    app_global_get_ex
+    assert // check self.draw_id exists
+    intc_1 // 1
+    +
+    bytec_3 // "draw_id"
+    swap
+    app_global_put
+    // smart_contracts/rain/contract.py:156
+    // self.draw_open.value = UInt64(1)
+    bytec 4 // "draw_open"
+    intc_1 // 1
+    app_global_put
+    // smart_contracts/rain/contract.py:160
+    // draw_id=arc4.UInt64(self.draw_id.value),
+    intc_0 // 0
+    bytec_3 // "draw_id"
+    app_global_get_ex
+    assert // check self.draw_id exists
+    dup
+    itob
+    // smart_contracts/rain/contract.py:161
+    // commit_round=arc4.UInt64(self.commit_round.value),
+    intc_0 // 0
+    bytec 7 // "commit_round"
+    app_global_get_ex
+    assert // check self.commit_round exists
+    itob
+    // smart_contracts/rain/contract.py:162
+    // prize=arc4.UInt64(prize),
+    uncover 3
+    itob
+    // smart_contracts/rain/contract.py:163
+    // tickets=arc4.UInt64(self.tickets_snapshot.value),
+    intc_0 // 0
+    bytec 8 // "tickets_snapshot"
+    app_global_get_ex
+    assert // check self.tickets_snapshot exists
+    itob
+    // smart_contracts/rain/contract.py:159-164
+    // Drawn(
+    //     draw_id=arc4.UInt64(self.draw_id.value),
+    //     commit_round=arc4.UInt64(self.commit_round.value),
+    //     prize=arc4.UInt64(prize),
+    //     tickets=arc4.UInt64(self.tickets_snapshot.value),
+    // )
+    uncover 3
+    uncover 3
+    concat
+    uncover 2
+    concat
+    swap
+    concat
+    // smart_contracts/rain/contract.py:158-165
+    // arc4.emit(
+    //     Drawn(
+    //         draw_id=arc4.UInt64(self.draw_id.value),
+    //         commit_round=arc4.UInt64(self.commit_round.value),
+    //         prize=arc4.UInt64(prize),
+    //         tickets=arc4.UInt64(self.tickets_snapshot.value),
+    //     )
+    // )
+    pushbytes 0xe08927aa // method "Drawn(uint64,uint64,uint64,uint64)"
+    swap
+    concat
+    log
+    // smart_contracts/rain/contract.py:132
+    // @abimethod()
+    b draw_after_inlined_smart_contracts.rain.contract.Rain.draw@6
+
+
+// smart_contracts.rain.contract.Rain.resolve[routing]() -> void:
+resolve:
+    // smart_contracts/rain/contract.py:176
+    // assert self.draw_open.value == 1, "No draw is open"
+    intc_0 // 0
+    bytec 4 // "draw_open"
+    app_global_get_ex
+    assert // check self.draw_open exists
+    intc_1 // 1
+    ==
+    assert // No draw is open
+    // smart_contracts/rain/contract.py:177
+    // assert Global.round > self.commit_round.value, "Beacon round has not passed"
+    global Round
+    intc_0 // 0
+    bytec 7 // "commit_round"
+    app_global_get_ex
+    assert // check self.commit_round exists
+    swap
+    dig 1
+    >
+    assert // Beacon round has not passed
+    // smart_contracts/rain/contract.py:230-239
+    // result = itxn.ApplicationCall(
+    //     app_id=Application(self.beacon_app.value),
+    //     app_args=(
+    //         arc4.arc4_signature("must_get(uint64,byte[])byte[]"),
+    //         op.itob(round_number),
+    //         # An empty user_data argument, ARC-4 encoded.
+    //         op.bzero(2),
+    //     ),
+    //     on_completion=OnCompleteAction.NoOp,
+    // ).submit()
+    itxn_begin
+    // smart_contracts/rain/contract.py:231
+    // app_id=Application(self.beacon_app.value),
+    intc_0 // 0
+    bytec 6 // "beacon_app"
+    app_global_get_ex
+    assert // check self.beacon_app exists
+    // smart_contracts/rain/contract.py:234
+    // op.itob(round_number),
+    swap
+    itob
+    // smart_contracts/rain/contract.py:235-236
+    // # An empty user_data argument, ARC-4 encoded.
+    // op.bzero(2),
+    pushint 2
+    bzero
+    // smart_contracts/rain/contract.py:238
+    // on_completion=OnCompleteAction.NoOp,
+    intc_0 // NoOp
+    itxn_field OnCompletion
+    // smart_contracts/rain/contract.py:233
+    // arc4.arc4_signature("must_get(uint64,byte[])byte[]"),
+    pushbytes 0x47c20c23 // method "must_get(uint64,byte[])byte[]"
+    itxn_field ApplicationArgs
+    swap
+    itxn_field ApplicationArgs
+    itxn_field ApplicationArgs
+    itxn_field ApplicationID
+    // smart_contracts/rain/contract.py:230
+    // result = itxn.ApplicationCall(
+    pushint 6 // appl
+    itxn_field TypeEnum
+    intc_0 // 0
+    itxn_field Fee
+    // smart_contracts/rain/contract.py:230-239
+    // result = itxn.ApplicationCall(
+    //     app_id=Application(self.beacon_app.value),
+    //     app_args=(
+    //         arc4.arc4_signature("must_get(uint64,byte[])byte[]"),
+    //         op.itob(round_number),
+    //         # An empty user_data argument, ARC-4 encoded.
+    //         op.bzero(2),
+    //     ),
+    //     on_completion=OnCompleteAction.NoOp,
+    // ).submit()
+    itxn_submit
+    itxn LastLog
+    // smart_contracts/rain/contract.py:240-241
+    // # ARC-4 return: 4-byte log prefix, then a byte[] as uint16 length + data.
+    // return op.extract(result.last_log, 6, 32)
+    extract 6 32
+    // smart_contracts/rain/contract.py:180
+    // winning_ticket = op.extract_uint64(randomness, 0) % self.tickets_snapshot.value
+    intc_0 // 0
+    extract_uint64
+    intc_0 // 0
+    bytec 8 // "tickets_snapshot"
+    app_global_get_ex
+    assert // check self.tickets_snapshot exists
+    %
+    // smart_contracts/rain/contract.py:182
+    // Account, key=op.concat(TICKET_PREFIX, op.itob(winning_ticket))
+    itob
+    dup
+    pushbytes 0x74
+    swap
+    concat
+    // smart_contracts/rain/contract.py:181-183
+    // winner = Box(
+    //     Account, key=op.concat(TICKET_PREFIX, op.itob(winning_ticket))
+    // ).value
+    box_get
+    swap
+    dup
+    uncover 2
+    assert // check Box exists
+    // smart_contracts/rain/contract.py:185
+    // allocation = Box(UInt64, key=op.concat(ALLOCATION_PREFIX, winner.bytes))
+    bytec 10 // 0x61
+    swap
+    concat
+    dup
+    // smart_contracts/rain/contract.py:186
+    // if allocation:
+    box_len
+    bury 1
+    bz resolve_else_body@3
+    // smart_contracts/rain/contract.py:187-189
+    // # This winner already has an unclaimed prize, so the reservation
+    // # made at draw time is not needed; hand it back to the pot.
+    // allocation.value += self.prize.value
+    dup
+    box_get
+    assert // check Box exists
+    btoi
+    intc_0 // 0
+    bytec 5 // "prize"
+    app_global_get_ex
+    assert // check self.prize exists
+    +
+    itob
+    box_put
+    // smart_contracts/rain/contract.py:190
+    // self.pot.value += ALLOCATION_MBR
+    intc_0 // 0
+    bytec_0 // "pot"
+    app_global_get_ex
+    assert // check self.pot exists
+    intc_2 // 18900
+    +
+    bytec_0 // "pot"
+    swap
+    app_global_put
+
+resolve_after_if_else@4:
+    // smart_contracts/rain/contract.py:194
+    // self.last_winner.value = winner
+    bytec 11 // "last_winner"
+    dig 1
+    app_global_put
+    // smart_contracts/rain/contract.py:195
+    // self.draws_resolved.value += 1
+    intc_0 // 0
+    bytec 9 // "draws_resolved"
+    app_global_get_ex
+    assert // check self.draws_resolved exists
+    intc_1 // 1
+    +
+    bytec 9 // "draws_resolved"
+    swap
+    app_global_put
+    // smart_contracts/rain/contract.py:196
+    // self.draw_open.value = UInt64(0)
+    bytec 4 // "draw_open"
+    intc_0 // 0
+    app_global_put
+    // smart_contracts/rain/contract.py:200
+    // draw_id=arc4.UInt64(self.draw_id.value),
+    intc_0 // 0
+    bytec_3 // "draw_id"
+    app_global_get_ex
+    assert // check self.draw_id exists
+    itob
+    // smart_contracts/rain/contract.py:202
+    // prize=arc4.UInt64(self.prize.value),
+    intc_0 // 0
+    bytec 5 // "prize"
+    app_global_get_ex
+    assert // check self.prize exists
+    itob
+    // smart_contracts/rain/contract.py:199-204
+    // Resolved(
+    //     draw_id=arc4.UInt64(self.draw_id.value),
+    //     winner=arc4.Address(winner),
+    //     prize=arc4.UInt64(self.prize.value),
+    //     winning_ticket=arc4.UInt64(winning_ticket),
+    // )
+    swap
+    dig 2
+    concat
+    swap
+    concat
+    uncover 2
+    concat
+    // smart_contracts/rain/contract.py:198-205
+    // arc4.emit(
+    //     Resolved(
+    //         draw_id=arc4.UInt64(self.draw_id.value),
+    //         winner=arc4.Address(winner),
+    //         prize=arc4.UInt64(self.prize.value),
+    //         winning_ticket=arc4.UInt64(winning_ticket),
+    //     )
+    // )
+    pushbytes 0x44045a2d // method "Resolved(uint64,address,uint64,uint64)"
+    swap
+    concat
+    log
+    // smart_contracts/rain/contract.py:168
+    // @abimethod()
+    bytec_1 // 0x151f7c75
+    swap
+    concat
+    log
+    intc_1 // 1
+    return
+
+resolve_else_body@3:
+    // smart_contracts/rain/contract.py:192
+    // allocation.value = self.prize.value
+    intc_0 // 0
+    bytec 5 // "prize"
+    app_global_get_ex
+    assert // check self.prize exists
+    itob
+    box_put
+    b resolve_after_if_else@4
+
+
+// smart_contracts.rain.contract.Rain.claim[routing]() -> void:
+claim:
+    // smart_contracts/rain/contract.py:211
+    // allocation = Box(UInt64, key=op.concat(ALLOCATION_PREFIX, Txn.sender.bytes))
+    bytec 10 // 0x61
+    txn Sender
+    concat
+    // smart_contracts/rain/contract.py:212
+    // assert allocation, "Nothing allocated to you"
+    dup
+    box_len
+    bury 1
+    assert // Nothing allocated to you
+    // smart_contracts/rain/contract.py:213
+    // amount = allocation.value
+    dup
+    box_get
+    pop
+    btoi
+    // smart_contracts/rain/contract.py:214
+    // del allocation.value
+    swap
+    box_del
+    pop
+    // smart_contracts/rain/contract.py:215-217
+    // # Deleting the box releases its minimum balance back to the pot, where
+    // # it pays for the next winner's allocation.
+    // self.pot.value += ALLOCATION_MBR
+    intc_0 // 0
+    bytec_0 // "pot"
+    app_global_get_ex
+    assert // check self.pot exists
+    intc_2 // 18900
+    +
+    bytec_0 // "pot"
+    swap
+    app_global_put
+    // smart_contracts/rain/contract.py:218
+    // itxn.Payment(receiver=Txn.sender, amount=amount).submit()
+    itxn_begin
+    txn Sender
+    dig 1
+    itxn_field Amount
+    itxn_field Receiver
+    intc_1 // pay
+    itxn_field TypeEnum
+    intc_0 // 0
+    itxn_field Fee
+    itxn_submit
+    // smart_contracts/rain/contract.py:208
+    // @abimethod()
+    itob
+    bytec_1 // 0x151f7c75
+    swap
+    concat
+    log
+    intc_1 // 1
+    return
+
+
+// smart_contracts.rain.contract.Rain.allocation_of[routing]() -> void:
+allocation_of:
+    // smart_contracts/rain/contract.py:221
+    // @abimethod(readonly=True)
+    txna ApplicationArgs 1
+    dup
+    len
+    pushint 32
+    ==
+    assert // invalid number of bytes for arc4.static_array<arc4.uint8, 32>
+    // smart_contracts/rain/contract.py:224
+    // allocation = Box(UInt64, key=op.concat(ALLOCATION_PREFIX, who.bytes))
+    bytec 10 // 0x61
+    swap
+    concat
+    dup
+    // smart_contracts/rain/contract.py:225
+    // return allocation.value if allocation else UInt64(0)
+    box_len
+    bury 1
+    bz allocation_of_ternary_false@3
+    box_get
+    assert // check Box exists
+    btoi
+
+allocation_of_ternary_merge@4:
+    // smart_contracts/rain/contract.py:221
+    // @abimethod(readonly=True)
+    itob
+    bytec_1 // 0x151f7c75
+    swap
+    concat
+    log
+    intc_1 // 1
+    return
+
+allocation_of_ternary_false@3:
+    pop
+    // smart_contracts/rain/contract.py:225
+    // return allocation.value if allocation else UInt64(0)
+    intc_0 // 0
+    b allocation_of_ternary_merge@4

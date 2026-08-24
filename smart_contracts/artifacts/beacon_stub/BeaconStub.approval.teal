@@ -1,0 +1,76 @@
+#pragma version 11
+#pragma typetrack false
+
+// algopy.arc4.ARC4Contract.approval_program() -> uint64:
+main:
+    // smart_contracts/beacon_stub/contract.py:20
+    // class BeaconStub(ARC4Contract):
+    txn NumAppArgs
+    bz main___algopy_default_create@5
+    pushbytes 0x47c20c23 // method "must_get(uint64,byte[])byte[]"
+    txna ApplicationArgs 0
+    match main_must_get_route@3
+    err
+
+main_must_get_route@3:
+    // smart_contracts/beacon_stub/contract.py:23
+    // @abimethod()
+    txn OnCompletion
+    !
+    txn ApplicationID
+    &&
+    assert
+    b must_get
+
+main___algopy_default_create@5:
+    txn OnCompletion
+    !
+    txn ApplicationID
+    !
+    &&
+    return
+
+
+// smart_contracts.beacon_stub.contract.BeaconStub.must_get[routing]() -> void:
+must_get:
+    // smart_contracts/beacon_stub/contract.py:23
+    // @abimethod()
+    txna ApplicationArgs 1
+    dup
+    len
+    pushint 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    txna ApplicationArgs 2
+    dup
+    pushint 0
+    extract_uint16 // on error: invalid array length header
+    pushint 2
+    +
+    dig 1
+    len
+    ==
+    assert // invalid number of bytes for arc4.dynamic_array<arc4.uint8>
+    // smart_contracts/beacon_stub/contract.py:30
+    // assert round_number < Global.round, "Round has not passed yet"
+    dig 1
+    global Round
+    <
+    assert // Round has not passed yet
+    // smart_contracts/beacon_stub/contract.py:31
+    // return arc4.DynamicBytes(op.sha256(op.concat(op.itob(round_number), user_data.native)))
+    swap
+    itob
+    swap
+    extract 2 0
+    concat
+    sha256
+    // smart_contracts/beacon_stub/contract.py:23
+    // @abimethod()
+    pushbytes 0x151f7c750020
+    swap
+    concat
+    log
+    pushint 1
+    return
