@@ -5,6 +5,10 @@ a scheduled contract call, any keeper executes it for the fee. By
 [CorvidLabs](https://github.com/CorvidLabs), built with Algorand Python
 (Puya) and AlgoKit. Live on TestNet.
 
+*An archon was an Athenian magistrate — an annual office responsible for the
+city's business happening at its appointed time. The office mattered; whoever
+filled it did not, and nobody owned it.*
+
 | Contract | What it is | Status |
 |----------|-----------|--------|
 | [`smart_contracts/keeper`](smart_contracts/keeper/contract.py) | The Archon network: upkeep scheduling with ALGO escrow and keeper rewards | **Live on TestNet** — app [`769772891`](https://testnet.explorer.perawallet.app/application/769772891)¹ |
@@ -43,6 +47,52 @@ registry is a free algod query.
 arg and no foreign arrays — the standard "tick/settle/harvest" hook shape.
 Fees ≥ 4000 µALGO (keepers pay ~3000 µALGO in group fees per execution).
 Interval ≥ 10 rounds.
+
+### Who actually runs it?
+
+Nobody, and that is the point. There is no on-chain timer — a smart contract
+cannot wake itself, so every execution is a transaction somebody sent. What
+Archon adds is that "somebody" can be *anyone*, and that they are paid
+atomically for it: the fee moves only alongside a real execution, so keepers
+need no trust and creators need no relationship with them.
+
+The practical consequence: **an upkeep runs only while at least one keeper is
+watching the registry.** Reliability here is economic rather than technical —
+a due upkeep is claimable revenue, so keepers compete for it. Today that means
+running `scripts/keeper_bot.py` yourself, or relying on someone who does.
+
+Funding depth and keeper liveness are separate concerns. 100 ALGO at the
+4,000 µALGO minimum is ~25,000 executions, so escrow is rarely the binding
+constraint — and a well-funded upkeep with nobody watching still does not run.
+
+Missed executions are not lost. Scheduling advances from the *scheduled* round,
+so an upkeep left unattended stays due and catches up one interval per
+execution rather than skipping its history.
+
+Cadences are counted in rounds, not wall-clock time (~2.8 s per round, and it
+drifts), so "daily" means "every ~30,857 rounds" and slides slowly against the
+calendar.
+
+### What Archon can and cannot do
+
+Archon is the clock, not the eyes.
+
+**It cannot** fetch anything off-chain — no APIs, no RSS, no web pages, no
+price feeds. Smart contracts have no network access, and `execute` fires an
+inner app call to another app on the same chain. Archon can wake your contract
+up; it cannot tell it what is happening in the world. `call_data` is frozen at
+registration, so keepers have no discretion over what gets called — which is
+exactly why they need no trust.
+
+**It can** call any Algorand app on a schedule, permissionlessly and without a
+server: deadlines, unlocks, settlements, expiries, accrual, draws — any
+on-chain state machine that has to advance on time.
+
+**Paired with an oracle** it does the half that is otherwise hard. A reporter
+pushes data into an oracle contract, Archon triggers `settle()` on a cadence,
+and settlement reads the stored value. Archon's contribution is not the data;
+it is that settlement cannot be stalled, delayed or selectively timed by an
+interested party.
 
 **Proven end-to-end on TestNet**: upkeeps registered against `Pulse.tick`
 (both by the e2e script and the `examples/` flow) have been executed by
