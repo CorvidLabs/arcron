@@ -39,9 +39,46 @@ Ownerless, no protocol rake, no token required — plain ALGO escrow so any
 group can use it. Upkeep records are `arc4.Struct`s in boxes, so reading the
 registry is a free algod query.
 
+### Who actually runs it?
+
+**Somebody has to.** A smart contract cannot wake itself, and Archon is not an
+exception to that — it is a way to pay someone else to do the waking. There is
+no on-chain timer anywhere in this repo. Every execution is a transaction that
+a real account sent.
+
+*Permissionless* means **anyone may** execute a due upkeep, not that execution
+is automatic. Registering and funding an upkeep does not make it run; it makes
+running it profitable. The reliability story is economic, not technical: a due
+upkeep is claimable revenue, so keepers compete to claim it, and the fee moves
+only alongside a real execution.
+
+Two consequences worth being blunt about:
+
+- **Funding depth and liveness are different problems.** A generously funded
+  upkeep with no keeper watching does not run. Escrow is rarely the binding
+  constraint — 100 ALGO at the 4,000 µALGO minimum is ~25,000 executions —
+  while keeper coverage usually is.
+- **Right now, on TestNet, nobody is running one.** The upkeeps registered
+  against app [`769772891`](https://testnet.explorer.perawallet.app/application/769772891)
+  sit due until someone runs `scripts/keeper_bot.py`. An always-on keeper is
+  [issue #2](https://github.com/CorvidLabs/archon/issues/2); until it exists,
+  treat TestNet as a demo you drive yourself.
+
+Nothing is lost while no one is watching. Scheduling counts from the
+*scheduled* round, so an upkeep left unattended stays due and catches up one
+interval per execution rather than skipping its history — see
+[issue #7](https://github.com/CorvidLabs/archon/issues/7) for the argument
+about clamping that catch-up.
+
+And rounds are not a clock. A round is ~2.8 seconds nominally and drifts, so
+"every day" is really "every ~30,857 rounds" — a cadence, not an appointment.
+Anything that must happen *at* a wall-clock time needs a keeper that knows
+that; Archon only promises "not before this round".
+
 **Constraints (v1):** registered calls are NoOp app calls with exactly one app
 arg and no foreign arrays — the standard "tick/settle/harvest" hook shape.
-Fees ≥ 4000 µALGO (keepers pay ~3000 µALGO in group fees per execution).
+Fees ≥ 4000 µALGO (a keeper spends 3000 µALGO in group fees per execution, so
+that floor leaves it ≥ 1000 µALGO; a *failed* execution costs it nothing).
 Interval ≥ 10 rounds.
 
 **Proven end-to-end on TestNet**: upkeeps registered against `Pulse.tick`
@@ -184,8 +221,10 @@ poetry run python -m scripts.keeper_bot --once --network localnet --app-id $APP
 ```
 
 Defaults to the canonical TestNet app `769772891`; override with `--app-id`
-or `KEEPER_APP_ID`. An upkeep that fails to execute is skipped for the rest
-of the run (retrying would burn the outer fee every round). Note the contract
+or `KEEPER_APP_ID`. An upkeep that fails to execute is skipped for the rest of
+the run — not because it costs anything (a failed execution is rejected before
+it reaches a block, so the keeper pays nothing) but to avoid a wasted
+round-trip every round. Note the contract
 schedules from the *scheduled* round, so an upkeep that was missed for many
 intervals stays due until it has caught up one execution per interval.
 

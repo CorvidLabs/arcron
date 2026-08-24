@@ -91,6 +91,37 @@ Reference decoder: `scripts/keeper_bot.py::_decode_upkeep`; regression vector:
 - An upkeep is executable while `balance ≥ fee_per_execution`; it goes
   dormant when underfunded and resumes after a `top_up`.
 
+## Liveness: who executes, and what happens when nobody does
+
+Archon does not execute itself. There is no on-chain timer on Algorand, so
+every execution in this repo is a transaction some account sent and paid for.
+The contract is passive: `execute` is an external entry point that anyone may
+call once an upkeep is due.
+
+That makes liveness an operational property, not a contract property:
+
+| Question | Answer |
+|----------|--------|
+| What makes an upkeep run on time? | A keeper watching the registry and calling `execute` when it comes due. |
+| What if no keeper is watching? | Nothing runs. The upkeep accrues as "due" and waits, indefinitely. |
+| Is anything lost meanwhile? | No. Scheduling counts from the scheduled round, so it catches up one interval per execution. |
+| What does a missed window cost the creator? | Nothing directly — escrow is only spent on real executions. |
+| Who pays for liveness? | The upkeep's creator, via `fee_per_execution`; keepers self-select on whether that is worth their time. |
+
+**Current coverage:** no always-on keeper runs against the TestNet deployment.
+Upkeeps there are executed when someone runs the bot by hand. Do not present
+TestNet as a live service until issue #2 is done.
+
+**Detecting a stall from outside:** the registry is public box state, so any
+observer can compute liveness without trusting a keeper — scan the boxes and
+compare `next_execution_round` against the current round. An upkeep overdue by
+more than an interval or two means no keeper is servicing that app.
+
+**Sizing escrow against it:** 100 ALGO at the 4,000 µALGO minimum funds about
+25,000 executions — roughly 68 years of a daily upkeep, or 8 months of one
+that fires every 100 rounds. Escrow depth is almost never what stops an
+upkeep; the absence of a keeper is.
+
 ## Operating a bot
 
 ```bash
@@ -101,10 +132,20 @@ poetry run python -m scripts.keeper_bot --app-id N # other keeper instance
 
 - Signs as `KEEPER_MNEMONIC`, else `DEPLOYER_MNEMONIC`; fees are paid to that
   account, and it pays the outer fees — keep it funded.
-- Multiple competing bots are safe: the contract re-checks due-ness
-  atomically; the loser just loses its 1,000 µALGO outer fee.
-- A failing upkeep (e.g. target rejects the call) is skipped for the rest of
-  the bot run to avoid burning fees every round.
+- Multiple competing bots are safe, and losing a race is **free**. The
+  contract re-checks due-ness atomically, and Algorand rejects a failing
+  transaction at validation — it never enters a block, so its sender pays no
+  fee. Measured, not assumed: `scripts/keeper_e2e.py` stage 14 broadcasts a
+  losing `execute` and an `execute` against a rejecting target, and asserts
+  the keeper's balance is unchanged in both cases. algod answers
+  `TransactionPool.Remember: … logic eval error` and the transaction is
+  discarded.
+- This is the opposite of EVM chains, where a reverted transaction still burns
+  gas. It means the barrier to running a keeper is low: a bot that loses every
+  race it enters is out nothing but local compute and a round-trip to algod.
+- A failing upkeep (e.g. a target that rejects the call) is still skipped for
+  the rest of the bot run, but for latency and pool hygiene rather than cost —
+  there is no fee to burn.
 
 ## Testing and CI
 

@@ -32,7 +32,7 @@ The MBR charged at registration SHALL equal the box's true minimum balance, so t
 
 - Escrow is plain ALGO in v1 (universal, faucet-friendly); ASA-denominated fees are a possible extension.
 - Registered calls are NoOp app calls with exactly one app arg (the stored call data, typically a method selector) and no foreign arrays; targets must accept that shape.
-- Keepers are expected to simulate off-chain before executing; a failing target call fails the whole group, so the keeper only loses the outer fee if they execute blindly.
+- Keepers are expected to simulate off-chain before executing, but a mistake is cheap: a failing target call fails the whole group, and Algorand rejects the transaction before it reaches a block, so the keeper pays no fee at all (measured in `scripts/keeper_e2e.py` stage 14).
 
 ## Out of Scope
 
