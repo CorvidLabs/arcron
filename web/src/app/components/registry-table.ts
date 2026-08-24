@@ -170,6 +170,10 @@ interface Row {
                           @if (row.ceiling) {
                             A late run pays up to {{ row.ceiling }}, so the escrow needs that much
                             to stay executable.
+                            @if (row.feeNow) {
+                              This upkeep is already late, so the next run will be charged
+                              {{ row.feeNow }} — topping it up does not reset that.
+                            }
                           }
                         </p>
                       </form>
