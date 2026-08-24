@@ -44,12 +44,14 @@ is not deployed to any public network.
 | `probe_read_balance` | — | `uint64` | Read the configured account's ALGO balance. |
 | `probe_read_holding` | — | `uint64` | Read the configured account's holding of the asset. |
 | `probe_app_call` | — | `uint64` | Inner app call to the configured app. |
+| `report_budget` | — | `uint64` | Records the opcode budget available to this call — directly, and through an Archon upkeep, which is how the figures in `docs/integrating.md` were measured. |
 
 ## Invariants
 
 1. Every probe method takes no arguments beyond its selector, so Archon can call it in the v1 shape.
-2. A probe touches exactly one resource kind, so a failure names one rule.
-3. Nothing here is called by the keeper network; it is only ever a target.
+2. `report_budget` measures rather than asserts: an Archon-triggered call sees a *larger* budget than a direct one, because opcode budget pools across the app calls in a group.
+3. A probe touches exactly one resource kind, so a failure names one rule.
+4. Nothing here is called by the keeper network; it is only ever a target.
 
 ## Behavioral Examples
 
@@ -92,3 +94,4 @@ is not deployed to any public network.
 | Date | Author | Change |
 |------|--------|--------|
 | 2026-08-24 | CorvidLabs | Created to answer issue #24: keeper-supplied references reach two levels down, with a budget of 8 references per transaction. |
+| 2026-08-24 | CorvidLabs | Added `report_budget` for issue #26: an Archon-triggered call has ~1.8× the opcode budget of a direct one (1,250 vs 684), because budget pools across the group. |

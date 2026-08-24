@@ -91,6 +91,18 @@ class ResourceProbe(ARC4Contract):
         return self.last_reading.value
 
     @abimethod()
+    def report_budget(self) -> UInt64:
+        """Record the opcode budget available to this call.
+
+        Called directly it reports what any app call gets; called through an
+        Archon upkeep it reports what a *target* gets, which is the number an
+        integrator actually has to design against.
+        """
+        self.last_reading.value = Global.opcode_budget()
+        self.probes_run.value += 1
+        return self.last_reading.value
+
+    @abimethod()
     def probe_app_call(self) -> UInt64:
         """Call a third app that no argument names."""
         itxn.ApplicationCall(
