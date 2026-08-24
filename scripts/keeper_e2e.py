@@ -169,6 +169,9 @@ def _register_with_interval(
     funding: int,
     interval: int,
     call_data: bytes | None = None,
+    fee: int = FEE,
+    policy: int = keeper_bot.CATCH_UP,
+    fee_cap: int = 0,
 ) -> int:
     """Register an upkeep at an arbitrary cadence; returns the new upkeep id."""
     if call_data is None:
@@ -194,7 +197,9 @@ def _register_with_interval(
             target_app=target_app,
             call_data=call_data,
             interval_rounds=interval,
-            fee_per_execution=FEE,
+            fee_per_execution=fee,
+            policy=policy,
+            fee_cap=fee_cap,
         ),
         params=algokit_utils.CommonAppCallParams(
             first_valid_round=first_valid, last_valid_round=last_valid
@@ -307,7 +312,15 @@ def main(argv: list[str] | None = None) -> None:
     _assert("fee_per_execution", upkeep.fee_per_execution, FEE)
     _assert("balance", upkeep.balance, FUNDING)
     _assert("times_executed", upkeep.times_executed, 0)
-    _assert("call_data", raw[84:], _selector(CALL_SIGNATURE))
+    _assert("policy", upkeep.policy, keeper_bot.CATCH_UP)
+    _assert("fee_cap", upkeep.fee_cap, 0)
+    _assert("last_serviced_round", upkeep.last_serviced_round, registered_round)
+    # The tail begins where the head ends; read the offset rather than
+    # restating it, so a struct change shows up as a decode failure and not as
+    # a test quietly checking the wrong bytes.
+    tail = int.from_bytes(raw[40:42], "big")
+    _assert("head size", tail, 106)
+    _assert("call_data", raw[tail + 2 :], _selector(CALL_SIGNATURE))
     assert upkeep.next_execution_round >= registered_round, "Upkeep is due immediately"
     _assert(
         "escrow credited",
@@ -660,6 +673,188 @@ def main(argv: list[str] | None = None) -> None:
     logger.info("  ✔ a failed execution is free: no fee, no state change")
 
     for cleanup_id in (race_id, doomed_id):
+        keeper_client.send.cancel(
+            args=CancelArgs(upkeep_id=cleanup_id),
+            params=algokit_utils.CommonAppCallParams(
+                extra_fee=algokit_utils.AlgoAmount(micro_algo=1_000)
+            ),
+        )
+
+    # ------------------------------------------------------------------
+    logger.info("── 15. SKIP_AHEAD drops the backlog and keeps the phase ──")
+    # Stage 13 showed the default: replay every missed interval. For work
+    # where only the latest run matters — a draw, a staleness check, a switch
+    # that fires once — that is pure waste, so the creator can say so at
+    # registration. The upkeep must land on a slot strictly in the future
+    # while staying on its original phase, so a daily upkeep keeps its time of
+    # day instead of drifting to whenever a keeper happened to arrive.
+    skip_id = _register_with_interval(
+        algorand,
+        keeper_client,
+        deployer,
+        pulse_client.app_id,
+        FEE * 4,
+        INTERVAL_ROUNDS,
+        policy=keeper_bot.SKIP_AHEAD,
+    )
+    skip, _ = _read_upkeep(algorand, app_id, skip_id)
+    scheduled = skip.next_execution_round
+    net.wait_for_round(algorand, scheduled + 3 * INTERVAL_ROUNDS, poker=deployer)
+    at_execution = algorand.client.algod.status()["last-round"]
+    stranger_client.send.execute(
+        args=ExecuteArgs(upkeep_id=skip_id),
+        params=algokit_utils.CommonAppCallParams(
+            extra_fee=algokit_utils.AlgoAmount(micro_algo=keeper_bot.EXTRA_FEE_MICROALGO)
+        ),
+    )
+    skipped, _ = _read_upkeep(algorand, app_id, skip_id)
+    _assert("one execution, not four", skipped.times_executed, 1)
+    _assert("one fee taken, not four", skip.balance - skipped.balance, FEE)
+    _assert("no longer due", skipped.next_execution_round > at_execution, True)
+    _assert(
+        "landed on the schedule's own phase",
+        (skipped.next_execution_round - scheduled) % INTERVAL_ROUNDS,
+        0,
+    )
+    _assert(
+        "landed on the *first* future slot",
+        skipped.next_execution_round - at_execution <= INTERVAL_ROUNDS,
+        True,
+    )
+    _assert(
+        "recorded when it actually ran, not when it was scheduled",
+        skipped.last_serviced_round >= at_execution,
+        True,
+    )
+    logger.info(
+        f"  ✔ missed 3 intervals, ran once, next due {skipped.next_execution_round} "
+        f"(scheduled phase {scheduled} + {(skipped.next_execution_round - scheduled) // INTERVAL_ROUNDS} intervals)"
+    )
+
+    # ------------------------------------------------------------------
+    logger.info("── 16. A neglected upkeep pays more, once ──")
+    # Escalation exists to clear a market: an upkeep nobody wants becomes
+    # worth doing. Once a keeper has arrived the market has cleared, so the
+    # backlog it then drains pays base — otherwise catch-up and escalation
+    # multiply, and a long-neglected upkeep burns its escrow at the ceiling
+    # for work nobody asked for.
+    cap = FEE * 3
+    esc_id = _register_with_interval(
+        algorand,
+        keeper_client,
+        deployer,
+        pulse_client.app_id,
+        FEE * 8,
+        INTERVAL_ROUNDS,
+        fee_cap=cap,
+    )
+    before, _ = _read_upkeep(algorand, app_id, esc_id)
+
+    def _execute_and_price(upkeep_id: int, previous) -> tuple[int, object]:
+        stranger_client.send.execute(
+            args=ExecuteArgs(upkeep_id=upkeep_id),
+            params=algokit_utils.CommonAppCallParams(
+                extra_fee=algokit_utils.AlgoAmount(
+                    micro_algo=keeper_bot.EXTRA_FEE_MICROALGO
+                )
+            ),
+        )
+        after, _ = _read_upkeep(algorand, app_id, upkeep_id)
+        paid = previous.balance - after.balance
+        # The box now records the round it actually ran in, so the bot's twin
+        # of the escalation arithmetic can be checked against the contract's —
+        # on a real chain, at whatever round the transaction happened to land.
+        _assert(
+            "the bot's fee arithmetic agrees with the contract",
+            paid,
+            keeper_bot.effective_fee(previous, after.last_serviced_round),
+        )
+        return paid, after
+
+    # Executed as soon as it comes due. LocalNet advances a round per
+    # transaction, so "on time" here is a round or two past due — enough to
+    # show the curve has barely started, not enough to reach the ceiling.
+    net.wait_for_round(algorand, before.next_execution_round, poker=deployer)
+    on_time_fee, after_on_time = _execute_and_price(esc_id, before)
+    _assert("an on-time execution does not pay the ceiling", on_time_fee < cap, True)
+    _assert(
+        "and is still near the base fee",
+        on_time_fee < FEE + (cap - FEE) // 4,
+        True,
+    )
+
+    # Neglected for two intervals past the last service: the curve is flat at
+    # the ceiling from one whole missed interval onwards.
+    net.wait_for_round(
+        algorand,
+        after_on_time.last_serviced_round + 2 * INTERVAL_ROUNDS + 2,
+        poker=deployer,
+    )
+    late_fee, after_late = _execute_and_price(esc_id, after_on_time)
+    _assert("a neglected execution pays the ceiling", late_fee, cap)
+
+    # The same keeper immediately drains the backlog. It was serviced moments
+    # ago, so it is not late, so it pays base — this is the whole reason
+    # escalation is measured from the last service rather than the schedule.
+    drain_fee, after_drain = _execute_and_price(esc_id, after_late)
+    _assert("the backlog behind it pays base", drain_fee, FEE)
+    _assert(
+        "escrow spent is one ceiling, not three",
+        before.balance - after_drain.balance,
+        on_time_fee + cap + FEE,
+    )
+    logger.info(
+        f"  ✔ {on_time_fee} µALGO on time, {cap} µALGO neglected, {FEE} µALGO for "
+        f"the replay behind it"
+    )
+
+    # ------------------------------------------------------------------
+    logger.info("── 17. The bot reaches for the escalated work first ──")
+    # #14's point: a creator paying the minimum buys latency rather than
+    # unreliability. That only holds if keepers actually re-rank, so the bot
+    # takes due work by effective fee rather than by registry order.
+    cheap_id = _register_with_interval(
+        algorand, keeper_client, deployer, pulse_client.app_id, FEE * 8,
+        INTERVAL_ROUNDS, fee=FEE, fee_cap=FEE * 3,
+    )
+    rich_id = _register_with_interval(
+        algorand, keeper_client, deployer, pulse_client.app_id, FEE * 8,
+        INTERVAL_ROUNDS, fee=FEE * 2,
+    )
+    cheap, _ = _read_upkeep(algorand, app_id, cheap_id)
+    net.wait_for_round(
+        algorand, cheap.last_serviced_round + 2 * INTERVAL_ROUNDS + 2, poker=deployer
+    )
+    at_round = algorand.client.algod.status()["last-round"]
+    registry = keeper_bot.scan_upkeeps(algorand.client.algod, app_id)
+    queue = sorted(
+        (
+            u
+            for u in registry
+            if at_round >= u.next_execution_round
+            and u.balance >= keeper_bot.effective_fee(u, at_round)
+        ),
+        key=lambda u: (-keeper_bot.effective_fee(u, at_round), u.upkeep_id),
+    )
+    _assert(
+        "the neglected minimum-fee upkeep outranks the richer one",
+        queue[0].upkeep_id,
+        cheap_id,
+    )
+    _assert(
+        "because it is now worth more",
+        keeper_bot.effective_fee(queue[0], at_round)
+        > keeper_bot.effective_fee(
+            next(u for u in registry if u.upkeep_id == rich_id), at_round
+        ),
+        True,
+    )
+    logger.info(
+        f"  ✔ upkeep {cheap_id} at {keeper_bot.effective_fee(queue[0], at_round)} µALGO "
+        f"ahead of upkeep {rich_id} at {FEE * 2} µALGO"
+    )
+
+    for cleanup_id in (skip_id, esc_id, cheap_id, rich_id):
         keeper_client.send.cancel(
             args=CancelArgs(upkeep_id=cleanup_id),
             params=algokit_utils.CommonAppCallParams(

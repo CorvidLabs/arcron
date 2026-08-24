@@ -27,6 +27,10 @@ export interface RegisterParams {
   readonly intervalRounds: number;
   readonly feePerExecution: number;
   readonly funding: number;
+  /** CATCH_UP replays every missed interval; SKIP_AHEAD runs once and moves on. */
+  readonly policy: number;
+  /** The most one run may ever cost; 0 means the fee never escalates. */
+  readonly feeCap: number;
 }
 
 /** A confirmed call: the round it landed in and whatever the method returned. */
@@ -97,6 +101,8 @@ export async function register(
       params.callData,
       params.intervalRounds,
       params.feePerExecution,
+      params.policy,
+      params.feeCap,
     ],
     boxes: [{ appIndex: 0, name: upkeepBoxName(await nextUpkeepId(algod, appId)) }],
   });

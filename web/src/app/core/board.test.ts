@@ -20,6 +20,9 @@ function upkeep(overrides: Partial<Upkeep> = {}): Upkeep {
     feePerExecution: 4_000n,
     balance: 12_000n,
     timesExecuted: 0n,
+    policy: 0n,
+    feeCap: 0n,
+    lastServicedRound: 990n,
     ...overrides,
   };
 }
@@ -128,5 +131,46 @@ describe('network stats, from box state alone', () => {
   test('an empty board has no median rather than a misleading zero-ish average', () => {
     expect(summarise([]).medianLateness).toBe(0n);
     expect(summarise([]).paidToKeepers).toBe(0n);
+  });
+});
+
+describe('escalation on the board', () => {
+  // Base 4,000, ceiling 12,000, 10-round interval, last serviced at round 990.
+  const escalating = upkeep({ feeCap: 12_000n, balance: 100_000n });
+
+  test('ranks work by what it pays now, not what it was registered at', () => {
+    const rich = toEntry(upkeep({ id: 2n, feePerExecution: 6_000n }), 1_000n);
+    const late = toEntry(escalating, 1_010n); // a whole interval past its service
+    expect(late.currentFee).toBe(12_000n);
+    expect(late.escalated).toBe(true);
+
+    const [first] = sortEntries([rich, late], 'reward');
+    expect(first.upkeep.id).toBe(1n);
+  });
+
+  test('is not escalated while it is on time', () => {
+    const onTime = toEntry(escalating, 1_000n);
+    expect(onTime.currentFee).toBe(4_000n);
+    expect(onTime.escalated).toBe(false);
+  });
+
+  test('an upkeep can go dormant at a balance that covers its base fee', () => {
+    // Eight runs at the price the creator wrote down — but not one at the cap.
+    const thin = upkeep({ feeCap: 12_000n, balance: 8_000n });
+    expect(classify(thin, 1_000n)).toBe('due');
+    expect(classify(thin, 1_010n)).toBe('dormant');
+  });
+
+  test('reads when an upkeep last ran instead of deriving it from the schedule', () => {
+    // A catching-up upkeep's schedule and its service differ by the backlog;
+    // deriving this from nextExecutionRound - interval is what broke #27.
+    const caughtUp = upkeep({ timesExecuted: 3n, nextExecutionRound: 1_010n, lastServicedRound: 1_400n });
+    expect(toEntry(caughtUp, 1_400n).lastExecutionRound).toBe(1_400n);
+    expect(toEntry(upkeep(), 1_000n).lastExecutionRound).toBeNull();
+  });
+
+  test('what keepers have been paid is a floor once fees can escalate', () => {
+    const stats = summarise([toEntry(upkeep({ timesExecuted: 2n, feeCap: 12_000n }), 1_000n)]);
+    expect(stats.paidToKeepers).toBe(8_000n); // 2 × the base fee
   });
 });

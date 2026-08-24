@@ -10,7 +10,7 @@ quick overview see `../README.md`; for runnable flows see `../examples/`.
 | Keeper app | [`769802474`](https://testnet.explorer.perawallet.app/application/769802474) |
 | Pulse demo target | [`769772906`](https://testnet.explorer.perawallet.app/application/769772906) |
 | Reference bot | `scripts/keeper_bot.py` |
-| Proof | All 14 stages of `scripts/keeper_e2e.py` pass against it on-chain — first permissionless execution at round 66629036, catch-up stage through 66629138 |
+| Proof | All 14 stages of `scripts/keeper_e2e.py` passed against it on-chain — first permissionless execution at round 66629036, catch-up stage through 66629138. The e2e now has 17 stages; the extra three cover #7 and #14, which this deployment predates. |
 | Deprecated | [`769772891`](https://testnet.explorer.perawallet.app/application/769772891) — see [migration](#migrating-off-the-deprecated-app) |
 
 ### Migrating off the deprecated app
@@ -63,21 +63,32 @@ All methods are ARC-4 ABI methods on the keeper app
 
 | Method | Callers | Purpose |
 |--------|---------|---------|
-| `register(mbr_payment, funding_payment, target_app, call_data, interval_rounds, fee_per_execution) → uint64` | anyone | Create an upkeep; returns its id. Two payment args fund the box MBR and the escrow. |
-| `execute(upkeep_id) → uint64` | anyone (permissionless) | Fire a due, funded upkeep; pays the caller. Returns the next due round. |
+| `register(mbr_payment, funding_payment, target_app, call_data, interval_rounds, fee_per_execution, policy, fee_cap) → uint64` | anyone | Create an upkeep; returns its id. Two payment args fund the box MBR and the escrow. `policy` is `CATCH_UP` (0) or `SKIP_AHEAD` (1); `fee_cap` is the most one run may ever pay, or 0 for no escalation. |
+| `execute(upkeep_id) → uint64` | anyone (permissionless) | Fire a due, funded upkeep; pays the caller the effective fee and records the round it ran in. Returns the next due round. |
 | `top_up(upkeep_id, funding_payment) → uint64` | anyone | Add escrow; returns new balance. |
 | `cancel(upkeep_id) → uint64` | creator only | Delete the upkeep; refunds remaining escrow **plus the box MBR** the deletion releases. Returns the refunded amount. |
 
 Constraints (asserted on-chain):
 
-- `interval_rounds ≥ 10`, `fee_per_execution ≥ 4_000` µALGO, call data
-  `0 < len ≤ 1_024` bytes.
+- `interval_rounds ≥ 10`, `4_000 ≤ fee_per_execution ≤ 1_000_000_000` µALGO,
+  call data `0 < len ≤ 1_024` bytes.
+- `policy` is `CATCH_UP` or `SKIP_AHEAD`; `fee_cap` is either 0 or between
+  `fee_per_execution` and 1,000,000,000 µALGO.
 - Executions are NoOp inner app calls with exactly one app arg (the stored
   call data — typically the target method's 4-byte selector) and no foreign
   arrays.
-- Scheduling is interval-based from the *scheduled* round:
-  `next_due += interval` on each execution. An upkeep missed for many
-  intervals stays due until it has caught up — there is no wall-clock clamp.
+- Scheduling is interval-based from the *scheduled* round. Under `CATCH_UP`,
+  `next_due += interval` on each execution, so an upkeep missed for many
+  intervals stays due until it has caught up. Under `SKIP_AHEAD` one execution
+  advances to the first slot strictly in the future that is still a whole
+  number of intervals from the original schedule, so the backlog is dropped
+  and the schedule keeps its phase.
+- The fee paid is the **effective fee**: `fee_per_execution` when no ceiling
+  is set, otherwise rising linearly to `fee_cap` across one missed interval
+  and then holding. Lateness is measured from `last_serviced_round`, not from
+  the schedule, so the first execution of a catch-up burst can be escalated
+  and every replay behind it pays base. `balance ≥ effective fee` is what
+  makes an upkeep executable, so a ceiling raises the dormancy threshold.
 
 ## Box encoding (Upkeep struct)
 
@@ -87,34 +98,42 @@ ARC-4 head/tail tuple encoding of:
 creator: Address | target_app: uint64 | call_data: DynamicBytes
 interval_rounds: uint64 | next_execution_round: uint64
 fee_per_execution: uint64 | balance: uint64 | times_executed: uint64
+policy: uint64 | fee_cap: uint64 | last_serviced_round: uint64
 ```
 
 | Bytes | Field |
 |-------|-------|
 | `[0:32]` | creator address |
 | `[32:40]` | target app id |
-| `[40:42]` | offset to the call_data tail (currently 82) |
+| `[40:42]` | offset to the call_data tail (currently 106) |
 | `[42:50]` | interval_rounds |
 | `[50:58]` | next_execution_round |
 | `[58:66]` | fee_per_execution |
 | `[66:74]` | balance |
 | `[74:82]` | times_executed |
-| `[82:]` | tail: `uint16 length` + call data |
+| `[82:90]` | policy |
+| `[90:98]` | fee_cap |
+| `[98:106]` | last_serviced_round |
+| `[106:]` | tail: `uint16 length` + call data |
 
-Reference decoder: `scripts/keeper_bot.py::_decode_upkeep`; regression vector:
-`tests/test_keeper_bot.py`.
+Reference decoder: `scripts/keeper_bot.py::_decode_upkeep`; its TypeScript twin
+is `web/src/app/core/upkeep.ts`. Both are pinned to the *same* recorded box, in
+`tests/test_keeper_bot.py` and `web/src/app/core/upkeep.test.ts`, so they
+cannot drift apart.
 
 ## Economics
 
-- Creator costs, per upkeep: box MBR `2_500 + 400 × (93 + len(call_data))`
-  µALGO (41,300 for a 4-byte selector) + escrowed `funding`. Both come back
+- Creator costs, per upkeep: box MBR `2_500 + 400 × (117 + len(call_data))`
+  µALGO (50,900 for a 4-byte selector) + escrowed `funding`. Both come back
   on `cancel`, so registering an upkeep costs only transaction fees in the
   end.
 - Keeper costs, per execution: 1,000 µALGO outer fee + 2,000 µALGO
   `extra_fee` covering the two inner transactions (fee pooling). Paid fee is
-  `fee_per_execution` (≥ 4,000), so net ≥ 1,000 µALGO per execution.
-- An upkeep is executable while `balance ≥ fee_per_execution`; it goes
-  dormant when underfunded and resumes after a `top_up`.
+  the effective fee (≥ 4,000), so net ≥ 1,000 µALGO per execution — more when
+  the upkeep is late and its creator set a ceiling.
+- An upkeep is executable while `balance ≥ effective fee`; it goes dormant
+  when underfunded and resumes after a `top_up`. A ceiling raises that
+  threshold, so budget runway against `fee_cap` rather than the base fee.
 
 ## Liveness
 
@@ -549,13 +568,29 @@ failure: a payout to a closed or hostile account fails that claim alone instead
 of failing the whole execution and disrupting the schedule. Most applications
 that look like they need multi-arg calls do not, once payouts are pull-based.
 
+## What 1.0 will be
+
+The contract cannot be upgraded, so struct changes are batched into one last
+release and the surface is then frozen: per-upkeep catch-up policy, fee
+escalation, resource declaration, and ASA-denominated fees as a capability
+(ALGO remains the default; no token is required). Scope, what is deliberately
+out, the dogfood plan and the mainnet gate are in
+[docs/design/1.0.md](design/1.0.md).
+
 ## Known limitations (v1)
 
 - ALGO escrow only (no ASA-denominated fees yet). First candidate: CORVID,
   CorvidLabs' ASA — mainnet asset
   [`3225439167`](https://explorer.perawallet.app/asset/3225439167) (6 decimals).
 - Single-arg NoOp call shape; no multi-arg or foreign-array calls.
-- No catch-up clamp: long-missed upkeeps fire once per round until caught up.
+- Catch-up is now a choice, not a limitation: a creator picks `CATCH_UP`
+  (replay every missed interval, the default) or `SKIP_AHEAD` (run once and
+  land on the next slot that is still ahead) at registration. Designed in
+  [docs/design/scheduling-and-fees.md](design/scheduling-and-fees.md), which
+  also explains why the two features had to be designed together.
+- A creator may also set a fee ceiling, and a late upkeep's fee climbs towards
+  it — which means an upkeep with a ceiling can go dormant at a balance that
+  would have covered several runs at its base fee.
 - Unaudited. TestNet throwaway deployer — redeploy fresh for mainnet.
 
 ## CI

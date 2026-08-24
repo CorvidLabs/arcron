@@ -69,6 +69,8 @@ def _register(algorand, keeper_client, deployer, target_app: int, call_data: byt
             call_data=call_data,
             interval_rounds=INTERVAL,
             fee_per_execution=FEE,
+            policy=0,  # CATCH_UP; this spike measures resources, not scheduling
+            fee_cap=0,
         )
     ).abi_return
 

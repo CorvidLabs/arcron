@@ -18,9 +18,12 @@ from algopy import (
     Global,
     GlobalState,
     OnCompleteAction,
+    String,
+    Txn,
     UInt64,
     arc4,
     itxn,
+    op,
 )
 from algopy.arc4 import abimethod
 
@@ -38,6 +41,16 @@ class ResourceProbe(ARC4Contract):
         # Evidence a probe ran, for the cases where success is silent.
         self.probes_run = GlobalState(UInt64(0))
         self.last_reading = GlobalState(UInt64(0))
+        # What `absorb` was handed, so a multi-arg call can be checked for
+        # having delivered every argument rather than merely succeeding.
+        self.last_number = GlobalState(UInt64(0))
+        self.last_text = GlobalState(String(""))
+        # Who the target sees as its caller, which is not who sent the
+        # transaction once Archon is in the middle.
+        self.last_caller = GlobalState(Account())
+        # A keeper app and one of its upkeeps, for the re-entrancy probe.
+        self.keeper_app = GlobalState(UInt64(0))
+        self.keeper_upkeep = GlobalState(UInt64(0))
 
     @abimethod()
     def configure(
@@ -101,6 +114,70 @@ class ResourceProbe(ARC4Contract):
         self.last_reading.value = Global.opcode_budget()
         self.probes_run.value += 1
         return self.last_reading.value
+
+    @abimethod()
+    def absorb(self, number: UInt64, text: arc4.String) -> UInt64:
+        """A hook with arguments of its own — the shape Archon cannot call.
+
+        Archon stores one blob and sends it as one app arg, and an ARC-4 method
+        with arguments needs the selector and each argument in an app arg of
+        its own. So this method is unreachable through an upkeep today.
+        `scripts/spike_multiarg.py` uses it to measure what a multi-arg call
+        shape would cost, and records both arguments so that a call which
+        loses one is distinguishable from a call that works.
+        """
+        # Read the budget first, so this is comparable with `report_budget`:
+        # both report what the target was handed, not what it has left.
+        self.last_reading.value = Global.opcode_budget()
+        self.last_number.value = number
+        self.last_text.value = text.native
+        self.probes_run.value += 1
+        return self.last_reading.value
+
+    @abimethod()
+    def report_caller(self) -> arc4.Address:
+        """Record who the target sees as its caller.
+
+        Decides whether a target can pay the keeper itself: an Archon-executed
+        call arrives as an inner transaction, and an inner transaction's sender
+        is the app that submitted it. Measured rather than assumed, because a
+        whole class of design depends on it.
+        """
+        self.last_caller.value = Txn.sender
+        self.probes_run.value += 1
+        return arc4.Address(Txn.sender)
+
+    @abimethod()
+    def configure_reentry(self, keeper_app: UInt64, upkeep_id: UInt64) -> None:
+        """Point `reenter` at a keeper app and one of its upkeeps."""
+        self.keeper_app.value = keeper_app
+        self.keeper_upkeep.value = upkeep_id
+
+    @abimethod()
+    def reenter(self) -> UInt64:
+        """Call the keeper's `execute` back, from inside its own execution.
+
+        Archon writes an upkeep's state before submitting the inner call, so a
+        re-entrant execution has to satisfy the schedule afresh. Whether that
+        is enough to stop one — and who a nested execution pays, given the
+        sender it sees is this app rather than the keeper — is measured in
+        `scripts/spike_reentrancy.py` rather than argued about.
+
+        Re-enters once and only once: unconditional recursion would just hit
+        the AVM's depth limit and tell us nothing.
+        """
+        self.probes_run.value += 1
+        if self.probes_run.value > 1:
+            return self.probes_run.value
+        itxn.ApplicationCall(
+            app_id=Application(self.keeper_app.value),
+            app_args=(
+                arc4.arc4_signature("execute(uint64)uint64"),
+                op.itob(self.keeper_upkeep.value),
+            ),
+            on_completion=OnCompleteAction.NoOp,
+        ).submit()
+        return self.probes_run.value
 
     @abimethod()
     def probe_app_call(self) -> UInt64:

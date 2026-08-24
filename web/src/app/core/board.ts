@@ -4,14 +4,15 @@
  * All of this is derived from box state, which any algod will serve for free —
  * the console needs no backend and no indexer, and that property is worth
  * protecting. Even "how much has been paid to keepers" falls out of
- * `times_executed × fee_per_execution` without any transaction history.
+ * `times_executed × fee_per_execution` — a floor, once escalation can pay
+ * more than the base fee for a late run.
  *
  * The one thing that does *not*: which keeper earned it. Per-keeper
  * attribution is not stored on-chain, which is why the leaderboard is a
  * separate decision (see docs/archon.md).
  */
 
-import { EXECUTE_FEE, executionsRemaining, type Upkeep } from './upkeep';
+import { EXECUTE_FEE, effectiveFee, escalates, executionsRemaining, type Upkeep } from './upkeep';
 
 export type Availability = 'due' | 'scheduled' | 'dormant';
 
@@ -24,6 +25,10 @@ export interface BoardEntry {
   readonly overdueRounds: bigint;
   /** What a keeper clears after the 3,000 µALGO it spends executing. */
   readonly netReward: bigint;
+  /** What this upkeep pays right now — the base fee, or more if it is late. */
+  readonly currentFee: bigint;
+  /** True when `currentFee` has risen above what the creator wrote down. */
+  readonly escalated: boolean;
   readonly runsRemaining: bigint;
   /** The round it last ran, or null if it never has. */
   readonly lastExecutionRound: bigint | null;
@@ -34,7 +39,7 @@ export interface BoardStats {
   readonly due: number;
   readonly dormant: number;
   readonly totalExecutions: bigint;
-  /** Σ times_executed × fee — what keepers have earned from this app. */
+  /** Σ times_executed × base fee — a floor on what keepers have earned. */
   readonly paidToKeepers: bigint;
   readonly escrowed: bigint;
   /** Median rounds overdue across upkeeps that are due; 0n when none are. */
@@ -43,22 +48,29 @@ export interface BoardStats {
 
 export function classify(upkeep: Upkeep, currentRound: bigint): Availability {
   // Dormant first: an upkeep that cannot pay its fee is nobody's work, however
-  // overdue it looks.
-  if (upkeep.balance < upkeep.feePerExecution) return 'dormant';
+  // overdue it looks. Measured against the escalated fee, because that is what
+  // a keeper would actually be owed — an upkeep can starve at a balance its
+  // creator thought was several runs.
+  if (upkeep.balance < effectiveFee(upkeep, currentRound)) return 'dormant';
   return currentRound >= upkeep.nextExecutionRound ? 'due' : 'scheduled';
 }
 
 export function toEntry(upkeep: Upkeep, currentRound: bigint): BoardEntry {
   const overdue = currentRound - upkeep.nextExecutionRound;
+  const fee = effectiveFee(upkeep, currentRound);
   return {
     upkeep,
     availability: classify(upkeep, currentRound),
     overdueRounds: overdue > 0n ? overdue : 0n,
     // A keeper pays the outer fee plus the pooled extra out of its own pocket.
-    netReward: upkeep.feePerExecution - BigInt(EXECUTE_FEE),
+    netReward: fee - BigInt(EXECUTE_FEE),
+    currentFee: fee,
+    escalated: escalates(upkeep) && fee > upkeep.feePerExecution,
     runsRemaining: executionsRemaining(upkeep),
-    lastExecutionRound:
-      upkeep.timesExecuted > 0n ? upkeep.nextExecutionRound - upkeep.intervalRounds : null,
+    // Read, not derived. The schedule and the service differ by exactly the
+    // backlog whenever an upkeep is catching up, and deriving this from the
+    // schedule is what put the notifier's attribution in the wrong block.
+    lastExecutionRound: upkeep.timesExecuted > 0n ? upkeep.lastServicedRound : null,
   };
 }
 
@@ -87,6 +99,8 @@ export function summarise(entries: readonly BoardEntry[]): BoardStats {
     due: entries.filter((entry) => entry.availability === 'due').length,
     dormant: entries.filter((entry) => entry.availability === 'dormant').length,
     totalExecutions: entries.reduce((total, entry) => total + entry.upkeep.timesExecuted, 0n),
+    // A floor: box state records how many times an upkeep ran but not what
+    // each run paid, and an escalated run pays more than the base fee.
     paidToKeepers: entries.reduce(
       (total, entry) => total + entry.upkeep.timesExecuted * entry.upkeep.feePerExecution,
       0n,

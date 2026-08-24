@@ -14,6 +14,8 @@ interface Row {
   readonly selector: string;
   readonly reward: string;
   readonly netReward: string;
+  /** True while lateness has pushed this upkeep's fee above its base. */
+  readonly escalated: boolean;
   readonly cadence: string;
   readonly due: string;
   readonly runway: string;
@@ -73,7 +75,7 @@ const SORTS: readonly { key: SortKey; label: string }[] = [
                   <span class="sub mono">{{ row.selector }}</span>
                 </div>
                 <div class="pay">
-                  <strong class="mono">{{ row.netReward }}</strong>
+                  <strong class="mono" [class.escalated]="row.escalated">{{ row.netReward }}</strong>
                   <span class="sub">net of the {{ executionCost }} it costs to run</span>
                 </div>
                 <div class="when">
@@ -113,7 +115,11 @@ const SORTS: readonly { key: SortKey; label: string }[] = [
                   <span class="mono id">#{{ row.id }}</span>
                   <span class="mono">app {{ row.target }}</span>
                 </div>
-                <div class="pay"><span class="sub">{{ row.reward }} fee, {{ row.runway }}</span></div>
+                <div class="pay">
+                  <span class="sub">
+                    {{ row.reward }} fee@if (row.escalated) { <span class="escalated">— escalated</span> }, {{ row.runway }}
+                  </span>
+                </div>
                 <div class="when"><span class="sub">{{ row.due }}</span></div>
               </li>
             }
@@ -187,6 +193,7 @@ const SORTS: readonly { key: SortKey; label: string }[] = [
     .id { color: var(--text-faint); margin-right: 0.4rem; }
     .pay strong { font-size: 1rem; color: var(--sheen-strong); }
     .sub { display: block; color: var(--text-faint); font-size: 0.76rem; }
+    .escalated { color: var(--warning); }
     .empty { margin: 0; padding: 1.5rem; border: 1px dashed var(--hairline); border-radius: 3px; color: var(--text-faint); text-align: center; }
     .hint { margin: 0; color: var(--text-faint); font-size: 0.8rem; }
     @media (max-width: 52rem) {
@@ -242,8 +249,11 @@ export class UpkeepBoard {
         id: String(entry.upkeep.id),
         target: String(entry.upkeep.targetApp),
         selector: `0x${toHex(entry.upkeep.callData)}`,
-        reward: algos(entry.upkeep.feePerExecution),
+        // What it pays now, not what it was registered at: escalation exists
+        // to change which work a keeper reaches for first.
+        reward: algos(entry.currentFee),
         netReward: algos(entry.netReward, { sign: true }),
+        escalated: entry.escalated,
         cadence: intervalLabel(entry.upkeep.intervalRounds, pace),
         due: dueLabel(roundsUntilDue(entry.upkeep, round), pace),
         runway: runwayLabel(entry.runsRemaining, entry.upkeep.intervalRounds, pace),

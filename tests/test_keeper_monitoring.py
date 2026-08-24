@@ -3,7 +3,9 @@
 Both are asserted against fakes rather than a chain, because the interesting
 cases — an empty keeper, a registry nobody is servicing — are awkward to
 arrange live and trivial to describe here. The box bytes are the same recorded
-TestNet vector `test_keeper_bot.py` pins.
+vector `test_keeper_bot.py` pins, and every figure below is read out of it
+rather than restated, so a re-pinned box cannot leave these tests asserting
+against numbers that are no longer in it.
 """
 
 import base64
@@ -11,6 +13,7 @@ import base64
 import pytest
 
 from scripts.keeper_bot import (
+    _decode_upkeep,
     ACCOUNT_MBR_MICROALGO,
     EXECUTION_COST_MICROALGO,
     HARD_MINIMUM_MICROALGO,
@@ -22,10 +25,10 @@ from scripts.keeper_bot import (
 )
 from tests.test_keeper_bot import LIVE_BOX_HEX
 
-KEEPER = "E5M2OH5XNDMNABJ6VOFOUVR2IKRPCGQH43PVC5P3DWQQ2LV2VJV2FJZQ3E"
-# The pinned upkeep: interval 10, fee 4,000, balance 16,000, due at 66610419.
-UPKEEP_DUE_ROUND = 66610419
-UPKEEP_INTERVAL = 10
+KEEPER = "LXX2CZ7IFVUIFMNFPPVX2O5YLA2EBIXC4GNCONMMSR2EUT5H4PHZ53VNOQ"
+_PINNED = _decode_upkeep(4, bytes.fromhex(LIVE_BOX_HEX))
+UPKEEP_DUE_ROUND = _PINNED.next_execution_round
+UPKEEP_INTERVAL = _PINNED.interval_rounds
 
 
 class FakeAlgod:
@@ -117,6 +120,23 @@ def test_a_starved_upkeep_is_not_blamed_on_keepers(caplog) -> None:
     with caplog.at_level("INFO"):
         assert check_registry(algod, 1) == 0
     assert "needs a top-up, not a keeper" in caplog.text
+
+
+def test_escalation_can_starve_an_upkeep_that_covers_its_base_fee(caplog) -> None:
+    """The dormancy threshold moves with the fee, so the check has to as well.
+
+    The pinned upkeep has a 4,000 µALGO fee and a 12,000 µALGO ceiling. An
+    escrow of 5,000 covers the fee its creator wrote down and not the one it is
+    now offering, so it is out of funds rather than unserviced — and blaming
+    keepers for it would be wrong.
+    """
+    name, value = _box(4, balance=5_000)
+    algod = FakeAlgod(
+        round=_PINNED.last_serviced_round + 2 * UPKEEP_INTERVAL, boxes={name: value}
+    )
+    with caplog.at_level("INFO"):
+        assert check_registry(algod, 1) == 0
+    assert "escalated fee" in caplog.text
 
 
 def test_empty_registry_is_healthy() -> None:

@@ -28,6 +28,7 @@ from smart_contracts.artifacts.keeper.keeper_client import (
 )
 from smart_contracts.artifacts.embargo.embargo_client import EmbargoFactory
 from smart_contracts.embargo.contract import BOX_MBR_FIXED, CONTENT_KEY
+from smart_contracts.keeper.contract import SKIP_AHEAD
 from smart_contracts.keeper.deploy_config import deploy as deploy_keeper
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -131,6 +132,9 @@ def main(argv: list[str] | None = None) -> None:
             call_data=call_data,
             interval_rounds=INTERVAL_ROUNDS,
             fee_per_execution=FEE,
+            # Publication happens once; a backlog of missed checks buys nothing.
+            policy=SKIP_AHEAD,
+            fee_cap=0,
         )
     ).abi_return
     upkeep, _ = _read_upkeep(algorand, keeper_client.app_id, upkeep_id)

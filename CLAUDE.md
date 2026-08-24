@@ -22,6 +22,27 @@ predecessor). `pulse/` is its demo target (app 769772906).
 - End-to-end: `poetry run python -m scripts.keeper_e2e --network localnet|testnet`
 - Keeper bot: `poetry run python -m scripts.keeper_bot [--once] [--network N] [--app-id N]`
 
+## 1.0 scope — decided 2026-08-24
+
+Full reasoning in [`docs/design/1.0.md`](docs/design/1.0.md). The short version,
+because these are easy to get wrong from memory:
+
+- **The contract cannot be upgraded.** A struct change means a new app id and
+  every creator cancelling and re-registering by hand. So #7, #14, #8 and #9
+  are batched into **one** release and the surface is then frozen.
+- **#9 is an ASA fee *capability*, not a commitment.** CORVID is not wired in;
+  escrow and fees stay ALGO by default. "No token required" remains true.
+- **#15 (staking) and #22 (keeper-supplied data) are out of 1.0** and must not
+  be implemented without review. The line between #8 and #22 matters: declaring
+  which *resources* a call may touch is safe because the creator still fixes
+  what is called; letting a keeper supply *data* is a different thing.
+- **Dogfood** is a recurring treasury distribution on TestNet, serviced by a
+  keeper we run and watched by the notifier.
+- **MainNet gate** is self-review plus sustained TestNet time — no paid audit.
+  Any struct change restarts that clock.
+- **Public release** waits until the deployment is one we are not about to
+  replace; the licence and docs (#50) land before visibility does.
+
 ## Rules
 
 - Poetry venv, Python 3.13 — never 3.14 (coincurve has no wheels).

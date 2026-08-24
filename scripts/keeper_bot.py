@@ -58,6 +58,9 @@ LOW_BALANCE_MICROALGO = ACCOUNT_MBR_MICROALGO + 100 * EXECUTION_COST_MICROALGO
 HEARTBEAT_SCANS = 20
 # An upkeep overdue by more than this many of its own intervals is a stall.
 STALL_INTERVALS = 2
+# Catch-up policies, mirroring smart_contracts/keeper/contract.py.
+CATCH_UP = 0
+SKIP_AHEAD = 1
 
 
 class UnrecoverableError(RuntimeError):
@@ -118,6 +121,28 @@ class Upkeep:
     fee_per_execution: int
     balance: int
     times_executed: int
+    policy: int
+    fee_cap: int
+    last_serviced_round: int
+
+
+def effective_fee(upkeep: Upkeep, current_round: int) -> int:
+    """What `execute` would pay for this upkeep right now.
+
+    The twin of the escalation arithmetic in
+    `smart_contracts/keeper/contract.py::execute`. The fee rises linearly from
+    the base to the cap over one missed interval and then holds, and lateness
+    is measured from the last service rather than from the schedule — so a
+    keeper draining a backlog is paid the ceiling once, not once per replay.
+    A zero cap means the fee never moves.
+    """
+    base, cap = upkeep.fee_per_execution, upkeep.fee_cap
+    if cap <= base:
+        return base
+    interval = max(upkeep.interval_rounds, 1)
+    lateness = max(current_round - upkeep.last_serviced_round, 0)
+    excess = min(max(lateness - interval, 0), interval)
+    return base + (cap - base) * excess // interval
 
 
 def _as_bytes(value: object) -> bytes:
@@ -134,7 +159,8 @@ def _decode_upkeep(upkeep_id: int, raw: bytes) -> Upkeep:
     ABI head/tail layout (see smart_contracts/keeper/contract.py): a 32-byte
     creator, then the static fields inline, with the dynamic call_data in the
     tail (the offset at bytes [40:42] points to it; the bot doesn't need it —
-    the contract stores and sends it itself).
+    the contract stores and sends it itself). The head is 106 bytes; its
+    TypeScript twin is `web/src/app/core/upkeep.ts`.
     """
     return Upkeep(
         upkeep_id=upkeep_id,
@@ -144,6 +170,9 @@ def _decode_upkeep(upkeep_id: int, raw: bytes) -> Upkeep:
         fee_per_execution=int.from_bytes(raw[58:66], "big"),
         balance=int.from_bytes(raw[66:74], "big"),
         times_executed=int.from_bytes(raw[74:82], "big"),
+        policy=int.from_bytes(raw[82:90], "big"),
+        fee_cap=int.from_bytes(raw[90:98], "big"),
+        last_serviced_round=int.from_bytes(raw[98:106], "big"),
     )
 
 
@@ -191,9 +220,10 @@ def check_registry(algod, app_id: int) -> int:
     stalled: list[tuple[Upkeep, int]] = []
     starved: list[Upkeep] = []
     for upkeep in upkeeps:
-        if upkeep.balance < upkeep.fee_per_execution:
+        if upkeep.balance < effective_fee(upkeep, current):
             # Not a liveness problem: no keeper can execute this, and none
-            # should be blamed for it.
+            # should be blamed for it. Escalation raises this threshold, so an
+            # upkeep can starve at a balance its creator thought was enough.
             starved.append(upkeep)
         elif current - upkeep.next_execution_round > STALL_INTERVALS * upkeep.interval_rounds:
             stalled.append((upkeep, current - upkeep.next_execution_round))
@@ -209,13 +239,16 @@ def check_registry(algod, app_id: int) -> int:
         starved=len(starved),
     )
     for upkeep in starved:
+        current_fee = effective_fee(upkeep, current)
+        escalated = " escalated" if current_fee != upkeep.fee_per_execution else ""
         emit(
             "starved",
             f"  upkeep {upkeep.upkeep_id}: escrow {upkeep.balance} µALGO is below its "
-            f"{upkeep.fee_per_execution} µALGO fee — needs a top-up, not a keeper",
+            f"{current_fee} µALGO{escalated} fee — needs a top-up, not a keeper",
             upkeep_id=upkeep.upkeep_id,
             balance=upkeep.balance,
             fee_per_execution=upkeep.fee_per_execution,
+            effective_fee=current_fee,
         )
     for upkeep, overdue in stalled:
         emit(
@@ -378,13 +411,21 @@ def main(argv: list[str] | None = None) -> None:
         try:
             current = algod.status()["last-round"]
             upkeeps = scan_upkeeps(algod, app_id)
-            due = [
-                u
-                for u in upkeeps
-                if current >= u.next_execution_round
-                and u.balance >= u.fee_per_execution
-                and not backoff.blocked(u.upkeep_id, current)
-            ]
+            # Take the work in the order escalation exists to create: what
+            # pays most right now, first. Registry order would mean a
+            # neglected upkeep stays neglected however far its fee has risen.
+            # Anything in backoff is left out entirely — its target is the
+            # thing that is broken, and a rising fee does not fix it.
+            due = sorted(
+                (
+                    u
+                    for u in upkeeps
+                    if current >= u.next_execution_round
+                    and u.balance >= effective_fee(u, current)
+                    and not backoff.blocked(u.upkeep_id, current)
+                ),
+                key=lambda u: (-effective_fee(u, current), u.upkeep_id),
+            )
             error_delay = ERROR_RETRY_SECONDS
             scans += 1
             emit(
@@ -398,6 +439,7 @@ def main(argv: list[str] | None = None) -> None:
             for upkeep in due:
                 if shutdown.requested:
                     break
+                fee = effective_fee(upkeep, current)
                 try:
                     response = client.send.execute(
                         args=ExecuteArgs(upkeep_id=upkeep.upkeep_id),
@@ -413,13 +455,14 @@ def main(argv: list[str] | None = None) -> None:
                         "executed",
                         f"Executed upkeep {upkeep.upkeep_id} "
                         f"(target app {upkeep.target_app}); "
-                        f"+{upkeep.fee_per_execution} µALGO, "
+                        f"+{fee} µALGO, "
                         f"next due round {response.abi_return}",
                         round=current,
                         upkeep_id=upkeep.upkeep_id,
                         target_app=upkeep.target_app,
-                        fee_collected=upkeep.fee_per_execution,
-                        escrow_remaining=upkeep.balance - upkeep.fee_per_execution,
+                        fee_collected=fee,
+                        base_fee=upkeep.fee_per_execution,
+                        escrow_remaining=upkeep.balance - fee,
                         next_due_round=response.abi_return,
                         tx_id=response.tx_id,
                     )
