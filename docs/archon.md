@@ -532,6 +532,15 @@ failure: a payout to a closed or hostile account fails that claim alone instead
 of failing the whole execution and disrupting the schedule. Most applications
 that look like they need multi-arg calls do not, once payouts are pull-based.
 
+## What 1.0 will be
+
+The contract cannot be upgraded, so struct changes are batched into one last
+release and the surface is then frozen: per-upkeep catch-up policy, fee
+escalation, resource declaration, and ASA-denominated fees as a capability
+(ALGO remains the default; no token is required). Scope, what is deliberately
+out, the dogfood plan and the mainnet gate are in
+[docs/design/1.0.md](design/1.0.md).
+
 ## Known limitations (v1)
 
 - ALGO escrow only (no ASA-denominated fees yet). First candidate: CORVID,
