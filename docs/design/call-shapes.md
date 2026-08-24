@@ -128,14 +128,14 @@ whole 1.0 batch (`poetry run python -m scripts.spike_asa_fee`) measures:
 | Contract | Approval | Pages | Headroom |
 |---|---|---|---|
 | today | 729 B | 1 | 1,319 |
-| #9 alone | 1,163 B | 1 | 885 |
+| #9 alone | 1,218 B | 1 | 830 |
 | #8 alone, ceiling 4 | 1,221 B | 1 | 827 |
-| #8 + #9 | 1,668 B | 1 | 380 |
+| #8 + #9 | 1,721 B | 1 | 327 |
 | #7 + #14 alone *(indicative)* | 887 B | 1 | 1,161 |
-| **the whole batch** *(indicative)* | **1,854 B** | **1** | **194** |
+| **the whole batch** *(indicative)* | **1,907 B** | **1** | **141** |
 
-At a ceiling of 4 the batch fits, with 194 bytes to spare. At 6 it does not:
-the fan-out alone costs 443 bytes more, which puts the batch at roughly 2,300
+At a ceiling of 4 the batch fits, with 141 bytes to spare. At 6 it does not:
+the fan-out alone costs 443 bytes more, which puts the batch at roughly 2,350
 and onto a second page. **The ceiling is not a preference — it is what keeps
 1.0 on one page.**
 
