@@ -20,6 +20,7 @@ from smart_contracts.artifacts.watchdog.watchdog_client import (
     WatchdogClient,
     WatchdogFactory,
 )
+from smart_contracts.keeper.contract import SKIP_AHEAD
 from smart_contracts.keeper.deploy_config import deploy as deploy_keeper
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -87,6 +88,9 @@ def main(argv: list[str] | None = None) -> None:
             call_data=call_data,
             interval_rounds=UPKEEP_INTERVAL,
             fee_per_execution=FEE,
+            # Staleness is a property of now, not of every round nobody checked.
+            policy=SKIP_AHEAD,
+            fee_cap=0,
         )
     ).abi_return
 

@@ -31,7 +31,7 @@ from algosdk import encoding
 
 from scripts import network as net
 # One decoder, not a third copy: this is the same one the bot uses.
-from scripts.keeper_bot import Upkeep, resolve_app_id, scan_upkeeps
+from scripts.keeper_bot import Upkeep, effective_fee, resolve_app_id, scan_upkeeps
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -78,14 +78,23 @@ class Snapshot:
                     "interval_rounds": upkeep.interval_rounds,
                     "next_execution_round": upkeep.next_execution_round,
                     "target_app": upkeep.target_app,
+                    "fee_cap": upkeep.fee_cap,
+                    "last_serviced_round": upkeep.last_serviced_round,
                 }
                 for upkeep in upkeeps
             },
-            dormant={u.upkeep_id for u in upkeeps if u.balance < u.fee_per_execution},
+            # Escalation raises the bar an upkeep has to clear to be
+            # executable, so "run dry" is measured against what it would pay
+            # now, not against the fee its creator wrote down.
+            dormant={
+                u.upkeep_id
+                for u in upkeeps
+                if u.balance < effective_fee(u, current_round)
+            },
             stalled={
                 u.upkeep_id
                 for u in upkeeps
-                if u.balance >= u.fee_per_execution
+                if u.balance >= effective_fee(u, current_round)
                 and current_round - u.next_execution_round
                 > STALL_INTERVALS * max(u.interval_rounds, 1)
             },
@@ -146,7 +155,7 @@ def diff(previous: Snapshot, current: Snapshot) -> list[Event]:
                     upkeep_id,
                     f"**Upkeep {upkeep_id} executed**"
                     + (f" ×{runs}" if runs > 1 else "")
-                    + f" — {_algos(now['fee_per_execution'] * runs)} paid, "
+                    + f" — {_algos(_burst_cost(before, now, runs))} paid, "
                     f"next due at round {now['next_execution_round']}",
                 )
             )
@@ -165,8 +174,8 @@ def diff(previous: Snapshot, current: Snapshot) -> list[Event]:
                     upkeep_id,
                     f"⚠️ **Upkeep {upkeep_id} has run dry** — escrow "
                     f"{_algos(state['balance'])} is below its "
-                    f"{_algos(state['fee_per_execution'])} fee, so no keeper can run it. "
-                    f"Anyone can top it up.",
+                    f"{_algos(_fee_now(state, current.last_round))} fee, so no keeper "
+                    f"can run it. Anyone can top it up.",
                 )
             )
     for upkeep_id in sorted(previous.dormant - current.dormant):
@@ -186,6 +195,38 @@ def diff(previous: Snapshot, current: Snapshot) -> list[Event]:
         )
 
     return events
+
+
+def _fee_now(state: dict, current_round: int) -> int:
+    """What one execution of this upkeep would pay at `current_round`.
+
+    The twin of the escalation arithmetic in the contract and in
+    `scripts/keeper_bot.py::effective_fee`, over a snapshot's plain dict.
+    """
+    base, cap = state["fee_per_execution"], state.get("fee_cap", 0)
+    if cap <= base:
+        return base
+    interval = max(state["interval_rounds"], 1)
+    lateness = max(current_round - state.get("last_serviced_round", 0), 0)
+    excess = min(max(lateness - interval, 0), interval)
+    return base + (cap - base) * excess // interval
+
+
+def _burst_cost(before: dict, now: dict, runs: int) -> int:
+    """What a run of `runs` executions took out of the escrow.
+
+    Only the first execution of a burst is late — escalation is measured from
+    the last service, so once a keeper has arrived the rest of the backlog
+    drains at base. The notifier only sees the burst's final state, so it
+    prices the first run from how long the upkeep had gone unserviced and the
+    remainder at base.
+    """
+    base = now["fee_per_execution"]
+    first = _fee_now(
+        {**before, "fee_cap": now.get("fee_cap", 0)},
+        now.get("last_serviced_round", before.get("last_serviced_round", 0)),
+    )
+    return first + (runs - 1) * base
 
 
 def _as_address(sender: object) -> str | None:

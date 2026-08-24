@@ -4,7 +4,16 @@ import { ArchonService } from '../core/archon.service';
 import { algos, dueLabel, intervalLabel, microAlgos, runwayLabel, shortAddress } from '../core/format';
 import { KeeperService } from '../core/keeper.service';
 import { WalletService } from '../core/wallet.service';
-import { executionsRemaining, isExecutable, roundsUntilDue, toHex, type Upkeep } from '../core/upkeep';
+import {
+  effectiveFee,
+  escalates,
+  executionsRemaining,
+  isExecutable,
+  roundsUntilDue,
+  SKIP_AHEAD,
+  toHex,
+  type Upkeep,
+} from '../core/upkeep';
 
 interface Row {
   readonly upkeep: Upkeep;
@@ -18,6 +27,11 @@ interface Row {
   readonly due: string;
   readonly fee: string;
   readonly feeExact: string;
+  /** Present only while escalation has pushed the fee above its base. */
+  readonly feeNow: string | null;
+  readonly policy: string;
+  readonly ceiling: string | null;
+  readonly lastRan: string;
   readonly balance: string;
   readonly runway: string;
   readonly executed: string;
@@ -86,7 +100,17 @@ interface Row {
                     <span class="mono">{{ row.nextRound }}</span>
                     <span class="sub" [class.now]="row.state === 'due'">{{ row.due }}</span>
                   </td>
-                  <td class="mono" [title]="row.feeExact">{{ row.fee }}</td>
+                  <td class="mono" [title]="row.feeExact">
+                    @if (row.feeNow) {
+                      <span class="escalated" title="escalated: this upkeep is late">{{ row.feeNow }}</span>
+                      <span class="sub">base {{ row.fee }}</span>
+                    } @else {
+                      {{ row.fee }}
+                      @if (row.ceiling) {
+                        <span class="sub">up to {{ row.ceiling }}</span>
+                      }
+                    }
+                  </td>
                   <td class="mono">{{ row.balance }}</td>
                   <td>
                     <span class="sub">{{ row.runway }}</span>
@@ -141,7 +165,12 @@ interface Row {
                         </button>
                         <p class="hint">
                           Anyone can top up an upkeep — funding is not creator-only. Registered by
-                          {{ row.creator }}.
+                          {{ row.creator }}. If a run is missed it {{ row.policy }}; last ran
+                          {{ row.lastRan }}.
+                          @if (row.ceiling) {
+                            A late run pays up to {{ row.ceiling }}, so the escrow needs that much
+                            to stay executable.
+                          }
                         </p>
                       </form>
                     </td>
@@ -188,6 +217,7 @@ interface Row {
     tbody tr:last-child td, tbody tr:last-child th { border-bottom: none; }
     tbody th { color: var(--text-faint); font-weight: 500; }
     .sub { display: block; color: var(--text-faint); font-size: 0.76rem; }
+    .escalated { color: var(--warning); font-weight: 600; }
     td .mono, .sub { text-wrap: nowrap; }
     .sub.now { color: var(--sheen); font-weight: 500; }
     .yours {
@@ -238,7 +268,10 @@ export class RegistryTable {
     const canSign = this.wallet.connected();
     return this.archon.upkeeps().map((upkeep) => {
       const executable = isExecutable(upkeep, round);
-      const starved = upkeep.balance < upkeep.feePerExecution;
+      const fee = effectiveFee(upkeep, round);
+      // Against the escalated fee: an upkeep can starve at a balance its
+      // creator counted as several runs.
+      const starved = upkeep.balance < fee;
       const yours = signedInAs === upkeep.creator;
       return {
         upkeep,
@@ -251,7 +284,12 @@ export class RegistryTable {
         nextRound: String(upkeep.nextExecutionRound),
         due: dueLabel(roundsUntilDue(upkeep, round), pace),
         fee: algos(upkeep.feePerExecution),
-        feeExact: microAlgos(upkeep.feePerExecution),
+        feeExact: microAlgos(fee),
+        feeNow: fee > upkeep.feePerExecution ? algos(fee) : null,
+        policy: upkeep.policy === SKIP_AHEAD ? 'skips ahead' : 'catches up',
+        ceiling: escalates(upkeep) ? algos(upkeep.feeCap) : null,
+        lastRan:
+          upkeep.timesExecuted > 0n ? `round ${upkeep.lastServicedRound}` : 'never run',
         balance: algos(upkeep.balance),
         runway: runwayLabel(executionsRemaining(upkeep), upkeep.intervalRounds, pace),
         executed: String(upkeep.timesExecuted),

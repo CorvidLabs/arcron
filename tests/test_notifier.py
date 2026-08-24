@@ -33,6 +33,9 @@ def upkeep(**overrides) -> Upkeep:
         fee_per_execution=4_000,
         balance=12_000,
         times_executed=0,
+        policy=0,
+        fee_cap=0,
+        last_serviced_round=990,
     )
     base.update(overrides)
     return Upkeep(**base)

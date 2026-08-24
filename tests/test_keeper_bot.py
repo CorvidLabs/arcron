@@ -1,39 +1,90 @@
 """Regression tests for the keeper bot's Upkeep box decoder.
 
-The vector is a real box value captured from the first TestNet keeper app
-(769772891, since deprecated), upkeep id 4 after its first execution. The
-struct layout has not changed, so it still pins what the bot must decode; if
-the contract's Upkeep struct ever changes, this test must change with it.
+The vector is a real box value, recorded from a chain rather than hand-built,
+so it pins the encoding the contract actually produces. Its TypeScript twin is
+`web/src/app/core/upkeep.test.ts`, which reads the same bytes; if the
+contract's Upkeep struct changes, both must change together.
+
+Recorded on LocalNet from the contract that adds the catch-up policy and fee
+escalation (#7, #14): upkeep 0 on app 11172, after its first execution, with
+SKIP_AHEAD and a 12,000 µALGO cap — non-zero values in all three new fields,
+so a decoder that ignores them cannot pass.
+
+The previous vector came from the first TestNet app (769772891, upkeep 4).
+That app's struct is two fields and 24 bytes shorter, so it can no longer be
+decoded by this decoder at all.
 """
 
 import base64
 
-from scripts.keeper_bot import _as_bytes, _decode_upkeep
+from scripts.keeper_bot import CATCH_UP, SKIP_AHEAD, _as_bytes, _decode_upkeep, effective_fee
 
-# Box value of upkeep 4 on TestNet app 769772891 (round ~66611610).
+# Box value of upkeep 0 on LocalNet app 11172.
 LIVE_BOX_HEX = (
-    "2759a71fb768d8d0053eab8aea563a42a2f11a07e6df5175fb1da10d2ebaaa6b"
-    "000000002de1cd6a"  # target_app = 769772906
-    "0052"  # tail offset = 82
+    "5defa167e82d6882b1a57beb7d3bb8583440a2e2e19a27358c94744a4fa7e3cf"
+    "0000000000000413"  # target_app = 1043
+    "006a"  # tail offset = 106
     "000000000000000a"  # interval_rounds = 10
-    "0000000003f864f3"  # next_execution_round = 66610419
+    "0000000000001eda"  # next_execution_round = 7898
     "0000000000000fa0"  # fee_per_execution = 4000
-    "0000000000003e80"  # balance = 16000
+    "0000000000005aa0"  # balance = 23200
     "0000000000000001"  # times_executed = 1
+    "0000000000000001"  # policy = SKIP_AHEAD
+    "0000000000002ee0"  # fee_cap = 12000
+    "0000000000001ed1"  # last_serviced_round = 7889
     "00044d4d5f0b"  # tail: uint16 length 4 + tick()uint64 selector
 )
 
 
 def test_decode_live_box() -> None:
-    upkeep = _decode_upkeep(4, bytes.fromhex(LIVE_BOX_HEX))
+    upkeep = _decode_upkeep(0, bytes.fromhex(LIVE_BOX_HEX))
 
-    assert upkeep.upkeep_id == 4
-    assert upkeep.target_app == 769772906
+    assert upkeep.upkeep_id == 0
+    assert upkeep.target_app == 1043
     assert upkeep.interval_rounds == 10
-    assert upkeep.next_execution_round == 66610419
+    assert upkeep.next_execution_round == 7898
     assert upkeep.fee_per_execution == 4000
-    assert upkeep.balance == 16000
+    assert upkeep.balance == 23200
     assert upkeep.times_executed == 1
+    assert upkeep.policy == SKIP_AHEAD
+    assert upkeep.fee_cap == 12000
+    assert upkeep.last_serviced_round == 7889
+
+
+def test_the_recorded_box_is_the_length_the_mbr_formula_assumes() -> None:
+    """9-byte name + 106-byte head + a 2-byte length + the call data."""
+    from smart_contracts.keeper.contract import BOX_MBR_FIXED
+
+    raw = bytes.fromhex(LIVE_BOX_HEX)
+    call_data_length = 4
+    assert len(raw) == 106 + 2 + call_data_length
+    assert 2_500 + 400 * (9 + len(raw)) == BOX_MBR_FIXED + 400 * call_data_length
+
+
+def test_effective_fee_matches_the_contract() -> None:
+    """The bot's twin of `execute`'s escalation arithmetic.
+
+    Linear from base to cap over one missed interval, then flat; lateness
+    measured from the last service, so a keeper draining a backlog is paid the
+    ceiling once rather than once per replay.
+    """
+    upkeep = _decode_upkeep(0, bytes.fromhex(LIVE_BOX_HEX))
+    serviced = upkeep.last_serviced_round
+
+    # On time — one interval since the last service — is not late.
+    assert effective_fee(upkeep, serviced + 10) == 4_000
+    assert effective_fee(upkeep, serviced + 15) == 8_000
+    assert effective_fee(upkeep, serviced + 20) == 12_000
+    assert effective_fee(upkeep, serviced + 10_000) == 12_000, "the cap holds"
+    # And a keeper that has just serviced it is not owed the ceiling again.
+    assert effective_fee(upkeep, serviced) == 4_000
+
+
+def test_a_zero_cap_never_escalates() -> None:
+    upkeep = _decode_upkeep(0, bytes.fromhex(LIVE_BOX_HEX))
+    upkeep.fee_cap = 0
+    upkeep.policy = CATCH_UP
+    assert effective_fee(upkeep, upkeep.last_serviced_round + 10_000) == 4_000
 
 
 def test_as_bytes_accepts_bytes_and_base64() -> None:

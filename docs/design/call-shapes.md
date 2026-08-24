@@ -3,7 +3,7 @@
 **Status:** proposed, for review
 **Issue:** [#8](https://github.com/CorvidLabs/archon/issues/8)
 **Depends on:** [#24](https://github.com/CorvidLabs/archon/issues/24) (measured), and shares a struct with [#7 and #14](scheduling-and-fees.md)
-**Reproduce every number here:** `poetry run python -m scripts.spike_multiarg --network localnet`
+**Reproduce every number here:** `poetry run python -m scripts.spike_multiarg --network localnet`, and the batch table with `poetry run python -m scripts.spike_asa_fee --network localnet`
 
 Archon executes exactly one call shape: a NoOp app call carrying a single app
 arg. An ARC-4 method with arguments of its own needs the selector *and* each
@@ -113,39 +113,46 @@ One field, same slot, no net field-count change. Element 0 is whatever app
 arg 0 should be — the ARC-4 selector for an ARC-4 target — and Archon stays
 agnostic about what the bytes mean, exactly as it is today.
 
-### 2. A fan-out ceiling of 4, fixed last
+### 2. A fan-out ceiling of 3
 
-Four covers the selector plus three ABI arguments. It is also more general
-than it looks: a target you control can accept **any** argument list by
-declaring it as a single ARC-4 struct or tuple argument — the same trick ARC-4
-itself uses at arg 15 — so arity 2 is already universal for a cooperating
-target. The ceiling only buys reach into targets you do *not* control.
+Three covers the selector plus two ABI arguments. It is also more general than
+it looks: a target you control can accept **any** argument list by declaring it
+as a single ARC-4 struct or tuple argument — the same trick ARC-4 itself uses
+at arg 15 — so arity 2 is already universal for a cooperating target. The
+ceiling only buys reach into targets you do *not* control.
 
-Four leaves 827 bytes of page headroom for #7, #14 and #9, which also add
-code — and that headroom turns out to be the binding constraint. Stacking the
-whole 1.0 batch (`poetry run python -m scripts.spike_asa_fee`) measures:
+Page headroom turns out to be the binding constraint, and now that #7 and #14
+are implemented the batch can be compiled rather than estimated
+(`poetry run python -m scripts.spike_asa_fee`):
 
 | Contract | Approval | Pages | Headroom |
 |---|---|---|---|
-| today | 729 B | 1 | 1,319 |
-| #9 alone | 1,218 B | 1 | 830 |
-| #8 alone, ceiling 4 | 1,221 B | 1 | 827 |
-| #8 + #9 | 1,721 B | 1 | 327 |
-| #7 + #14 alone *(indicative)* | 887 B | 1 | 1,161 |
-| **the whole batch** *(indicative)* | **1,907 B** | **1** | **141** |
+| before the batch | 729 B | 1 | 1,319 |
+| the contract today, with #7 + #14 | 966 B | 1 | 1,082 |
+| + #9 (ASA bonus) | 1,483 B | 1 | 565 |
+| + #8 at ceiling 4 | 1,458 B | 1 | 590 |
+| **the whole 1.0 batch, ceiling 4** | **1,990 B** | **1** | **58** |
 
-At a ceiling of 4 the batch fits, with 141 bytes to spare. At 6 it does not:
-the fan-out alone costs 443 bytes more, which puts the batch at roughly 2,350
-and onto a second page. **The ceiling is not a preference — it is what keeps
-1.0 on one page.**
+**58 bytes.** An earlier estimate, made before #7 and #14 existed, put this at
+141; the real scheduling code is 966 bytes rather than the 887 the sketch
+suggested, and everything stacked on top of it costs a little more too. The
+lesson is the one the estimate itself warned about: measure.
 
-(#7 and #14 are designed but not written; their row is a faithful sketch of
-that design's shape and must be re-measured against the real thing.)
+With everything else fixed, the ceiling is the only dial left:
 
-Since the ceiling is a single integer in a repetitive `if`/`elif` chain, it is
-still the cheapest parameter to re-tune: **fix it last, from measured size
-with the rest of the batch in**, and do not let it push the program to a
-second page.
+| Fan-out ceiling | Whole batch | Spare |
+|---|---|---|
+| 2 | 1,675 B | 373 |
+| **3** | **1,814 B** | **234** |
+| 4 | 1,990 B | 58 |
+| 6 | 2,453 B | **second page** |
+
+Fifty-eight bytes is not a margin — it is one added assertion away from
+costing the deployer another 100,000 µALGO of app minimum balance, forever.
+**Three is the number to take**: it still covers a selector plus two ABI
+arguments, it covers any arity at all for a target that packs its arguments
+into one struct, and it leaves room to fix something during implementation.
+Four remains viable only if #9 does not land in the same deployment.
 
 ### 3. Foreign arrays stay out of the struct; resource discovery is a convention
 
@@ -255,9 +262,11 @@ Beyond the struct:
    branch. Against: `register` currently asserts non-empty call data, and a
    bare call is easy to register by mistake. Recommendation: allow it, and
    have the console require an explicit choice rather than defaulting to it.
-2. **Is 4 the right ceiling?** Argued above, but it is genuinely a sizing
-   decision that should be re-measured once #7, #14 and #9 are written. The
-   failure mode is quiet: a second page costs 100,000 µALGO forever.
+2. **Is 3 the right ceiling?** #7 and #14 are now written and measured, so
+   this is no longer an estimate: the whole batch is 1,814 bytes at 3 and
+   1,990 at 4, against a 2,048-byte page. Four is defensible only if #9 does
+   not ship in the same deployment. The failure mode is quiet: a second page
+   costs 100,000 µALGO forever.
 3. **Should `resources()` be part of 1.0 at all, or just documented?** The
    keeper bot change is small; the argument for deferring is that no demo
    needs it yet, and a convention with no user is a convention that gets the

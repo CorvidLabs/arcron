@@ -170,13 +170,19 @@ then claim. `smart_contracts/deadman/` allocates to a beneficiary who claims.
 An upkeep is funded escrow. Executions are paid from it:
 
 ```
-funded runs = balance / fee_per_execution
+funded runs = balance / fee_per_execution        # with no fee ceiling
+funded runs = balance / fee_cap                  # with one, this is the number
 ```
 
 At the 4,000 µALGO minimum fee, 1 ALGO buys 250 executions — about 10 days of
 an hourly cadence, or 8 months of a daily one. Registering also costs box MBR
-(`2,500 + 400 × (93 + len(call_data))` µALGO, so 41,300 for a 4-byte
+(`2,500 + 400 × (117 + len(call_data))` µALGO, so 50,900 for a 4-byte
 selector), and **that comes back in full when you cancel**.
+
+If you set a fee ceiling, budget against the ceiling. A late execution is
+charged more, and the escrow has to cover *that* price for the upkeep to stay
+executable — an upkeep with a 4,000 µALGO fee and a 12,000 µALGO ceiling goes
+dormant below 12,000, not below 4,000.
 
 - **Anyone can `top_up`.** Funding is permissionless, so a counterparty with an
   interest in your schedule running can pay for it. Only the creator can

@@ -64,7 +64,7 @@ CEILINGS = (1, 2, 3, 4, 6, 8, 16)
 MEASURED_CEILING = 4
 
 BOX_NAME_BYTES = 9
-UPKEEP_HEAD_BYTES = 82
+UPKEEP_HEAD_BYTES = 106
 
 
 # ---------------------------------------------------------------- variants
@@ -213,9 +213,9 @@ def _register(algorand, client, deployer, target_app: int, parts: list[bytes], *
         )
 
     signature = (
-        "register(pay,pay,uint64,byte[][],uint64,uint64)uint64"
+        "register(pay,pay,uint64,byte[][],uint64,uint64,uint64,uint64)uint64"
         if multi
-        else "register(pay,pay,uint64,byte[],uint64,uint64)uint64"
+        else "register(pay,pay,uint64,byte[],uint64,uint64,uint64,uint64)uint64"
     )
     # The variant charges MBR from a fixed component that is two bytes stale
     # for the array encoding; overpay, since the point here is what the box
@@ -230,6 +230,8 @@ def _register(algorand, client, deployer, target_app: int, parts: list[bytes], *
                 [list(part) for part in parts] if multi else list(parts[0]),
                 INTERVAL,
                 FEE,
+                0,  # CATCH_UP
+                0,  # no escalation
             ],
         )
     ).abi_return

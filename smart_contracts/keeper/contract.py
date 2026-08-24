@@ -20,14 +20,23 @@ MIN_INTERVAL_ROUNDS = 10
 # Minimum ALGO reward per execution (µALGO). A keeper pays ~3,000 µALGO in
 # transaction fees per execution, so this floor keeps executions profitable.
 MIN_UPKEEP_FEE = 4_000
+# Ceiling on both the base fee and the escalation cap (µALGO). Nothing needs a
+# thousand ALGO per execution, and bounding it keeps the escalation arithmetic
+# — a multiply by up to one interval's worth of rounds — far from overflowing
+# on a contract that can never be patched.
+MAX_UPKEEP_FEE = 1_000_000_000
 # Maximum size of the stored call data (first app arg), in bytes.
 MAX_CALL_DATA = 1_024
+# Catch-up policy. Zero is today's behaviour, so an upkeep that says nothing
+# means what upkeeps have always meant.
+CATCH_UP = 0
+SKIP_AHEAD = 1
 # Box minimum balance, less the call data: 2,500 µALGO per box plus 400 per
 # byte of name and value. The name is 9 bytes (b"u" + itob(id)) and an encoded
-# Upkeep is 84 bytes plus the call data — an 82-byte head, then a 2-byte
+# Upkeep is 108 bytes plus the call data — a 106-byte head, then a 2-byte
 # length prefix on the dynamic call_data. A box therefore costs
 # BOX_MBR_FIXED + 400 * len(call_data) µALGO.
-BOX_MBR_FIXED = 2_500 + 400 * 93
+BOX_MBR_FIXED = 2_500 + 400 * 117
 
 
 class Upkeep(arc4.Struct):
@@ -39,6 +48,15 @@ class Upkeep(arc4.Struct):
     fee_per_execution: arc4.UInt64
     balance: arc4.UInt64
     times_executed: arc4.UInt64
+    # CATCH_UP or SKIP_AHEAD: whether a missed schedule is replayed or dropped.
+    policy: arc4.UInt64
+    # The most this upkeep will ever pay for one execution. Zero disables
+    # escalation entirely and the fee is always `fee_per_execution`.
+    fee_cap: arc4.UInt64
+    # The round this upkeep last ran in — not the round it was scheduled for.
+    # Escalation is measured from it, and the console and notifier read it
+    # instead of deriving a value that is wrong for anything catching up.
+    last_serviced_round: arc4.UInt64
 
 
 class Keeper(ARC4Contract):
@@ -62,10 +80,23 @@ class Keeper(ARC4Contract):
         call_data: arc4.DynamicBytes,
         interval_rounds: UInt64,
         fee_per_execution: UInt64,
+        policy: UInt64,
+        fee_cap: UInt64,
     ) -> UInt64:
-        """Register an upkeep; returns its id."""
+        """Register an upkeep; returns its id.
+
+        `policy` is CATCH_UP or SKIP_AHEAD. `fee_cap` is the most this upkeep
+        will ever pay for one execution; zero means the fee never escalates.
+        """
         assert interval_rounds >= MIN_INTERVAL_ROUNDS, "Interval below minimum"
         assert fee_per_execution >= MIN_UPKEEP_FEE, "Fee below minimum"
+        assert fee_per_execution <= MAX_UPKEEP_FEE, "Fee above maximum"
+        assert policy <= SKIP_AHEAD, "Unknown catch-up policy"
+        # A cap below the base fee would mean the escalation curve runs
+        # backwards; reject it rather than clamping something the creator did
+        # not ask for.
+        assert fee_cap == 0 or fee_cap >= fee_per_execution, "Fee cap below the fee"
+        assert fee_cap <= MAX_UPKEEP_FEE, "Fee cap above maximum"
         size = call_data.native.length
         assert UInt64(0) < size <= MAX_CALL_DATA, "Call data size out of bounds"
 
@@ -92,6 +123,11 @@ class Keeper(ARC4Contract):
             fee_per_execution=arc4.UInt64(fee_per_execution),
             balance=arc4.UInt64(funding_payment.amount),
             times_executed=arc4.UInt64(0),
+            policy=arc4.UInt64(policy),
+            fee_cap=arc4.UInt64(fee_cap),
+            # Never serviced, so the first execution is measured from now and
+            # arrives exactly one interval later: on time, at the base fee.
+            last_serviced_round=arc4.UInt64(Global.round),
         )
         self.next_upkeep_id.value = upkeep_id + 1
         return upkeep_id
@@ -147,19 +183,42 @@ class Keeper(ARC4Contract):
         box = Box(Upkeep, key=op.concat(b"u", op.itob(upkeep_id)))
         assert box, "Upkeep not found"
         upkeep = box.value.copy()
-        fee: UInt64 = upkeep.fee_per_execution.as_uint64()
-        assert Global.round >= upkeep.next_execution_round.as_uint64(), "Not due"
+        due: UInt64 = upkeep.next_execution_round.as_uint64()
+        assert Global.round >= due, "Not due"
+
+        interval: UInt64 = upkeep.interval_rounds.as_uint64()
+        base: UInt64 = upkeep.fee_per_execution.as_uint64()
+        cap: UInt64 = upkeep.fee_cap.as_uint64()
+        fee: UInt64 = base
+        if cap > base:
+            # Escalation is measured from the last service, not from the
+            # schedule. Escalation exists to clear a market; once a keeper has
+            # arrived the market has cleared, so the backlog it then drains
+            # pays base rather than the ceiling.
+            lateness: UInt64 = Global.round - upkeep.last_serviced_round.as_uint64()
+            excess: UInt64 = UInt64(0)
+            if lateness > interval:
+                excess = lateness - interval
+            if excess > interval:
+                excess = interval
+            # Linear from base to cap over one missed interval, then flat.
+            fee = base + (cap - base) * excess // interval
         assert upkeep.balance.as_uint64() >= fee, "Insufficient funding"
 
-        next_due: UInt64 = (
-            upkeep.next_execution_round.as_uint64() + upkeep.interval_rounds.as_uint64()
-        )
+        next_due: UInt64 = due + interval
+        if upkeep.policy.as_uint64() == SKIP_AHEAD:
+            # Snap to the first slot strictly in the future, keeping the
+            # schedule's phase: a daily upkeep stays on its time of day rather
+            # than drifting to whenever a keeper happened to arrive.
+            missed: UInt64 = (Global.round - due) // interval
+            next_due = due + (missed + 1) * interval
         new_balance: UInt64 = upkeep.balance.as_uint64() - fee
         times: UInt64 = upkeep.times_executed.as_uint64() + 1
         box.value = upkeep._replace(
             next_execution_round=arc4.UInt64(next_due),
             balance=arc4.UInt64(new_balance),
             times_executed=arc4.UInt64(times),
+            last_serviced_round=arc4.UInt64(Global.round),
             call_data=upkeep.call_data.copy(),
         )
 

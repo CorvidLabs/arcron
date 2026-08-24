@@ -5,11 +5,15 @@ import pytest
 from algopy import UInt64, arc4
 from algopy_testing import AlgopyTestContext, algopy_testing_context
 
+from scripts.keeper_bot import _decode_upkeep
 from smart_contracts.keeper.contract import (
     BOX_MBR_FIXED,
+    CATCH_UP,
     MAX_CALL_DATA,
+    MAX_UPKEEP_FEE,
     MIN_INTERVAL_ROUNDS,
     MIN_UPKEEP_FEE,
+    SKIP_AHEAD,
     Keeper,
 )
 from smart_contracts.pulse.contract import Pulse
@@ -49,6 +53,8 @@ def _register(
     fee: int = MIN_UPKEEP_FEE,
     funding: int | None = None,
     mbr: int | None = None,
+    policy: int = CATCH_UP,
+    fee_cap: int = 0,
 ) -> int:
     app_address = context.ledger.get_app(keeper).address
     if mbr is None:
@@ -64,7 +70,23 @@ def _register(
         arc4.DynamicBytes(call_data),
         UInt64(interval),
         UInt64(fee),
+        UInt64(policy),
+        UInt64(fee_cap),
     )
+
+
+def _read_upkeep(context: AlgopyTestContext, keeper: Keeper, upkeep_id: int):
+    """Decode a box through the bot's decoder, so the two stay in lockstep."""
+    return _decode_upkeep(upkeep_id, ctx_box(context, keeper, upkeep_id))
+
+
+def ctx_box(context: AlgopyTestContext, keeper: Keeper, upkeep_id: int) -> bytes:
+    return bytes(context.ledger.get_box(keeper, _upkeep_key(upkeep_id)))
+
+
+def _fee_paid(context: AlgopyTestContext, keeper: Keeper) -> int:
+    """The amount of the payment `execute` just made to the caller."""
+    return int(context.txn.last_group.itxn_groups[-1][0].amount)
 
 
 def test_register(context: AlgopyTestContext, keeper: Keeper, pulse: Pulse) -> None:
@@ -242,3 +264,213 @@ def test_cancel(context: AlgopyTestContext, keeper: Keeper, pulse: Pulse) -> Non
 
     with pytest.raises(AssertionError, match="Upkeep not found"):
         keeper.cancel(upkeep_id)
+
+
+# --- #7: catch-up policy -------------------------------------------------
+
+
+def test_register_rejects_an_unknown_policy(
+    context: AlgopyTestContext, keeper: Keeper, pulse: Pulse
+) -> None:
+    with pytest.raises(AssertionError, match="Unknown catch-up policy"):
+        _register(context, keeper, pulse, b"\x00", policy=SKIP_AHEAD + 1)
+
+
+def test_catch_up_replays_every_missed_interval(
+    context: AlgopyTestContext, keeper: Keeper, pulse: Pulse
+) -> None:
+    """The default: an upkeep left unattended stays due until it has caught up."""
+    start = 1_000
+    context.ledger.patch_global_fields(round=UInt64(start))
+    upkeep_id = _register(
+        context, keeper, pulse, _selector("tick()uint64"), funding=MIN_UPKEEP_FEE * 10
+    )
+    # Four whole intervals go by with nobody watching.
+    now = start + 4 * MIN_INTERVAL_ROUNDS
+    context.ledger.patch_global_fields(round=UInt64(now))
+
+    runs = 0
+    while _read_upkeep(context, keeper, int(upkeep_id)).next_execution_round <= now:
+        keeper.execute(upkeep_id)
+        runs += 1
+
+    assert runs == 4
+    assert _read_upkeep(context, keeper, int(upkeep_id)).times_executed == 4
+
+
+def test_skip_ahead_runs_once_and_keeps_the_schedule_phase(
+    context: AlgopyTestContext, keeper: Keeper, pulse: Pulse
+) -> None:
+    """The alternative: drop the backlog, land on the next slot that is still ahead."""
+    start = 1_000
+    context.ledger.patch_global_fields(round=UInt64(start))
+    upkeep_id = _register(
+        context,
+        keeper,
+        pulse,
+        _selector("tick()uint64"),
+        funding=MIN_UPKEEP_FEE * 10,
+        policy=SKIP_AHEAD,
+    )
+    scheduled = _read_upkeep(context, keeper, int(upkeep_id)).next_execution_round
+    now = start + 4 * MIN_INTERVAL_ROUNDS + 3
+    context.ledger.patch_global_fields(round=UInt64(now))
+
+    next_due = int(keeper.execute(upkeep_id))
+
+    assert next_due > now, "must land strictly in the future"
+    assert next_due - now <= MIN_INTERVAL_ROUNDS, "must land on the *first* future slot"
+    assert (next_due - scheduled) % MIN_INTERVAL_ROUNDS == 0, "must keep its phase"
+
+    # And it is done: one execution, not five.
+    upkeep = _read_upkeep(context, keeper, int(upkeep_id))
+    assert upkeep.times_executed == 1
+    with pytest.raises(AssertionError, match="Not due"):
+        keeper.execute(upkeep_id)
+
+
+def test_execute_records_the_round_it_actually_ran_in(
+    context: AlgopyTestContext, keeper: Keeper, pulse: Pulse
+) -> None:
+    """`last_serviced_round` is the round it ran, not the round it was due."""
+    start = 1_000
+    context.ledger.patch_global_fields(round=UInt64(start))
+    upkeep_id = _register(context, keeper, pulse, _selector("tick()uint64"))
+    assert _read_upkeep(context, keeper, int(upkeep_id)).last_serviced_round == start
+
+    late = start + 5 * MIN_INTERVAL_ROUNDS
+    context.ledger.patch_global_fields(round=UInt64(late))
+    keeper.execute(upkeep_id)
+
+    upkeep = _read_upkeep(context, keeper, int(upkeep_id))
+    assert upkeep.last_serviced_round == late
+    assert upkeep.next_execution_round != late, "the schedule is not the service"
+
+
+# --- #14: overdue fee escalation ----------------------------------------
+
+
+def test_register_rejects_a_cap_below_the_fee(
+    context: AlgopyTestContext, keeper: Keeper, pulse: Pulse
+) -> None:
+    with pytest.raises(AssertionError, match="Fee cap below the fee"):
+        _register(context, keeper, pulse, b"\x00", fee_cap=MIN_UPKEEP_FEE - 1)
+
+
+def test_register_rejects_fees_above_the_maximum(
+    context: AlgopyTestContext, keeper: Keeper, pulse: Pulse
+) -> None:
+    with pytest.raises(AssertionError, match="Fee above maximum"):
+        _register(context, keeper, pulse, b"\x00", fee=MAX_UPKEEP_FEE + 1)
+    with pytest.raises(AssertionError, match="Fee cap above maximum"):
+        _register(context, keeper, pulse, b"\x00", fee_cap=MAX_UPKEEP_FEE + 1)
+
+
+def test_a_zero_cap_means_the_fee_never_moves(
+    context: AlgopyTestContext, keeper: Keeper, pulse: Pulse
+) -> None:
+    start = 1_000
+    context.ledger.patch_global_fields(round=UInt64(start))
+    upkeep_id = _register(
+        context, keeper, pulse, _selector("tick()uint64"), funding=MIN_UPKEEP_FEE * 10
+    )
+    context.ledger.patch_global_fields(round=UInt64(start + 50 * MIN_INTERVAL_ROUNDS))
+    keeper.execute(upkeep_id)
+
+    assert _fee_paid(context, keeper) == MIN_UPKEEP_FEE
+
+
+@pytest.mark.parametrize(
+    ("rounds_late", "expected"),
+    [
+        (0, 4_000),  # on time: one interval since the last service, nothing to escalate
+        (2, 5_600),  # a fifth of an interval late
+        (5, 8_000),  # halfway
+        (9, 11_200),
+        (10, 12_000),  # a whole interval late: the ceiling
+        (500, 12_000),  # and it holds there
+    ],
+)
+def test_the_fee_rises_linearly_to_the_cap_and_holds(
+    rounds_late: int, expected: int
+) -> None:
+    """Linear from base to cap over one missed interval, then flat."""
+    cap = 12_000
+    with algopy_testing_context() as ctx:
+        local_keeper, local_pulse = Keeper(), Pulse()
+        start = 1_000
+        ctx.ledger.patch_global_fields(round=UInt64(start))
+        upkeep_id = _register(
+            ctx,
+            local_keeper,
+            local_pulse,
+            _selector("tick()uint64"),
+            funding=cap * 4,
+            fee_cap=cap,
+        )
+        due = _read_upkeep(ctx, local_keeper, int(upkeep_id)).next_execution_round
+        ctx.ledger.patch_global_fields(round=UInt64(due + rounds_late))
+        local_keeper.execute(upkeep_id)
+
+        assert _fee_paid(ctx, local_keeper) == expected
+
+
+def test_escalation_is_measured_from_the_last_service_not_the_schedule(
+    context: AlgopyTestContext, keeper: Keeper, pulse: Pulse
+) -> None:
+    """The rule that stops catch-up and escalation multiplying.
+
+    Escalation clears a market. Once a keeper has arrived the market has
+    cleared, so the backlog it then drains pays base — the first execution of
+    a burst pays the ceiling and no other one does. Measured from the schedule
+    instead, every replay would pay the ceiling and a neglected upkeep would
+    burn its escrow on work nobody asked for.
+    """
+    base, cap = MIN_UPKEEP_FEE, MIN_UPKEEP_FEE * 3
+    start = 1_000
+    context.ledger.patch_global_fields(round=UInt64(start))
+    upkeep_id = _register(
+        context,
+        keeper,
+        pulse,
+        _selector("tick()uint64"),
+        funding=cap * 30,
+        fee_cap=cap,
+    )
+    # Twenty intervals of neglect, then one keeper drains the whole backlog.
+    now = start + 21 * MIN_INTERVAL_ROUNDS
+    context.ledger.patch_global_fields(round=UInt64(now))
+
+    fees: list[int] = []
+    while _read_upkeep(context, keeper, int(upkeep_id)).next_execution_round <= now:
+        keeper.execute(upkeep_id)
+        fees.append(_fee_paid(context, keeper))
+
+    assert fees[0] == cap, "the execution that cleared the market pays the ceiling"
+    assert set(fees[1:]) == {base}, "everything behind it pays base"
+    assert sum(fees) == cap + (len(fees) - 1) * base
+    # The rule this test exists to defend: measured from the schedule instead,
+    # every replay would have paid the ceiling.
+    assert sum(fees) < len(fees) * cap
+
+
+def test_escalation_raises_the_bar_an_upkeep_has_to_clear(
+    context: AlgopyTestContext, keeper: Keeper, pulse: Pulse
+) -> None:
+    """An upkeep can go dormant at a balance its creator thought was enough."""
+    base, cap = MIN_UPKEEP_FEE, MIN_UPKEEP_FEE * 3
+    start = 1_000
+    context.ledger.patch_global_fields(round=UInt64(start))
+    upkeep_id = _register(
+        context,
+        keeper,
+        pulse,
+        _selector("tick()uint64"),
+        funding=base * 2,  # two runs at the price the creator wrote down
+        fee_cap=cap,
+    )
+    due = _read_upkeep(context, keeper, int(upkeep_id)).next_execution_round
+    context.ledger.patch_global_fields(round=UInt64(due + MIN_INTERVAL_ROUNDS))
+
+    with pytest.raises(AssertionError, match="Insufficient funding"):
+        keeper.execute(upkeep_id)

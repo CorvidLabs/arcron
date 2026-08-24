@@ -3,18 +3,18 @@
 
 // algopy.arc4.ARC4Contract.approval_program() -> uint64:
 main:
-    intcblock 8 1 0 2 39700
-    bytecblock 0x75 0x151f7c75 "next_upkeep_id" 0x0052
+    intcblock 8 1 0 2 1000000000 49300
+    bytecblock 0x75 0x151f7c75 "next_upkeep_id" 0x006a
     txn ApplicationID
     bnz main_after_if_else@2
-    // smart_contracts/keeper/contract.py:54
+    // smart_contracts/keeper/contract.py:72
     // self.next_upkeep_id = GlobalState(UInt64(0))
     bytec_2 // "next_upkeep_id"
     intc_2 // 0
     app_global_put
 
 main_after_if_else@2:
-    // smart_contracts/keeper/contract.py:44
+    // smart_contracts/keeper/contract.py:62
     // class Keeper(ARC4Contract):
     txn NumAppArgs
     bz main___algopy_default_create@13
@@ -23,7 +23,7 @@ main_after_if_else@2:
     assert
     txn ApplicationID
     assert
-    pushbytess 0x0bcd5b46 0xf9f6382d 0x36966bf8 0x5b49cc5c // method "register(pay,pay,uint64,byte[],uint64,uint64)uint64", method "top_up(uint64,pay)uint64", method "cancel(uint64)uint64", method "execute(uint64)uint64"
+    pushbytess 0xdbc8a868 0xf9f6382d 0x36966bf8 0x5b49cc5c // method "register(pay,pay,uint64,byte[],uint64,uint64,uint64,uint64)uint64", method "top_up(uint64,pay)uint64", method "cancel(uint64)uint64", method "execute(uint64)uint64"
     txna ApplicationArgs 0
     match register top_up cancel execute
     err
@@ -39,7 +39,7 @@ main___algopy_default_create@13:
 
 // smart_contracts.keeper.contract.Keeper.register[routing]() -> void:
 register:
-    // smart_contracts/keeper/contract.py:56
+    // smart_contracts/keeper/contract.py:74
     // @abimethod()
     txn GroupIndex
     intc_3 // 2
@@ -66,19 +66,29 @@ register:
     assert // invalid number of bytes for arc4.uint64
     txna ApplicationArgs 2
     dup
-    cover 4
+    cover 3
     dup
     intc_2 // 0
     extract_uint16 // on error: invalid array length header
     intc_3 // 2
     +
-    dig 1
+    swap
     len
     ==
     assert // invalid number of bytes for arc4.dynamic_array<arc4.uint8>
     txna ApplicationArgs 3
     dup
-    cover 4
+    cover 3
+    dup
+    len
+    intc_0 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    dup
+    txna ApplicationArgs 4
+    dup
+    cover 3
     dup
     len
     intc_0 // 8
@@ -87,9 +97,18 @@ register:
     btoi
     dup
     cover 2
-    txna ApplicationArgs 4
+    txna ApplicationArgs 5
     dup
-    cover 4
+    cover 5
+    dup
+    len
+    intc_0 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    txna ApplicationArgs 6
+    dup
+    cover 6
     dup
     len
     intc_0 // 8
@@ -97,113 +116,159 @@ register:
     assert // invalid number of bytes for arc4.uint64
     btoi
     dup
-    cover 3
-    // smart_contracts/keeper/contract.py:67
+    cover 4
+    // smart_contracts/keeper/contract.py:91
     // assert interval_rounds >= MIN_INTERVAL_ROUNDS, "Interval below minimum"
-    swap
+    uncover 3
     pushint 10
     >=
     assert // Interval below minimum
-    // smart_contracts/keeper/contract.py:68
+    // smart_contracts/keeper/contract.py:92
     // assert fee_per_execution >= MIN_UPKEEP_FEE, "Fee below minimum"
+    dig 2
     pushint 4000
     >=
     assert // Fee below minimum
-    // smart_contracts/keeper/contract.py:69
-    // size = call_data.native.length
-    extract 2 0
-    len
-    dup
-    // smart_contracts/keeper/contract.py:70
-    // assert UInt64(0) < size <= MAX_CALL_DATA, "Call data size out of bounds"
-    bz register_bool_false@4
-    dup
-    pushint 1024
+    // smart_contracts/keeper/contract.py:93
+    // assert fee_per_execution <= MAX_UPKEEP_FEE, "Fee above maximum"
+    uncover 2
+    intc 4 // 1000000000
     <=
+    assert // Fee above maximum
+    // smart_contracts/keeper/contract.py:94
+    // assert policy <= SKIP_AHEAD, "Unknown catch-up policy"
+    swap
+    intc_1 // 1
+    <=
+    assert // Unknown catch-up policy
+    // smart_contracts/keeper/contract.py:95-98
+    // # A cap below the base fee would mean the escalation curve runs
+    // # backwards; reject it rather than clamping something the creator did
+    // # not ask for.
+    // assert fee_cap == 0 or fee_cap >= fee_per_execution, "Fee cap below the fee"
+    bz register_bool_true@3
+    dup
+    dig 2
+    >=
     bz register_bool_false@4
+
+register_bool_true@3:
     intc_1 // 1
 
 register_bool_merge@5:
-    // smart_contracts/keeper/contract.py:70
+    // smart_contracts/keeper/contract.py:95-98
+    // # A cap below the base fee would mean the escalation curve runs
+    // # backwards; reject it rather than clamping something the creator did
+    // # not ask for.
+    // assert fee_cap == 0 or fee_cap >= fee_per_execution, "Fee cap below the fee"
+    assert // Fee cap below the fee
+    // smart_contracts/keeper/contract.py:99
+    // assert fee_cap <= MAX_UPKEEP_FEE, "Fee cap above maximum"
+    intc 4 // 1000000000
+    <=
+    assert // Fee cap above maximum
+    // smart_contracts/keeper/contract.py:100
+    // size = call_data.native.length
+    dig 8
+    extract 2 0
+    len
+    dup
+    // smart_contracts/keeper/contract.py:101
+    // assert UInt64(0) < size <= MAX_CALL_DATA, "Call data size out of bounds"
+    bz register_bool_false@8
+    dup
+    pushint 1024
+    <=
+    bz register_bool_false@8
+    intc_1 // 1
+
+register_bool_merge@9:
+    // smart_contracts/keeper/contract.py:101
     // assert UInt64(0) < size <= MAX_CALL_DATA, "Call data size out of bounds"
     assert // Call data size out of bounds
-    // smart_contracts/keeper/contract.py:72
+    // smart_contracts/keeper/contract.py:103
     // required_mbr = BOX_MBR_FIXED + 400 * size
     pushint 400
     *
-    intc 4 // 39700
+    intc 5 // 49300
     +
-    // smart_contracts/keeper/contract.py:74
+    // smart_contracts/keeper/contract.py:105
     // mbr_payment.receiver == Global.current_application_address
+    uncover 7
+    dup
+    gtxns Receiver
+    global CurrentApplicationAddress
+    ==
+    // smart_contracts/keeper/contract.py:104-106
+    // assert (
+    //     mbr_payment.receiver == Global.current_application_address
+    // ), "MBR payment must fund the app account"
+    assert // MBR payment must fund the app account
+    // smart_contracts/keeper/contract.py:107
+    // assert mbr_payment.amount >= required_mbr, "MBR payment too small"
+    gtxns Amount
+    <=
+    assert // MBR payment too small
+    // smart_contracts/keeper/contract.py:109
+    // funding_payment.receiver == Global.current_application_address
     uncover 5
     dup
     gtxns Receiver
     global CurrentApplicationAddress
     ==
-    // smart_contracts/keeper/contract.py:73-75
-    // assert (
-    //     mbr_payment.receiver == Global.current_application_address
-    // ), "MBR payment must fund the app account"
-    assert // MBR payment must fund the app account
-    // smart_contracts/keeper/contract.py:76
-    // assert mbr_payment.amount >= required_mbr, "MBR payment too small"
-    gtxns Amount
-    <=
-    assert // MBR payment too small
-    // smart_contracts/keeper/contract.py:78
-    // funding_payment.receiver == Global.current_application_address
-    uncover 3
-    dup
-    gtxns Receiver
-    global CurrentApplicationAddress
-    ==
-    // smart_contracts/keeper/contract.py:77-79
+    // smart_contracts/keeper/contract.py:108-110
     // assert (
     //     funding_payment.receiver == Global.current_application_address
     // ), "Funding must go to the app account"
     assert // Funding must go to the app account
-    // smart_contracts/keeper/contract.py:81
+    // smart_contracts/keeper/contract.py:112
     // funding_payment.amount >= fee_per_execution
     gtxns Amount
     dup
     uncover 2
     >=
-    // smart_contracts/keeper/contract.py:80-82
+    // smart_contracts/keeper/contract.py:111-113
     // assert (
     //     funding_payment.amount >= fee_per_execution
     // ), "Funding must cover at least one execution"
     assert // Funding must cover at least one execution
-    // smart_contracts/keeper/contract.py:84
+    // smart_contracts/keeper/contract.py:115
     // upkeep_id = self.next_upkeep_id.value
     intc_2 // 0
     bytec_2 // "next_upkeep_id"
     app_global_get_ex
     assert // check self.next_upkeep_id exists
-    // smart_contracts/keeper/contract.py:85
+    // smart_contracts/keeper/contract.py:116
     // box = Box(Upkeep, key=op.concat(b"u", op.itob(upkeep_id)))
     dup
     itob
     bytec_0 // 0x75
     dig 1
     concat
-    // smart_contracts/keeper/contract.py:87
+    // smart_contracts/keeper/contract.py:118
     // creator=arc4.Address(Txn.sender),
     txn Sender
-    // smart_contracts/keeper/contract.py:91
+    // smart_contracts/keeper/contract.py:122
     // next_execution_round=arc4.UInt64(Global.round + interval_rounds),
     global Round
     uncover 6
     +
     itob
-    // smart_contracts/keeper/contract.py:93
+    // smart_contracts/keeper/contract.py:124
     // balance=arc4.UInt64(funding_payment.amount),
     uncover 5
     itob
-    // smart_contracts/keeper/contract.py:94
+    // smart_contracts/keeper/contract.py:125
     // times_executed=arc4.UInt64(0),
     intc_2 // 0
     itob
-    // smart_contracts/keeper/contract.py:86-95
+    // smart_contracts/keeper/contract.py:128-130
+    // # Never serviced, so the first execution is measured from now and
+    // # arrives exactly one interval later: on time, at the base fee.
+    // last_serviced_round=arc4.UInt64(Global.round),
+    global Round
+    itob
+    // smart_contracts/keeper/contract.py:117-131
     // box.value = Upkeep(
     //     creator=arc4.Address(Txn.sender),
     //     target_app=arc4.UInt64(target_app.id),
@@ -213,19 +278,30 @@ register_bool_merge@5:
     //     fee_per_execution=arc4.UInt64(fee_per_execution),
     //     balance=arc4.UInt64(funding_payment.amount),
     //     times_executed=arc4.UInt64(0),
+    //     policy=arc4.UInt64(policy),
+    //     fee_cap=arc4.UInt64(fee_cap),
+    //     # Never serviced, so the first execution is measured from now and
+    //     # arrives exactly one interval later: on time, at the base fee.
+    //     last_serviced_round=arc4.UInt64(Global.round),
     // )
-    uncover 3
+    uncover 4
+    uncover 13
+    concat
+    bytec_3 // 0x006a
+    concat
+    uncover 11
+    concat
+    uncover 4
+    concat
     uncover 9
     concat
-    bytec_3 // 0x0052
-    concat
-    uncover 8
-    concat
     uncover 3
+    concat
+    uncover 2
     concat
     uncover 6
     concat
-    uncover 2
+    uncover 5
     concat
     swap
     concat
@@ -235,7 +311,7 @@ register_bool_merge@5:
     box_del
     pop
     box_put
-    // smart_contracts/keeper/contract.py:96
+    // smart_contracts/keeper/contract.py:132
     // self.next_upkeep_id.value = upkeep_id + 1
     swap
     intc_1 // 1
@@ -243,7 +319,7 @@ register_bool_merge@5:
     bytec_2 // "next_upkeep_id"
     swap
     app_global_put
-    // smart_contracts/keeper/contract.py:56
+    // smart_contracts/keeper/contract.py:74
     // @abimethod()
     bytec_1 // 0x151f7c75
     swap
@@ -252,6 +328,10 @@ register_bool_merge@5:
     intc_1 // 1
     return
 
+register_bool_false@8:
+    intc_2 // 0
+    b register_bool_merge@9
+
 register_bool_false@4:
     intc_2 // 0
     b register_bool_merge@5
@@ -259,7 +339,7 @@ register_bool_false@4:
 
 // smart_contracts.keeper.contract.Keeper.top_up[routing]() -> void:
 top_up:
-    // smart_contracts/keeper/contract.py:99
+    // smart_contracts/keeper/contract.py:135
     // @abimethod()
     txna ApplicationArgs 1
     dup
@@ -276,48 +356,48 @@ top_up:
     intc_1 // pay
     ==
     assert // transaction type is pay
-    // smart_contracts/keeper/contract.py:105
+    // smart_contracts/keeper/contract.py:141
     // funding_payment.receiver == Global.current_application_address
     dup
     gtxns Receiver
     global CurrentApplicationAddress
     ==
-    // smart_contracts/keeper/contract.py:104-106
+    // smart_contracts/keeper/contract.py:140-142
     // assert (
     //     funding_payment.receiver == Global.current_application_address
     // ), "Funding must go to the app account"
     assert // Funding must go to the app account
-    // smart_contracts/keeper/contract.py:107
+    // smart_contracts/keeper/contract.py:143
     // assert funding_payment.amount > 0, "Amount must be positive"
     gtxns Amount
     dup
     assert // Amount must be positive
-    // smart_contracts/keeper/contract.py:109
+    // smart_contracts/keeper/contract.py:145
     // box = Box(Upkeep, key=op.concat(b"u", op.itob(upkeep_id)))
     swap
     itob
     bytec_0 // 0x75
     swap
     concat
-    // smart_contracts/keeper/contract.py:110
+    // smart_contracts/keeper/contract.py:146
     // assert box, "Upkeep not found"
     dup
     box_len
     bury 1
     assert // Upkeep not found
-    // smart_contracts/keeper/contract.py:111-112
+    // smart_contracts/keeper/contract.py:147-148
     // upkeep = box.value.copy()
     // new_balance: UInt64 = upkeep.balance.as_uint64() + funding_payment.amount
     dup
     pushint 66
     intc_0 // 8
     box_extract // on error: index out of bounds
-    // smart_contracts/keeper/contract.py:112
+    // smart_contracts/keeper/contract.py:148
     // new_balance: UInt64 = upkeep.balance.as_uint64() + funding_payment.amount
     btoi
     uncover 2
     +
-    // smart_contracts/keeper/contract.py:113-115
+    // smart_contracts/keeper/contract.py:149-151
     // box.value = upkeep._replace(
     //     balance=arc4.UInt64(new_balance), call_data=upkeep.call_data.copy()
     // )
@@ -329,20 +409,20 @@ top_up:
     pushint 32
     intc_0 // 8
     box_extract // on error: index out of bounds
-    // smart_contracts/keeper/contract.py:114
+    // smart_contracts/keeper/contract.py:150
     // balance=arc4.UInt64(new_balance), call_data=upkeep.call_data.copy()
     dig 3
-    pushint 82
+    pushint 106
     intc_3 // 2
     box_extract
     btoi
     intc_3 // 2
     +
     dig 4
-    pushint 82
+    pushint 106
     uncover 2
     box_extract
-    // smart_contracts/keeper/contract.py:113-115
+    // smart_contracts/keeper/contract.py:149-151
     // box.value = upkeep._replace(
     //     balance=arc4.UInt64(new_balance), call_data=upkeep.call_data.copy()
     // )
@@ -358,11 +438,11 @@ top_up:
     pushint 58
     intc_0 // 8
     box_extract // on error: index out of bounds
-    // smart_contracts/keeper/contract.py:114
+    // smart_contracts/keeper/contract.py:150
     // balance=arc4.UInt64(new_balance), call_data=upkeep.call_data.copy()
     uncover 6
     itob
-    // smart_contracts/keeper/contract.py:113-115
+    // smart_contracts/keeper/contract.py:149-151
     // box.value = upkeep._replace(
     //     balance=arc4.UInt64(new_balance), call_data=upkeep.call_data.copy()
     // )
@@ -370,18 +450,36 @@ top_up:
     pushint 74
     intc_0 // 8
     box_extract // on error: index out of bounds
-    uncover 7
+    dig 8
+    pushint 82
+    intc_0 // 8
+    box_extract // on error: index out of bounds
+    dig 9
+    pushint 90
+    intc_0 // 8
+    box_extract // on error: index out of bounds
+    dig 10
+    pushint 98
+    intc_0 // 8
+    box_extract // on error: index out of bounds
+    uncover 10
+    uncover 10
+    concat
+    bytec_3 // 0x006a
+    concat
+    uncover 8
+    concat
     uncover 7
     concat
-    bytec_3 // 0x0052
+    uncover 6
     concat
-    uncover 5
+    dig 5
     concat
     uncover 4
     concat
     uncover 3
     concat
-    dig 2
+    uncover 2
     concat
     swap
     concat
@@ -393,7 +491,7 @@ top_up:
     uncover 2
     swap
     box_put
-    // smart_contracts/keeper/contract.py:99
+    // smart_contracts/keeper/contract.py:135
     // @abimethod()
     bytec_1 // 0x151f7c75
     swap
@@ -405,7 +503,7 @@ top_up:
 
 // smart_contracts.keeper.contract.Keeper.cancel[routing]() -> void:
 cancel:
-    // smart_contracts/keeper/contract.py:118
+    // smart_contracts/keeper/contract.py:154
     // @abimethod()
     txna ApplicationArgs 1
     dup
@@ -414,72 +512,72 @@ cancel:
     ==
     assert // invalid number of bytes for arc4.uint64
     btoi
-    // smart_contracts/keeper/contract.py:126
+    // smart_contracts/keeper/contract.py:162
     // box = Box(Upkeep, key=op.concat(b"u", op.itob(upkeep_id)))
     itob
     bytec_0 // 0x75
     swap
     concat
-    // smart_contracts/keeper/contract.py:127
+    // smart_contracts/keeper/contract.py:163
     // assert box, "Upkeep not found"
     dup
     box_len
     bury 1
     assert // Upkeep not found
-    // smart_contracts/keeper/contract.py:128-129
+    // smart_contracts/keeper/contract.py:164-165
     // upkeep = box.value.copy()
     // assert upkeep.creator.native == Txn.sender, "Only the creator can cancel"
     dup
     intc_2 // 0
     pushint 32
     box_extract // on error: index out of bounds
-    // smart_contracts/keeper/contract.py:129
+    // smart_contracts/keeper/contract.py:165
     // assert upkeep.creator.native == Txn.sender, "Only the creator can cancel"
     txn Sender
     ==
     assert // Only the creator can cancel
-    // smart_contracts/keeper/contract.py:133
+    // smart_contracts/keeper/contract.py:169
     // upkeep.balance.as_uint64()
     dup
     pushint 66
     intc_0 // 8
     box_extract // on error: index out of bounds
     btoi
-    // smart_contracts/keeper/contract.py:134
+    // smart_contracts/keeper/contract.py:170
     // + BOX_MBR_FIXED
-    intc 4 // 39700
-    // smart_contracts/keeper/contract.py:133-134
+    intc 5 // 49300
+    // smart_contracts/keeper/contract.py:169-170
     // upkeep.balance.as_uint64()
     // + BOX_MBR_FIXED
     +
-    // smart_contracts/keeper/contract.py:135
+    // smart_contracts/keeper/contract.py:171
     // + 400 * upkeep.call_data.native.length
     dig 1
-    pushint 82
+    pushint 106
     intc_3 // 2
     box_extract
     btoi
     intc_3 // 2
     +
     dig 2
-    pushint 82
+    pushint 106
     uncover 2
     box_extract
     extract 2 0
     len
     pushint 400
     *
-    // smart_contracts/keeper/contract.py:133-135
+    // smart_contracts/keeper/contract.py:169-171
     // upkeep.balance.as_uint64()
     // + BOX_MBR_FIXED
     // + 400 * upkeep.call_data.native.length
     +
-    // smart_contracts/keeper/contract.py:137
+    // smart_contracts/keeper/contract.py:173
     // del box.value
     swap
     box_del
     pop
-    // smart_contracts/keeper/contract.py:138
+    // smart_contracts/keeper/contract.py:174
     // itxn.Payment(receiver=Txn.sender, amount=refund).submit()
     itxn_begin
     txn Sender
@@ -491,7 +589,7 @@ cancel:
     intc_2 // 0
     itxn_field Fee
     itxn_submit
-    // smart_contracts/keeper/contract.py:118
+    // smart_contracts/keeper/contract.py:154
     // @abimethod()
     itob
     bytec_1 // 0x151f7c75
@@ -504,7 +602,9 @@ cancel:
 
 // smart_contracts.keeper.contract.Keeper.execute[routing]() -> void:
 execute:
-    // smart_contracts/keeper/contract.py:141
+    pushbytes ""
+    dupn 2
+    // smart_contracts/keeper/contract.py:177
     // @abimethod()
     txna ApplicationArgs 1
     dup
@@ -513,181 +613,258 @@ execute:
     ==
     assert // invalid number of bytes for arc4.uint64
     btoi
-    // smart_contracts/keeper/contract.py:147
+    // smart_contracts/keeper/contract.py:183
     // box = Box(Upkeep, key=op.concat(b"u", op.itob(upkeep_id)))
     itob
     bytec_0 // 0x75
     swap
     concat
-    // smart_contracts/keeper/contract.py:148
+    dupn 2
+    // smart_contracts/keeper/contract.py:184
     // assert box, "Upkeep not found"
-    dup
     box_len
     bury 1
     assert // Upkeep not found
-    // smart_contracts/keeper/contract.py:149-150
+    // smart_contracts/keeper/contract.py:185-186
     // upkeep = box.value.copy()
-    // fee: UInt64 = upkeep.fee_per_execution.as_uint64()
+    // due: UInt64 = upkeep.next_execution_round.as_uint64()
+    dup
+    pushint 50
+    intc_0 // 8
+    box_extract // on error: index out of bounds
+    // smart_contracts/keeper/contract.py:186
+    // due: UInt64 = upkeep.next_execution_round.as_uint64()
+    btoi
+    dup
+    cover 3
+    // smart_contracts/keeper/contract.py:187
+    // assert Global.round >= due, "Not due"
+    global Round
+    <=
+    assert // Not due
+    // smart_contracts/keeper/contract.py:189
+    // interval: UInt64 = upkeep.interval_rounds.as_uint64()
+    dup
+    pushint 42
+    intc_0 // 8
+    box_extract // on error: index out of bounds
+    dup
+    cover 3
+    btoi
+    cover 2
+    // smart_contracts/keeper/contract.py:190
+    // base: UInt64 = upkeep.fee_per_execution.as_uint64()
     dup
     pushint 58
     intc_0 // 8
     box_extract // on error: index out of bounds
-    // smart_contracts/keeper/contract.py:150
-    // fee: UInt64 = upkeep.fee_per_execution.as_uint64()
     dup
+    cover 3
     btoi
-    // smart_contracts/keeper/contract.py:151
-    // assert Global.round >= upkeep.next_execution_round.as_uint64(), "Not due"
-    global Round
-    dig 3
-    pushint 50
+    dup
+    uncover 2
+    // smart_contracts/keeper/contract.py:191
+    // cap: UInt64 = upkeep.fee_cap.as_uint64()
+    pushint 90
     intc_0 // 8
     box_extract // on error: index out of bounds
+    dup
+    cover 4
     btoi
-    swap
-    dig 1
-    >=
-    assert // Not due
-    // smart_contracts/keeper/contract.py:152
+    dup
+    uncover 2
+    // smart_contracts/keeper/contract.py:193
+    // if cap > base:
+    >
+    bnz execute_if_body@2
+    pop
+
+execute_after_if_else@7:
+    // smart_contracts/keeper/contract.py:206
     // assert upkeep.balance.as_uint64() >= fee, "Insufficient funding"
-    dig 3
+    dig 1
+    dup
     pushint 66
     intc_0 // 8
     box_extract // on error: index out of bounds
     btoi
     dup
-    dig 3
+    cover 3
+    dig 2
     >=
     assert // Insufficient funding
-    // smart_contracts/keeper/contract.py:155
-    // upkeep.next_execution_round.as_uint64() + upkeep.interval_rounds.as_uint64()
-    dig 4
-    pushint 42
+    // smart_contracts/keeper/contract.py:208
+    // next_due: UInt64 = due + interval
+    dig 8
+    dig 7
+    +
+    bury 10
+    // smart_contracts/keeper/contract.py:209
+    // if upkeep.policy.as_uint64() == SKIP_AHEAD:
+    pushint 82
     intc_0 // 8
     box_extract // on error: index out of bounds
     dup
     btoi
-    uncover 3
-    +
-    // smart_contracts/keeper/contract.py:157
-    // new_balance: UInt64 = upkeep.balance.as_uint64() - fee
-    uncover 2
-    dig 3
+    intc_1 // 1
+    ==
+    bz execute_after_if_else@9
+    // smart_contracts/keeper/contract.py:210-213
+    // # Snap to the first slot strictly in the future, keeping the
+    // # schedule's phase: a daily upkeep stays on its time of day rather
+    // # than drifting to whenever a keeper happened to arrive.
+    // missed: UInt64 = (Global.round - due) // interval
+    global Round
+    dig 9
+    dup
+    cover 2
     -
-    // smart_contracts/keeper/contract.py:158
+    dig 8
+    dup
+    cover 2
+    /
+    // smart_contracts/keeper/contract.py:214
+    // next_due = due + (missed + 1) * interval
+    intc_1 // 1
+    +
+    *
+    +
+    bury 10
+
+execute_after_if_else@9:
+    // smart_contracts/keeper/contract.py:215
+    // new_balance: UInt64 = upkeep.balance.as_uint64() - fee
+    cover 2
+    dup
+    cover 2
+    -
+    // smart_contracts/keeper/contract.py:216
     // times: UInt64 = upkeep.times_executed.as_uint64() + 1
-    dig 5
+    uncover 3
+    dup
     pushint 74
     intc_0 // 8
     box_extract // on error: index out of bounds
     btoi
     intc_1 // 1
     +
-    // smart_contracts/keeper/contract.py:159-164
+    // smart_contracts/keeper/contract.py:217-223
     // box.value = upkeep._replace(
     //     next_execution_round=arc4.UInt64(next_due),
     //     balance=arc4.UInt64(new_balance),
     //     times_executed=arc4.UInt64(times),
+    //     last_serviced_round=arc4.UInt64(Global.round),
     //     call_data=upkeep.call_data.copy(),
     // )
-    dig 6
+    dig 1
     intc_2 // 0
     pushint 32
     box_extract // on error: index out of bounds
-    dig 7
+    dig 2
     pushint 32
     intc_0 // 8
     box_extract // on error: index out of bounds
-    // smart_contracts/keeper/contract.py:163
+    // smart_contracts/keeper/contract.py:222
     // call_data=upkeep.call_data.copy(),
-    dig 8
-    pushint 82
+    dig 3
+    pushint 106
     intc_3 // 2
     box_extract
     btoi
     intc_3 // 2
     +
-    dig 9
-    pushint 82
+    dig 4
+    pushint 106
     uncover 2
     box_extract
-    // smart_contracts/keeper/contract.py:160
+    // smart_contracts/keeper/contract.py:218
     // next_execution_round=arc4.UInt64(next_due),
-    uncover 5
+    dig 13
     itob
-    // smart_contracts/keeper/contract.py:161
+    // smart_contracts/keeper/contract.py:219
     // balance=arc4.UInt64(new_balance),
-    uncover 5
+    uncover 6
     itob
-    // smart_contracts/keeper/contract.py:162
+    // smart_contracts/keeper/contract.py:220
     // times_executed=arc4.UInt64(times),
     uncover 5
     itob
-    // smart_contracts/keeper/contract.py:159-164
+    // smart_contracts/keeper/contract.py:221
+    // last_serviced_round=arc4.UInt64(Global.round),
+    global Round
+    itob
+    // smart_contracts/keeper/contract.py:217-223
     // box.value = upkeep._replace(
     //     next_execution_round=arc4.UInt64(next_due),
     //     balance=arc4.UInt64(new_balance),
     //     times_executed=arc4.UInt64(times),
+    //     last_serviced_round=arc4.UInt64(Global.round),
     //     call_data=upkeep.call_data.copy(),
     // )
-    uncover 5
-    dig 5
-    concat
-    bytec_3 // 0x0052
-    concat
     uncover 6
+    dig 6
     concat
-    dig 3
+    bytec_3 // 0x006a
+    concat
+    dig 13
+    concat
+    dig 4
+    concat
+    dig 11
+    concat
+    uncover 3
+    concat
+    uncover 2
     concat
     uncover 7
     concat
-    uncover 2
+    dig 7
     concat
     swap
     concat
     dig 2
     concat
-    dig 5
+    dig 4
     box_del
     pop
-    uncover 5
+    uncover 4
     swap
     box_put
-    // smart_contracts/keeper/contract.py:166-170
+    // smart_contracts/keeper/contract.py:225-229
     // itxn.ApplicationCall(
     //     app_id=upkeep.target_app.as_uint64(),
     //     app_args=(upkeep.call_data.native,),
     //     on_completion=OnCompleteAction.NoOp,
     // ).submit()
     itxn_begin
-    // smart_contracts/keeper/contract.py:167
+    // smart_contracts/keeper/contract.py:226
     // app_id=upkeep.target_app.as_uint64(),
     uncover 2
     btoi
-    // smart_contracts/keeper/contract.py:168
+    // smart_contracts/keeper/contract.py:227
     // app_args=(upkeep.call_data.native,),
     uncover 2
     extract 2 0
-    // smart_contracts/keeper/contract.py:169
+    // smart_contracts/keeper/contract.py:228
     // on_completion=OnCompleteAction.NoOp,
     intc_2 // NoOp
     itxn_field OnCompletion
     itxn_field ApplicationArgs
     itxn_field ApplicationID
-    // smart_contracts/keeper/contract.py:166
+    // smart_contracts/keeper/contract.py:225
     // itxn.ApplicationCall(
     pushint 6 // appl
     itxn_field TypeEnum
     intc_2 // 0
     itxn_field Fee
-    // smart_contracts/keeper/contract.py:166-170
+    // smart_contracts/keeper/contract.py:225-229
     // itxn.ApplicationCall(
     //     app_id=upkeep.target_app.as_uint64(),
     //     app_args=(upkeep.call_data.native,),
     //     on_completion=OnCompleteAction.NoOp,
     // ).submit()
     itxn_submit
-    // smart_contracts/keeper/contract.py:171
+    // smart_contracts/keeper/contract.py:230
     // itxn.Payment(receiver=Txn.sender, amount=fee).submit()
     itxn_begin
     txn Sender
@@ -699,7 +876,7 @@ execute:
     intc_2 // 0
     itxn_field Fee
     itxn_submit
-    // smart_contracts/keeper/contract.py:141
+    // smart_contracts/keeper/contract.py:177
     // @abimethod()
     bytec_1 // 0x151f7c75
     swap
@@ -707,3 +884,58 @@ execute:
     log
     intc_1 // 1
     return
+
+execute_if_body@2:
+    // smart_contracts/keeper/contract.py:194-198
+    // # Escalation is measured from the last service, not from the
+    // # schedule. Escalation exists to clear a market; once a keeper has
+    // # arrived the market has cleared, so the backlog it then drains
+    // # pays base rather than the ceiling.
+    // lateness: UInt64 = Global.round - upkeep.last_serviced_round.as_uint64()
+    global Round
+    dig 3
+    pushint 98
+    intc_0 // 8
+    box_extract // on error: index out of bounds
+    btoi
+    -
+    dup
+    bury 11
+    // smart_contracts/keeper/contract.py:199
+    // excess: UInt64 = UInt64(0)
+    intc_2 // 0
+    bury 12
+    // smart_contracts/keeper/contract.py:200
+    // if lateness > interval:
+    dig 6
+    >
+    bz execute_after_if_else@4
+    // smart_contracts/keeper/contract.py:201
+    // excess = lateness - interval
+    dig 9
+    dig 6
+    -
+    bury 11
+
+execute_after_if_else@4:
+    // smart_contracts/keeper/contract.py:202
+    // if excess > interval:
+    dig 10
+    dig 6
+    >
+    bz execute_after_if_else@6
+    dig 5
+    bury 11
+
+execute_after_if_else@6:
+    // smart_contracts/keeper/contract.py:204-205
+    // # Linear from base to cap over one missed interval, then flat.
+    // fee = base + (cap - base) * excess // interval
+    dig 1
+    -
+    dig 10
+    *
+    dig 5
+    /
+    +
+    b execute_after_if_else@7

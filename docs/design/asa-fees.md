@@ -156,24 +156,28 @@ a feature it does not use, which is the honest price of a capability in a
 contract that cannot be upgraded.
 
 Stacked across the whole 1.0 batch (Part D — the numbers that decide whether
-it can ship as one contract at all):
+it can ship as one contract at all). Every row is compiled: #7 and #14 are in
+the contract, and #8 and #9 are patched onto it and built by puyapy.
 
 | Contract | Approval | Pages | Page headroom |
 |---|---|---|---|
-| today | 729 B | 1 | 1,319 |
-| #9 alone | 1,218 B | 1 | 830 |
-| #8 alone, fan-out ceiling 4 | 1,221 B | 1 | 827 |
-| #8 + #9 | 1,721 B | 1 | 327 |
-| #7 + #14 alone *(indicative)* | 887 B | 1 | 1,161 |
-| **the whole 1.0 batch** *(indicative)* | **1,907 B** | **1** | **141** |
+| before the batch | 729 B | 1 | 1,319 |
+| the contract today, with #7 + #14 | 966 B | 1 | 1,082 |
+| + #9 (ASA bonus) | 1,483 B | 1 | 565 |
+| + #8 at fan-out ceiling 4 | 1,458 B | 1 | 590 |
+| **the whole 1.0 batch, ceiling 4** | **1,990 B** | **1** | **58** |
 
-**141 bytes.** The batch fits in one 2,048-byte program page, and only just.
+**58 bytes.** The batch fits in one 2,048-byte program page and very nearly
+does not. An estimate made before #7 and #14 were written put this at 141; the
+real scheduling code is 966 bytes against a sketched 887, and the patches on
+top of it cost more too.
+
 A second page costs the deployer another 100,000 µALGO of minimum balance
-permanently, so that margin is the real constraint on 1.0's scope — it is why
-#8's fan-out ceiling is 4 and not 6, and it means anything else added to the
-batch has to be measured, not estimated. (#7 and #14 are designed but not
-written; their rows are a faithful sketch of that design's shape and must be
-re-measured against the real thing.)
+permanently, so this margin is the real constraint on 1.0's scope. The only
+dial left is #8's fan-out ceiling, and at a ceiling of 3 the batch is 1,814
+bytes with 234 spare — which is the setting to take if #9 lands in the same
+deployment. **Nothing else should be added to this batch without compiling it
+first.**
 
 Box MBR across the batch, for a one-argument upkeep: the fixed component
 becomes **139** (9 name + 130 head), so 149 bytes and **62,100 µALGO** — up
