@@ -551,6 +551,15 @@ failure: a payout to a closed or hostile account fails that claim alone instead
 of failing the whole execution and disrupting the schedule. Most applications
 that look like they need multi-arg calls do not, once payouts are pull-based.
 
+## What 1.0 will be
+
+The contract cannot be upgraded, so struct changes are batched into one last
+release and the surface is then frozen: per-upkeep catch-up policy, fee
+escalation, resource declaration, and ASA-denominated fees as a capability
+(ALGO remains the default; no token is required). Scope, what is deliberately
+out, the dogfood plan and the mainnet gate are in
+[docs/design/1.0.md](design/1.0.md).
+
 ## Known limitations (v1)
 
 - ALGO escrow only (no ASA-denominated fees yet). First candidate: CORVID,
@@ -559,8 +568,9 @@ that look like they need multi-arg calls do not, once payouts are pull-based.
 - Single-arg NoOp call shape; no multi-arg or foreign-array calls.
 - Catch-up is now a choice, not a limitation: a creator picks `CATCH_UP`
   (replay every missed interval, the default) or `SKIP_AHEAD` (run once and
-  land on the next slot that is still ahead) at registration. See
-  [`docs/design/scheduling-and-fees.md`](design/scheduling-and-fees.md).
+  land on the next slot that is still ahead) at registration. Designed in
+  [docs/design/scheduling-and-fees.md](design/scheduling-and-fees.md), which
+  also explains why the two features had to be designed together.
 - A creator may also set a fee ceiling, and a late upkeep's fee climbs towards
   it — which means an upkeep with a ceiling can go dormant at a balance that
   would have covered several runs at its base fee.
