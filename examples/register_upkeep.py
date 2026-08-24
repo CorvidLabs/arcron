@@ -52,8 +52,8 @@ def main() -> None:
     )
 
     call_data = hashlib.new("sha512_256", METHOD_SIGNATURE.encode()).digest()[:4]
-    # Box MBR: 9-byte name plus the encoded Upkeep struct.
-    mbr = 2_500 + 400 * (91 + len(call_data))
+    # Box MBR: 9-byte name plus the 84-byte-plus-call-data encoded Upkeep.
+    mbr = 2_500 + 400 * (93 + len(call_data))
 
     # Public TestNet endpoints can be slow enough that default validity
     # windows expire before simulate; pin an explicit, generous window.

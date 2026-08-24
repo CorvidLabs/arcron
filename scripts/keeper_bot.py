@@ -4,11 +4,12 @@ Scans the Keeper app's upkeep boxes each round, executes every upkeep that
 is due and funded, and collects the per-execution fees. Loops block-by-block
 by default, or runs a single scan with --once.
 
-Requires .env.testnet (ALGOD_SERVER etc.). Signs as the account from
-KEEPER_MNEMONIC if set, else DEPLOYER_MNEMONIC; execution fees are paid to
-that account.
+Picks its network with --network (or ARCHON_NETWORK), loading .env.localnet
+or .env.testnet. Signs as the account from KEEPER_MNEMONIC if set, else
+DEPLOYER_MNEMONIC; execution fees are paid to that account. On LocalNet both
+come from KMD, so no mnemonic is needed.
 
-Run:  poetry run python -m scripts.keeper_bot [--once] [--app-id N]
+Run:  poetry run python -m scripts.keeper_bot [--once] [--network N] [--app-id N]
 """
 
 import argparse
@@ -19,11 +20,9 @@ import time
 from dataclasses import dataclass
 
 import algokit_utils
-from dotenv import load_dotenv
 
-load_dotenv(".env.testnet")
-
-from smart_contracts.artifacts.keeper.keeper_client import (  # noqa: E402
+from scripts import network as net
+from smart_contracts.artifacts.keeper.keeper_client import (
     ExecuteArgs,
     KeeperClient,
 )
@@ -32,7 +31,7 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 # The canonical TestNet Keeper app (see README); override with --app-id or
-# KEEPER_APP_ID.
+# KEEPER_APP_ID. LocalNet has no canonical app — pass one.
 DEFAULT_APP_ID = 769772891
 # Covers the two inner transactions (app call + keeper payment); the outer
 # fee is the standard 1,000 µALGO.
@@ -96,23 +95,37 @@ def scan_upkeeps(algod, app_id: int) -> list[Upkeep]:
             return upkeeps
 
 
-def main() -> None:
+def resolve_app_id(parser: argparse.ArgumentParser, app_id: int | None, network: str) -> int:
+    """The app to service: --app-id, else KEEPER_APP_ID, else the TestNet app."""
+    if app_id is not None:
+        return app_id
+    from_env = os.environ.get("KEEPER_APP_ID")
+    if from_env:
+        return int(from_env)
+    if network == net.TESTNET:
+        return DEFAULT_APP_ID
+    parser.error(
+        f"--app-id (or KEEPER_APP_ID) is required on {network}; there is no "
+        f"canonical app id off TestNet"
+    )
+
+
+def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--once", action="store_true", help="run a single scan, then exit"
     )
+    net.add_network_argument(parser)
     parser.add_argument(
         "--app-id",
         type=int,
-        default=int(os.environ.get("KEEPER_APP_ID", DEFAULT_APP_ID)),
-        help="Keeper app id (default: %(default)s)",
+        default=None,
+        help="Keeper app id (default: KEEPER_APP_ID, else the TestNet app)",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
-    algorand = algokit_utils.AlgorandClient.from_environment()
-    # Public TestNet endpoints are slow; never build transactions from stale
-    # cached suggested params.
-    algorand.set_suggested_params_cache_timeout(0)
+    algorand = net.connect(args.network)
+    app_id = resolve_app_id(parser, args.app_id, args.network)
     try:
         keeper = algorand.account.from_environment("KEEPER")
     except Exception:
@@ -120,11 +133,11 @@ def main() -> None:
     algod = algorand.client.algod
     client = KeeperClient(
         algorand=algorand,
-        app_id=args.app_id,
+        app_id=app_id,
         default_sender=keeper.address,
         default_signer=keeper.signer,
     )
-    logger.info(f"Keeper {keeper.address} servicing app {args.app_id}")
+    logger.info(f"Keeper {keeper.address} servicing app {app_id}")
 
     # Upkeeps that failed this run; retrying every round would just burn the
     # outer fee (e.g. a target app rejecting the call).
@@ -132,7 +145,7 @@ def main() -> None:
     while True:
         try:
             current = algod.status()["last-round"]
-            upkeeps = scan_upkeeps(algod, args.app_id)
+            upkeeps = scan_upkeeps(algod, app_id)
             due = [
                 u
                 for u in upkeeps

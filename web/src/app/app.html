@@ -1,0 +1,31 @@
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="chrome">
+  <archon-network-bar />
+</header>
+<hr class="iridescent-rule" />
+
+<main id="main">
+  @if (nodeError(); as message) {
+    <p class="banner" role="alert">{{ message }}</p>
+  }
+
+  <archon-signer-bar />
+  <archon-stat-tiles />
+  <archon-registry-table />
+
+  <div class="columns">
+    <archon-register-form />
+    <archon-activity-log />
+  </div>
+</main>
+
+<footer class="chrome">
+  <p>
+    Archon — permissionless keeper network.
+    @if (appAddress(); as address) {
+      <span>App account {{ address }}</span>
+    }
+  </p>
+  <p>Registry reads are public box state; signing on LocalNet goes through KMD.</p>
+</footer>

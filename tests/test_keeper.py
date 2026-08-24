@@ -6,6 +6,7 @@ from algopy import UInt64, arc4
 from algopy_testing import AlgopyTestContext, algopy_testing_context
 
 from smart_contracts.keeper.contract import (
+    BOX_MBR_FIXED,
     MAX_CALL_DATA,
     MIN_INTERVAL_ROUNDS,
     MIN_UPKEEP_FEE,
@@ -51,7 +52,7 @@ def _register(
 ) -> int:
     app_address = context.ledger.get_app(keeper).address
     if mbr is None:
-        mbr = 2_500 + 400 * (91 + len(call_data))
+        mbr = BOX_MBR_FIXED + 400 * len(call_data)
     if funding is None:
         funding = fee * 5
     mbr_payment = context.any.txn.payment(receiver=app_address, amount=mbr)
@@ -115,6 +116,36 @@ def test_register_rejects_low_funding(
         _register(
             context, keeper, pulse, b"\x00\x01", funding=MIN_UPKEEP_FEE - 1
         )
+
+
+def test_register_charges_the_real_box_mbr() -> None:
+    """The MBR collected must cover what the box actually costs the app.
+
+    Derived from the encoded box itself rather than restating the formula:
+    an upkeep whose escrow the app cannot pay out is worse than one that was
+    never registered (regression — the contract used to undercharge by 800
+    µALGO, so the final execution failed with "balance below min").
+    """
+    for call_data in (_selector("tick()uint64"), b"\x01", b"x" * MAX_CALL_DATA):
+        with algopy_testing_context() as ctx:
+            local_keeper = Keeper()
+            local_pulse = Pulse()
+            upkeep_id = _register(ctx, local_keeper, local_pulse, call_data)
+
+            key = _upkeep_key(int(upkeep_id))
+            encoded = ctx.ledger.get_box(local_keeper, key)
+            actual_mbr = 2_500 + 400 * (len(key) + len(encoded))
+
+            assert BOX_MBR_FIXED + 400 * len(call_data) == actual_mbr
+
+
+def test_register_rejects_low_mbr(
+    context: AlgopyTestContext, keeper: Keeper, pulse: Pulse
+) -> None:
+    call_data = _selector("tick()uint64")
+    short = BOX_MBR_FIXED + 400 * len(call_data) - 1
+    with pytest.raises(AssertionError, match="MBR payment too small"):
+        _register(context, keeper, pulse, call_data, mbr=short)
 
 
 def test_execute_happy_path(
@@ -199,12 +230,14 @@ def test_cancel(context: AlgopyTestContext, keeper: Keeper, pulse: Pulse) -> Non
     funding = MIN_UPKEEP_FEE * 3
     upkeep_id = _register(context, keeper, pulse, call_data, funding=funding)
 
-    keeper.cancel(upkeep_id)
+    box_mbr = BOX_MBR_FIXED + 400 * len(call_data)
+    refund = keeper.cancel(upkeep_id)
     assert not context.ledger.box_exists(keeper, _upkeep_key(0))
 
-    # Remaining escrow refunded to the creator.
+    # Remaining escrow *and* the released box MBR go back to the creator.
+    assert refund == funding + box_mbr
     refund_itxn = context.txn.last_group.itxn_groups[-1][0]
-    assert refund_itxn.amount == funding
+    assert refund_itxn.amount == funding + box_mbr
     assert refund_itxn.receiver == context.default_sender
 
     with pytest.raises(AssertionError, match="Upkeep not found"):

@@ -20,10 +20,13 @@ Any account SHALL be able to execute a due upkeep; the contract SHALL perform ex
 The contract SHALL reject executions before the due round and executions with insufficient escrow, leaving all state unchanged.
 
 ### REQ-keeper-004
-The creator, and only the creator, SHALL be able to cancel an upkeep and reclaim its remaining escrow.
+The creator, and only the creator, SHALL be able to cancel an upkeep and reclaim its remaining escrow together with the box MBR that deleting the box releases.
 
 ### REQ-keeper-005
 Anyone SHALL be able to add funding to an existing upkeep's escrow.
+
+### REQ-keeper-006
+The MBR charged at registration SHALL equal the box's true minimum balance, so that the app account's spendable balance always covers the escrow it holds and no upkeep can be left unable to pay its last execution.
 
 ## Constraints
 
@@ -33,5 +36,8 @@ Anyone SHALL be able to add funding to an existing upkeep's escrow.
 
 ## Out of Scope
 
-- A keeper *node/bot* that watches rounds and submits executions (off-chain software; the demo script plays the role manually).
 - ASA-denominated fees, protocol rake, SLA/slashing mechanics, multi-arg or foreign-array call shapes.
+
+The off-chain keeper bot that watches rounds and submits executions
+(`scripts/keeper_bot.py`) is outside the contract's surface, but it ships in
+this repo and is exercised by `scripts/keeper_e2e.py`.

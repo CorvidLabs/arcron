@@ -41,7 +41,7 @@ All methods are ARC-4 ABI methods on the keeper app
 | `register(mbr_payment, funding_payment, target_app, call_data, interval_rounds, fee_per_execution) → uint64` | anyone | Create an upkeep; returns its id. Two payment args fund the box MBR and the escrow. |
 | `execute(upkeep_id) → uint64` | anyone (permissionless) | Fire a due, funded upkeep; pays the caller. Returns the next due round. |
 | `top_up(upkeep_id, funding_payment) → uint64` | anyone | Add escrow; returns new balance. |
-| `cancel(upkeep_id)` | creator only | Delete the upkeep; refunds remaining escrow. |
+| `cancel(upkeep_id) → uint64` | creator only | Delete the upkeep; refunds remaining escrow **plus the box MBR** the deletion releases. Returns the refunded amount. |
 
 Constraints (asserted on-chain):
 
@@ -81,9 +81,10 @@ Reference decoder: `scripts/keeper_bot.py::_decode_upkeep`; regression vector:
 
 ## Economics
 
-- Creator costs, per upkeep: box MBR `2_500 + 400 × (91 + len(call_data))`
-  µALGO (locked in the app account, not refunded on cancel in v1) + escrowed
-  `funding` (refundable via `cancel`).
+- Creator costs, per upkeep: box MBR `2_500 + 400 × (93 + len(call_data))`
+  µALGO (41,300 for a 4-byte selector) + escrowed `funding`. Both come back
+  on `cancel`, so registering an upkeep costs only transaction fees in the
+  end.
 - Keeper costs, per execution: 1,000 µALGO outer fee + 2,000 µALGO
   `extra_fee` covering the two inner transactions (fee pooling). Paid fee is
   `fee_per_execution` (≥ 4,000), so net ≥ 1,000 µALGO per execution.
@@ -115,16 +116,14 @@ fledge lanes run local    # ci + LocalNet e2e smoke
 - Unit tests (`tests/`) use `algorand-python-testing` mocks. Note the mocks
   record but do not *execute* inner app calls — the Pulse counter increment
   was proven with the TestNet e2e (`scripts/keeper_testnet_demo.py`).
-- Specs (`specs/keeper/`, `specs/pulse/`, `specs/vault/`) are enforced by
+- Specs (`specs/keeper/`, `specs/pulse/`) are enforced by
   `specsync check --strict`; update them with any contract surface change.
 
 ## Known limitations (v1)
 
 - ALGO escrow only (no ASA-denominated fees yet). First candidate: CORVID,
   CorvidLabs' ASA — mainnet asset
-  [`3225439167`](https://explorer.perawallet.app/asset/3225439167) (6
-  decimals; the LocalNet mock in `corvid_vault/deploy_config.py` matches).
+  [`3225439167`](https://explorer.perawallet.app/asset/3225439167) (6 decimals).
 - Single-arg NoOp call shape; no multi-arg or foreign-array calls.
-- Box MBR is not refunded to the creator on cancel (stays in the app account).
 - No catch-up clamp: long-missed upkeeps fire once per round until caught up.
 - Unaudited. TestNet throwaway deployer — redeploy fresh for mainnet.

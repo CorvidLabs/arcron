@@ -1,0 +1,236 @@
+/**
+ * Live view of a keeper app: current round, app account, upkeep registry.
+ *
+ * Reads are permissionless — the registry is public box state, so the whole
+ * dashboard works with no wallet connected. Everything is exposed as signals
+ * and refreshed on a poll, because a keeper network is only interesting as it
+ * moves: rounds tick, upkeeps come due, escrows drain.
+ */
+
+import { computed, effect, Injectable, signal } from '@angular/core';
+import algosdk from 'algosdk';
+
+import { DEFAULT_NETWORK, isNetworkKey, NETWORKS, type NetworkKey } from './networks';
+import { decodeUpkeep, type Upkeep, upkeepIdFromBoxName } from './upkeep';
+
+const POLL_INTERVAL_MS = 2_500;
+/** Round-rate samples kept; at the poll interval this is ~2 minutes of chain. */
+const RATE_SAMPLES = 48;
+/** Below this the sample window is too short to divide by. */
+const MIN_RATE_WINDOW_MS = 8_000;
+const NETWORK_STORAGE_KEY = 'archon.network';
+const APP_ID_STORAGE_KEY = (network: NetworkKey) => `archon.appId.${network}`;
+
+export interface AppAccount {
+  readonly address: string;
+  readonly amount: bigint;
+  readonly minBalance: bigint;
+  /** What the app could actually pay out: everything not locked as MBR. */
+  readonly spendable: bigint;
+}
+
+export type ConnectionStatus = 'connecting' | 'ready' | 'error';
+
+@Injectable({ providedIn: 'root' })
+export class ArchonService {
+  private timer: ReturnType<typeof setInterval> | null = null;
+
+  readonly network = signal<NetworkKey>(readNetwork());
+  readonly appId = signal<number | null>(readAppId(readNetwork()));
+
+  readonly status = signal<ConnectionStatus>('connecting');
+  readonly error = signal<string | null>(null);
+  readonly round = signal<bigint>(0n);
+  readonly genesisId = signal<string | null>(null);
+  readonly upkeeps = signal<readonly Upkeep[]>([]);
+  readonly appAccount = signal<AppAccount | null>(null);
+  readonly nextUpkeepId = signal<bigint | null>(null);
+  readonly lastRefreshed = signal<number | null>(null);
+  /** Recent (wall clock, round) pairs, oldest first. */
+  private readonly rateSamples = signal<readonly { at: number; round: bigint }[]>([]);
+
+  /**
+   * Where the round rate came from: a chain we watched move, or the nominal
+   * block time we assume until then.
+   */
+  readonly paceSource = computed<'measured' | 'nominal'>(() =>
+    this.measuredRoundSeconds() === null ? 'nominal' : 'measured',
+  );
+
+  /**
+   * Seconds per round, for turning round counts into human time.
+   *
+   * On a dev-mode chain the measurement is meaningless — a block appears when
+   * a transaction does, so watching the clock would report whatever the gap
+   * between your own transactions happened to be. There we keep the nominal
+   * rate, which is what the same schedule would mean on a real chain.
+   */
+  readonly secondsPerRound = computed<number>(
+    () => this.measuredRoundSeconds() ?? this.config().nominalRoundSeconds,
+  );
+
+  private readonly measuredRoundSeconds = computed<number | null>(() => {
+    if (this.config().devMode === true) return null;
+    const samples = this.rateSamples();
+    const first = samples.at(0);
+    const last = samples.at(-1);
+    if (first === undefined || last === undefined) return null;
+    const elapsed = last.at - first.at;
+    const advanced = last.round - first.round;
+    if (elapsed < MIN_RATE_WINDOW_MS || advanced <= 0n) return null;
+    return elapsed / 1_000 / Number(advanced);
+  });
+
+  readonly config = computed(() => NETWORKS[this.network()]);
+  readonly algod = computed(() => {
+    const { algod } = this.config();
+    return new algosdk.Algodv2(algod.token, algod.server, algod.port);
+  });
+  /** True once the node we reached is the chain we asked for. */
+  readonly genesisMatches = computed(() => {
+    const genesis = this.genesisId();
+    return genesis === null ? null : this.config().genesisIds.includes(genesis);
+  });
+  readonly totalEscrowed = computed(() =>
+    this.upkeeps().reduce((total, upkeep) => total + upkeep.balance, 0n),
+  );
+  /** The app must be able to pay out every µALGO it holds in escrow. */
+  readonly solvent = computed(() => {
+    const account = this.appAccount();
+    return account === null ? null : account.spendable >= this.totalEscrowed();
+  });
+
+  constructor() {
+    effect(() => {
+      const network = this.network();
+      localStorage.setItem(NETWORK_STORAGE_KEY, network);
+    });
+    effect(() => {
+      const appId = this.appId();
+      const key = APP_ID_STORAGE_KEY(this.network());
+      if (appId === null) localStorage.removeItem(key);
+      else localStorage.setItem(key, String(appId));
+    });
+    this.start();
+  }
+
+  setNetwork(network: NetworkKey): void {
+    if (network === this.network()) return;
+    this.network.set(network);
+    this.appId.set(readAppId(network));
+    this.reset();
+    void this.refresh();
+  }
+
+  setAppId(appId: number | null): void {
+    if (appId === this.appId()) return;
+    this.appId.set(appId);
+    this.reset();
+    void this.refresh();
+  }
+
+  start(): void {
+    if (this.timer !== null) return;
+    void this.refresh();
+    this.timer = setInterval(() => void this.refresh(), POLL_INTERVAL_MS);
+  }
+
+  stop(): void {
+    if (this.timer === null) return;
+    clearInterval(this.timer);
+    this.timer = null;
+  }
+
+  async refresh(): Promise<void> {
+    const algod = this.algod();
+    const appId = this.appId();
+    try {
+      const params = await algod.getTransactionParams().do();
+      this.genesisId.set(params.genesisID ?? null);
+      const status = await algod.status().do();
+      this.round.set(status.lastRound);
+      if (this.config().devMode !== true) this.sampleRate(status.lastRound);
+
+      if (appId === null) {
+        this.upkeeps.set([]);
+        this.appAccount.set(null);
+        this.nextUpkeepId.set(null);
+      } else {
+        await this.refreshApp(algod, appId);
+      }
+      this.status.set('ready');
+      this.error.set(null);
+      this.lastRefreshed.set(Date.now());
+    } catch (cause) {
+      this.status.set('error');
+      this.error.set(describe(cause));
+    }
+  }
+
+  private async refreshApp(algod: algosdk.Algodv2, appId: number): Promise<void> {
+    const application = await algod.getApplicationByID(appId).do();
+    const counter = application.params?.globalState?.find(
+      (entry) => new TextDecoder().decode(entry.key) === 'next_upkeep_id',
+    );
+    this.nextUpkeepId.set(counter ? BigInt(counter.value.uint ?? 0) : null);
+
+    const address = algosdk.getApplicationAddress(appId);
+    const account = await algod.accountInformation(address).do();
+    this.appAccount.set({
+      address: address.toString(),
+      amount: account.amount,
+      minBalance: account.minBalance,
+      spendable: account.amount - account.minBalance,
+    });
+
+    this.upkeeps.set(await this.readUpkeeps(algod, appId));
+  }
+
+  private async readUpkeeps(algod: algosdk.Algodv2, appId: number): Promise<Upkeep[]> {
+    const { boxes } = await algod.getApplicationBoxes(appId).do();
+    const upkeeps = await Promise.all(
+      boxes.map(async (box) => {
+        const id = upkeepIdFromBoxName(box.name);
+        if (id === null) return null;
+        const value = await algod.getApplicationBoxByName(appId, box.name).do();
+        return decodeUpkeep(id, value.value);
+      }),
+    );
+    return upkeeps
+      .filter((upkeep): upkeep is Upkeep => upkeep !== null)
+      .sort((left, right) => (left.id < right.id ? -1 : 1));
+  }
+
+  /** Keep a rolling window of (time, round) pairs to derive the round rate. */
+  private sampleRate(round: bigint): void {
+    this.rateSamples.update((samples) =>
+      [...samples, { at: Date.now(), round }].slice(-RATE_SAMPLES),
+    );
+  }
+
+  private reset(): void {
+    this.status.set('connecting');
+    this.error.set(null);
+    this.upkeeps.set([]);
+    this.appAccount.set(null);
+    this.nextUpkeepId.set(null);
+    this.genesisId.set(null);
+    this.rateSamples.set([]);
+  }
+}
+
+function readNetwork(): NetworkKey {
+  const stored = localStorage.getItem(NETWORK_STORAGE_KEY);
+  return isNetworkKey(stored) ? stored : DEFAULT_NETWORK;
+}
+
+function readAppId(network: NetworkKey): number | null {
+  const stored = localStorage.getItem(APP_ID_STORAGE_KEY(network));
+  if (stored !== null && /^\d+$/.test(stored)) return Number(stored);
+  return NETWORKS[network].defaultAppId ?? null;
+}
+
+export function describe(cause: unknown): string {
+  if (cause instanceof Error) return cause.message;
+  return String(cause);
+}
