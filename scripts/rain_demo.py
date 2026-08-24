@@ -26,6 +26,7 @@ from smart_contracts.artifacts.rain.rain_client import (
     RainClient,
     RainFactory,
 )
+from smart_contracts.keeper.contract import SKIP_AHEAD
 from smart_contracts.keeper.deploy_config import deploy as deploy_keeper
 from smart_contracts.rain.contract import ALLOCATION_MBR, BEACON_DELAY, TICKET_MBR
 
@@ -141,6 +142,9 @@ def main(argv: list[str] | None = None) -> None:
             call_data=call_data,
             interval_rounds=INTERVAL_ROUNDS,
             fee_per_execution=FEE,
+            # A missed day's draw is not worth replaying; only the latest matters.
+            policy=SKIP_AHEAD,
+            fee_cap=0,
         )
     ).abi_return
     upkeep, _ = _read_upkeep(algorand, keeper_client.app_id, upkeep_id)

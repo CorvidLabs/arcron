@@ -65,8 +65,8 @@ registers an upkeep with a 250,000-unit bonus and runs it twice:
 
 | | Program | Box | Box MBR |
 |---|---|---|---|
-| today | 729 B | 97 bytes | 41,300 µALGO |
-| with the ASA path | 1,218 B (+489) | 121 bytes | 50,900 µALGO |
+| the contract today | 966 B | 121 bytes | 50,900 µALGO |
+| with the ASA path | 1,483 B (+517) | 145 bytes | 60,500 µALGO |
 
 | Execution | ALGO fee | ASA bonus |
 |---|---|---|
@@ -137,8 +137,8 @@ The console must say plainly that this deposit does not come back.
 The creator gets their remaining ASA back along with their ALGO and box MBR,
 which means they must be able to receive it. When `asset_balance > 0`, cancel
 asserts the creator is opted in, with a message that says so, **before**
-refunding anything. Costs 55 bytes of program and is not optional: an upkeep
-that cannot return its escrow is not an escrow.
+refunding anything. Not optional: an upkeep that cannot return its escrow is
+not an escrow.
 
 ### 6. CORVID is not wired in
 
@@ -151,29 +151,30 @@ default is still complete on its own.
 ## Cost
 
 For an upkeep that never uses it: **+24 bytes of box, +9,600 µALGO of MBR**,
-refunded on cancel. Every ALGO-only upkeep pays that so the contract can offer
-a feature it does not use, which is the honest price of a capability in a
-contract that cannot be upgraded.
+refunded on cancel, and **+517 bytes of program**. Every ALGO-only upkeep pays
+the MBR so the contract can offer a feature it does not use, which is the
+honest price of a capability in a contract that cannot be upgraded.
 
 Stacked across the whole 1.0 batch (Part D — the numbers that decide whether
-it can ship as one contract at all):
+it can ship as one contract at all). Every row is compiled: #7 and #14 are in
+the contract, and #8 and #9 are patched onto it and built by puyapy.
 
 | Contract | Approval | Pages | Page headroom |
 |---|---|---|---|
-| today | 729 B | 1 | 1,319 |
-| #9 alone | 1,218 B | 1 | 830 |
-| #8 alone, fan-out ceiling 4 | 1,221 B | 1 | 827 |
-| #8 + #9 | 1,721 B | 1 | 327 |
-| #7 + #14 alone *(indicative)* | 887 B | 1 | 1,161 |
-| **the whole 1.0 batch** *(indicative)* | **1,907 B** | **1** | **141** |
+| before the batch | 729 B | 1 | 1,319 |
+| the contract today, with #7 + #14 | 966 B | 1 | 1,082 |
+| + #9 (ASA bonus) | 1,483 B | 1 | 565 |
+| + #8 at fan-out ceiling 3 | 1,285 B | 1 | 763 |
+| **the whole 1.0 batch** | **1,814 B** | **1** | **234** |
 
-**141 bytes.** The batch fits in one 2,048-byte program page, and only just.
 A second page costs the deployer another 100,000 µALGO of minimum balance
-permanently, so that margin is the real constraint on 1.0's scope — it is why
-#8's fan-out ceiling is 4 and not 6, and it means anything else added to the
-batch has to be measured, not estimated. (#7 and #14 are designed but not
-written; their rows are a faithful sketch of that design's shape and must be
-re-measured against the real thing.)
+permanently, so this margin is the real constraint on 1.0's scope. The only
+dial was #8's fan-out ceiling, now **decided at 3** — at 4 the same batch is
+1,990 bytes and 58 bytes of headroom, which is one added assertion away from
+spilling.
+
+**#9 is what spends most of that room**: 517 bytes, against #8's 319. Nothing
+else should be added to this batch without compiling it first.
 
 Box MBR across the batch, for a one-argument upkeep: the fixed component
 becomes **139** (9 name + 130 head), so 149 bytes and **62,100 µALGO** — up
@@ -193,12 +194,18 @@ on cancel, not a fee.
   the asset a property of the network rather than of an upkeep, which is
   exactly the commitment 1.0 says not to make.
 - **Let the target pay the keeper.** Requires Archon to name the keeper in the
-  call, since Part A shows the target cannot otherwise know. Priced: #8 plus
-  keeper-naming is **1,730 B**, slightly *more* than #8 plus the whole ASA path
-  (1,721 B), because the fan-out has to double. So it costs the same page
-  budget, and the reward is not escrowed by Archon — a target that runs out
-  simply stops paying while Archon keeps paying the ALGO fee. Worse on both
-  axes.
+  call, since Part A shows the target cannot otherwise know. Priced honestly:
+  at a ceiling of 3, #8 plus keeper-naming is **1,628 B** against the ASA
+  path's 1,814 — it is **186 bytes cheaper**, because doubling three fan-out
+  branches costs less than #9's fields and payout path. (At a ceiling of 4 the
+  two were within 13 bytes of each other; the gap is an artefact of the
+  ceiling, not a stable property.)
+
+  So the rejection rests entirely on the other axis, which is the one that
+  matters: **the reward is not escrowed.** A target that runs out of the asset
+  simply stops paying the bonus while Archon keeps paying the ALGO fee, and
+  keepers cannot rely on a promise Archon is not holding the funds for.
+  Archon's whole proposition is that the escrow is trustless; a tip is not.
 - **Pack the three fields into a dynamic tail** so an ALGO-only upkeep pays 4
   bytes instead of 24. Saves 8,000 µALGO — about a fifth of a cent — per
   upkeep, in exchange for a third encoding shape in two decoders and two

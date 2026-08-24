@@ -23,6 +23,7 @@ from smart_contracts.artifacts.treasury.treasury_client import (
     TreasuryClient,
     TreasuryFactory,
 )
+from smart_contracts.keeper.contract import CATCH_UP
 from smart_contracts.keeper.deploy_config import deploy as deploy_keeper
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -109,6 +110,9 @@ def main(argv: list[str] | None = None) -> None:
             call_data=call_data,
             interval_rounds=UPKEEP_INTERVAL,
             fee_per_execution=FEE,
+            # Every period's deposits must be distributed — skipping loses a week of allocations.
+            policy=CATCH_UP,
+            fee_cap=0,
         )
     ).abi_return
 

@@ -7,7 +7,15 @@ import { ArchonService } from '../core/archon.service';
 import { algos, duration, microAlgos, runwayLabel } from '../core/format';
 import { methodSelector, PULSE_TICK_SIGNATURE } from '../core/keeper-abi';
 import { KeeperService } from '../core/keeper.service';
-import { boxMbr, MIN_INTERVAL_ROUNDS, MIN_UPKEEP_FEE, toHex } from '../core/upkeep';
+import {
+  boxMbr,
+  CATCH_UP,
+  MAX_UPKEEP_FEE,
+  MIN_INTERVAL_ROUNDS,
+  MIN_UPKEEP_FEE,
+  SKIP_AHEAD,
+  toHex,
+} from '../core/upkeep';
 
 const CADENCES = [
   { label: '30 s', seconds: 30 },
@@ -26,7 +34,9 @@ const CADENCES = [
         <h2>Register an upkeep</h2>
         <p class="subtitle">
           Escrow ALGO to have any keeper call your app on a schedule. The call is a NoOp with one
-          app arg — a method selector.
+          app arg — a method selector. A fee ceiling makes a neglected upkeep more attractive, but
+          only competing keepers keep the price below it — leave it at zero unless an upkeep is
+          actually going unserviced.
         </p>
       </header>
 
@@ -56,10 +66,34 @@ const CADENCES = [
           </label>
 
           <label>
+            <span class="eyebrow">Fee ceiling (ALGO)</span>
+            <input type="number" step="any" formControlName="feeCap" min="0" />
+            <small>{{ capHint() }}</small>
+          </label>
+
+          <label>
             <span class="eyebrow">Funding (ALGO)</span>
             <input type="number" step="0.001" formControlName="funding" />
             <small>{{ runway() }}</small>
           </label>
+
+          <fieldset class="policy">
+            <legend class="eyebrow">If a run is missed</legend>
+            <label class="choice">
+              <input type="radio" formControlName="policy" [value]="skipAhead" />
+              <span>
+                <strong>Skip ahead</strong>
+                <small>Run once and move to the next slot. For work where only the latest run matters.</small>
+              </span>
+            </label>
+            <label class="choice">
+              <input type="radio" formControlName="policy" [value]="catchUp" />
+              <span>
+                <strong>Catch up</strong>
+                <small>Replay every missed interval, one fee each. For work where every period counts.</small>
+              </span>
+            </label>
+          </fieldset>
 
           <div class="cost">
             <span class="eyebrow">Up-front cost</span>
@@ -84,7 +118,7 @@ const CADENCES = [
           @if (!keeper.canSign()) {
             <p class="hint">Connect an account to register.</p>
           } @else if (status() !== 'VALID') {
-            <p class="hint">Check the highlighted fields — every value has an on-chain minimum.</p>
+            <p class="hint">{{ problem() }}</p>
           }
         </div>
       </form>
@@ -99,6 +133,12 @@ const CADENCES = [
     label, .cost { display: grid; gap: 0.3rem; align-content: start; }
     small { color: var(--text-faint); font-size: 0.72rem; }
     .cost strong { font-size: 1.1rem; }
+    .policy { grid-column: 1 / -1; display: grid; gap: 0.5rem; margin: 0; padding: 0.7rem 0.85rem; border: 1px solid var(--hairline); }
+    .policy legend { padding: 0 0.35rem; }
+    .choice { display: flex; align-items: start; gap: 0.55rem; }
+    .choice input { margin-top: 0.25rem; }
+    .choice span { display: grid; gap: 0.1rem; }
+    .choice strong { font-size: 0.85rem; font-weight: 600; }
     .cadences { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
     .cadences .eyebrow { margin-right: 0.3rem; }
     .submit { display: flex; align-items: center; gap: 0.85rem; flex-wrap: wrap; }
@@ -114,6 +154,8 @@ export class RegisterForm {
   protected readonly minInterval = MIN_INTERVAL_ROUNDS;
   protected readonly minFeeAlgo = MIN_UPKEEP_FEE / 1e6;
   protected readonly cadences = CADENCES;
+  protected readonly catchUp = Number(CATCH_UP);
+  protected readonly skipAhead = Number(SKIP_AHEAD);
 
   protected readonly form = this.builder.nonNullable.group({
     targetApp: [0, [Validators.required, Validators.min(1)]],
@@ -121,6 +163,26 @@ export class RegisterForm {
     intervalRounds: [MIN_INTERVAL_ROUNDS, [Validators.required, Validators.min(MIN_INTERVAL_ROUNDS)]],
     feePerExecution: [MIN_UPKEEP_FEE / 1e6, [Validators.required, Validators.min(MIN_UPKEEP_FEE / 1e6)]],
     funding: [(MIN_UPKEEP_FEE * 3) / 1e6, [Validators.required, Validators.min(MIN_UPKEEP_FEE / 1e6)]],
+    // The encoding keeps CATCH_UP as zero so nothing registered before means
+    // something new. The form defaults the other way, because "only the
+    // latest run matters" is the commoner shape and the safer mistake.
+    policy: [Number(SKIP_AHEAD), Validators.required],
+    // Zero is off: the fee never moves. Opt in, rather than surprising a
+    // creator with an escrow that drains three times faster than the headline.
+    feeCap: [0, [Validators.required, Validators.min(0), Validators.max(MAX_UPKEEP_FEE / 1e6)]],
+  }, {
+    // Cross-field rules the chain enforces too. Catching them here turns a
+    // rejected transaction into a disabled button.
+    validators: (group) => {
+      const fee = Number(group.get('feePerExecution')?.value ?? 0);
+      const cap = Number(group.get('feeCap')?.value ?? 0);
+      const funding = Number(group.get('funding')?.value ?? 0);
+      if (cap !== 0 && cap < fee) return { capBelowFee: true };
+      // `register` funds against the price the upkeep can actually be
+      // charged, so an upkeep with a ceiling must escrow one run at it.
+      if (funding < Math.max(fee, cap)) return { fundingBelowWorstCase: true };
+      return null;
+    },
   });
 
   /**
@@ -159,10 +221,39 @@ export class RegisterForm {
   });
 
   protected readonly runway = computed(() => {
-    const { funding, feePerExecution, intervalRounds } = this.value();
+    const { funding, feePerExecution, feeCap, intervalRounds } = this.value();
     if (feePerExecution <= 0) return 'set a fee first';
-    const runs = BigInt(Math.floor(funding / feePerExecution));
-    return runwayLabel(runs, BigInt(Math.max(intervalRounds, 0)), this.pace());
+    // Priced at the ceiling when one is set: that is what the escrow can
+    // actually be charged, and the number worth budgeting against.
+    const worstCase = feeCap > feePerExecution ? feeCap : feePerExecution;
+    const runs = BigInt(Math.floor(funding / worstCase));
+    const label = runwayLabel(runs, BigInt(Math.max(intervalRounds, 0)), this.pace());
+    return worstCase === feePerExecution ? label : `${label}, at the ceiling`;
+  });
+
+  /** The specific reason the form will not submit, when there is one. */
+  protected readonly problem = computed(() => {
+    this.status();
+    const errors = this.form.errors;
+    if (errors?.['capBelowFee']) {
+      return 'A fee ceiling must be at least the fee per execution, or zero for no escalation.';
+    }
+    if (errors?.['fundingBelowWorstCase']) {
+      const { feePerExecution, feeCap } = this.value();
+      const worst = Math.max(feePerExecution, feeCap);
+      return `Funding must cover one execution at the price this upkeep can be charged — ${worst} ALGO.`;
+    }
+    return 'Check the highlighted fields — every value has an on-chain minimum.';
+  });
+
+  protected readonly capHint = computed(() => {
+    const { feeCap, feePerExecution } = this.value();
+    if (feeCap === 0) return 'off — the fee never changes';
+    if (feeCap < feePerExecution) return 'must be at least the fee, or zero';
+    const multiple = (feeCap / feePerExecution).toFixed(1);
+    // Not a worst case: a keeper with no competition is better off waiting for
+    // the ceiling, so a creator should expect to pay it rather than hope not to.
+    return `rises to ${multiple}× over one missed interval — expect to pay it`;
   });
 
   private readonly mbr = computed(() => {
@@ -194,13 +285,16 @@ export class RegisterForm {
   protected submit(): void {
     const callData = this.callData();
     if (!this.canSubmit() || callData === null) return;
-    const { targetApp, intervalRounds, feePerExecution, funding } = this.form.getRawValue();
+    const { targetApp, intervalRounds, feePerExecution, funding, policy, feeCap } =
+      this.form.getRawValue();
     void this.keeper.register({
       targetApp,
       callData,
       intervalRounds,
       feePerExecution: Math.round(feePerExecution * 1e6),
       funding: Math.round(funding * 1e6),
+      policy,
+      feeCap: Math.round(feeCap * 1e6),
     });
   }
 }

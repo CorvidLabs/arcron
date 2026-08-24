@@ -27,6 +27,7 @@ import base64
 import json
 import logging
 import pathlib
+import re
 import subprocess
 import tempfile
 
@@ -51,6 +52,8 @@ INTERVAL = 10
 EXECUTE_FEE = 10_000
 PAGE_BYTES = 2_048
 BOX_NAME_BYTES = 9
+# The Upkeep struct's ARC-4 head, as the contract stands today.
+HEAD_BYTES = 106
 
 
 # ---------------------------------------------------------------- variant
@@ -165,9 +168,14 @@ def _variant_source(source: str | None = None) -> str:
         "from algopy import (\n    ARC4Contract,\n    Application,\n",
         "from algopy import (\n    ARC4Contract,\n    Application,\n    Asset,\n",
     )
+    # Three uint64 fields is 24 more bytes of head, whatever the contract's
+    # fixed component happens to be today.
+    fixed = re.search(r"BOX_MBR_FIXED = 2_500 \+ 400 \* (\d+)", source)
+    if not fixed:
+        raise SystemExit("keeper contract has moved on; cannot find BOX_MBR_FIXED")
     swap(
-        "BOX_MBR_FIXED = 2_500 + 400 * 93",
-        "BOX_MBR_FIXED = 2_500 + 400 * 117\n"
+        fixed.group(0),
+        f"BOX_MBR_FIXED = 2_500 + 400 * {int(fixed.group(1)) + 24}\n"
         "# What an app account's minimum balance rises by per asset it can hold.\n"
         "ASSET_OPT_IN_MBR = 100_000",
     )
@@ -205,7 +213,7 @@ def _variant_source(source: str | None = None) -> str:
 # The register signature and the struct construction are both extended by more
 # than one patch, so both anchor on something the other patches leave alone.
 REG_ANCHOR = '''    ) -> UInt64:
-        """Register an upkeep; returns its id."""'''
+        """Register an upkeep'''
 
 
 # ------------------------------------------- alternative: name the keeper
@@ -216,7 +224,7 @@ REG_ANCHOR = '''    ) -> UInt64:
 # because it is the one design that needs Archon to hold no asset at all.
 
 
-def _keeper_arg_source(max_args: int = 4) -> str:
+def _keeper_arg_source(max_args: int = 3) -> str:
     """The multi-arg keeper, optionally naming the keeper in the call."""
     from scripts.spike_multiarg import _fan_out, _variant_source as multi_arg_source
 
@@ -263,75 +271,6 @@ def _keeper_arg_source(max_args: int = 4) -> str:
     swap("    UInt64,\n    arc4,", "    Bytes,\n    UInt64,\n    arc4,")
     return source
 
-
-# --------------------------------------------------- indicative #7 + #14
-
-# Not an implementation of #7/#14 — those are designed in
-# `docs/design/scheduling-and-fees.md` and not written yet. This is a faithful
-# sketch of that design's shape (three fields, a catch-up branch, linear
-# escalation measured from the last service, clamped to a cap), used only to
-# find out whether the whole 1.0 batch still fits in one program page. Treat
-# its size as indicative and re-measure once the real thing exists.
-
-SCHEDULING_FIELDS = """    policy: arc4.UInt64
-    fee_cap: arc4.UInt64
-    last_serviced_round: arc4.UInt64
-"""
-
-SCHEDULING_EXECUTE = """        elapsed: UInt64 = Global.round - upkeep.last_serviced_round.as_uint64()
-        interval: UInt64 = upkeep.interval_rounds.as_uint64()
-        intervals_late: UInt64 = elapsed // interval
-        if intervals_late > 0:
-            intervals_late = intervals_late - 1
-        escalated: UInt64 = fee + fee * intervals_late
-        cap: UInt64 = upkeep.fee_cap.as_uint64()
-        if escalated > cap:
-            escalated = cap
-        fee = escalated
-        assert Global.round >= upkeep.next_execution_round.as_uint64(), "Not due"
-        assert upkeep.balance.as_uint64() >= fee, "Insufficient funding"
-
-        next_due: UInt64 = upkeep.next_execution_round.as_uint64() + interval
-        if upkeep.policy.as_uint64() == 1:
-            next_due = Global.round + interval
-"""
-
-
-def _indicative_scheduling_source(source: str | None = None) -> str:
-    """The keeper with #7 and #14 sketched in, for sizing only."""
-    source = KEEPER_SOURCE.read_text() if source is None else source
-
-    def swap(old: str, new: str) -> None:
-        nonlocal source
-        if old not in source:
-            raise SystemExit(f"keeper contract has moved on; cannot patch:\n{old!r}")
-        source = source.replace(old, new, 1)
-
-    swap("    times_executed: arc4.UInt64\n", "    times_executed: arc4.UInt64\n" + SCHEDULING_FIELDS)
-    swap(REG_ANCHOR, "        policy: UInt64,\n        fee_cap: UInt64,\n" + REG_ANCHOR)
-    swap(
-        "            times_executed=arc4.UInt64(0),\n",
-        "            times_executed=arc4.UInt64(0),\n"
-        "            policy=arc4.UInt64(policy),\n"
-        "            fee_cap=arc4.UInt64(fee_cap),\n"
-        "            last_serviced_round=arc4.UInt64(Global.round),\n",
-    )
-    swap(
-        """        fee: UInt64 = upkeep.fee_per_execution.as_uint64()
-        assert Global.round >= upkeep.next_execution_round.as_uint64(), "Not due"
-        assert upkeep.balance.as_uint64() >= fee, "Insufficient funding"
-
-        next_due: UInt64 = (
-            upkeep.next_execution_round.as_uint64() + upkeep.interval_rounds.as_uint64()
-        )
-""",
-        "        fee: UInt64 = upkeep.fee_per_execution.as_uint64()\n" + SCHEDULING_EXECUTE,
-    )
-    swap(
-        "            times_executed=arc4.UInt64(times),\n",
-        "            times_executed=arc4.UInt64(times),\n            last_serviced_round=arc4.UInt64(Global.round),\n",
-    )
-    return source
 
 
 def _compile(source: str, stem: str, out_root: pathlib.Path) -> pathlib.Path:
@@ -435,14 +374,18 @@ def part_a(algorand, deployer, keeper, probe, pulse) -> None:
 
     upkeep_id = keeper.app_client.send.call(
         algokit_utils.AppClientMethodCallParams(
-            method="register(pay,pay,uint64,byte[],uint64,uint64)uint64",
+            method=(
+                "register(pay,pay,uint64,byte[],uint64,uint64,uint64,uint64)uint64"
+            ),
             args=[
-                payment(2_500 + 400 * (BOX_NAME_BYTES + 82 + 2 + len(selector))),
+                payment(2_500 + 400 * (BOX_NAME_BYTES + HEAD_BYTES + 2 + len(selector))),
                 payment(FEE * 3),
                 probe.app_id,
                 list(selector),
                 INTERVAL,
                 FEE,
+                0,  # CATCH_UP
+                0,  # no escalation
             ],
         )
     ).abi_return
@@ -552,14 +495,21 @@ def part_c(algorand, deployer, probe, out_root: pathlib.Path) -> None:
     selector = abi.Method.from_signature("report_budget()uint64").get_selector()
     upkeep_id = client.send.call(
         algokit_utils.AppClientMethodCallParams(
-            method="register(pay,pay,uint64,byte[],uint64,uint64,uint64,uint64)uint64",
+            method=(
+                "register(pay,pay,uint64,byte[],uint64,uint64,uint64,uint64,"
+                "uint64,uint64)uint64"
+            ),
             args=[
-                payment(2_500 + 400 * (BOX_NAME_BYTES + 106 + 2 + len(selector))),
+                payment(
+                    2_500 + 400 * (BOX_NAME_BYTES + HEAD_BYTES + 24 + 2 + len(selector))
+                ),
                 payment(FEE * 3),
                 probe.app_id,
                 list(selector),
                 INTERVAL,
                 FEE,
+                0,  # CATCH_UP
+                0,  # no escalation
                 asset_id,
                 ASSET_FEE,
             ],
@@ -624,36 +574,20 @@ def part_c(algorand, deployer, probe, out_root: pathlib.Path) -> None:
 
 
 def part_d(out_root: pathlib.Path) -> None:
-    """The number the batching decision needs: #8 and #9 in one contract."""
+    """The number the batching decision needs: the whole 1.0 batch, compiled."""
     from scripts.spike_multiarg import _variant_source as multi_arg_source
 
     today = _approval_bytes(KEEPER_SPEC)
-    rows = [("today", today)]
-    rows.append(("#9 alone (ASA bonus)", _approval_bytes(_compile(_variant_source(), "d_asa", out_root))))
+    rows = [("the contract today (#7 + #14)", today)]
+    rows.append(("+ #9 (ASA bonus)", _approval_bytes(_compile(_variant_source(), "d_asa", out_root))))
     rows.append(
-        ("#8 alone (4 arguments)", _approval_bytes(_compile(multi_arg_source(4), "d_args", out_root)))
+        ("+ #8 (3 arguments)", _approval_bytes(_compile(multi_arg_source(3), "d_args", out_root)))
     )
     rows.append(
         (
-            "#8 + #9 together",
-            _approval_bytes(_compile(multi_arg_source(4, source=_variant_source()), "d_both", out_root)),
-        )
-    )
-    rows.append(
-        (
-            "#7 + #14 alone (indicative)",
-            _approval_bytes(_compile(_indicative_scheduling_source(), "d_sched", out_root)),
-        )
-    )
-    rows.append(
-        (
-            "the whole 1.0 batch (indicative)",
+            "the whole 1.0 batch (ceiling 3)",
             _approval_bytes(
-                _compile(
-                    multi_arg_source(4, source=_variant_source(_indicative_scheduling_source())),
-                    "d_all",
-                    out_root,
-                )
+                _compile(multi_arg_source(3, source=_variant_source()), "d_all", out_root)
             ),
         )
     )
@@ -664,7 +598,24 @@ def part_d(out_root: pathlib.Path) -> None:
     for label, size in rows:
         pages = -(-size // PAGE_BYTES)
         logger.info(f"{label:<34} {size:>9} {pages:>6} {pages * PAGE_BYTES - size:>14}")
-    alternative = _approval_bytes(_compile(_keeper_arg_source(4), "d_named", out_root))
+    # With everything else in, the fan-out ceiling is the only dial left, so
+    # price the whole batch at each setting rather than the fan-out alone.
+    logger.info("")
+    logger.info("  the whole batch, by fan-out ceiling")
+    for ceiling in (2, 3, 4, 6):
+        size = _approval_bytes(
+            _compile(
+                multi_arg_source(ceiling, source=_variant_source()),
+                f"d_all_{ceiling}",
+                out_root,
+            )
+        )
+        pages = -(-size // PAGE_BYTES)
+        headroom = pages * PAGE_BYTES - size
+        fits = "" if pages == 1 else "  ← second page"
+        logger.info(f"    ceiling {ceiling}: {size:>5} B, {headroom:>5} spare{fits}")
+
+    alternative = _approval_bytes(_compile(_keeper_arg_source(3), "d_named", out_root))
     pages = -(-alternative // PAGE_BYTES)
     logger.info("")
     logger.info(
@@ -673,9 +624,9 @@ def part_d(out_root: pathlib.Path) -> None:
     )
     logger.info("")
     logger.info(
-        "  #7 and #14 are designed but not implemented; their rows are a faithful"
+        "  Every row is compiled, not estimated: #7 and #14 are in the contract,"
     )
-    logger.info("  sketch of that design's shape, and must be re-measured for real.")
+    logger.info("  and #8 and #9 are patched onto it and built by puyapy.")
 
 
 def main(argv: list[str] | None = None) -> None:

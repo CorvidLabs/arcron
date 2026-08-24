@@ -10,7 +10,7 @@
 import algosdk from 'algosdk';
 
 export const KEEPER_METHOD_SIGNATURES = {
-  register: 'register(pay,pay,uint64,byte[],uint64,uint64)uint64',
+  register: 'register(pay,pay,uint64,byte[],uint64,uint64,uint64,uint64)uint64',
   topUp: 'top_up(uint64,pay)uint64',
   cancel: 'cancel(uint64)uint64',
   execute: 'execute(uint64)uint64',

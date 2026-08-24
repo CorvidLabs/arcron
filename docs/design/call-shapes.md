@@ -1,9 +1,9 @@
 # Design: call shapes — multi-argument and foreign arrays
 
-**Status:** proposed, for review
+**Status:** proposed, for review — fan-out ceiling **decided: 3**
 **Issue:** [#8](https://github.com/CorvidLabs/archon/issues/8)
 **Depends on:** [#24](https://github.com/CorvidLabs/archon/issues/24) (measured), and shares a struct with [#7 and #14](scheduling-and-fees.md)
-**Reproduce every number here:** `poetry run python -m scripts.spike_multiarg --network localnet`
+**Reproduce every number here:** `poetry run python -m scripts.spike_multiarg --network localnet`, and the batch table with `poetry run python -m scripts.spike_asa_fee --network localnet`
 
 Archon executes exactly one call shape: a NoOp app call carrying a single app
 arg. An ARC-4 method with arguments of its own needs the selector *and* each
@@ -73,34 +73,37 @@ Part A compiles the real keeper at each ceiling:
 
 | Fan-out ceiling | Approval program | Pages | vs today |
 |---|---|---|---|
-| today (1 blob) | 729 B | 1 | — |
-| 1 | 818 B | 1 | +89 |
-| 2 | 921 B | 1 | +192 |
-| 3 | 1,053 B | 1 | +324 |
-| **4** | **1,221 B** | **1** | **+492** |
-| 6 | 1,664 B | 1 | +935 |
-| 8 | 2,246 B | **2** | +1,517 |
-| 16 (`MaxAppArgs`) | 6,014 B | 3 | +5,285 |
+| today (1 blob) | 966 B | 1 | — |
+| 1 | 1,052 B | 1 | +86 |
+| 2 | 1,149 B | 1 | +183 |
+| **3** | **1,285 B** | **1** | **+319** |
+| 4 | 1,458 B | 1 | +492 |
+| 6 | 1,907 B | 1 | +941 |
+| 8 | 2,500 B | **2** | +1,534 |
+| 16 (`MaxAppArgs`) | 6,295 B | 4 | +5,329 |
 
 A TEAL program page is 2,048 bytes, and each extra page costs the deployer
 another 100,000 µALGO of app minimum balance, permanently. **The ceiling that
 matters is 6-to-8, not the protocol's 16** — program size binds long before
-`MaxAppArgs` does.
+`MaxAppArgs` does. And with the rest of the batch stacked on, it binds sooner
+still: §2 prices the whole thing.
 
 Part C prices the runtime, on LocalNet, against the same probe:
 
 | Case | Args | Box bytes | Box MBR | Opcode budget handed to the target |
 |---|---|---|---|---|
-| today's keeper, zero-arg hook | 1 | 97 | 41,300 | **1,250** |
-| multi-arg keeper, zero-arg hook | 1 | 101 | 42,900 | **1,216** |
-| multi-arg keeper, `absorb(uint64,string)` | 3 | 125 | 52,500 | **1,139** |
+| today's keeper, zero-arg hook | 1 | 121 | 50,900 | **1,210** |
+| multi-arg keeper, zero-arg hook | 1 | 125 | 52,500 | **1,179** |
+| multi-arg keeper, `absorb(uint64,string)` | 3 | 149 | 62,100 | **1,104** |
 
-Decoding `byte[][]` costs the target **34 opcodes** for the array machinery
-and about **38 more per additional argument** — under 9% of the pool for a
-three-argument call, against the 1,250 measured in
-[#26](https://github.com/CorvidLabs/archon/issues/26). The encoding costs
-**4 bytes per argument** (a 2-byte offset and a 2-byte length), which is
-1,600 µALGO of box MBR each.
+Decoding `byte[][]` costs the target **31 opcodes** for the array machinery
+and about **37 more per additional argument** — under 9% of the pool for a
+three-argument call. The encoding costs **4 bytes per argument** (a 2-byte
+offset and a 2-byte length), which is 1,600 µALGO of box MBR each.
+
+(The 1,210 baseline is itself down from the 1,250 measured in
+[#26](https://github.com/CorvidLabs/archon/issues/26): #7 and #14's escalation
+arithmetic costs the target about 40 opcodes.)
 
 And `absorb` received `number=7777`, `text='archon'` — a hook with real
 arguments, executed by a keeper, which today's contract cannot reach at all.
@@ -113,39 +116,45 @@ One field, same slot, no net field-count change. Element 0 is whatever app
 arg 0 should be — the ARC-4 selector for an ARC-4 target — and Archon stays
 agnostic about what the bytes mean, exactly as it is today.
 
-### 2. A fan-out ceiling of 4, fixed last
+### 2. A fan-out ceiling of 3 — decided
 
-Four covers the selector plus three ABI arguments. It is also more general
-than it looks: a target you control can accept **any** argument list by
-declaring it as a single ARC-4 struct or tuple argument — the same trick ARC-4
-itself uses at arg 15 — so arity 2 is already universal for a cooperating
-target. The ceiling only buys reach into targets you do *not* control.
+Three covers the selector plus two ABI arguments. It is also more general than
+it looks: a target you control can accept **any** argument list by declaring it
+as a single ARC-4 struct or tuple argument — the same trick ARC-4 itself uses
+at arg 15 — so arity 2 is already universal for a cooperating target. The
+ceiling only buys reach into targets you do *not* control.
 
-Four leaves 827 bytes of page headroom for #7, #14 and #9, which also add
-code — and that headroom turns out to be the binding constraint. Stacking the
-whole 1.0 batch (`poetry run python -m scripts.spike_asa_fee`) measures:
+Page headroom is the binding constraint, and now that #7 and #14 are
+implemented the batch can be compiled rather than estimated
+(`poetry run python -m scripts.spike_asa_fee`):
 
 | Contract | Approval | Pages | Headroom |
 |---|---|---|---|
-| today | 729 B | 1 | 1,319 |
-| #9 alone | 1,218 B | 1 | 830 |
-| #8 alone, ceiling 4 | 1,221 B | 1 | 827 |
-| #8 + #9 | 1,721 B | 1 | 327 |
-| #7 + #14 alone *(indicative)* | 887 B | 1 | 1,161 |
-| **the whole batch** *(indicative)* | **1,907 B** | **1** | **141** |
+| before the batch | 729 B | 1 | 1,319 |
+| the contract today, with #7 + #14 | 966 B | 1 | 1,082 |
+| + #9 (ASA bonus) | 1,483 B | 1 | 565 |
+| + #8 at ceiling 3 | 1,285 B | 1 | 763 |
+| **the whole 1.0 batch, ceiling 3** | **1,814 B** | **1** | **234** |
 
-At a ceiling of 4 the batch fits, with 141 bytes to spare. At 6 it does not:
-the fan-out alone costs 443 bytes more, which puts the batch at roughly 2,350
-and onto a second page. **The ceiling is not a preference — it is what keeps
-1.0 on one page.**
+With everything else fixed, the ceiling is the only dial left, so it is the
+one parameter the whole batch's fit depends on:
 
-(#7 and #14 are designed but not written; their row is a faithful sketch of
-that design's shape and must be re-measured against the real thing.)
+| Fan-out ceiling | Whole batch | Spare |
+|---|---|---|
+| 2 | 1,675 B | 373 |
+| **3** | **1,814 B** | **234** |
+| 4 | 1,990 B | 58 |
+| 6 | 2,453 B | **second page** |
 
-Since the ceiling is a single integer in a repetitive `if`/`elif` chain, it is
-still the cheapest parameter to re-tune: **fix it last, from measured size
-with the rest of the batch in**, and do not let it push the program to a
-second page.
+Four was the earlier recommendation, made against an estimate of #7 and #14
+that turned out 79 bytes light. Compiled, it leaves **58 bytes** — one added
+assertion away from a second program page and another 100,000 µALGO of app
+minimum balance, forever, on a contract that can never be patched.
+
+**Three is the setting.** It covers a selector plus two ABI arguments, it
+covers *any* arity for a target that packs its arguments into one struct, and
+234 bytes is enough room to fix something during implementation without
+re-opening the decision.
 
 ### 3. Foreign arrays stay out of the struct; resource discovery is a convention
 
@@ -201,25 +210,26 @@ this is stated explicitly and asserted from the box rather than from the
 formula.
 
 The 2-byte length prefix that `byte[]` carries in the box tail moves *inside*
-the array encoding, so the fixed component drops from 93 to **91**:
+the array encoding, so the fixed component drops by two — from the 117 the
+contract uses today to **115**:
 
 ```
 tail  = 2 + 4k + Σ len(arg_i)        # count, then an offset and a length each
-box   = 9 (name) + 82 (head) + tail
+box   = 9 (name) + 106 (head) + tail
 MBR   = 2_500 + 400 × box
-      = 2_500 + 400 × (91 + len(encoded call_args))
+      = 2_500 + 400 × (115 + len(encoded call_args))
 ```
 
-Verified against the real boxes in Part C: 101 bytes and 42,900 µALGO for a
-bare selector, 125 bytes and 52,500 µALGO for `absorb(uint64,string)`.
+Verified against the real boxes in Part C: 125 bytes and 52,500 µALGO for a
+bare selector, 149 bytes and 62,100 µALGO for `absorb(uint64,string)`.
 
 ## Cost
 
-Against today, for a one-argument upkeep: **+1,600 µALGO** of box MBR (+4%),
-**34 opcodes** off the target's budget, **+492 bytes** of program. Against
-today *with #7 and #14 also landed*, a one-argument upkeep costs 52,500 µALGO
-— up from 41,300, or **+27%** on the entry price of an upkeep. It is a
-deposit, refunded on cancel, not a fee.
+Against the contract as it stands, for a one-argument upkeep: **+1,600 µALGO**
+of box MBR (+3%), **31 opcodes** off the target's budget, **+319 bytes** of
+program. A one-argument upkeep costs 52,500 µALGO to register, up from the
+41,300 of the pre-batch contract — **+27%** on the entry price of an upkeep,
+of which #7 and #14 are most. It is a deposit, refunded on cancel, not a fee.
 
 Nothing here needs a second program page or a second box.
 
@@ -255,9 +265,10 @@ Beyond the struct:
    branch. Against: `register` currently asserts non-empty call data, and a
    bare call is easy to register by mistake. Recommendation: allow it, and
    have the console require an explicit choice rather than defaulting to it.
-2. **Is 4 the right ceiling?** Argued above, but it is genuinely a sizing
-   decision that should be re-measured once #7, #14 and #9 are written. The
-   failure mode is quiet: a second page costs 100,000 µALGO forever.
+2. ~~**Is 3 the right ceiling?**~~ **Decided: 3.** #7 and #14 are written and
+   measured, so this was no longer an estimate — the whole batch is 1,814
+   bytes at 3 and 1,990 at 4, against a 2,048-byte page. The failure mode is
+   quiet, so the batch takes the setting with room in it.
 3. **Should `resources()` be part of 1.0 at all, or just documented?** The
    keeper bot change is small; the argument for deferring is that no demo
    needs it yet, and a convention with no user is a convention that gets the
@@ -271,12 +282,13 @@ Beyond the struct:
 
 ## Recommendation
 
-Take the multi-argument half; leave the foreign-array half as a documented
-convention. That keeps 1.0's only struct change here to one field replacing
-one field, and it removes the reason #8 looked like the expensive item in the
-batch.
+Take the multi-argument half at a **fan-out ceiling of 3**; leave the
+foreign-array half as a documented convention. That keeps 1.0's only struct
+change here to one field replacing one field, it removes the reason #8 looked
+like the expensive item in the batch, and it leaves the batch 234 bytes inside
+one program page.
 
-Implement with #7 and #14 in a single deployment, in this order: contract and
+#7 and #14 are already implemented, so the remaining order is: contract and
 spec, then both decoders and both pinned vectors in the same commit, then the
-console form, then the e2e case. Deploy last, and only after `fledge lanes run
-local` is green on all of it.
+console form, then the e2e case. Deploy once, with #9 if it is agreed, and
+only after `fledge lanes run local` is green on all of it.
