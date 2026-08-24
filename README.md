@@ -141,6 +141,6 @@ fails if code drifts from the documented public API.
 ## Roadmap
 
 - [x] Off-chain keeper bot (watches rounds, executes due upkeeps) — `scripts/keeper_bot.py`
-- [ ] ASA-denominated upkeep fees (e.g. CORVID)
+- [ ] ASA-denominated upkeep fees (CORVID — mainnet ASA [`3225439167`](https://explorer.perawallet.app/asset/3225439167))
 - [x] ~~Cancel leftover demo upkeeps 0–3 on TestNet~~ — done, 0.08 ALGO escrow reclaimed
 - [ ] Multi-arg / foreign-array call shapes, if real use cases demand them

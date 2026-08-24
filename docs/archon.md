@@ -120,7 +120,10 @@ fledge lanes run local    # ci + LocalNet e2e smoke
 
 ## Known limitations (v1)
 
-- ALGO escrow only (no ASA-denominated fees yet).
+- ALGO escrow only (no ASA-denominated fees yet). First candidate: CORVID,
+  CorvidLabs' ASA — mainnet asset
+  [`3225439167`](https://explorer.perawallet.app/asset/3225439167) (6
+  decimals; the LocalNet mock in `corvid_vault/deploy_config.py` matches).
 - Single-arg NoOp call shape; no multi-arg or foreign-array calls.
 - Box MBR is not refunded to the creator on cancel (stays in the app account).
 - No catch-up clamp: long-missed upkeeps fire once per round until caught up.
