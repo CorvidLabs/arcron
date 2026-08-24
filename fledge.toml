@@ -12,6 +12,7 @@ web-build = "cd web && bun run ng build"
 web-serve = "cd web && bun run ng serve"
 # Require LocalNet running (algokit localnet start):
 smoke-keeper = "poetry run python -m scripts.keeper_e2e --network localnet"
+smoke-embargo = "poetry run python -m scripts.embargo_demo --network localnet"
 soak = "poetry run python -m scripts.keeper_soak --network localnet --minutes 3"
 
 [lanes.ci]
@@ -20,7 +21,7 @@ steps = ["build", "test", "spec", "web-install", "web-test", "web-build"]
 
 [lanes.local]
 description = "CI plus the LocalNet end-to-end test (needs algokit localnet start)"
-steps = ["build", "test", "spec", "web-install", "web-test", "web-build", "smoke-keeper"]
+steps = ["build", "test", "spec", "web-install", "web-test", "web-build", "smoke-keeper", "smoke-embargo"]
 
 [lanes.endurance]
 description = "The local lane plus a soak: many consecutive executions, no drift"
