@@ -7,16 +7,19 @@ full picture — keep all three consistent when conventions change.
 
 Archon — Algorand smart contracts (Algorand Python / Puya + AlgoKit). Main
 project: `smart_contracts/keeper/` — a permissionless keeper network, live on
-TestNet (app 769772891). `pulse/` is its demo target (app 769772906).
+TestNet (app 769772891 — deployed before the box-MBR fix; a redeploy is
+pending). `pulse/` is its demo target (app 769772906).
 `corvid_vault/` is a parked experiment — don't extend it without being asked.
 
 ## Commands
 
 - Everything: `fledge lanes run ci` (build + unit tests + spec check — must stay green)
+- On a real chain: `fledge lanes run local` (ci + keeper e2e + vault smoke; needs `algokit localnet start`)
 - Build: `poetry run python -m smart_contracts build` (always rebuild after contract changes)
 - Test: `poetry run pytest tests/ -q`
 - Specs: `specsync check --strict`
-- Keeper bot: `poetry run python -m scripts.keeper_bot [--once]`
+- End-to-end: `poetry run python -m scripts.keeper_e2e --network localnet|testnet`
+- Keeper bot: `poetry run python -m scripts.keeper_bot [--once] [--network N] [--app-id N]`
 
 ## Rules
 
@@ -25,8 +28,13 @@ TestNet (app 769772891). `pulse/` is its demo target (app 769772906).
 - Every contract has a strict spec-sync spec in `specs/<name>/`; update the
   spec's Public API tables, requirements, testing.md and Change Log whenever
   the contract surface changes.
-- Tests use `algorand-python-testing` mocks: inner app calls are recorded,
-  not executed (prove those on TestNet/LocalNet); `UInt64()` takes plain `int` only.
+- Tests use `algorand-python-testing` mocks: inner app calls are recorded, not
+  executed, and minimum balances are not enforced (prove both in
+  `scripts/keeper_e2e.py` on LocalNet); `UInt64()` takes plain `int` only.
+- Scripts choose their network with `--network` / `ARCHON_NETWORK`
+  (`scripts/network.py`); it loads `.env.<network>` and verifies the node's
+  genesis id. LocalNet is dev mode — rounds only advance when you send
+  transactions (`network.wait_for_round`).
 - On TestNet: disable the suggested-params cache
   (`set_suggested_params_cache_timeout(0)`) and fund the app account's base
   MBR (0.1 ALGO) before it can escrow or hold boxes.

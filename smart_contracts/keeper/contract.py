@@ -22,6 +22,12 @@ MIN_INTERVAL_ROUNDS = 10
 MIN_UPKEEP_FEE = 4_000
 # Maximum size of the stored call data (first app arg), in bytes.
 MAX_CALL_DATA = 1_024
+# Box minimum balance, less the call data: 2,500 µALGO per box plus 400 per
+# byte of name and value. The name is 9 bytes (b"u" + itob(id)) and an encoded
+# Upkeep is 84 bytes plus the call data — an 82-byte head, then a 2-byte
+# length prefix on the dynamic call_data. A box therefore costs
+# BOX_MBR_FIXED + 400 * len(call_data) µALGO.
+BOX_MBR_FIXED = 2_500 + 400 * 93
 
 
 class Upkeep(arc4.Struct):
@@ -63,8 +69,7 @@ class Keeper(ARC4Contract):
         size = call_data.native.length
         assert UInt64(0) < size <= MAX_CALL_DATA, "Call data size out of bounds"
 
-        # Box MBR: 9-byte name plus the encoded struct (32 + 6*8 + 2 + size).
-        required_mbr = 2_500 + 400 * (91 + size)
+        required_mbr = BOX_MBR_FIXED + 400 * size
         assert (
             mbr_payment.receiver == Global.current_application_address
         ), "MBR payment must fund the app account"
@@ -111,17 +116,27 @@ class Keeper(ARC4Contract):
         return new_balance
 
     @abimethod()
-    def cancel(self, upkeep_id: UInt64) -> None:
-        """Cancel an upkeep (creator only); refunds the remaining escrow."""
+    def cancel(self, upkeep_id: UInt64) -> UInt64:
+        """Cancel an upkeep (creator only); refunds escrow and box MBR.
+
+        Deleting the box releases its minimum balance, so the creator gets
+        back the remaining escrow *and* the MBR it paid at registration —
+        nothing is stranded in the app account. Returns the refunded amount.
+        """
         box = Box(Upkeep, key=op.concat(b"u", op.itob(upkeep_id)))
         assert box, "Upkeep not found"
         upkeep = box.value.copy()
         assert upkeep.creator.native == Txn.sender, "Only the creator can cancel"
 
-        refund = upkeep.balance.native
+        # The box MBR is released by the delete below, so it is refundable.
+        refund: UInt64 = (
+            upkeep.balance.native
+            + BOX_MBR_FIXED
+            + 400 * upkeep.call_data.native.length
+        )
         del box.value
-        if refund > 0:
-            itxn.Payment(receiver=Txn.sender, amount=refund).submit()
+        itxn.Payment(receiver=Txn.sender, amount=refund).submit()
+        return refund
 
     @abimethod()
     def execute(self, upkeep_id: UInt64) -> UInt64:
