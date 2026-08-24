@@ -358,6 +358,53 @@ One case needs no oracle trust at all: a **staleness check** that compares the
 feed's last-updated round against the current round and flags the feed if it
 has gone quiet. Comparing timestamps cannot be lied to.
 
+### What an Archon-triggered call can reach
+
+`execute` submits its inner app call with no foreign arrays, which was recorded
+as a limitation without anyone establishing what it forbids. Measured on
+LocalNet (algod 5.0.0 stable, `dockernet-v1`) with a probe app that reaches for
+an account, an asset and a third app that no argument names —
+`smart_contracts/resource_probe/` and `scripts/spike_resources.py`, so the
+answer stays reproducible:
+
+| Resource pattern | Bare `execute` | Keeper supplies references |
+|------------------|----------------|----------------------------|
+| Inner payment to an unreferenced account | fails — `unavailable Account …` | **works** |
+| Inner asset transfer to an unreferenced account | fails — `unavailable Account …` | **works** |
+| Read an unreferenced account's ALGO balance | fails — `unavailable Account …` | **works** |
+| Read an unreferenced account's asset holding | fails — `unavailable Account …` | **works** |
+| Inner call to an unreferenced app | fails — `unavailable App …` | **works** |
+
+**Availability flows down from the keeper's transaction.** Resource references
+attached to the keeper's own `execute` call reach Archon's inner call *and* the
+target's own inner transactions, two levels down. So a keeper can supply
+*availability* without supplying *data* — and the trust model does not move,
+because `call_data` is still fixed at registration and the keeper still cannot
+change what is called.
+
+That makes far more buildable today than "no foreign arrays" suggests: a target
+can pay an arbitrary address, move an ASA, read a balance or call another app,
+provided some keeper attaches the reference.
+
+**The budget is 8 references per transaction.** Archon spends two of them — the
+upkeep's box and the target app — leaving **six** for the keeper to fill with
+accounts, assets or apps in any mix. (Six accounts were accepted at this
+protocol version, so the old four-account cap no longer binds separately.)
+
+**What is still missing is discovery, not capability.** Nothing on-chain tells
+a keeper which resources an upkeep needs; the reference list is not part of the
+`Upkeep` struct, so a keeper would have to know out of band. Any design that
+wants keeper-supplied resources needs somewhere for the creator to declare
+them — which is a smaller and different problem than changing the call shape.
+See [issue #8](https://github.com/CorvidLabs/archon/issues/8).
+
+**When references are not enough** — more than six resources, or a set that is
+not knowable at registration — use the pull pattern instead: have the upkeep
+record what is owed in the target's own state, and let each counterparty claim
+it in a transaction they send themselves, supplying their own resources. That
+also sidesteps the failure mode where one unreachable account breaks the whole
+execution for everybody.
+
 ## Building on Archon
 
 The v1 hook shape is a NoOp ABI method taking no arguments of its own, called
