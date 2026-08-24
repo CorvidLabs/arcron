@@ -42,3 +42,6 @@ __screenshots__/
 # System files
 .DS_Store
 Thumbs.db
+
+# Copied in from node_modules for accessibility audits
+public/axe.min.js

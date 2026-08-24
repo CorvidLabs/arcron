@@ -9,6 +9,7 @@ a scheduled contract call, any keeper executes it for the fee. By
 |----------|-----------|--------|
 | [`smart_contracts/keeper`](smart_contracts/keeper/contract.py) | The Archon network: upkeep scheduling with ALGO escrow and keeper rewards | **Live on TestNet** — app [`769772891`](https://testnet.explorer.perawallet.app/application/769772891)¹ |
 | [`smart_contracts/pulse`](smart_contracts/pulse/contract.py) | Demo upkeep target (heartbeat counter) | Live on TestNet — app `769772906` |
+| [`web`](web/) | The console: registry dashboard + keeper controls | Runs against LocalNet and TestNet |
 
 ¹ The deployed app predates the box-MBR fix of 2026-08-24 (it undercharges MBR
 by 800 µALGO per box and does not refund box MBR on cancel). The contract in
@@ -57,8 +58,9 @@ Poetry, Docker (LocalNet only).
 ```bash
 poetry install
 
-fledge lanes run ci      # build all contracts → 15 unit tests → spec-sync check
-fledge lanes run local   # ci + the LocalNet end-to-end tests
+fledge lanes run ci         # contracts + console: build, 15 + 45 tests, spec check
+fledge lanes run local      # ci + the LocalNet end-to-end test
+fledge lanes run endurance  # local + a soak: many consecutive executions, no drift
 ```
 
 `fledge lanes run local` needs LocalNet up (`algokit localnet start`) and no
@@ -72,6 +74,21 @@ poetry run pytest tests/ -q                  # unit tests (algorand-python-testi
 specsync check --strict                      # spec drift check
 poetry run python -m scripts.keeper_e2e --network localnet   # full e2e
 ```
+
+### The console
+
+```bash
+cd web && bun install && bun run ng serve      # http://localhost:4200
+```
+
+A dashboard of the upkeep registry — read straight from algod, so it needs no
+wallet and no indexer — plus the keeper controls: register, top up, execute a
+due upkeep, cancel your own. It opens on LocalNet, where signing goes through
+KMD so nothing has to be pasted into a browser; TestNet is read-only until a
+wallet adapter is wired. Amounts read in ALGO and cadences read as time
+("every 1,286 rounds · ~1 h"). Built on the
+[CorvidLabs design system](https://github.com/CorvidLabs/design-system);
+see [`web/README.md`](web/README.md).
 
 ### End-to-end on LocalNet
 
@@ -92,6 +109,23 @@ script that runs against TestNet with `--network testnet`:
 7. prove a freshly created app holding only its 0.1 ALGO base MBR can still
    pay out its last execution (regression: `register` used to undercharge box
    MBR by 800 µALGO, which made exactly that fail)
+8. register at every cadence a real user would pick — 30 seconds, 5 minutes,
+   1 hour, 1 day — and check the schedule, the funded-runs maths and the
+   not-due rejection at each
+9. leave an upkeep unattended for three whole intervals and confirm it catches
+   up one interval per execution instead of skipping its history
+
+Sustained operation is a separate test, because a single correct execution
+says nothing about the hundredth:
+
+```bash
+poetry run python -m scripts.keeper_soak --network localnet --minutes 3
+```
+
+It executes the same upkeep over and over, asserting after every run that the
+schedule advanced by exactly one interval, the escrow fell by exactly one fee,
+and the app account can still pay out everything it holds. A 2-minute run
+does ~170 consecutive executions.
 
 Every script picks its chain with `--network localnet|testnet` (or
 `ARCHON_NETWORK`), loads the matching `.env.<network>`, and then verifies the
@@ -107,6 +141,7 @@ smart_contracts/
   artifacts/         # compiled TEAL, ARC-56 specs, typed clients (generated)
 tests/               # unit tests (algorand-python-testing mocks + bot decoder vectors)
 specs/               # spec-sync specs (keeper, pulse) — strict mode
+web/                 # the console (Angular + Bun + algosdk, CorvidLabs design system)
 docs/
   archon.md          # hand-off reference: API, box encoding, economics, operations
 examples/
@@ -114,6 +149,7 @@ examples/
   README.md          # the two integration paths (automate your app / earn fees)
 scripts/
   keeper_e2e.py           # full e2e on LocalNet or TestNet: deploy, register, execute, verify
+  keeper_soak.py          # sustained operation: many runs, no drift
   keeper_bot.py           # permissionless keeper bot: scans boxes, executes due upkeeps
   network.py              # --network selection, genesis check, dev-mode round advance
   keeper_testnet_demo.py  # alias for `keeper_e2e --network testnet`
@@ -177,5 +213,6 @@ fails if code drifts from the documented public API.
 - [ ] ASA-denominated upkeep fees (CORVID — mainnet ASA [`3225439167`](https://explorer.perawallet.app/asset/3225439167))
 - [x] End-to-end verification on LocalNet (`fledge lanes run local`) — found and fixed an 800 µALGO box-MBR undercharge
 - [ ] Redeploy TestNet with the box-MBR fix (current app 769772891 predates it)
-- [ ] Web front end: registry dashboard + keeper console
+- [x] Web front end: registry dashboard + keeper console — `web/`
+- [ ] TestNet signing in the console (wallet adapter; LocalNet signs via KMD)
 - [ ] Multi-arg / foreign-array call shapes, if real use cases demand them

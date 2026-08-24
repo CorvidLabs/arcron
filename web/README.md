@@ -1,59 +1,74 @@
-# Web
+# Archon console
 
-This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 22.1.5.
+The web front end for the Archon keeper network: a public dashboard of the
+upkeep registry, plus a keeper console for registering, funding, executing and
+cancelling upkeeps.
 
-## Development server
+Angular (standalone components, signals, zoneless) + Bun + algosdk, styled
+entirely on the [CorvidLabs design system](https://github.com/CorvidLabs/design-system)
+vendored in `public/brand/`.
 
-To start a local development server, run:
-
-```bash
-ng serve
-```
-
-Once the server is running, open your browser and navigate to `http://localhost:4200/`. The application will automatically reload whenever you modify any of the source files.
-
-## Code scaffolding
-
-Angular CLI includes powerful code scaffolding tools. To generate a new component, run:
+## Running it
 
 ```bash
-ng generate component component-name
+bun install
+bun run ng serve      # http://localhost:4200
+bun test              # decoder, ABI and formatting tests
 ```
 
-For a complete list of available schematics (such as `components`, `directives`, or `pipes`), run:
+It opens on **LocalNet** and needs `algokit localnet start` plus a deployed
+keeper app — `poetry run python -m scripts.keeper_e2e --network localnet` from
+the repo root deploys one and prints its id.
+
+## How it talks to the chain
+
+- **Reads** are permissionless: the registry is box state, so the dashboard
+  works with no wallet connected on either network.
+- **Signing on LocalNet** goes through KMD, which the browser can reach
+  directly. Keys never leave KMD — transactions are sent there to be signed,
+  so no mnemonic is ever typed into the page.
+- **Signing on TestNet** needs a real wallet. `@txnlab/use-wallet` is
+  installed for it; until an adapter is wired the TestNet view is read-only,
+  and says so.
+
+## Layout
+
+```
+src/app/core/
+  networks.ts        LocalNet/TestNet config, genesis ids, nominal round time
+  upkeep.ts          the Upkeep box decoder (mirrors scripts/keeper_bot.py)
+  keeper-abi.ts      method signatures, checked against the ARC-56 artifact
+  keeper-txns.ts     register / top_up / cancel / execute over algosdk
+  archon.service.ts  polling registry state as signals; measures the round rate
+  kmd.service.ts     LocalNet signing
+  keeper.service.ts  the four calls as UI state
+  format.ts          ALGO amounts and rounds-as-time
+src/app/components/  network bar, stat tiles, registry table, register form, activity log
+scripts/
+  dev.ts             poke rounds / seed hour- and day-cadence upkeeps on LocalNet
+  localnet-txns.ts   drive the transaction builders headlessly against LocalNet
+```
+
+## Units and time
+
+Amounts read in **ALGO**; the exact µALGO figure is in the title attribute
+where rounding could mislead. Round counts are also shown as human time — an
+upkeep every 1,286 rounds is "every ~1 h" — using the rate measured from the
+chain, or Algorand's nominal 2.8 s/round before there's enough to measure.
+
+LocalNet runs in dev mode, where a block is produced per transaction rather
+than on a timer, so there is no rate to measure: the console labels its
+schedules with the nominal rate and says `nominal` in the header.
+
+## Accessibility
+
+The console is checked with axe-core and must stay at zero violations:
 
 ```bash
-ng generate --help
+cp node_modules/axe-core/axe.min.js public/    # gitignored
+bun run ng serve
 ```
 
-## Building
-
-To build the project run:
-
-```bash
-ng build
-```
-
-This will compile your project and store the build artifacts in the `dist/` directory. By default, the production build optimizes your application for performance and speed.
-
-## Running unit tests
-
-To execute unit tests with the [Vitest](https://vitest.dev/) test runner, use the following command:
-
-```bash
-ng test
-```
-
-## Running end-to-end tests
-
-For end-to-end (e2e) testing, run:
-
-```bash
-ng e2e
-```
-
-Angular CLI does not come with an end-to-end testing framework by default. You can choose one that suits your needs.
-
-## Additional Resources
-
-For more information on using the Angular CLI, including detailed command references, visit the [Angular CLI Overview and Command Reference](https://angular.dev/tools/cli) page.
+Then in the browser console: `await axe.run(document)` after loading
+`/axe.min.js`. Check it with the registry populated and an account connected,
+not just the empty state.

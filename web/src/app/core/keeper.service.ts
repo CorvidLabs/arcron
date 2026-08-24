@@ -1,0 +1,108 @@
+/**
+ * The write half of the console: the four keeper calls, as UI state.
+ *
+ * Each call reports what it did — the round it landed in and what the method
+ * returned — because on a keeper network the return values *are* the
+ * feedback: the next due round, the new balance, the refund.
+ */
+
+import { computed, Injectable, inject, signal } from '@angular/core';
+
+import { ArchonService, describe } from './archon.service';
+import { algos } from './format';
+import { KmdService } from './kmd.service';
+import * as txns from './keeper-txns';
+import type { Upkeep } from './upkeep';
+
+export type Operation = 'register' | 'top_up' | 'cancel' | 'execute';
+
+export interface Activity {
+  readonly operation: Operation;
+  readonly upkeepId: bigint | null;
+  readonly message: string;
+  readonly txId: string;
+  readonly round: bigint;
+}
+
+@Injectable({ providedIn: 'root' })
+export class KeeperService {
+  private readonly archon = inject(ArchonService);
+  private readonly kmd = inject(KmdService);
+
+  readonly busy = signal<Operation | null>(null);
+  readonly error = signal<string | null>(null);
+  readonly activity = signal<readonly Activity[]>([]);
+  readonly canSign = computed(() => this.kmd.connected());
+
+  async register(params: txns.RegisterParams): Promise<void> {
+    await this.send('register', null, async (algod, appId, signing) => {
+      const result = await txns.register(algod, appId, signing, params);
+      return { result, message: `Registered upkeep ${result.returnValue}` };
+    });
+  }
+
+  async topUp(upkeep: Upkeep, amount: number): Promise<void> {
+    await this.send('top_up', upkeep.id, async (algod, appId, signing) => {
+      const result = await txns.topUp(algod, appId, signing, upkeep.id, amount);
+      return { result, message: `Escrow now ${algos(result.returnValue ?? 0n)}` };
+    });
+  }
+
+  async cancel(upkeep: Upkeep): Promise<void> {
+    await this.send('cancel', upkeep.id, async (algod, appId, signing) => {
+      const result = await txns.cancel(algod, appId, signing, upkeep.id);
+      return {
+        result,
+        message: `Refunded ${algos(result.returnValue ?? 0n)} — escrow plus box MBR`,
+      };
+    });
+  }
+
+  async execute(upkeep: Upkeep): Promise<void> {
+    await this.send('execute', upkeep.id, async (algod, appId, signing) => {
+      const result = await txns.execute(algod, appId, signing, upkeep);
+      return {
+        result,
+        message: `Executed for ${algos(upkeep.feePerExecution)}; next due at round ${result.returnValue}`,
+      };
+    });
+  }
+
+  dismissError(): void {
+    this.error.set(null);
+  }
+
+  private async send(
+    operation: Operation,
+    upkeepId: bigint | null,
+    call: (
+      algod: ReturnType<ArchonService['algod']>,
+      appId: number,
+      signing: txns.Signing,
+    ) => Promise<{ result: txns.CallResult; message: string }>,
+  ): Promise<void> {
+    const appId = this.archon.appId();
+    const signing = this.kmd.signing();
+    if (appId === null) {
+      this.error.set('Set a keeper app id first');
+      return;
+    }
+    if (signing === null) {
+      this.error.set('Connect an account before sending transactions');
+      return;
+    }
+    this.busy.set(operation);
+    this.error.set(null);
+    try {
+      const { result, message } = await call(this.archon.algod(), appId, signing);
+      this.activity.update((entries) =>
+        [{ operation, upkeepId, message, txId: result.txId, round: result.confirmedRound }, ...entries].slice(0, 8),
+      );
+      await this.archon.refresh();
+    } catch (cause) {
+      this.error.set(describe(cause));
+    } finally {
+      this.busy.set(null);
+    }
+  }
+}

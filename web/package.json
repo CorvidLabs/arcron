@@ -17,6 +17,8 @@
     "@angular/forms": "^22.1.0",
     "@angular/platform-browser": "^22.1.0",
     "@angular/router": "^22.1.0",
+    "@txnlab/use-wallet": "^5.0.0",
+    "algosdk": "^3.7.0",
     "rxjs": "~7.8.0",
     "tslib": "^2.3.0"
   },
@@ -24,6 +26,8 @@
     "@angular/build": "^22.1.5",
     "@angular/cli": "^22.1.5",
     "@angular/compiler-cli": "^22.1.0",
+    "@types/bun": "^1.4.0",
+    "axe-core": "^4.13.0",
     "jsdom": "^28.0.0",
     "prettier": "^3.8.1",
     "typescript": "~6.0.2",

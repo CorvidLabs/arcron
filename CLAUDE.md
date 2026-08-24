@@ -14,6 +14,8 @@ pending). `pulse/` is its demo target (app 769772906).
 
 - Everything: `fledge lanes run ci` (build + unit tests + spec check — must stay green)
 - On a real chain: `fledge lanes run local` (ci + the keeper e2e; needs `algokit localnet start`)
+- Endurance: `fledge lanes run endurance` (adds `scripts/keeper_soak.py`, ~3 min)
+- Console: `cd web && bun run ng serve`; `bun test` for its unit tests
 - Build: `poetry run python -m smart_contracts build` (always rebuild after contract changes)
 - Test: `poetry run pytest tests/ -q`
 - Specs: `specsync check --strict`
@@ -38,6 +40,10 @@ pending). `pulse/` is its demo target (app 769772906).
   (`set_suggested_params_cache_timeout(0)`) and fund the app account's base
   MBR (0.1 ALGO) before it can escrow or hold boxes.
 - Upkeep box values are ARC-4 head/tail encoded; `scripts/keeper_bot.py` has
-  the reference decoder (`_decode_upkeep`).
+  the reference decoder (`_decode_upkeep`), and `web/src/app/core/upkeep.ts`
+  is its TypeScript twin — both pinned to the same recorded box.
+- `web/` is styled only with the CorvidLabs design system vendored in
+  `web/public/brand/`: no hardcoded colours, no hand-rolled theme toggle.
+  Amounts display in ALGO; cadences display as time as well as rounds.
 - `.env.*` files are gitignored and must stay that way. Never commit mnemonics;
   the TestNet deployer is a throwaway — never reuse it on mainnet.

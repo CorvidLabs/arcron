@@ -1,0 +1,77 @@
+:host {
+  display: grid;
+  grid-template-rows: auto auto 1fr auto;
+  min-height: 100dvh;
+}
+
+.skip {
+  position: absolute;
+  left: -9999px;
+}
+.skip:focus {
+  left: 1rem;
+  top: 1rem;
+  z-index: 10;
+  padding: 0.5rem 0.9rem;
+  background: var(--sheen);
+  color: var(--surface);
+  border-radius: 0.5rem;
+}
+
+header.chrome {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  padding: 0.85rem clamp(1rem, 4vw, 2.5rem);
+  background: var(--header-bg);
+  backdrop-filter: blur(8px);
+}
+
+footer.chrome {
+  padding: 1rem clamp(1rem, 4vw, 2.5rem);
+}
+
+main {
+  display: grid;
+  gap: 1.75rem;
+  align-content: start;
+  padding: 1.75rem clamp(1rem, 4vw, 2.5rem) 2.5rem;
+  max-width: 82rem;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.columns {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: 1.75rem;
+}
+
+@media (max-width: 60rem) {
+  .columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.banner {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--danger);
+  border-radius: 3px;
+  color: var(--danger);
+  font-size: 0.88rem;
+}
+
+footer.chrome {
+  border-top: 1px solid var(--hairline);
+  color: var(--text-faint);
+  font-size: 0.8rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+  justify-content: space-between;
+}
+
+footer p {
+  margin: 0;
+}
