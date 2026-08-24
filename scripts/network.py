@@ -48,15 +48,18 @@ def load_network(network: str) -> str:
 
     Exported environment variables win over the file, as dotenv normally
     behaves — `assert_network` catches the case where that points the script
-    at the wrong chain.
+    at the wrong chain. A deployment that configures everything through the
+    environment (a container, a systemd unit) needs no file at all.
     """
     if network not in NETWORKS:
         raise ValueError(f"Unknown network {network!r}; expected one of {NETWORKS}")
     env_file = f".env.{network}"
-    if not load_dotenv(env_file) and network != LOCALNET:
+    loaded = load_dotenv(env_file)
+    if not loaded and network != LOCALNET and not os.environ.get("ALGOD_SERVER"):
         raise FileNotFoundError(
-            f"{env_file} not found — copy .env.testnet.template and add "
-            f"DEPLOYER_MNEMONIC"
+            f"{env_file} not found and ALGOD_SERVER is not set — copy "
+            f".env.testnet.template and add DEPLOYER_MNEMONIC, or supply the "
+            f"configuration through the environment"
         )
     return network
 

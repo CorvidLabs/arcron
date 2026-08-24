@@ -14,10 +14,13 @@ Run:  poetry run python -m scripts.keeper_bot [--once] [--network N] [--app-id N
 
 import argparse
 import base64
+import json
 import logging
 import os
+import signal
 import time
 from dataclasses import dataclass
+from types import FrameType
 
 import algokit_utils
 
@@ -36,8 +39,55 @@ DEFAULT_APP_ID = 769802474
 # Covers the two inner transactions (app call + keeper payment); the outer
 # fee is the standard 1,000 µALGO.
 EXTRA_FEE_MICROALGO = 2_000
-# Delay before retrying after an algod/endpoint error.
+# First delay after an algod/endpoint error; it doubles up to the cap, so a
+# node that is down does not get hammered and a blip costs almost nothing.
 ERROR_RETRY_SECONDS = 5
+MAX_ERROR_RETRY_SECONDS = 60
+
+
+class Emitter:
+    """Human lines by default; one JSON object per line for log shipping.
+
+    A keeper's logs have to answer "did upkeep N fire, and when?" months
+    later, so every event carries the round and the upkeep it concerns.
+    """
+
+    def __init__(self, as_json: bool = False) -> None:
+        self.as_json = as_json
+
+    def __call__(self, event: str, message: str, level: int = logging.INFO, **fields) -> None:
+        if self.as_json:
+            logger.log(level, json.dumps({"event": event, **fields}, default=str))
+        else:
+            logger.log(level, message)
+
+
+emit = Emitter()
+
+
+class Shutdown:
+    """SIGTERM means finish what you are doing, then stop.
+
+    A redeploy must not abandon a half-signed execution, so the flag is
+    checked between upkeeps rather than interrupting one.
+    """
+
+    def __init__(self) -> None:
+        self.requested = False
+
+    def install(self) -> None:
+        for received in (signal.SIGTERM, signal.SIGINT):
+            signal.signal(received, self._request)
+
+    def _request(self, signum: int, frame: FrameType | None) -> None:
+        if self.requested:  # a second signal means "now"
+            raise KeyboardInterrupt
+        self.requested = True
+        emit(
+            "shutdown_requested",
+            f"Signal {signum} received; finishing the current scan then exiting",
+            signal=signum,
+        )
 
 
 @dataclass
@@ -122,7 +172,23 @@ def main(argv: list[str] | None = None) -> None:
         default=None,
         help="Keeper app id (default: KEEPER_APP_ID, else the TestNet app)",
     )
+    parser.add_argument(
+        "--log-format",
+        choices=("text", "json"),
+        default=os.environ.get("ARCHON_LOG_FORMAT", "text"),
+        help="one JSON object per line for log shipping (default: %(default)s)",
+    )
     args = parser.parse_args(argv)
+
+    global emit
+    as_json = args.log_format == "json"
+    if as_json:
+        # A log shipper parses the whole line, so it must be only the object.
+        for handler in logging.getLogger().handlers:
+            handler.setFormatter(logging.Formatter("%(message)s"))
+    emit = Emitter(as_json=as_json)
+    shutdown = Shutdown()
+    shutdown.install()
 
     algorand = net.connect(args.network)
     app_id = resolve_app_id(parser, args.app_id, args.network)
@@ -137,14 +203,24 @@ def main(argv: list[str] | None = None) -> None:
         default_sender=keeper.address,
         default_signer=keeper.signer,
     )
-    logger.info(f"Keeper {keeper.address} servicing app {app_id}")
+    emit(
+        "started",
+        f"Keeper {keeper.address} servicing app {app_id}",
+        keeper=keeper.address,
+        app_id=app_id,
+        network=args.network,
+    )
 
     # Upkeeps that failed this run. A failed execution is free — Algorand
     # rejects it before it reaches a block, so nothing is spent — but retrying
     # a target that keeps rejecting wastes a round-trip every round and
     # crowds the transaction pool, so it is skipped for the rest of the run.
     failed: set[int] = set()
+    error_delay = ERROR_RETRY_SECONDS
     while True:
+        if shutdown.requested:
+            emit("stopped", "Shutting down cleanly")
+            return
         try:
             current = algod.status()["last-round"]
             upkeeps = scan_upkeeps(algod, app_id)
@@ -155,10 +231,18 @@ def main(argv: list[str] | None = None) -> None:
                 and current >= u.next_execution_round
                 and u.balance >= u.fee_per_execution
             ]
-            logger.info(
-                f"Round {current}: {len(upkeeps)} upkeeps, {len(due)} due"
+            error_delay = ERROR_RETRY_SECONDS
+            emit(
+                "scan",
+                f"Round {current}: {len(upkeeps)} upkeeps, {len(due)} due",
+                round=current,
+                upkeeps=len(upkeeps),
+                due=len(due),
+                skipped=len(failed),
             )
             for upkeep in due:
+                if shutdown.requested:
+                    break
                 try:
                     response = client.send.execute(
                         args=ExecuteArgs(upkeep_id=upkeep.upkeep_id),
@@ -168,26 +252,51 @@ def main(argv: list[str] | None = None) -> None:
                             )
                         ),
                     )
-                    logger.info(
+                    emit(
+                        "executed",
                         f"Executed upkeep {upkeep.upkeep_id} "
                         f"(target app {upkeep.target_app}); "
                         f"+{upkeep.fee_per_execution} µALGO, "
-                        f"next due round {response.abi_return}"
+                        f"next due round {response.abi_return}",
+                        round=current,
+                        upkeep_id=upkeep.upkeep_id,
+                        target_app=upkeep.target_app,
+                        fee_collected=upkeep.fee_per_execution,
+                        escrow_remaining=upkeep.balance - upkeep.fee_per_execution,
+                        next_due_round=response.abi_return,
+                        tx_id=response.tx_id,
                     )
                 except Exception as exc:
                     failed.add(upkeep.upkeep_id)
-                    logger.warning(
+                    emit(
+                        "execute_failed",
                         f"Upkeep {upkeep.upkeep_id} failed (no fee charged); "
-                        f"skipping it for this run: {exc}"
+                        f"skipping it for this run: {exc}",
+                        level=logging.WARNING,
+                        round=current,
+                        upkeep_id=upkeep.upkeep_id,
+                        reason=str(exc)[:400],
                     )
             if args.once:
                 return
             algod.status_after_block(current + 1)
+        except KeyboardInterrupt:
+            emit("stopped", "Interrupted; exiting")
+            return
         except Exception as exc:
             if args.once:
                 raise
-            logger.warning(f"{exc}; retrying in {ERROR_RETRY_SECONDS}s")
-            time.sleep(ERROR_RETRY_SECONDS)
+            emit(
+                "scan_failed",
+                f"{exc}; retrying in {error_delay}s",
+                level=logging.WARNING,
+                reason=str(exc)[:400],
+                retry_in_seconds=error_delay,
+            )
+            time.sleep(error_delay)
+            # Back off while the node is unhappy, but recover quickly once it
+            # answers again.
+            error_delay = min(error_delay * 2, MAX_ERROR_RETRY_SECONDS)
 
 
 if __name__ == "__main__":

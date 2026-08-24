@@ -145,6 +145,61 @@ poetry run python -m scripts.keeper_bot --app-id N # other keeper instance
   the rest of the bot run — for latency and transaction-pool hygiene now,
   not to avoid burning fees, since there are none to burn.
 
+### Running one continuously
+
+The contract is passive, so "Archon is running" means *somebody's bot is
+running*. Two supported shapes, both in `deploy/`:
+
+**Container (recommended).**
+
+```bash
+cp deploy/keeper.env.example deploy/keeper.env    # add KEEPER_MNEMONIC
+docker compose -f deploy/compose.yaml up -d
+docker compose -f deploy/compose.yaml logs -f
+```
+
+`restart: unless-stopped` covers reboots and crashes; the bot backs off
+internally (5s doubling to 60s) so a node outage does not become a hot loop.
+`docker compose down` sends SIGTERM, which finishes the scan in flight and
+exits — a redeploy never abandons a half-signed execution. A second signal
+exits immediately.
+
+**systemd**, for a host that already runs Python: `deploy/keeper-bot.service`,
+with the mnemonic in `/etc/archon/keeper.env` (chmod 600).
+
+**GitHub Actions** (`.github/workflows/keeper-bot.yml`) runs `--once` on a
+schedule. It is deliberately manual-dispatch-only until someone sets the
+`KEEPER_MNEMONIC` secret, and it is a stopgap rather than the end state:
+cron granularity is ~5 minutes and best-effort, so short-interval upkeeps are
+serviced late, every run is a fresh process that re-attempts failing upkeeps,
+and the mnemonic lives in repository secrets.
+
+### Reading the logs
+
+`--log-format json` (the container default) emits one object per line:
+
+```json
+{"event": "started", "keeper": "E5M2…FJZQ3E", "app_id": 769802474, "network": "testnet"}
+{"event": "scan", "round": 66629378, "upkeeps": 3, "due": 1, "skipped": 0}
+{"event": "executed", "round": 66629379, "upkeep_id": 9, "target_app": 1043,
+ "fee_collected": 4000, "escrow_remaining": 8000, "next_due_round": 66629389,
+ "tx_id": "F724IJ7A…UC6A"}
+{"event": "execute_failed", "round": 66629380, "upkeep_id": 4, "reason": "…"}
+{"event": "shutdown_requested", "signal": 15}
+{"event": "stopped"}
+```
+
+`executed` is the line that answers "did upkeep N fire, and when?" months
+later — it carries the round, the fee collected, what escrow was left and the
+transaction id, so any claim can be checked against the chain. Use
+`--log-format text` for a human at a terminal.
+
+### Giving it something to do
+
+A bot with an empty registry is correct and useless. Register an upkeep
+against the app it services — `examples/register_upkeep.py` is a working
+starting point — and watch the `scan` line's `due` count move.
+
 ## Testing and CI
 
 ```bash
