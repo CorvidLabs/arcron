@@ -1,6 +1,6 @@
 # Design: ASA-denominated upkeep fees
 
-**Status:** proposed, for review
+**Status:** implemented as a bonus alongside the ALGO fee, exactly as proposed.
 **Issue:** [#9](https://github.com/CorvidLabs/archon/issues/9)
 **Shares a struct with:** [#7 and #14](scheduling-and-fees.md) and [#8](call-shapes.md)
 **Reproduce every number here:** `poetry run python -m scripts.spike_asa_fee --network localnet`

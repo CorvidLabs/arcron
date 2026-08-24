@@ -19,7 +19,7 @@ from algosdk.v2client.models import SimulateTraceConfig
 import algokit_utils
 from algokit_utils import AlgorandClient as _AlgoKitAlgorandClient
 
-_APP_SPEC_JSON = r"""{"arcs": [22, 28], "bareActions": {"call": [], "create": ["NoOp"]}, "methods": [{"actions": {"call": ["NoOp"], "create": []}, "args": [], "name": "tick", "returns": {"type": "uint64"}, "events": [], "readonly": false, "recommendations": {}}], "name": "Pulse", "state": {"keys": {"box": {}, "global": {"beats": {"key": "YmVhdHM=", "keyType": "AVMString", "valueType": "AVMUint64"}, "last_beat_round": {"key": "bGFzdF9iZWF0X3JvdW5k", "keyType": "AVMString", "valueType": "AVMUint64"}}, "local": {}}, "maps": {"box": {}, "global": {}, "local": {}}, "schema": {"global": {"bytes": 0, "ints": 2}, "local": {"bytes": 0, "ints": 0}}}, "structs": {}, "byteCode": {"approval": "CyACAAEmAgViZWF0cw9sYXN0X2JlYXRfcm91bmQxGEAABigiZykiZzEbQQAYgARNTV8LNhoAjgEAAQAxGRQxGBBEQgAIMRkUMRgUEEMiKGVEIwgoTGcpMgZnIihlRBaABBUffHVMULAjQw==", "clear": "C4EBQw=="}, "desc": "Demo upkeep target: a public heartbeat counter.\n\n    Designed to be driven by the Keeper contract: `tick` takes no arguments\n    beyond its method selector, so a registered upkeep can call it on a\n    schedule. Permissionless by design \u2014 it is a demo, not a gate.\n    ", "events": [], "networks": {}, "source": {"approval": "I3ByYWdtYSB2ZXJzaW9uIDExCiNwcmFnbWEgdHlwZXRyYWNrIGZhbHNlCgovLyBhbGdvcHkuYXJjNC5BUkM0Q29udHJhY3QuYXBwcm92YWxfcHJvZ3JhbSgpIC0+IHVpbnQ2NDoKbWFpbjoKICAgIGludGNibG9jayAwIDEKICAgIGJ5dGVjYmxvY2sgImJlYXRzIiAibGFzdF9iZWF0X3JvdW5kIgogICAgdHhuIEFwcGxpY2F0aW9uSUQKICAgIGJueiBtYWluX2FmdGVyX2lmX2Vsc2VAMgogICAgLy8gc21hcnRfY29udHJhY3RzL3B1bHNlL2NvbnRyYWN0LnB5OjE1CiAgICAvLyBzZWxmLmJlYXRzID0gR2xvYmFsU3RhdGUoVUludDY0KDApKQogICAgYnl0ZWNfMCAvLyAiYmVhdHMiCiAgICBpbnRjXzAgLy8gMAogICAgYXBwX2dsb2JhbF9wdXQKICAgIC8vIHNtYXJ0X2NvbnRyYWN0cy9wdWxzZS9jb250cmFjdC5weToxNgogICAgLy8gc2VsZi5sYXN0X2JlYXRfcm91bmQgPSBHbG9iYWxTdGF0ZShVSW50NjQoMCkpCiAgICBieXRlY18xIC8vICJsYXN0X2JlYXRfcm91bmQiCiAgICBpbnRjXzAgLy8gMAogICAgYXBwX2dsb2JhbF9wdXQKCm1haW5fYWZ0ZXJfaWZfZWxzZUAyOgogICAgLy8gc21hcnRfY29udHJhY3RzL3B1bHNlL2NvbnRyYWN0LnB5OjYKICAgIC8vIGNsYXNzIFB1bHNlKEFSQzRDb250cmFjdCk6CiAgICB0eG4gTnVtQXBwQXJncwogICAgYnogbWFpbl9fX2FsZ29weV9kZWZhdWx0X2NyZWF0ZUA3CiAgICBwdXNoYnl0ZXMgMHg0ZDRkNWYwYiAvLyBtZXRob2QgInRpY2soKXVpbnQ2NCIKICAgIHR4bmEgQXBwbGljYXRpb25BcmdzIDAKICAgIG1hdGNoIG1haW5fdGlja19yb3V0ZUA1CiAgICBlcnIKCm1haW5fdGlja19yb3V0ZUA1OgogICAgLy8gc21hcnRfY29udHJhY3RzL3B1bHNlL2NvbnRyYWN0LnB5OjE4CiAgICAvLyBAYWJpbWV0aG9kKCkKICAgIHR4biBPbkNvbXBsZXRpb24KICAgICEKICAgIHR4biBBcHBsaWNhdGlvbklECiAgICAmJgogICAgYXNzZXJ0CiAgICBiIHRpY2sKCm1haW5fX19hbGdvcHlfZGVmYXVsdF9jcmVhdGVANzoKICAgIHR4biBPbkNvbXBsZXRpb24KICAgICEKICAgIHR4biBBcHBsaWNhdGlvbklECiAgICAhCiAgICAmJgogICAgcmV0dXJuCgoKLy8gc21hcnRfY29udHJhY3RzLnB1bHNlLmNvbnRyYWN0LlB1bHNlLnRpY2tbcm91dGluZ10oKSAtPiB2b2lkOgp0aWNrOgogICAgLy8gc21hcnRfY29udHJhY3RzL3B1bHNlL2NvbnRyYWN0LnB5OjIwCiAgICAvLyBzZWxmLmJlYXRzLnZhbHVlICs9IDEKICAgIGludGNfMCAvLyAwCiAgICBieXRlY18wIC8vICJiZWF0cyIKICAgIGFwcF9nbG9iYWxfZ2V0X2V4CiAgICBhc3NlcnQgLy8gY2hlY2sgc2VsZi5iZWF0cyBleGlzdHMKICAgIGludGNfMSAvLyAxCiAgICArCiAgICBieXRlY18wIC8vICJiZWF0cyIKICAgIHN3YXAKICAgIGFwcF9nbG9iYWxfcHV0CiAgICAvLyBzbWFydF9jb250cmFjdHMvcHVsc2UvY29udHJhY3QucHk6MjEKICAgIC8vIHNlbGYubGFzdF9iZWF0X3JvdW5kLnZhbHVlID0gR2xvYmFsLnJvdW5kCiAgICBieXRlY18xIC8vICJsYXN0X2JlYXRfcm91bmQiCiAgICBnbG9iYWwgUm91bmQKICAgIGFwcF9nbG9iYWxfcHV0CiAgICAvLyBzbWFydF9jb250cmFjdHMvcHVsc2UvY29udHJhY3QucHk6MjIKICAgIC8vIHJldHVybiBzZWxmLmJlYXRzLnZhbHVlCiAgICBpbnRjXzAgLy8gMAogICAgYnl0ZWNfMCAvLyAiYmVhdHMiCiAgICBhcHBfZ2xvYmFsX2dldF9leAogICAgYXNzZXJ0IC8vIGNoZWNrIHNlbGYuYmVhdHMgZXhpc3RzCiAgICAvLyBzbWFydF9jb250cmFjdHMvcHVsc2UvY29udHJhY3QucHk6MTgKICAgIC8vIEBhYmltZXRob2QoKQogICAgaXRvYgogICAgcHVzaGJ5dGVzIDB4MTUxZjdjNzUKICAgIHN3YXAKICAgIGNvbmNhdAogICAgbG9nCiAgICBpbnRjXzEgLy8gMQogICAgcmV0dXJuCg==", "clear": "I3ByYWdtYSB2ZXJzaW9uIDExCiNwcmFnbWEgdHlwZXRyYWNrIGZhbHNlCgovLyBhbGdvcHkuYXJjNC5BUkM0Q29udHJhY3QuY2xlYXJfc3RhdGVfcHJvZ3JhbSgpIC0+IHVpbnQ2NDoKbWFpbjoKICAgIHB1c2hpbnQgMQogICAgcmV0dXJuCg=="}, "sourceInfo": {"approval": {"pcOffsetMethod": "none", "sourceInfo": [{"pc": [80, 93], "errorMessage": "check self.beats exists"}]}, "clear": {"pcOffsetMethod": "none", "sourceInfo": []}}, "templateVariables": {}}"""
+_APP_SPEC_JSON = r"""{"arcs": [22, 28], "bareActions": {"call": [], "create": ["NoOp"]}, "methods": [{"actions": {"call": ["NoOp"], "create": []}, "args": [], "name": "tick", "returns": {"type": "uint64"}, "events": [], "readonly": false, "recommendations": {}}, {"actions": {"call": ["NoOp"], "create": []}, "args": [{"type": "uint64", "name": "beats"}, {"type": "string", "name": "note"}], "name": "tick_with", "returns": {"type": "uint64"}, "desc": "A hook with arguments of its own; returns the new count.\nUnreachable through an upkeep before #8, because an ARC-4 method needs its selector and each argument in an app arg of its own and Archon could only send one.", "events": [], "readonly": false, "recommendations": {}}], "name": "Pulse", "state": {"keys": {"box": {}, "global": {"beats": {"key": "YmVhdHM=", "keyType": "AVMString", "valueType": "AVMUint64"}, "last_beat_round": {"key": "bGFzdF9iZWF0X3JvdW5k", "keyType": "AVMString", "valueType": "AVMUint64"}, "last_note": {"key": "bGFzdF9ub3Rl", "keyType": "AVMString", "valueType": "AVMString"}}, "local": {}}, "maps": {"box": {}, "global": {}, "local": {}}, "schema": {"global": {"bytes": 1, "ints": 2}, "local": {"bytes": 0, "ints": 0}}}, "structs": {}, "byteCode": {"approval": "CyACAAEmBAViZWF0cw9sYXN0X2JlYXRfcm91bmQJbGFzdF9ub3RlBBUffHUxGEAACigiZykiZyqAAGcxG0EAHTEZFEQxGESCAgRNTV8LBE6kgro2GgCOAgAJACEAMRkUMRgUEEMiKGVEIwgoTGcpMgZnIihlRBYrTFCwI0M2GgFJFYEIEkQXNhoCSSJZgQIISwEVEkQiKGVETwIIKExnKTIGZ1cCACpMZyIoZUQWK0xQsCND", "clear": "C4EBQw=="}, "desc": "Demo upkeep target: a public heartbeat counter.\n\n    Designed to be driven by the Keeper contract. `tick` takes no arguments\n    beyond its method selector, which is the only shape Archon could call\n    before #8; `tick_with` takes real arguments, which is the shape it can\n    call now. Permissionless by design \u2014 it is a demo, not a gate.\n    ", "events": [], "networks": {}, "source": {"approval": "I3ByYWdtYSB2ZXJzaW9uIDExCiNwcmFnbWEgdHlwZXRyYWNrIGZhbHNlCgovLyBhbGdvcHkuYXJjNC5BUkM0Q29udHJhY3QuYXBwcm92YWxfcHJvZ3JhbSgpIC0+IHVpbnQ2NDoKbWFpbjoKICAgIGludGNibG9jayAwIDEKICAgIGJ5dGVjYmxvY2sgImJlYXRzIiAibGFzdF9iZWF0X3JvdW5kIiAibGFzdF9ub3RlIiAweDE1MWY3Yzc1CiAgICB0eG4gQXBwbGljYXRpb25JRAogICAgYm56IG1haW5fYWZ0ZXJfaWZfZWxzZUAyCiAgICAvLyBzbWFydF9jb250cmFjdHMvcHVsc2UvY29udHJhY3QucHk6MTYKICAgIC8vIHNlbGYuYmVhdHMgPSBHbG9iYWxTdGF0ZShVSW50NjQoMCkpCiAgICBieXRlY18wIC8vICJiZWF0cyIKICAgIGludGNfMCAvLyAwCiAgICBhcHBfZ2xvYmFsX3B1dAogICAgLy8gc21hcnRfY29udHJhY3RzL3B1bHNlL2NvbnRyYWN0LnB5OjE3CiAgICAvLyBzZWxmLmxhc3RfYmVhdF9yb3VuZCA9IEdsb2JhbFN0YXRlKFVJbnQ2NCgwKSkKICAgIGJ5dGVjXzEgLy8gImxhc3RfYmVhdF9yb3VuZCIKICAgIGludGNfMCAvLyAwCiAgICBhcHBfZ2xvYmFsX3B1dAogICAgLy8gc21hcnRfY29udHJhY3RzL3B1bHNlL2NvbnRyYWN0LnB5OjE4CiAgICAvLyBzZWxmLmxhc3Rfbm90ZSA9IEdsb2JhbFN0YXRlKFN0cmluZygiIikpCiAgICBieXRlY18yIC8vICJsYXN0X25vdGUiCiAgICBwdXNoYnl0ZXMgIiIKICAgIGFwcF9nbG9iYWxfcHV0CgptYWluX2FmdGVyX2lmX2Vsc2VAMjoKICAgIC8vIHNtYXJ0X2NvbnRyYWN0cy9wdWxzZS9jb250cmFjdC5weTo2CiAgICAvLyBjbGFzcyBQdWxzZShBUkM0Q29udHJhY3QpOgogICAgdHhuIE51bUFwcEFyZ3MKICAgIGJ6IG1haW5fX19hbGdvcHlfZGVmYXVsdF9jcmVhdGVAMTEKICAgIHR4biBPbkNvbXBsZXRpb24KICAgICEKICAgIGFzc2VydAogICAgdHhuIEFwcGxpY2F0aW9uSUQKICAgIGFzc2VydAogICAgcHVzaGJ5dGVzcyAweDRkNGQ1ZjBiIDB4NGVhNDgyYmEgLy8gbWV0aG9kICJ0aWNrKCl1aW50NjQiLCBtZXRob2QgInRpY2tfd2l0aCh1aW50NjQsc3RyaW5nKXVpbnQ2NCIKICAgIHR4bmEgQXBwbGljYXRpb25BcmdzIDAKICAgIG1hdGNoIHRpY2sgdGlja193aXRoCiAgICBlcnIKCm1haW5fX19hbGdvcHlfZGVmYXVsdF9jcmVhdGVAMTE6CiAgICB0eG4gT25Db21wbGV0aW9uCiAgICAhCiAgICB0eG4gQXBwbGljYXRpb25JRAogICAgIQogICAgJiYKICAgIHJldHVybgoKCi8vIHNtYXJ0X2NvbnRyYWN0cy5wdWxzZS5jb250cmFjdC5QdWxzZS50aWNrW3JvdXRpbmddKCkgLT4gdm9pZDoKdGljazoKICAgIC8vIHNtYXJ0X2NvbnRyYWN0cy9wdWxzZS9jb250cmFjdC5weToyMgogICAgLy8gc2VsZi5iZWF0cy52YWx1ZSArPSAxCiAgICBpbnRjXzAgLy8gMAogICAgYnl0ZWNfMCAvLyAiYmVhdHMiCiAgICBhcHBfZ2xvYmFsX2dldF9leAogICAgYXNzZXJ0IC8vIGNoZWNrIHNlbGYuYmVhdHMgZXhpc3RzCiAgICBpbnRjXzEgLy8gMQogICAgKwogICAgYnl0ZWNfMCAvLyAiYmVhdHMiCiAgICBzd2FwCiAgICBhcHBfZ2xvYmFsX3B1dAogICAgLy8gc21hcnRfY29udHJhY3RzL3B1bHNlL2NvbnRyYWN0LnB5OjIzCiAgICAvLyBzZWxmLmxhc3RfYmVhdF9yb3VuZC52YWx1ZSA9IEdsb2JhbC5yb3VuZAogICAgYnl0ZWNfMSAvLyAibGFzdF9iZWF0X3JvdW5kIgogICAgZ2xvYmFsIFJvdW5kCiAgICBhcHBfZ2xvYmFsX3B1dAogICAgLy8gc21hcnRfY29udHJhY3RzL3B1bHNlL2NvbnRyYWN0LnB5OjI0CiAgICAvLyByZXR1cm4gc2VsZi5iZWF0cy52YWx1ZQogICAgaW50Y18wIC8vIDAKICAgIGJ5dGVjXzAgLy8gImJlYXRzIgogICAgYXBwX2dsb2JhbF9nZXRfZXgKICAgIGFzc2VydCAvLyBjaGVjayBzZWxmLmJlYXRzIGV4aXN0cwogICAgLy8gc21hcnRfY29udHJhY3RzL3B1bHNlL2NvbnRyYWN0LnB5OjIwCiAgICAvLyBAYWJpbWV0aG9kKCkKICAgIGl0b2IKICAgIGJ5dGVjXzMgLy8gMHgxNTFmN2M3NQogICAgc3dhcAogICAgY29uY2F0CiAgICBsb2cKICAgIGludGNfMSAvLyAxCiAgICByZXR1cm4KCgovLyBzbWFydF9jb250cmFjdHMucHVsc2UuY29udHJhY3QuUHVsc2UudGlja193aXRoW3JvdXRpbmddKCkgLT4gdm9pZDoKdGlja193aXRoOgogICAgLy8gc21hcnRfY29udHJhY3RzL3B1bHNlL2NvbnRyYWN0LnB5OjI2CiAgICAvLyBAYWJpbWV0aG9kKCkKICAgIHR4bmEgQXBwbGljYXRpb25BcmdzIDEKICAgIGR1cAogICAgbGVuCiAgICBwdXNoaW50IDgKICAgID09CiAgICBhc3NlcnQgLy8gaW52YWxpZCBudW1iZXIgb2YgYnl0ZXMgZm9yIGFyYzQudWludDY0CiAgICBidG9pCiAgICB0eG5hIEFwcGxpY2F0aW9uQXJncyAyCiAgICBkdXAKICAgIGludGNfMCAvLyAwCiAgICBleHRyYWN0X3VpbnQxNiAvLyBvbiBlcnJvcjogaW52YWxpZCBhcnJheSBsZW5ndGggaGVhZGVyCiAgICBwdXNoaW50IDIKICAgICsKICAgIGRpZyAxCiAgICBsZW4KICAgID09CiAgICBhc3NlcnQgLy8gaW52YWxpZCBudW1iZXIgb2YgYnl0ZXMgZm9yIGFyYzQuZHluYW1pY19hcnJheTxhcmM0LnVpbnQ4PgogICAgLy8gc21hcnRfY29udHJhY3RzL3B1bHNlL2NvbnRyYWN0LnB5OjM0CiAgICAvLyBzZWxmLmJlYXRzLnZhbHVlICs9IGJlYXRzCiAgICBpbnRjXzAgLy8gMAogICAgYnl0ZWNfMCAvLyAiYmVhdHMiCiAgICBhcHBfZ2xvYmFsX2dldF9leAogICAgYXNzZXJ0IC8vIGNoZWNrIHNlbGYuYmVhdHMgZXhpc3RzCiAgICB1bmNvdmVyIDIKICAgICsKICAgIGJ5dGVjXzAgLy8gImJlYXRzIgogICAgc3dhcAogICAgYXBwX2dsb2JhbF9wdXQKICAgIC8vIHNtYXJ0X2NvbnRyYWN0cy9wdWxzZS9jb250cmFjdC5weTozNQogICAgLy8gc2VsZi5sYXN0X2JlYXRfcm91bmQudmFsdWUgPSBHbG9iYWwucm91bmQKICAgIGJ5dGVjXzEgLy8gImxhc3RfYmVhdF9yb3VuZCIKICAgIGdsb2JhbCBSb3VuZAogICAgYXBwX2dsb2JhbF9wdXQKICAgIC8vIHNtYXJ0X2NvbnRyYWN0cy9wdWxzZS9jb250cmFjdC5weTozNgogICAgLy8gc2VsZi5sYXN0X25vdGUudmFsdWUgPSBub3RlLm5hdGl2ZQogICAgZXh0cmFjdCAyIDAKICAgIGJ5dGVjXzIgLy8gImxhc3Rfbm90ZSIKICAgIHN3YXAKICAgIGFwcF9nbG9iYWxfcHV0CiAgICAvLyBzbWFydF9jb250cmFjdHMvcHVsc2UvY29udHJhY3QucHk6MzcKICAgIC8vIHJldHVybiBzZWxmLmJlYXRzLnZhbHVlCiAgICBpbnRjXzAgLy8gMAogICAgYnl0ZWNfMCAvLyAiYmVhdHMiCiAgICBhcHBfZ2xvYmFsX2dldF9leAogICAgYXNzZXJ0IC8vIGNoZWNrIHNlbGYuYmVhdHMgZXhpc3RzCiAgICAvLyBzbWFydF9jb250cmFjdHMvcHVsc2UvY29udHJhY3QucHk6MjYKICAgIC8vIEBhYmltZXRob2QoKQogICAgaXRvYgogICAgYnl0ZWNfMyAvLyAweDE1MWY3Yzc1CiAgICBzd2FwCiAgICBjb25jYXQKICAgIGxvZwogICAgaW50Y18xIC8vIDEKICAgIHJldHVybgo=", "clear": "I3ByYWdtYSB2ZXJzaW9uIDExCiNwcmFnbWEgdHlwZXRyYWNrIGZhbHNlCgovLyBhbGdvcHkuYXJjNC5BUkM0Q29udHJhY3QuY2xlYXJfc3RhdGVfcHJvZ3JhbSgpIC0+IHVpbnQ2NDoKbWFpbjoKICAgIHB1c2hpbnQgMQogICAgcmV0dXJuCg=="}, "sourceInfo": {"approval": {"pcOffsetMethod": "none", "sourceInfo": [{"pc": [104, 117, 152, 172], "errorMessage": "check self.beats exists"}, {"pc": [140], "errorMessage": "invalid array length header"}, {"pc": [148], "errorMessage": "invalid number of bytes for arc4.dynamic_array<arc4.uint8>"}, {"pc": [133], "errorMessage": "invalid number of bytes for arc4.uint64"}]}, "clear": {"pcOffsetMethod": "none", "sourceInfo": []}}, "templateVariables": {}}"""
 APP_SPEC = algokit_utils.Arc56Contract.from_json(_APP_SPEC_JSON)
 
 def _parse_abi_args(args: object | None = None) -> list[object] | None:
@@ -64,6 +64,17 @@ def _init_dataclass(cls: type, data: dict) -> object:
             field_values[field.name] = field_value
     return cls(**field_values)
 
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class TickWithArgs:
+    """Dataclass for tick_with arguments"""
+    beats: int
+    note: str
+
+    @property
+    def abi_method_signature(self) -> str:
+        return "tick_with(uint64,string)uint64"
+
+
 class PulseParams:
     def __init__(self, app_client: algokit_utils.AppClient):
         self.app_client = app_client
@@ -77,6 +88,19 @@ class PulseParams:
         return self.app_client.params.call(algokit_utils.AppClientMethodCallParams(**{
             **dataclasses.asdict(params),
             "method": "tick()uint64",
+        }))
+
+    def tick_with(
+        self,
+        args: tuple[int, str] | TickWithArgs,
+        params: algokit_utils.CommonAppCallParams | None = None
+    ) -> algokit_utils.AppCallMethodCallParams:
+        method_args = _parse_abi_args(args)
+        params = params or algokit_utils.CommonAppCallParams()
+        return self.app_client.params.call(algokit_utils.AppClientMethodCallParams(**{
+            **dataclasses.asdict(params),
+            "method": "tick_with(uint64,string)uint64",
+            "args": method_args,
         }))
 
     def clear_state(
@@ -103,6 +127,19 @@ class PulseCreateTransactionParams:
         return self.app_client.create_transaction.call(algokit_utils.AppClientMethodCallParams(**{
             **dataclasses.asdict(params),
             "method": "tick()uint64",
+        }))
+
+    def tick_with(
+        self,
+        args: tuple[int, str] | TickWithArgs,
+        params: algokit_utils.CommonAppCallParams | None = None
+    ) -> algokit_utils.BuiltTransactions:
+        method_args = _parse_abi_args(args)
+        params = params or algokit_utils.CommonAppCallParams()
+        return self.app_client.create_transaction.call(algokit_utils.AppClientMethodCallParams(**{
+            **dataclasses.asdict(params),
+            "method": "tick_with(uint64,string)uint64",
+            "args": method_args,
         }))
 
     def clear_state(
@@ -134,6 +171,22 @@ class PulseSend:
         parsed_response = response
         return typing.cast(algokit_utils.SendAppTransactionResult[int], parsed_response)
 
+    def tick_with(
+        self,
+        args: tuple[int, str] | TickWithArgs,
+        params: algokit_utils.CommonAppCallParams | None = None,
+        send_params: algokit_utils.SendParams | None = None
+    ) -> algokit_utils.SendAppTransactionResult[int]:
+        method_args = _parse_abi_args(args)
+        params = params or algokit_utils.CommonAppCallParams()
+        response = self.app_client.send.call(algokit_utils.AppClientMethodCallParams(**{
+            **dataclasses.asdict(params),
+            "method": "tick_with(uint64,string)uint64",
+            "args": method_args,
+        }), send_params=send_params)
+        parsed_response = response
+        return typing.cast(algokit_utils.SendAppTransactionResult[int], parsed_response)
+
     def clear_state(
         self,
         params: algokit_utils.AppClientBareCallParams | None = None,
@@ -149,6 +202,7 @@ class GlobalStateValue(typing.TypedDict):
     """Shape of global_state state key values"""
     beats: int
     last_beat_round: int
+    last_note: str
 
 class PulseState:
     """Methods to access state for the current Pulse app"""
@@ -201,6 +255,14 @@ class _GlobalState:
         if isinstance(value, dict) and "AVMUint64" in self._struct_classes:
             return _init_dataclass(self._struct_classes["AVMUint64"], value)  # type: ignore
         return typing.cast(int, value)
+
+    @property
+    def last_note(self) -> str:
+        """Get the current value of the last_note key in global_state state"""
+        value = self.app_client.state.global_state.get_value("last_note")
+        if isinstance(value, dict) and "AVMString" in self._struct_classes:
+            return _init_dataclass(self._struct_classes["AVMString"], value)  # type: ignore
+        return typing.cast(str, value)
 
 class PulseClient:
     """Client for interacting with Pulse smart contract"""
@@ -349,6 +411,12 @@ class PulseClient:
     def decode_return_value(
         self,
         method: typing.Literal["tick()uint64"],
+        return_value: algokit_utils.ABIReturn | None
+    ) -> int | None: ...
+    @typing.overload
+    def decode_return_value(
+        self,
+        method: typing.Literal["tick_with(uint64,string)uint64"],
         return_value: algokit_utils.ABIReturn | None
     ) -> int | None: ...
     @typing.overload
@@ -552,6 +620,26 @@ class PulseFactoryCreateParams:
             compilation_params=compilation_params
         )
 
+    def tick_with(
+        self,
+        args: tuple[int, str] | TickWithArgs,
+        *,
+        params: algokit_utils.CommonAppCallCreateParams | None = None,
+        compilation_params: algokit_utils.AppClientCompilationParams | None = None
+    ) -> algokit_utils.AppCreateMethodCallParams:
+        """Creates a new instance using the tick_with(uint64,string)uint64 ABI method"""
+        params = params or algokit_utils.CommonAppCallCreateParams()
+        return self.app_factory.params.create(
+            algokit_utils.AppFactoryCreateMethodCallParams(
+                **{
+                **dataclasses.asdict(params),
+                "method": "tick_with(uint64,string)uint64",
+                "args": _parse_abi_args(args),
+                }
+            ),
+            compilation_params=compilation_params
+        )
+
 class PulseFactoryUpdateParams:
     """Parameters for 'update' operations of Pulse contract"""
 
@@ -666,6 +754,24 @@ class PulseComposer:
         self._result_mappers.append(
             lambda v: self.client.decode_return_value(
                 "tick()uint64", v
+            )
+        )
+        return self
+
+    def tick_with(
+        self,
+        args: tuple[int, str] | TickWithArgs,
+        params: algokit_utils.CommonAppCallParams | None = None
+    ) -> "PulseComposer":
+        self._composer.add_app_call_method_call(
+            self.client.params.tick_with(
+                args=args,
+                params=params,
+            )
+        )
+        self._result_mappers.append(
+            lambda v: self.client.decode_return_value(
+                "tick_with(uint64,string)uint64", v
             )
         )
         return self

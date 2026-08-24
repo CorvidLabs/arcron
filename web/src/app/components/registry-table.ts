@@ -281,7 +281,7 @@ export class RegistryTable {
         upkeep,
         id: String(upkeep.id),
         target: String(upkeep.targetApp),
-        selector: `0x${toHex(upkeep.callData)}`,
+        selector: `0x${toHex(upkeep.callArgs[0] ?? new Uint8Array())}`,
         creator: shortAddress(upkeep.creator),
         yours,
         interval: intervalLabel(upkeep.intervalRounds, pace),

@@ -14,7 +14,7 @@
 import algosdk from 'algosdk';
 
 import { keeperMethod } from './keeper-abi';
-import { boxMbr, EXECUTE_FEE, type Upkeep, upkeepBoxName } from './upkeep';
+import { ASSET_OPT_IN_MBR, boxMbr, EXECUTE_FEE, type Upkeep, upkeepBoxName } from './upkeep';
 
 export interface Signing {
   readonly sender: string;
@@ -23,7 +23,8 @@ export interface Signing {
 
 export interface RegisterParams {
   readonly targetApp: number;
-  readonly callData: Uint8Array;
+  /** Every app arg of the call, in order; element 0 is app arg 0. */
+  readonly callArgs: readonly Uint8Array[];
   readonly intervalRounds: number;
   readonly feePerExecution: number;
   readonly funding: number;
@@ -31,6 +32,10 @@ export interface RegisterParams {
   readonly policy: number;
   /** The most one run may ever cost; 0 means the fee never escalates. */
   readonly feeCap: number;
+  /** An ASA bonus on top of the ALGO fee; 0 means ALGO only. */
+  readonly feeAsset: number;
+  /** The bonus per execution, in the asset's base units. */
+  readonly assetFee: number;
 }
 
 /** A confirmed call: the round it landed in and whatever the method returned. */
@@ -95,14 +100,17 @@ export async function register(
     signer: signing.signer,
     suggestedParams,
     methodArgs: [
-      payment(boxMbr(params.callData.length)),
+      payment(boxMbr(params.callArgs)),
       payment(params.funding),
       params.targetApp,
-      params.callData,
+      // algosdk encodes `byte[][]` from arrays of numbers, not Uint8Arrays.
+      params.callArgs.map((arg) => Array.from(arg)),
       params.intervalRounds,
       params.feePerExecution,
       params.policy,
       params.feeCap,
+      params.feeAsset,
+      params.assetFee,
     ],
     boxes: [{ appIndex: 0, name: upkeepBoxName(await nextUpkeepId(algod, appId)) }],
   });
@@ -179,6 +187,81 @@ export async function execute(
     methodArgs: [upkeep.id],
     boxes: [{ appIndex: 0, name: upkeepBoxName(upkeep.id) }],
     appForeignApps: [Number(upkeep.targetApp)],
+  });
+  return run(algod, composer);
+}
+
+/**
+ * Let the app account hold an asset, so an upkeep can escrow a bonus in it.
+ *
+ * Permissionless but tied to an upkeep that names the asset, and the 0.1 ALGO
+ * it costs is not refundable — there is no opt-out.
+ */
+export async function optInAsset(
+  algod: algosdk.Algodv2,
+  appId: number,
+  signing: Signing,
+  upkeepId: bigint,
+  assetId: number,
+): Promise<CallResult> {
+  const suggestedParams = await algod.getTransactionParams().do();
+  const composer = new algosdk.AtomicTransactionComposer();
+  composer.addMethodCall({
+    appID: appId,
+    method: keeperMethod('optInAsset'),
+    sender: signing.sender,
+    signer: signing.signer,
+    suggestedParams: { ...suggestedParams, flatFee: true, fee: 2_000 },
+    methodArgs: [
+      {
+        txn: algosdk.makePaymentTxnWithSuggestedParamsFromObject({
+          sender: signing.sender,
+          receiver: algosdk.getApplicationAddress(appId),
+          amount: ASSET_OPT_IN_MBR,
+          suggestedParams,
+        }),
+        signer: signing.signer,
+      },
+      upkeepId,
+      assetId,
+    ],
+    appForeignAssets: [assetId],
+    boxes: [{ appIndex: 0, name: upkeepBoxName(upkeepId) }],
+  });
+  return run(algod, composer);
+}
+
+/** Add to an upkeep's ASA bonus escrow, in the asset's base units. */
+export async function topUpAsset(
+  algod: algosdk.Algodv2,
+  appId: number,
+  signing: Signing,
+  upkeepId: bigint,
+  assetId: number,
+  amount: number,
+): Promise<CallResult> {
+  const suggestedParams = await algod.getTransactionParams().do();
+  const composer = new algosdk.AtomicTransactionComposer();
+  composer.addMethodCall({
+    appID: appId,
+    method: keeperMethod('topUpAsset'),
+    sender: signing.sender,
+    signer: signing.signer,
+    suggestedParams,
+    methodArgs: [
+      upkeepId,
+      {
+        txn: algosdk.makeAssetTransferTxnWithSuggestedParamsFromObject({
+          sender: signing.sender,
+          receiver: algosdk.getApplicationAddress(appId),
+          assetIndex: assetId,
+          amount,
+          suggestedParams,
+        }),
+        signer: signing.signer,
+      },
+    ],
+    boxes: [{ appIndex: 0, name: upkeepBoxName(upkeepId) }],
   });
   return run(algod, composer);
 }

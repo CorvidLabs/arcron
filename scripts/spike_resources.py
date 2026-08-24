@@ -63,14 +63,16 @@ def _register(algorand, keeper_client, deployer, target_app: int, call_data: byt
 
     return keeper_client.send.register(
         args=RegisterArgs(
-            mbr_payment=payment(_box_mbr(call_data)),
+            mbr_payment=payment(_box_mbr([call_data])),
             funding_payment=payment(FEE * 3),
             target_app=target_app,
-            call_data=call_data,
+            call_args=[call_data],
             interval_rounds=INTERVAL,
             fee_per_execution=FEE,
             policy=0,  # CATCH_UP; this spike measures resources, not scheduling
             fee_cap=0,
+            fee_asset=0,
+            asset_fee=0,
         )
     ).abi_return
 

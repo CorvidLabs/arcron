@@ -34,26 +34,30 @@ contract class, the `Upkeep` struct, and its constants.
 | `MAX_INTERVAL_ROUNDS` | `1_000_000_000` | Maximum spacing, in rounds — about 90 years. It forbids nothing anyone wants, and it makes the escalation multiply provably safe without appealing to how old the chain is. |
 | `MIN_UPKEEP_FEE` | `4_000` | Minimum ALGO reward per execution (µALGO); keepers pay ~3,000 µALGO in txn fees, so this keeps executions profitable. |
 | `MAX_UPKEEP_FEE` | `1_000_000_000` | Ceiling on both `fee_per_execution` and `fee_cap` (µALGO). Bounds the escalation arithmetic well clear of overflow on a contract that can never be patched. |
-| `MAX_CALL_DATA` | `1_024` | Maximum size of the stored call data (first app arg), in bytes. |
+| `MAX_CALL_DATA` | `1_024` | Maximum size of the stored argument list, in bytes — the whole ARC-4 encoding, not one argument. The AVM's own cap on an app call's arguments is 2,048. |
+| `MAX_CALL_ARGS` | `3` | How many app args an execution may carry, counting the selector. Every count needs its own branch in `execute`, so this is what keeps the contract inside one 2,048-byte program page. |
+| `ASSET_OPT_IN_MBR` | `100_000` | What the app account's minimum balance rises by per asset it can hold. |
 | `CATCH_UP` | `0` | Catch-up policy: replay every missed interval, one fee each. The zero value, so it is what an upkeep means by default. |
 | `SKIP_AHEAD` | `1` | Catch-up policy: run once and advance to the first slot still in the future, keeping the schedule's phase. |
-| `BOX_MBR_FIXED` | `2_500 + 400 * 117` (`49_300`) | Box minimum balance less the call data. A box costs `BOX_MBR_FIXED + 400 * len(call_data)` µALGO: 2,500 per box plus 400 per byte of its 9-byte name and its 108-byte-plus-call-data value (106-byte head, then a 2-byte length prefix on `call_data`). |
+| `BOX_MBR_FIXED` | `2_500 + 400 * 139` (`58_100`) | Box minimum balance less the argument list. A box costs `BOX_MBR_FIXED + 400 * len(encoded call_args)` µALGO: 2,500 per box plus 400 per byte of its 9-byte name and its 130-byte head. Unlike a `byte[]`, a `byte[][]` carries its own count inside the encoding, so the whole tail is `call_args.bytes`. |
 
 ### Exported Types
 
 | Type | Description |
 |------|-------------|
 | `Keeper` | ARC-4 contract class; global state `next_upkeep_id: uint64`; one `Upkeep` struct per box (`"u" \|\| id BE64`, 9-byte names). |
-| `Upkeep` | ARC-4 struct: `creator: Address`, `target_app: UInt64`, `call_data: DynamicBytes`, `interval_rounds: UInt64`, `next_execution_round: UInt64`, `fee_per_execution: UInt64`, `balance: UInt64`, `times_executed: UInt64`, `policy: UInt64`, `fee_cap: UInt64`, `last_serviced_round: UInt64`. |
+| `Upkeep` | ARC-4 struct: `creator: Address`, `target_app: UInt64`, `call_args: DynamicArray[DynamicBytes]`, `interval_rounds: UInt64`, `next_execution_round: UInt64`, `fee_per_execution: UInt64`, `balance: UInt64`, `times_executed: UInt64`, `policy: UInt64`, `fee_cap: UInt64`, `last_serviced_round: UInt64`, `fee_asset: UInt64`, `asset_fee: UInt64`, `asset_balance: UInt64`. |
 
 #### Keeper Methods
 
 | Method | Parameters | Returns | Description |
 |--------|-----------|---------|-------------|
-| `register` | `mbr_payment: pay, funding_payment: pay, target_app: application, call_data: byte[], interval_rounds: uint64, fee_per_execution: uint64, policy: uint64, fee_cap: uint64` | `uint64` | Registers an upkeep, escrowing `funding_payment` and creating its box; returns the upkeep id. `policy` is `CATCH_UP` or `SKIP_AHEAD`; `fee_cap` is the most one execution may ever pay, or `0` for no escalation. |
+| `register` | `mbr_payment: pay, funding_payment: pay, target_app: application, call_args: byte[][], interval_rounds: uint64, fee_per_execution: uint64, policy: uint64, fee_cap: uint64, fee_asset: uint64, asset_fee: uint64` | `uint64` | Registers an upkeep, escrowing `funding_payment` and creating its box; returns the upkeep id. `call_args` is every app arg of the call, in order. `policy` is `CATCH_UP` or `SKIP_AHEAD`; `fee_cap` is the most one execution may ever pay in ALGO, or `0` for no escalation. `fee_asset` and `asset_fee` add an ASA bonus, or `0` for ALGO only. |
 | `top_up` | `upkeep_id: uint64, funding_payment: pay` | `uint64` | Adds ALGO to an upkeep's escrow; returns the new balance. |
 | `cancel` | `upkeep_id: uint64` | `uint64` | Creator-only; deletes the box and refunds the remaining escrow **plus the box MBR** the deletion releases; returns the refunded amount. |
-| `execute` | `upkeep_id: uint64` | `uint64` | Permissionless; when due, performs the registered inner app call, pays the caller the **effective fee** from escrow, records the round it ran in, and returns the next due round. |
+| `execute` | `upkeep_id: uint64` | `uint64` | Permissionless; when due, performs the registered inner app call with every stored app arg, pays the caller the **effective fee** from escrow, pays the ASA bonus if there is one the caller can receive, records the round it ran in, and returns the next due round. |
+| `opt_in_asset` | `mbr_payment: pay, upkeep_id: uint64, asset: uint64` | `uint64` | Permissionless; lets the app account hold `asset` so an upkeep can escrow a bonus in it. Requires an upkeep that names the asset, and the deposit is not refundable — there is no opt-out. |
+| `top_up_asset` | `upkeep_id: uint64, asset_funding: axfer` | `uint64` | Adds ASA to an upkeep's bonus escrow; returns the new asset balance. Separate from `register` because an asset transfer cannot be an optional member of a transaction group. |
 
 ## Invariants
 
@@ -71,7 +75,10 @@ contract class, the `Upkeep` struct, and its constants.
 12. `last_serviced_round` is the round `execute` ran in, set to `Global.round` at registration — where nothing ran, but the first execution is then measured from a real round — and at every execution after. It is the only on-chain record of when an upkeep actually ran; `next_execution_round - interval_rounds` is the round it was *scheduled* for, and the two differ by the whole backlog whenever an upkeep is catching up.
 13. `register` requires funding for one execution at the price the upkeep can be charged — `fee_cap` when one is set. Escalation pins the fee at the cap once an upkeep is a whole interval late and lateness only grows, so an upkeep funded only for a base-fee run but carrying a higher cap would be unexecutable by anyone from the first time it fell behind.
 14. Re-entrancy is impossible: the AVM refuses to re-enter an application from inside its own execution (`attempt to re-enter <app>`), so a target cannot call `execute` back. The contract's own ordering — state written before any inner transaction — is a second line rather than the only one. Measured in `scripts/spike_reentrancy.py`.
-15. Under `CATCH_UP`, `next_execution_round += interval_rounds`, so a neglected upkeep stays due until it has replayed every missed interval. Under `SKIP_AHEAD` it advances to the first slot strictly greater than `Global.round` that is still a whole number of intervals from the original schedule, so one execution clears any backlog without the schedule drifting.
+15. `execute` sends **every** stored app arg, in order, as the inner call's app args — the selector and each ARC-4 argument in an app arg of its own, which is what an ARC-4 method requires. `register` bounds the count at `MAX_CALL_ARGS`, so `execute`'s fan-out is exhaustive.
+16. **The ALGO fee is never replaced.** An ASA bonus is paid *on top*, and only when there is one, the asset escrow covers it, and the caller is opted in to the asset. A keeper that cannot receive the bonus is not a failed execution: it takes the full ALGO fee and the bonus stays in escrow for the creator. This is what keeps the profitability floor enforceable on-chain without anyone pricing the asset.
+17. `cancel` returns the unspent asset balance along with the ALGO and the box MBR, and refuses — before refunding anything — if the creator cannot receive it.
+18. Under `CATCH_UP`, `next_execution_round += interval_rounds`, so a neglected upkeep stays due until it has replayed every missed interval. Under `SKIP_AHEAD` it advances to the first slot strictly greater than `Global.round` that is still a whole number of intervals from the original schedule, so one execution clears any backlog without the schedule drifting.
 
 ## Behavioral Examples
 
@@ -105,6 +112,18 @@ contract class, the `Upkeep` struct, and its constants.
 - **When** it falls a whole interval behind its last service
 - **Then** it pays the base fee and stays executable — an upkeep bids up to its ceiling but never more than it holds, so the escalated price cannot lock it out of its own escrow
 
+### Scenario: A target method with arguments of its own
+
+- **Given** an upkeep registered against `tick_with(uint64,string)` with the arguments `7` and `"archon"`
+- **When** a keeper executes it
+- **Then** the target's counter advances by 7 rather than by 1, and it holds the string — the selector and both arguments each arrived in an app arg of their own
+
+### Scenario: A keeper that cannot receive the bonus
+
+- **Given** an upkeep with an ASA bonus and a funded asset escrow
+- **When** a keeper that has never opted in to that asset executes it
+- **Then** the execution succeeds, the keeper is paid the full ALGO fee, and the bonus stays in escrow — reverting instead would quietly shrink the keeper set for exactly the upkeeps paying extra
+
 ### Scenario: A patient keeper cannot farm the ceiling off a backlog
 
 - **Given** a neglected `CATCH_UP` upkeep with a backlog and a ceiling
@@ -127,7 +146,12 @@ contract class, the `Upkeep` struct, and its constants.
 | Fee or cap above `MAX_UPKEEP_FEE` | Fails with "Fee above maximum" / "Fee cap above maximum" |
 | `policy` other than `CATCH_UP` or `SKIP_AHEAD` | Fails with "Unknown catch-up policy" |
 | Non-zero `fee_cap` below `fee_per_execution` | Fails with "Fee cap below the fee" |
-| Empty or over-1024-byte call data | Fails with "Call data size out of bounds" |
+| Zero arguments, or more than `MAX_CALL_ARGS` | Fails with "Argument count out of bounds" |
+| Encoded argument list over `MAX_CALL_DATA` bytes | Fails with "Argument list too large" |
+| `fee_asset` set with `asset_fee` of zero | Fails with "Asset fee must be positive" |
+| `top_up_asset` with an asset the upkeep does not use | Fails with "Wrong asset for this upkeep" |
+| `opt_in_asset` naming an upkeep that does not use the asset | Fails with "That upkeep does not use this asset" |
+| `cancel` with an unspent bonus, by a creator not opted in | Fails with "Opt in to the fee asset before cancelling" |
 | MBR payment below computed box MBR | Fails with "MBR payment too small" |
 | Funding below one execution at the effective worst case (`fee_cap` when set, else `fee_per_execution`) | Fails with "Funding must cover at least one execution" |
 | `execute` before the due round | Fails with "Not due" |
@@ -157,6 +181,7 @@ contract class, the `Upkeep` struct, and its constants.
 | Date | Author | Change |
 |------|--------|--------|
 | 2026-08-23 | CorvidLabs | Initial keeper network: register, top_up, cancel, execute; Upkeep struct in boxes |
+| 2026-08-24 | CorvidLabs | #8 and #9: `call_data: byte[]` becomes `call_args: byte[][]`, so an execution carries the selector and up to two ARC-4 arguments — before this only zero-argument hooks were reachable. `fee_asset`, `asset_fee` and `asset_balance` add an optional ASA bonus paid on top of the ALGO fee, never instead of it, with `opt_in_asset` and `top_up_asset` to fund it. The fan-out ceiling is 3, chosen because it is what keeps the whole batch inside one program page. `BOX_MBR_FIXED` is now `2_500 + 400 * 139`; the head grew from 106 to 130 bytes and every decoder moved with it. Designs: `docs/design/call-shapes.md`, `docs/design/asa-fees.md`. |
 | 2026-08-24 | CorvidLabs | Review hardening for #7/#14: a replay never escalates (`next_execution_round <= last_serviced_round`), because measuring lateness from the last service alone let a patient keeper collect the ceiling on every `CATCH_UP` replay while the backlog grew without bound — measured at 100% of a 400,000 µALGO escrow across 34 runs. An upkeep also never bids more than it holds, so an escrow below the escalated fee falls back to base instead of being locked out permanently. `MAX_INTERVAL_ROUNDS` added so the escalation multiply is bounded by the inputs rather than by the age of the chain. |
 | 2026-08-24 | CorvidLabs | #7 and #14: `policy`, `fee_cap` and `last_serviced_round` added to `Upkeep`, and `register` takes `policy` and `fee_cap`. A creator chooses whether a missed schedule is replayed (`CATCH_UP`) or dropped (`SKIP_AHEAD`), and may set a ceiling the fee escalates towards while the upkeep is late. Escalation is measured from `last_serviced_round`, so a catch-up burst pays the ceiling once rather than once per replay. `BOX_MBR_FIXED` is now `2_500 + 400 * 117`; the head grew from 82 to 106 bytes and every decoder moved with it. Design: `docs/design/scheduling-and-fees.md`. |
 | 2026-08-24 | CorvidLabs | Fix: `register` undercharged box MBR by 800 µALGO (name and length-prefix bytes were miscounted), which left an upkeep's last execution unpayable on an unsubsidised app account. MBR is now `BOX_MBR_FIXED + 400 * len(call_data)`, exported as a constant. `cancel` now also refunds the box MBR it releases and returns the refunded amount (was `void`), so registration is balance-neutral. |

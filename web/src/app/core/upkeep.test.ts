@@ -2,9 +2,10 @@
  * The TypeScript decoder must agree with the Python one, byte for byte.
  *
  * The vector is the same recorded box used by tests/test_keeper_bot.py —
- * upkeep 0 on LocalNet app 11172 after its first execution, registered with
- * SKIP_AHEAD and a 12,000 µALGO cap so that all three fields added by #7 and
- * #14 hold non-zero values. If the struct changes, both tests change together.
+ * upkeep 0 on LocalNet app 18775 after its first execution. Every field the
+ * 1.0 batch added holds a non-zero value: SKIP_AHEAD, a 12,000 µALGO ceiling,
+ * a three-argument call, and an ASA bonus that was actually paid. If the
+ * struct changes, both tests change together.
  */
 
 import { describe, expect, test } from 'bun:test';
@@ -13,6 +14,7 @@ import {
   SKIP_AHEAD,
   boxMbr,
   decodeUpkeep,
+  encodeCallArgs,
   effectiveFee,
   escalates,
   executionsRemaining,
@@ -25,17 +27,21 @@ import {
 
 const LIVE_BOX_HEX =
   '5defa167e82d6882b1a57beb7d3bb8583440a2e2e19a27358c94744a4fa7e3cf' +
-  '0000000000000413' + // target_app = 1043
-  '006a' + //             tail offset = 106
+  '0000000000004959' + // target_app = 18777
+  '0082' + //             tail offset = 130
   '000000000000000a' + // interval_rounds = 10
-  '0000000000001eda' + // next_execution_round = 7898
+  '0000000000003698' + // next_execution_round = 13976
   '0000000000000fa0' + // fee_per_execution = 4000
-  '0000000000005aa0' + // balance = 23200
+  '0000000000008980' + // balance = 35200
   '0000000000000001' + // times_executed = 1
   '0000000000000001' + // policy = SKIP_AHEAD
   '0000000000002ee0' + // fee_cap = 12000
-  '0000000000001ed1' + // last_serviced_round = 7889
-  '00044d4d5f0b'; //      tail: uint16 length 4 + tick()uint64 selector
+  '000000000000368f' + // last_serviced_round = 13967
+  '000000000000495a' + // fee_asset = 18778
+  '000000000003d090' + // asset_fee = 250000
+  '00000000000b71b0' + // asset_balance = 750000
+  // tail: byte[][] of absorb(uint64,string)'s selector, 7777 and "archon"
+  '00030006000c00160004cb782a4800080000000000001e6100080006617263686f6e';
 
 function fromHex(hex: string): Uint8Array {
   return Uint8Array.from(hex.match(/.{2}/g)!.map((byte) => parseInt(byte, 16)));
@@ -46,20 +52,33 @@ describe('decodeUpkeep', () => {
 
   test('reads every field of a real box', () => {
     expect(upkeep.id).toBe(0n);
-    expect(upkeep.targetApp).toBe(1043n);
+    expect(upkeep.targetApp).toBe(18777n);
     expect(upkeep.intervalRounds).toBe(10n);
-    expect(upkeep.nextExecutionRound).toBe(7898n);
+    expect(upkeep.nextExecutionRound).toBe(13976n);
     expect(upkeep.feePerExecution).toBe(4000n);
-    expect(upkeep.balance).toBe(23200n);
+    expect(upkeep.balance).toBe(35200n);
     expect(upkeep.timesExecuted).toBe(1n);
     expect(upkeep.policy).toBe(SKIP_AHEAD);
     expect(upkeep.feeCap).toBe(12000n);
-    expect(upkeep.lastServicedRound).toBe(7889n);
+    expect(upkeep.lastServicedRound).toBe(13967n);
+    expect(upkeep.feeAsset).toBe(18778n);
+    expect(upkeep.assetFee).toBe(250_000n);
+    expect(upkeep.assetBalance).toBe(750_000n);
   });
 
   test('reads the fields the Python decoder skips', () => {
     expect(upkeep.creator).toBe('LXX2CZ7IFVUIFMNFPPVX2O5YLA2EBIXC4GNCONMMSR2EUT5H4PHZ53VNOQ');
-    expect(toHex(upkeep.callData)).toBe('4d4d5f0b');
+    expect(upkeep.callArgs.map(toHex)).toEqual([
+      'cb782a48', // absorb(uint64,string) selector
+      '0000000000001e61', // 7777
+      '0006617263686f6e', // "archon"
+    ]);
+  });
+
+  test('round-trips the argument list through the encoder', () => {
+    expect(toHex(encodeCallArgs(upkeep.callArgs))).toBe(
+      toHex(fromHex(LIVE_BOX_HEX).subarray(130)),
+    );
   });
 
   test('rejects a truncated box rather than decoding garbage', () => {
@@ -92,8 +111,9 @@ describe('effectiveFee', () => {
   });
 
   test('prices the runway at the worst case the creator can be charged', () => {
-    // 23,200 µALGO of escrow buys one run at the 12,000 cap, not five at base.
-    expect(executionsRemaining(upkeep)).toBe(1n);
+    // 35,200 µALGO of escrow buys two runs at the 12,000 ceiling, not eight
+    // at the fee its creator wrote down.
+    expect(executionsRemaining(upkeep)).toBe(2n);
   });
 });
 
@@ -101,35 +121,35 @@ describe('derived state', () => {
   const upkeep = decodeUpkeep(0n, fromHex(LIVE_BOX_HEX));
 
   test('counts remaining executions at the price it can be charged', () => {
-    expect(executionsRemaining(upkeep)).toBe(1n); // 23200 / the 12000 cap
-    expect(executionsRemaining({ ...upkeep, feeCap: 0n })).toBe(5n); // 23200 / 4000
+    expect(executionsRemaining(upkeep)).toBe(2n); // 35200 / the 12000 cap
+    expect(executionsRemaining({ ...upkeep, feeCap: 0n })).toBe(8n); // 35200 / 4000
   });
 
   test('is executable once the due round passes', () => {
-    expect(isExecutable(upkeep, 7897n)).toBe(false);
-    expect(isExecutable(upkeep, 7898n)).toBe(true);
-    expect(roundsUntilDue(upkeep, 7888n)).toBe(10n);
-    expect(roundsUntilDue(upkeep, 7908n)).toBe(-10n);
+    expect(isExecutable(upkeep, 13975n)).toBe(false);
+    expect(isExecutable(upkeep, 13976n)).toBe(true);
+    expect(roundsUntilDue(upkeep, 13966n)).toBe(10n);
+    expect(roundsUntilDue(upkeep, 13986n)).toBe(-10n);
   });
 
   test('is not executable when the escrow cannot cover a fee', () => {
-    expect(isExecutable({ ...upkeep, balance: 3_999n }, 7898n)).toBe(false);
+    expect(isExecutable({ ...upkeep, balance: 3_999n }, 13976n)).toBe(false);
   });
 
   test('an escrow that cannot reach the ceiling pays base and stays executable', () => {
     // 5,000 µALGO clears the base fee but not the escalated one, so the
     // contract charges base rather than freezing the upkeep for good.
     const thin = { ...upkeep, balance: 5_000n };
-    expect(isExecutable(thin, 7898n)).toBe(true);
-    expect(isExecutable(thin, 7889n + 20n)).toBe(true);
-    expect(effectiveFee(thin, 7889n + 20n)).toBe(4_000n);
+    expect(isExecutable(thin, 13976n)).toBe(true);
+    expect(isExecutable(thin, 13967n + 20n)).toBe(true);
+    expect(effectiveFee(thin, 13967n + 20n)).toBe(4_000n);
     // Below the base fee there is nothing anyone can be paid.
-    expect(isExecutable({ ...upkeep, balance: 3_999n }, 7898n)).toBe(false);
+    expect(isExecutable({ ...upkeep, balance: 3_999n }, 13976n)).toBe(false);
   });
 
   test('a replay of a backlog never escalates', () => {
-    const replay = { ...upkeep, nextExecutionRound: 7_800n, lastServicedRound: 7_889n };
-    expect(effectiveFee(replay, 9_000n)).toBe(4_000n);
+    const replay = { ...upkeep, nextExecutionRound: 13_900n, lastServicedRound: 13_967n };
+    expect(effectiveFee(replay, 15_000n)).toBe(4_000n);
   });
 });
 
@@ -146,9 +166,11 @@ describe('box names', () => {
 
 describe('box MBR', () => {
   test('matches the contract formula', () => {
-    expect(BOX_MBR_FIXED).toBe(2_500 + 400 * 117);
-    expect(boxMbr(4)).toBe(50_900); // a 4-byte selector, as charged on-chain
-    // ...and what the recorded box above actually costs.
-    expect(2_500 + 400 * (9 + fromHex(LIVE_BOX_HEX).length)).toBe(boxMbr(4));
+    expect(BOX_MBR_FIXED).toBe(2_500 + 400 * 139);
+    // A bare 4-byte selector, as charged on-chain.
+    expect(boxMbr([new Uint8Array(4)])).toBe(62_100);
+    // ...and what the recorded three-argument box above actually costs.
+    const recorded = fromHex(LIVE_BOX_HEX);
+    expect(2_500 + 400 * (9 + recorded.length)).toBe(boxMbr(decodeUpkeep(0n, recorded).callArgs));
   });
 });

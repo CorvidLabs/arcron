@@ -87,7 +87,7 @@ Archon is the clock, not the eyes.
 **It cannot** fetch anything off-chain — no APIs, no RSS, no web pages, no
 price feeds. Smart contracts have no network access, and `execute` fires an
 inner app call to another app on the same chain. Archon can wake your contract
-up; it cannot tell it what is happening in the world. `call_data` is frozen at
+up; it cannot tell it what is happening in the world. `call_args` is frozen at
 registration, so keepers have no discretion over what gets called — which is
 exactly why they need no trust.
 

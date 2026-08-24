@@ -248,7 +248,7 @@ export class UpkeepBoard {
         entry,
         id: String(entry.upkeep.id),
         target: String(entry.upkeep.targetApp),
-        selector: `0x${toHex(entry.upkeep.callData)}`,
+        selector: `0x${toHex(entry.upkeep.callArgs[0] ?? new Uint8Array())}`,
         // What it pays now, not what it was registered at: escalation exists
         // to change which work a keeper reaches for first.
         reward: algos(entry.currentFee),

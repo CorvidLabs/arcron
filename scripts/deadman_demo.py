@@ -98,15 +98,17 @@ def main(argv: list[str] | None = None) -> None:
 
     upkeep_id = keeper_client.send.register(
         args=RegisterArgs(
-            mbr_payment=payment(_box_mbr(call_data)),
+            mbr_payment=payment(_box_mbr([call_data])),
             funding_payment=payment(FEE * 6),
             target_app=switch.app_id,
-            call_data=call_data,
+            call_args=[call_data],
             interval_rounds=UPKEEP_INTERVAL,
             fee_per_execution=FEE,
             # The switch fires once and goes inert, so replays are pure waste.
             policy=SKIP_AHEAD,
             fee_cap=0,
+            fee_asset=0,
+            asset_fee=0,
         )
     ).abi_return
 

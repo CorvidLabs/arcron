@@ -21,11 +21,13 @@ import hashlib
 import logging
 
 import algokit_utils
-from algosdk import encoding
+from algosdk import abi, encoding
 
 from scripts import keeper_bot, network as net
 from smart_contracts.artifacts.keeper.keeper_client import (
     CancelArgs,
+    OptInAssetArgs,
+    TopUpAssetArgs,
     ExecuteArgs,
     KeeperClient,
     KeeperFactory,
@@ -63,9 +65,16 @@ def _selector(signature: str) -> bytes:
     return hashlib.new("sha512_256", signature.encode()).digest()[:4]
 
 
-def _box_mbr(call_data: bytes) -> int:
+def _encode_args(call_args: list[bytes]) -> bytes:
+    """The ARC-4 `byte[][]` an upkeep stores."""
+    return abi.ABIType.from_string("byte[][]").encode([list(a) for a in call_args])
+
+
+def _box_mbr(call_args: list[bytes] | bytes) -> int:
     """What one upkeep box costs, per the contract's own constant."""
-    return BOX_MBR_FIXED + 400 * len(call_data)
+    if isinstance(call_args, (bytes, bytearray)):
+        call_args = [bytes(call_args)]
+    return BOX_MBR_FIXED + 400 * len(_encode_args(call_args))
 
 
 def _assert_solvent(algorand, keeper_client, app_id: int) -> None:
@@ -172,10 +181,13 @@ def _register_with_interval(
     fee: int = FEE,
     policy: int = keeper_bot.CATCH_UP,
     fee_cap: int = 0,
+    call_args: list[bytes] | None = None,
+    fee_asset: int = 0,
+    asset_fee: int = 0,
 ) -> int:
     """Register an upkeep at an arbitrary cadence; returns the new upkeep id."""
-    if call_data is None:
-        call_data = _selector(CALL_SIGNATURE)
+    if call_args is None:
+        call_args = [_selector(CALL_SIGNATURE) if call_data is None else call_data]
     first_valid = algorand.client.algod.status()["last-round"]
     last_valid = first_valid + 1_000
 
@@ -192,14 +204,16 @@ def _register_with_interval(
 
     response = keeper_client.send.register(
         args=RegisterArgs(
-            mbr_payment=payment(_box_mbr(call_data)),
+            mbr_payment=payment(_box_mbr(call_args)),
             funding_payment=payment(funding),
             target_app=target_app,
-            call_data=call_data,
+            call_args=call_args,
             interval_rounds=interval,
             fee_per_execution=fee,
             policy=policy,
             fee_cap=fee_cap,
+            fee_asset=fee_asset,
+            asset_fee=asset_fee,
         ),
         params=algokit_utils.CommonAppCallParams(
             first_valid_round=first_valid, last_valid_round=last_valid
@@ -235,7 +249,9 @@ def _assert_rejected_by_algod(rejection: str) -> None:
     )
 
 
-def _raw_execute(algorand, app_id: int, account, upkeep_id: int, target_app: int) -> str:
+def _raw_execute(
+    algorand, app_id: int, account, upkeep_id: int, target_app: int, assets=()
+) -> str:
     """Broadcast `execute` straight to algod, with no simulate beforehand.
 
     The typed client simulates first, which means a doomed call never reaches
@@ -257,6 +273,7 @@ def _raw_execute(algorand, app_id: int, account, upkeep_id: int, target_app: int
         app_args=[method.get_selector(), upkeep_id.to_bytes(8, "big")],
         boxes=[(0, b"u" + upkeep_id.to_bytes(8, "big"))],
         foreign_apps=[target_app],
+        foreign_assets=list(assets),
     )
     signed = account.signer.sign_transactions([txn], [0])
     # send_transactions encodes the signed objects; send_raw_transaction wants
@@ -327,8 +344,10 @@ def main(argv: list[str] | None = None) -> None:
     # restating it, so a struct change shows up as a decode failure and not as
     # a test quietly checking the wrong bytes.
     tail = int.from_bytes(raw[40:42], "big")
-    _assert("head size", tail, 106)
-    _assert("call_data", raw[tail + 2 :], _selector(CALL_SIGNATURE))
+    _assert("head size", tail, 130)
+    _assert("call_args", raw[tail:], _encode_args([_selector(CALL_SIGNATURE)]))
+    _assert("fee_asset", upkeep.fee_asset, 0)
+    _assert("asset_balance", upkeep.asset_balance, 0)
     assert upkeep.next_execution_round >= registered_round, "Upkeep is due immediately"
     _assert(
         "escrow credited",
@@ -864,6 +883,157 @@ def main(argv: list[str] | None = None) -> None:
                 extra_fee=algokit_utils.AlgoAmount(micro_algo=1_000)
             ),
         )
+
+    # ------------------------------------------------------------------
+    logger.info("── 18. A target method with arguments of its own ──")
+    # Before #8 an upkeep carried one app arg, so only zero-argument hooks
+    # were reachable: an ARC-4 method needs its selector *and* each argument
+    # in an app arg of its own. This registers a real three-arg call and
+    # checks the target's state moved by the argument's value, not by one.
+    note = "archon"
+    step = 7
+    multi_args = [
+        _selector("tick_with(uint64,string)uint64"),
+        step.to_bytes(8, "big"),
+        abi.ABIType.from_string("string").encode(note),
+    ]
+    beats_before = int(pulse_client.state.global_state.beats)
+    multi_id = _register_with_interval(
+        algorand, keeper_client, deployer, pulse_client.app_id, FEE * 3,
+        INTERVAL_ROUNDS, call_args=multi_args,
+    )
+    multi, raw = _read_upkeep(algorand, app_id, multi_id)
+    _assert("stored three app args", raw[130:], _encode_args(multi_args))
+    net.wait_for_round(algorand, multi.next_execution_round, poker=deployer)
+    stranger_client.send.execute(
+        args=ExecuteArgs(upkeep_id=multi_id),
+        params=algokit_utils.CommonAppCallParams(
+            extra_fee=algokit_utils.AlgoAmount(micro_algo=keeper_bot.EXTRA_FEE_MICROALGO)
+        ),
+    )
+    _assert(
+        "the target advanced by the argument, not by one",
+        int(pulse_client.state.global_state.beats) - beats_before,
+        step,
+    )
+    _assert(
+        "and received the second argument too",
+        pulse_client.state.global_state.last_note,
+        note,
+    )
+    keeper_client.send.cancel(
+        args=CancelArgs(upkeep_id=multi_id),
+        params=algokit_utils.CommonAppCallParams(
+            extra_fee=algokit_utils.AlgoAmount(micro_algo=1_000)
+        ),
+    )
+
+    # ------------------------------------------------------------------
+    logger.info("── 19. An ASA bonus on top of the ALGO fee ──")
+    # The ALGO fee is never replaced, so a keeper that does not hold — or does
+    # not want — the asset is still paid for its work. That is what keeps the
+    # profitability floor checkable on-chain without anyone pricing the asset.
+    asset_id = algorand.send.asset_create(
+        algokit_utils.AssetCreateParams(sender=deployer.address, total=10_000_000)
+    ).asset_id
+    bonus = 250_000
+    bonus_id = _register_with_interval(
+        algorand, keeper_client, deployer, pulse_client.app_id, FEE * 4,
+        INTERVAL_ROUNDS, fee_asset=asset_id, asset_fee=bonus,
+    )
+    box_name = b"u" + bonus_id.to_bytes(8, "big")
+    first_valid = algorand.client.algod.status()["last-round"]
+    keeper_client.send.opt_in_asset(
+        args=OptInAssetArgs(
+            mbr_payment=algorand.create_transaction.payment(
+                algokit_utils.PaymentParams(
+                    sender=deployer.address,
+                    receiver=keeper_client.app_address,
+                    amount=algokit_utils.AlgoAmount(micro_algo=100_000),
+                    first_valid_round=first_valid,
+                    last_valid_round=first_valid + 1_000,
+                )
+            ),
+            upkeep_id=bonus_id,
+            asset=asset_id,
+        ),
+        params=algokit_utils.CommonAppCallParams(
+            extra_fee=algokit_utils.AlgoAmount(micro_algo=1_000),
+            asset_references=[asset_id],
+            box_references=[box_name],
+        ),
+    )
+    keeper_client.send.top_up_asset(
+        args=TopUpAssetArgs(
+            upkeep_id=bonus_id,
+            asset_funding=algorand.create_transaction.asset_transfer(
+                algokit_utils.AssetTransferParams(
+                    sender=deployer.address,
+                    receiver=keeper_client.app_address,
+                    asset_id=asset_id,
+                    amount=bonus * 4,
+                )
+            ),
+        ),
+        params=algokit_utils.CommonAppCallParams(box_references=[box_name]),
+    )
+
+    def _asset_of(address: str) -> int | None:
+        info = algorand.client.algod.account_info(address)
+        for holding in info.get("assets", []):
+            if holding["asset-id"] == asset_id:
+                return holding["amount"]
+        return None
+
+    # The stranger has never seen this asset, so it cannot receive the bonus —
+    # and must still be paid its ALGO fee rather than having the call fail.
+    _assert("the stranger cannot hold the asset", _asset_of(stranger.address), None)
+    bonus_upkeep, _ = _read_upkeep(algorand, app_id, bonus_id)
+    algo_before = _balance(algorand, stranger.address)
+    net.wait_for_round(algorand, bonus_upkeep.next_execution_round, poker=deployer)
+    _raw_execute(algorand, app_id, stranger, bonus_id, pulse_client.app_id, assets=[asset_id])
+    after_stranger, _ = _read_upkeep(algorand, app_id, bonus_id)
+    _assert(
+        "an un-opted-in keeper still earns the ALGO fee",
+        _balance(algorand, stranger.address) - algo_before + KEEPER_TXN_COST,
+        FEE,
+    )
+    _assert("and the bonus stays in escrow", after_stranger.asset_balance, bonus * 4)
+
+    # Now a keeper that has opted in.
+    algorand.send.asset_opt_in(
+        algokit_utils.AssetOptInParams(sender=deployer.address, asset_id=asset_id)
+    )
+    held_before = _asset_of(deployer.address) or 0
+    net.wait_for_round(algorand, after_stranger.next_execution_round, poker=deployer)
+    keeper_client.send.execute(
+        args=ExecuteArgs(upkeep_id=bonus_id),
+        params=algokit_utils.CommonAppCallParams(
+            extra_fee=algokit_utils.AlgoAmount(micro_algo=3_000),
+            asset_references=[asset_id],
+        ),
+    )
+    after_holder, _ = _read_upkeep(algorand, app_id, bonus_id)
+    _assert(
+        "an opted-in keeper is paid the bonus",
+        (_asset_of(deployer.address) or 0) - held_before,
+        bonus,
+    )
+    _assert("and the escrow falls by exactly that", after_holder.asset_balance, bonus * 3)
+
+    refunded = keeper_client.send.cancel(
+        args=CancelArgs(upkeep_id=bonus_id),
+        params=algokit_utils.CommonAppCallParams(
+            extra_fee=algokit_utils.AlgoAmount(micro_algo=2_000),
+            asset_references=[asset_id],
+        ),
+    )
+    _assert(
+        "cancel returns the unspent bonus too",
+        (_asset_of(deployer.address) or 0) - held_before,
+        bonus + bonus * 3,
+    )
+    logger.info(f"  ✔ ALGO refund {refunded.abi_return} µALGO, plus {bonus * 3} base units")
 
     # ------------------------------------------------------------------
     # Return the stranger's remaining balance; on TestNet that is real ALGO.

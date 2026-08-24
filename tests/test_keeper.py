@@ -1,6 +1,8 @@
 import hashlib
 from collections.abc import Iterator
 
+from algosdk import abi
+
 import pytest
 from algopy import UInt64, arc4
 from algopy_testing import AlgopyTestContext, algopy_testing_context
@@ -9,6 +11,7 @@ from scripts.keeper_bot import _decode_upkeep
 from smart_contracts.keeper.contract import (
     BOX_MBR_FIXED,
     CATCH_UP,
+    MAX_CALL_ARGS,
     MAX_CALL_DATA,
     MAX_UPKEEP_FEE,
     MIN_INTERVAL_ROUNDS,
@@ -43,6 +46,11 @@ def _upkeep_key(upkeep_id: int) -> bytes:
     return b"u" + upkeep_id.to_bytes(8, "big")
 
 
+def _encode_args(call_args: list[bytes]) -> bytes:
+    """The ARC-4 `byte[][]` an upkeep stores, for pricing its box."""
+    return abi.ABIType.from_string("byte[][]").encode([list(a) for a in call_args])
+
+
 def _register(
     context: AlgopyTestContext,
     keeper: Keeper,
@@ -55,10 +63,15 @@ def _register(
     mbr: int | None = None,
     policy: int = CATCH_UP,
     fee_cap: int = 0,
+    call_args: list[bytes] | None = None,
+    fee_asset: int = 0,
+    asset_fee: int = 0,
 ) -> int:
     app_address = context.ledger.get_app(keeper).address
+    if call_args is None:
+        call_args = [call_data]
     if mbr is None:
-        mbr = BOX_MBR_FIXED + 400 * len(call_data)
+        mbr = BOX_MBR_FIXED + 400 * len(_encode_args(call_args))
     if funding is None:
         funding = fee * 5
     mbr_payment = context.any.txn.payment(receiver=app_address, amount=mbr)
@@ -67,11 +80,15 @@ def _register(
         mbr_payment,
         funding_payment,
         context.ledger.get_app(target),
-        arc4.DynamicBytes(call_data),
+        arc4.DynamicArray[arc4.DynamicBytes](
+            *(arc4.DynamicBytes(arg) for arg in call_args)
+        ),
         UInt64(interval),
         UInt64(fee),
         UInt64(policy),
         UInt64(fee_cap),
+        UInt64(fee_asset),
+        UInt64(asset_fee),
     )
 
 
@@ -117,18 +134,48 @@ def test_register_rejects_low_fee(
         _register(context, keeper, pulse, b"\x00", fee=MIN_UPKEEP_FEE - 1)
 
 
-def test_register_rejects_empty_call_data(
+def test_register_rejects_an_empty_argument_list(
     context: AlgopyTestContext, keeper: Keeper, pulse: Pulse
 ) -> None:
-    with pytest.raises(AssertionError, match="Call data size out of bounds"):
-        _register(context, keeper, pulse, b"")
+    """A bare NoOp call, which almost no ARC-4 router answers.
+
+    An upkeep registered with no arguments would call the target's bare
+    handler — which most contracts do not have — and fail on every execution,
+    for good, wasting the creator's MBR and every keeper's simulate. It is
+    also exactly what a client bug that failed to encode anything produces.
+    """
+    with pytest.raises(AssertionError, match="Argument count out of bounds"):
+        _register(context, keeper, pulse, b"", call_args=[])
 
 
-def test_register_rejects_oversize_call_data(
+def test_register_rejects_more_arguments_than_the_fan_out(
     context: AlgopyTestContext, keeper: Keeper, pulse: Pulse
 ) -> None:
-    with pytest.raises(AssertionError, match="Call data size out of bounds"):
+    """Bounded at registration, not at execution.
+
+    `execute` fans out over a fixed set of argument counts. A longer list
+    would register happily and then fail on every execution — the same shape
+    as the fee-cap trap, and just as permanent.
+    """
+    too_many = [b"\x01"] * (MAX_CALL_ARGS + 1)
+    with pytest.raises(AssertionError, match="Argument count out of bounds"):
+        _register(context, keeper, pulse, b"\x01", call_args=too_many)
+
+    # One below the ceiling is fine, and so is the ceiling itself.
+    assert _register(context, keeper, pulse, b"\x01", call_args=[b"\x01"] * MAX_CALL_ARGS) == 0
+
+
+def test_register_rejects_an_oversize_argument_list(
+    context: AlgopyTestContext, keeper: Keeper, pulse: Pulse
+) -> None:
+    """The cap is on the whole encoded list, not on one argument."""
+    with pytest.raises(AssertionError, match="Argument list too large"):
         _register(context, keeper, pulse, b"x" * (MAX_CALL_DATA + 1))
+    # Split across the fan-out, the same total is still too large.
+    with pytest.raises(AssertionError, match="Argument list too large"):
+        _register(
+            context, keeper, pulse, b"x", call_args=[b"x" * (MAX_CALL_DATA // 2)] * 3
+        )
 
 
 def test_register_rejects_low_funding(
@@ -148,24 +195,33 @@ def test_register_charges_the_real_box_mbr() -> None:
     never registered (regression — the contract used to undercharge by 800
     µALGO, so the final execution failed with "balance below min").
     """
-    for call_data in (_selector("tick()uint64"), b"\x01", b"x" * MAX_CALL_DATA):
+    cases: list[list[bytes]] = [
+        [_selector("tick()uint64")],
+        [b"\x01"],
+        [_selector("absorb(uint64,string)"), b"\x00" * 8],
+        [_selector("absorb(uint64,string)"), b"\x00" * 8, b"\x00" * 16],
+        [b"x" * (MAX_CALL_DATA - 8)],
+    ]
+    for call_args in cases:
         with algopy_testing_context() as ctx:
             local_keeper = Keeper()
             local_pulse = Pulse()
-            upkeep_id = _register(ctx, local_keeper, local_pulse, call_data)
+            upkeep_id = _register(
+                ctx, local_keeper, local_pulse, call_args[0], call_args=call_args
+            )
 
             key = _upkeep_key(int(upkeep_id))
             encoded = ctx.ledger.get_box(local_keeper, key)
             actual_mbr = 2_500 + 400 * (len(key) + len(encoded))
 
-            assert BOX_MBR_FIXED + 400 * len(call_data) == actual_mbr
+            assert BOX_MBR_FIXED + 400 * len(_encode_args(call_args)) == actual_mbr
 
 
 def test_register_rejects_low_mbr(
     context: AlgopyTestContext, keeper: Keeper, pulse: Pulse
 ) -> None:
     call_data = _selector("tick()uint64")
-    short = BOX_MBR_FIXED + 400 * len(call_data) - 1
+    short = BOX_MBR_FIXED + 400 * len(_encode_args([call_data])) - 1
     with pytest.raises(AssertionError, match="MBR payment too small"):
         _register(context, keeper, pulse, call_data, mbr=short)
 
@@ -252,7 +308,7 @@ def test_cancel(context: AlgopyTestContext, keeper: Keeper, pulse: Pulse) -> Non
     funding = MIN_UPKEEP_FEE * 3
     upkeep_id = _register(context, keeper, pulse, call_data, funding=funding)
 
-    box_mbr = BOX_MBR_FIXED + 400 * len(call_data)
+    box_mbr = BOX_MBR_FIXED + 400 * len(_encode_args([call_data]))
     refund = keeper.cancel(upkeep_id)
     assert not context.ledger.box_exists(keeper, _upkeep_key(0))
 
@@ -700,3 +756,122 @@ def test_skip_ahead_always_lands_strictly_in_the_future() -> None:
             assert (next_due - due) % interval == 0
             with pytest.raises(AssertionError, match="Not due"):
                 local_keeper.execute(upkeep_id)
+
+
+# --- #8: multi-argument call shapes -------------------------------------
+
+
+def test_execute_sends_every_registered_argument() -> None:
+    """The whole point of #8: a target method with arguments of its own.
+
+    Under the single-blob shape only zero-argument hooks were reachable,
+    because an ARC-4 method needs its selector and each argument in an app arg
+    of its own.
+    """
+    selector = _selector("absorb(uint64,string)")
+    number = (7_777).to_bytes(8, "big")
+    text = b"\x00\x06archon"
+    for call_args in ([selector], [selector, number], [selector, number, text]):
+        with algopy_testing_context() as ctx:
+            local_keeper, local_pulse = Keeper(), Pulse()
+            ctx.ledger.patch_global_fields(round=UInt64(1_000))
+            upkeep_id = _register(
+                ctx, local_keeper, local_pulse, selector, call_args=call_args
+            )
+            ctx.ledger.patch_global_fields(round=UInt64(1_000 + MIN_INTERVAL_ROUNDS))
+            local_keeper.execute(upkeep_id)
+
+            appl = ctx.txn.last_group.itxn_groups[-2][0]
+            sent = [appl.app_args(i) for i in range(len(call_args))]
+            assert sent == call_args, f"{len(call_args)} args: sent {sent}"
+
+
+# --- #9: an ASA bonus alongside the ALGO fee ----------------------------
+
+
+def test_register_rejects_an_asset_with_no_bonus(
+    context: AlgopyTestContext, keeper: Keeper, pulse: Pulse
+) -> None:
+    """A bonus of nothing pays 24 bytes of box MBR for a feature it never uses."""
+    with pytest.raises(AssertionError, match="Asset fee must be positive"):
+        _register(context, keeper, pulse, b"\x01", fee_asset=1_234, asset_fee=0)
+
+
+def test_an_asa_upkeep_is_an_algo_upkeep_with_a_bonus(
+    context: AlgopyTestContext, keeper: Keeper, pulse: Pulse
+) -> None:
+    """The ALGO fee is never replaced, so no keeper needs to value the asset.
+
+    That is what keeps the profitability floor enforceable on-chain without a
+    price: `MIN_UPKEEP_FEE` still covers the keeper's real transaction costs,
+    whatever the bonus is worth.
+    """
+    start = 1_000
+    context.ledger.patch_global_fields(round=UInt64(start))
+    upkeep_id = _register(
+        context, keeper, pulse, _selector("tick()uint64"), fee_asset=1_234, asset_fee=500
+    )
+    upkeep = _read_upkeep(context, keeper, int(upkeep_id))
+    assert (upkeep.fee_asset, upkeep.asset_fee, upkeep.asset_balance) == (1_234, 500, 0)
+
+    context.ledger.patch_global_fields(round=UInt64(start + MIN_INTERVAL_ROUNDS))
+    keeper.execute(upkeep_id)
+
+    # The ALGO fee is paid in full whatever happens to the bonus.
+    assert _fee_paid(context, keeper) == MIN_UPKEEP_FEE
+
+
+def test_an_unfunded_bonus_is_simply_not_paid(
+    context: AlgopyTestContext, keeper: Keeper, pulse: Pulse
+) -> None:
+    """No asset escrow means no bonus, and no failed execution either."""
+    start = 1_000
+    context.ledger.patch_global_fields(round=UInt64(start))
+    upkeep_id = _register(
+        context, keeper, pulse, _selector("tick()uint64"), fee_asset=1_234, asset_fee=500
+    )
+    context.ledger.patch_global_fields(round=UInt64(start + MIN_INTERVAL_ROUNDS))
+    keeper.execute(upkeep_id)
+
+    upkeep = _read_upkeep(context, keeper, int(upkeep_id))
+    assert upkeep.times_executed == 1, "the execution still happened"
+    assert upkeep.asset_balance == 0
+    # Two inner transactions, not three: the app call and the ALGO payment.
+    assert len(context.txn.last_group.itxn_groups) >= 2
+
+
+def test_top_up_asset_rejects_the_wrong_asset(
+    context: AlgopyTestContext, keeper: Keeper, pulse: Pulse
+) -> None:
+    upkeep_id = _register(
+        context, keeper, pulse, b"\x01", fee_asset=1_234, asset_fee=500
+    )
+    app_address = context.ledger.get_app(keeper).address
+    wrong = context.any.txn.asset_transfer(
+        asset_receiver=app_address, xfer_asset=context.any.asset(), asset_amount=1_000
+    )
+    with pytest.raises(AssertionError, match="Wrong asset for this upkeep"):
+        keeper.top_up_asset(upkeep_id, wrong)
+
+
+def test_opt_in_asset_must_name_an_upkeep_that_uses_it(
+    context: AlgopyTestContext, keeper: Keeper, pulse: Pulse
+) -> None:
+    """There is no opt-out, so the app must not accrete junk holdings.
+
+    Tying the opt-in to an upkeep that actually names the asset costs one box
+    read and stops anyone opting the app in to anything for ever.
+    """
+    # `UInt64()` takes a plain int, so the id has to come out of the mock's
+    # Asset as one.
+    asset = context.any.asset()
+    upkeep_id = _register(
+        context, keeper, pulse, b"\x01", fee_asset=int(asset.id), asset_fee=500
+    )
+    other = _register(context, keeper, pulse, b"\x01")
+    app_address = context.ledger.get_app(keeper).address
+    mbr = context.any.txn.payment(receiver=app_address, amount=100_000)
+
+    with pytest.raises(AssertionError, match="does not use this asset"):
+        keeper.opt_in_asset(mbr, other, asset)
+    assert keeper.opt_in_asset(mbr, upkeep_id, asset) == 100_000

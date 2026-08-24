@@ -5,11 +5,12 @@ import { map } from 'rxjs';
 
 import { ArchonService } from '../core/archon.service';
 import { algos, duration, microAlgos, runwayLabel } from '../core/format';
-import { methodSelector, PULSE_TICK_SIGNATURE } from '../core/keeper-abi';
+import { encodeCall, PULSE_TICK_SIGNATURE } from '../core/keeper-abi';
 import { KeeperService } from '../core/keeper.service';
 import {
   boxMbr,
   CATCH_UP,
+  MAX_CALL_ARGS,
   MAX_INTERVAL_ROUNDS,
   MAX_UPKEEP_FEE,
   MIN_INTERVAL_ROUNDS,
@@ -51,8 +52,30 @@ const CADENCES = [
           <label>
             <span class="eyebrow">Method signature</span>
             <input type="text" formControlName="signature" spellcheck="false" />
-            <small class="mono">selector {{ selector() }}</small>
+            <small class="mono">{{ selector() }}</small>
           </label>
+
+          @if (argumentTypes().length > 0) {
+            <label>
+              <span class="eyebrow">Arguments, one per line</span>
+              <textarea formControlName="callArguments" rows="3" spellcheck="false"></textarea>
+              <small>{{ argumentHint() }}</small>
+            </label>
+          }
+
+          <label>
+            <span class="eyebrow">Bonus asset id (optional)</span>
+            <input type="number" formControlName="feeAsset" min="0" />
+            <small>{{ assetHint() }}</small>
+          </label>
+
+          @if (value().feeAsset > 0) {
+            <label>
+              <span class="eyebrow">Bonus per run (base units)</span>
+              <input type="number" formControlName="assetFee" min="1" step="1" />
+              <small>paid on top of the ALGO fee, to keepers opted in to the asset</small>
+            </label>
+          }
 
           <label>
             <span class="eyebrow">Interval (rounds)</span>
@@ -131,6 +154,7 @@ const CADENCES = [
     .subtitle { margin: 0.2rem 0 0; color: var(--text-faint); font-size: 0.85rem; max-width: 52ch; }
     form { display: grid; gap: 1rem; }
     .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(12.5rem, 1fr)); gap: 0.9rem; }
+    textarea { font-family: var(--font-mono); font-size: 0.8rem; resize: vertical; }
     label, .cost { display: grid; gap: 0.3rem; align-content: start; }
     small { color: var(--text-faint); font-size: 0.72rem; }
     .cost strong { font-size: 1.1rem; }
@@ -161,6 +185,9 @@ export class RegisterForm {
   protected readonly form = this.builder.nonNullable.group({
     targetApp: [0, [Validators.required, Validators.min(1)]],
     signature: [PULSE_TICK_SIGNATURE, Validators.required],
+    callArguments: [''],
+    feeAsset: [0, [Validators.required, Validators.min(0)]],
+    assetFee: [0, [Validators.required, Validators.min(0)]],
     intervalRounds: [
       MIN_INTERVAL_ROUNDS,
       [Validators.required, Validators.min(MIN_INTERVAL_ROUNDS), Validators.max(MAX_INTERVAL_ROUNDS)],
@@ -188,6 +215,9 @@ export class RegisterForm {
       // `register` funds against the price the upkeep can actually be
       // charged, so an upkeep with a ceiling must escrow one run at it.
       if (funding < Math.max(fee, cap)) return { fundingBelowWorstCase: true };
+      const asset = Number(group.get('feeAsset')?.value ?? 0);
+      const bonus = Number(group.get('assetFee')?.value ?? 0);
+      if (asset > 0 && bonus <= 0) return { bonusOfNothing: true };
       return null;
     },
   });
@@ -199,7 +229,7 @@ export class RegisterForm {
    */
   protected readonly status = toSignal(this.form.statusChanges, { initialValue: this.form.status });
 
-  private readonly value = toSignal(
+  protected readonly value = toSignal(
     this.form.valueChanges.pipe(map(() => this.form.getRawValue())),
     { initialValue: this.form.getRawValue() },
   );
@@ -207,17 +237,56 @@ export class RegisterForm {
   /** Measured pace where we have it; Algorand's nominal block time otherwise. */
   private readonly pace = computed(() => this.archon.secondsPerRound());
 
-  private readonly callData = computed(() => {
+  /** The ABI argument types the signature declares, or none if it will not parse. */
+  protected readonly argumentTypes = computed<string[]>(() => {
+    const inner = this.value().signature.match(/\((.*)\)/)?.[1] ?? '';
+    return inner === '' ? [] : inner.split(',');
+  });
+
+  /**
+   * The app args this call needs, or the reason it cannot be built.
+   *
+   * Encoding happens here rather than on submit so a bad argument disables the
+   * button with the reason under the field, instead of being rejected on chain.
+   */
+  private readonly encoded = computed<{ args: Uint8Array[] } | { error: string }>(() => {
+    const { signature, callArguments } = this.value();
+    const values = callArguments.split('\n').map((line) => line.trim()).filter((line) => line !== '');
     try {
-      return methodSelector(this.value().signature);
-    } catch {
-      return null;
+      const args = encodeCall(signature, values);
+      if (args.length > MAX_CALL_ARGS) {
+        return {
+          error: `${args.length} app args — an execution carries at most ${MAX_CALL_ARGS}, counting the selector`,
+        };
+      }
+      return { args };
+    } catch (cause) {
+      return { error: (cause as Error).message };
     }
   });
 
+  private readonly callArgs = computed(() => {
+    const built = this.encoded();
+    return 'args' in built ? built.args : null;
+  });
+
   protected readonly selector = computed(() => {
-    const callData = this.callData();
-    return callData === null ? 'invalid signature' : `0x${toHex(callData)}`;
+    const built = this.encoded();
+    if ('error' in built) return built.error;
+    return `selector 0x${toHex(built.args[0])}${built.args.length > 1 ? ` + ${built.args.length - 1} argument(s)` : ''}`;
+  });
+
+  protected readonly argumentHint = computed(() => {
+    const types = this.argumentTypes();
+    const built = this.encoded();
+    if ('error' in built) return built.error;
+    return `${types.join(', ')} — one value per line`;
+  });
+
+  protected readonly assetHint = computed(() => {
+    const { feeAsset } = this.value();
+    if (feeAsset === 0) return 'none — the upkeep pays its keeper in ALGO only';
+    return 'the app must opt in to this asset, which costs 0.1 ALGO and cannot be undone';
   });
 
   protected readonly cadenceHint = computed(() => {
@@ -245,6 +314,11 @@ export class RegisterForm {
     if (errors?.['capBelowFee']) {
       return 'A fee ceiling must be at least the fee per execution, or zero for no escalation.';
     }
+    if (errors?.['bonusOfNothing']) {
+      return 'A bonus asset needs a bonus per run — or set the asset id to zero.';
+    }
+    const built = this.encoded();
+    if ('error' in built) return built.error;
     if (errors?.['fundingBelowWorstCase']) {
       const { feePerExecution, feeCap } = this.value();
       const worst = Math.max(feePerExecution, feeCap);
@@ -265,8 +339,8 @@ export class RegisterForm {
   });
 
   private readonly mbr = computed(() => {
-    const callData = this.callData();
-    return callData === null ? null : BigInt(boxMbr(callData.length));
+    const callArgs = this.callArgs();
+    return callArgs === null ? null : BigInt(boxMbr(callArgs));
   });
 
   protected readonly upFront = computed(() => {
@@ -282,7 +356,11 @@ export class RegisterForm {
   });
 
   protected readonly canSubmit = computed(
-    () => this.keeper.canSign() && this.status() === 'VALID' && this.keeper.busy() === null,
+    () =>
+      this.keeper.canSign() &&
+      this.status() === 'VALID' &&
+      this.callArgs() !== null &&
+      this.keeper.busy() === null,
   );
 
   protected useCadence(seconds: number): void {
@@ -291,18 +369,20 @@ export class RegisterForm {
   }
 
   protected submit(): void {
-    const callData = this.callData();
-    if (!this.canSubmit() || callData === null) return;
-    const { targetApp, intervalRounds, feePerExecution, funding, policy, feeCap } =
+    const callArgs = this.callArgs();
+    if (!this.canSubmit() || callArgs === null) return;
+    const { targetApp, intervalRounds, feePerExecution, funding, policy, feeCap, feeAsset, assetFee } =
       this.form.getRawValue();
     void this.keeper.register({
       targetApp,
-      callData,
+      callArgs,
       intervalRounds,
       feePerExecution: Math.round(feePerExecution * 1e6),
       funding: Math.round(funding * 1e6),
       policy,
       feeCap: Math.round(feeCap * 1e6),
+      feeAsset,
+      assetFee,
     });
   }
 }

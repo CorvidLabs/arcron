@@ -5,14 +5,11 @@ so it pins the encoding the contract actually produces. Its TypeScript twin is
 `web/src/app/core/upkeep.test.ts`, which reads the same bytes; if the
 contract's Upkeep struct changes, both must change together.
 
-Recorded on LocalNet from the contract that adds the catch-up policy and fee
-escalation (#7, #14): upkeep 0 on app 11172, after its first execution, with
-SKIP_AHEAD and a 12,000 µALGO cap — non-zero values in all three new fields,
-so a decoder that ignores them cannot pass.
-
-The previous vector came from the first TestNet app (769772891, upkeep 4).
-That app's struct is two fields and 24 bytes shorter, so it can no longer be
-decoded by this decoder at all.
+Recorded on LocalNet from the 1.0 contract — #7, #14, #8 and #9 together:
+upkeep 0 on app 18775, after its first execution. Every field the batch added
+holds a non-zero value, so a decoder that ignores any of them cannot pass:
+SKIP_AHEAD, a 12,000 µALGO ceiling, a three-argument call, and an ASA bonus
+that was actually paid (the asset escrow is 750,000 of the 1,000,000 funded).
 """
 
 import base64
@@ -28,20 +25,24 @@ from scripts.keeper_bot import (
     select_due,
 )
 
-# Box value of upkeep 0 on LocalNet app 11172.
+# Box value of upkeep 0 on LocalNet app 18775.
 LIVE_BOX_HEX = (
     "5defa167e82d6882b1a57beb7d3bb8583440a2e2e19a27358c94744a4fa7e3cf"
-    "0000000000000413"  # target_app = 1043
-    "006a"  # tail offset = 106
+    "0000000000004959"  # target_app = 18777
+    "0082"  # tail offset = 130
     "000000000000000a"  # interval_rounds = 10
-    "0000000000001eda"  # next_execution_round = 7898
+    "0000000000003698"  # next_execution_round = 13976
     "0000000000000fa0"  # fee_per_execution = 4000
-    "0000000000005aa0"  # balance = 23200
+    "0000000000008980"  # balance = 35200
     "0000000000000001"  # times_executed = 1
     "0000000000000001"  # policy = SKIP_AHEAD
     "0000000000002ee0"  # fee_cap = 12000
-    "0000000000001ed1"  # last_serviced_round = 7889
-    "00044d4d5f0b"  # tail: uint16 length 4 + tick()uint64 selector
+    "000000000000368f"  # last_serviced_round = 13967
+    "000000000000495a"  # fee_asset = 18778
+    "000000000003d090"  # asset_fee = 250000
+    "00000000000b71b0"  # asset_balance = 750000
+    # tail: byte[][] of absorb(uint64,string)'s selector, 7777 and "archon"
+    "00030006000c00160004cb782a4800080000000000001e6100080006617263686f6e"
 )
 
 
@@ -49,25 +50,38 @@ def test_decode_live_box() -> None:
     upkeep = _decode_upkeep(0, bytes.fromhex(LIVE_BOX_HEX))
 
     assert upkeep.upkeep_id == 0
-    assert upkeep.target_app == 1043
+    assert upkeep.target_app == 18777
     assert upkeep.interval_rounds == 10
-    assert upkeep.next_execution_round == 7898
+    assert upkeep.next_execution_round == 13976
     assert upkeep.fee_per_execution == 4000
-    assert upkeep.balance == 23200
+    assert upkeep.balance == 35200
     assert upkeep.times_executed == 1
     assert upkeep.policy == SKIP_AHEAD
     assert upkeep.fee_cap == 12000
-    assert upkeep.last_serviced_round == 7889
+    assert upkeep.last_serviced_round == 13967
+    assert upkeep.fee_asset == 18778
+    assert upkeep.asset_fee == 250_000
+    assert upkeep.asset_balance == 750_000
 
 
 def test_the_recorded_box_is_the_length_the_mbr_formula_assumes() -> None:
-    """9-byte name + 106-byte head + a 2-byte length + the call data."""
+    """9-byte name + 130-byte head + the encoded argument list."""
+    from algosdk import abi
+
     from smart_contracts.keeper.contract import BOX_MBR_FIXED
 
     raw = bytes.fromhex(LIVE_BOX_HEX)
-    call_data_length = 4
-    assert len(raw) == 106 + 2 + call_data_length
-    assert 2_500 + 400 * (9 + len(raw)) == BOX_MBR_FIXED + 400 * call_data_length
+    tail = raw[130:]
+    assert len(raw) == 130 + len(tail)
+    assert 2_500 + 400 * (9 + len(raw)) == BOX_MBR_FIXED + 400 * len(tail)
+
+    # And the tail really is the three app args the target was called with.
+    args = [bytes(a) for a in abi.ABIType.from_string("byte[][]").decode(tail)]
+    assert args == [
+        abi.Method.from_signature("absorb(uint64,string)uint64").get_selector(),
+        (7_777).to_bytes(8, "big"),
+        abi.ABIType.from_string("string").encode("archon"),
+    ]
 
 
 def test_effective_fee_walks_the_documented_curve() -> None:
@@ -113,12 +127,15 @@ def test_select_due_takes_the_richest_work_first() -> None:
     registry order has to fail something.
     """
     base = _decode_upkeep(0, bytes.fromhex(LIVE_BOX_HEX))
-    late = replace(base, upkeep_id=1, fee_cap=12_000, next_execution_round=7_898)
+    # Due one interval after the last service, so this is genuine neglect
+    # rather than a replay — a replay never escalates.
+    due = base.last_serviced_round + 10
+    late = replace(base, upkeep_id=1, fee_cap=12_000, next_execution_round=due)
     richer = replace(
-        base, upkeep_id=2, fee_per_execution=6_000, fee_cap=0, next_execution_round=7_898
+        base, upkeep_id=2, fee_per_execution=6_000, fee_cap=0, next_execution_round=due
     )
-    not_due = replace(base, upkeep_id=3, fee_cap=0, next_execution_round=99_999)
-    broke = replace(base, upkeep_id=4, fee_cap=0, balance=1)
+    not_due = replace(base, upkeep_id=3, fee_cap=0, next_execution_round=due + 90_000)
+    broke = replace(base, upkeep_id=4, fee_cap=0, balance=1, next_execution_round=due)
 
     at_round = base.last_serviced_round + 20  # a whole interval past the service
     order = select_due([richer, late, not_due, broke], at_round)
@@ -130,5 +147,6 @@ def test_select_due_takes_the_richest_work_first() -> None:
 
 def test_select_due_falls_back_to_id_order_when_nothing_escalates() -> None:
     base = _decode_upkeep(0, bytes.fromhex(LIVE_BOX_HEX))
-    flat = [replace(base, upkeep_id=i, fee_cap=0, next_execution_round=7_898) for i in (3, 1, 2)]
-    assert [u.upkeep_id for u in select_due(flat, 7_900)] == [1, 2, 3]
+    due = base.last_serviced_round + 10
+    flat = [replace(base, upkeep_id=i, fee_cap=0, next_execution_round=due) for i in (3, 1, 2)]
+    assert [u.upkeep_id for u in select_due(flat, due + 2)] == [1, 2, 3]
