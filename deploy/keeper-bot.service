@@ -8,7 +8,7 @@
 
 [Unit]
 Description=Arcron keeper bot
-Documentation=https://github.com/CorvidLabs/archon/blob/main/docs/arcron.md
+Documentation=https://github.com/CorvidLabs/arcron/blob/main/docs/arcron.md
 After=network-online.target
 Wants=network-online.target
 

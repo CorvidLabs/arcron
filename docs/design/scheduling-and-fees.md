@@ -1,7 +1,7 @@
 # Design: catch-up policy and fee escalation
 
-**Status: proposed, not implemented.** Issues [#7](https://github.com/CorvidLabs/archon/issues/7)
-and [#14](https://github.com/CorvidLabs/archon/issues/14) must be designed
+**Status: proposed, not implemented.** Issues [#7](https://github.com/CorvidLabs/arcron/issues/7)
+and [#14](https://github.com/CorvidLabs/arcron/issues/14) must be designed
 together — this is that design, for review before any code is written.
 
 Both change the `Upkeep` struct, and that has a consequence worth stating
@@ -16,12 +16,12 @@ So a struct change is **not a migration.** It is a new application, at a new
 app id, with an empty registry. Every existing upkeep must be cancelled by its
 creator and re-registered against the new app — and nobody can do that on their
 behalf, because `cancel` is creator-only. That has happened once already
-([#3](https://github.com/CorvidLabs/archon/issues/3)) and stranded 243,000
+([#3](https://github.com/CorvidLabs/arcron/issues/3)) and stranded 243,000
 µALGO of box MBR in the old app.
 
 **Therefore: batch every struct change into one deployment.** #7, #14,
-[#8](https://github.com/CorvidLabs/archon/issues/8) and
-[#9](https://github.com/CorvidLabs/archon/issues/9) all touch the struct.
+[#8](https://github.com/CorvidLabs/arcron/issues/8) and
+[#9](https://github.com/CorvidLabs/arcron/issues/9) all touch the struct.
 Landing them separately means four redeployments and four rounds of asking
 every creator to move. This design covers #7 and #14; the recommendation at the
 end is to hold the deployment until #8 and #9 are decided too.
@@ -131,7 +131,7 @@ an upkeep actually ran; both the console and the notifier derive it as
 catching up.
 
 That has already caused one real bug: the notifier
-([#27](https://github.com/CorvidLabs/archon/issues/27)) attributed executions
+([#27](https://github.com/CorvidLabs/arcron/issues/27)) attributed executions
 to the wrong block for any lagging upkeep, because it looked in the scheduled
 round. It now searches the elapsed range instead — a workaround for a fact the
 contract should simply record.
@@ -149,7 +149,7 @@ above removes the need for it, which is most of why it is worth preferring.
 
 ## What has to move together
 
-Per [#31](https://github.com/CorvidLabs/archon/issues/31), a struct change is
+Per [#31](https://github.com/CorvidLabs/arcron/issues/31), a struct change is
 a five-file lockstep or the bot and console silently misread the registry:
 
 1. `smart_contracts/keeper/contract.py` — struct, `register`, `execute`

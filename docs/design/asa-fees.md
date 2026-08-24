@@ -1,7 +1,7 @@
 # Design: ASA-denominated upkeep fees
 
 **Status:** implemented as a bonus alongside the ALGO fee, exactly as proposed.
-**Issue:** [#9](https://github.com/CorvidLabs/archon/issues/9)
+**Issue:** [#9](https://github.com/CorvidLabs/arcron/issues/9)
 **Shares a struct with:** [#7 and #14](scheduling-and-fees.md) and [#8](call-shapes.md)
 **Reproduce every number here:** `poetry run python -m scripts.spike_asa_fee --network localnet`
 
@@ -108,7 +108,7 @@ execution succeeds and pays the ALGO fee.
 
 The alternatives are worse. Reverting makes an upkeep unserviceable by any
 keeper who has not opted in — cheap to discover, since a rejected execution
-costs a keeper nothing ([#13](https://github.com/CorvidLabs/archon/issues/13)),
+costs a keeper nothing ([#13](https://github.com/CorvidLabs/arcron/issues/13)),
 but it silently shrinks the keeper set for exactly the upkeeps that are paying
 extra. Accruing the bonus to a claim balance needs a box per keeper-and-asset,
 which is more MBR and more code than the bonus is worth.
@@ -213,7 +213,7 @@ on cancel, not a fee.
 
 ## What has to move together
 
-The five-file lockstep from [#31](https://github.com/CorvidLabs/archon/issues/31):
+The five-file lockstep from [#31](https://github.com/CorvidLabs/arcron/issues/31):
 
 1. `smart_contracts/keeper/contract.py` — struct, `register`, `execute`, `cancel`, `top_up_asset`, `opt_in_asset`, `BOX_MBR_FIXED`
 2. `scripts/keeper_bot.py::_decode_upkeep` — three more fields
