@@ -242,10 +242,16 @@ poetry run python -m scripts.keeper_bot --once --network localnet --app-id $APP
 ```
 
 Defaults to the canonical TestNet app `769802474`; override with `--app-id`
-or `KEEPER_APP_ID`. An upkeep that fails to execute is skipped for the rest
-of the run (retrying would burn the outer fee every round). Note the contract
-schedules from the *scheduled* round, so an upkeep that was missed for many
-intervals stays due until it has caught up one execution per interval.
+or `KEEPER_APP_ID`. An upkeep that fails to execute backs off exponentially,
+and that state survives restarts, so a cron-driven `--once` bot does not
+re-attempt a doomed upkeep on every run. Failing costs nothing — Algorand
+rejects it before it reaches a block — so the schedule is gentle, capped at
+about an hour, and losing a race to another keeper never backs off at all.
+`--retry-now <id>` clears one upkeep's backoff once you have fixed its target.
+
+Note the contract schedules from the *scheduled* round, so an upkeep that was
+missed for many intervals stays due until it has caught up one execution per
+interval.
 
 ### Hard-won TestNet notes (already handled in code)
 
