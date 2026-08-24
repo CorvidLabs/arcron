@@ -134,15 +134,45 @@ def effective_fee(upkeep: Upkeep, current_round: int) -> int:
     the base to the cap over one missed interval and then holds, and lateness
     is measured from the last service rather than from the schedule — so a
     keeper draining a backlog is paid the ceiling once, not once per replay.
-    A zero cap means the fee never moves.
+    A zero cap means the fee never moves, and an upkeep never bids more than
+    it holds — an escrow below the escalated fee drops back to the base fee
+    rather than freezing the upkeep at a price it can never pay. A replay of a
+    backlog never escalates at all: `next_execution_round <= last_serviced_round`
+    means the upkeep was already behind when it last ran.
     """
     base, cap = upkeep.fee_per_execution, upkeep.fee_cap
-    if cap <= base:
+    if cap <= base or upkeep.next_execution_round <= upkeep.last_serviced_round:
         return base
     interval = max(upkeep.interval_rounds, 1)
     lateness = max(current_round - upkeep.last_serviced_round, 0)
     excess = min(max(lateness - interval, 0), interval)
-    return base + (cap - base) * excess // interval
+    fee = base + (cap - base) * excess // interval
+    return base if upkeep.balance < fee else fee
+
+
+def select_due(
+    upkeeps: list[Upkeep],
+    current_round: int,
+    is_blocked=None,
+) -> list[Upkeep]:
+    """The work a keeper should take, in the order it should take it.
+
+    Ordered by what each upkeep pays *now* rather than by registry order:
+    escalation exists to change which work a keeper reaches for, and registry
+    order would mean a neglected upkeep stays neglected however far its fee
+    has risen. Anything `is_blocked` names is left out entirely — its target
+    is the thing that is broken, and a rising fee does not fix it.
+    """
+    return sorted(
+        (
+            upkeep
+            for upkeep in upkeeps
+            if current_round >= upkeep.next_execution_round
+            and upkeep.balance >= effective_fee(upkeep, current_round)
+            and not (is_blocked is not None and is_blocked(upkeep.upkeep_id))
+        ),
+        key=lambda upkeep: (-effective_fee(upkeep, current_round), upkeep.upkeep_id),
+    )
 
 
 def _as_bytes(value: object) -> bytes:
@@ -411,20 +441,8 @@ def main(argv: list[str] | None = None) -> None:
         try:
             current = algod.status()["last-round"]
             upkeeps = scan_upkeeps(algod, app_id)
-            # Take the work in the order escalation exists to create: what
-            # pays most right now, first. Registry order would mean a
-            # neglected upkeep stays neglected however far its fee has risen.
-            # Anything in backoff is left out entirely — its target is the
-            # thing that is broken, and a rising fee does not fix it.
-            due = sorted(
-                (
-                    u
-                    for u in upkeeps
-                    if current >= u.next_execution_round
-                    and u.balance >= effective_fee(u, current)
-                    and not backoff.blocked(u.upkeep_id, current)
-                ),
-                key=lambda u: (-effective_fee(u, current), u.upkeep_id),
+            due = select_due(
+                upkeeps, current, lambda upkeep_id: backoff.blocked(upkeep_id, current)
             )
             error_delay = ERROR_RETRY_SECONDS
             scans += 1
@@ -439,7 +457,6 @@ def main(argv: list[str] | None = None) -> None:
             for upkeep in due:
                 if shutdown.requested:
                     break
-                fee = effective_fee(upkeep, current)
                 try:
                     response = client.send.execute(
                         args=ExecuteArgs(upkeep_id=upkeep.upkeep_id),
@@ -451,6 +468,12 @@ def main(argv: list[str] | None = None) -> None:
                     )
                     executed_count += 1
                     backoff.record_success(upkeep.upkeep_id)
+                    # Price it at the round it confirmed in, not the round it
+                    # was picked in. The contract charges at confirmation, and
+                    # while escalation is live those differ.
+                    fee = effective_fee(
+                        upkeep, int(response.confirmation.get("confirmed-round", current))
+                    )
                     emit(
                         "executed",
                         f"Executed upkeep {upkeep.upkeep_id} "

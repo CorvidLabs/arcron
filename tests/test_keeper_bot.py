@@ -17,7 +17,16 @@ decoded by this decoder at all.
 
 import base64
 
-from scripts.keeper_bot import CATCH_UP, SKIP_AHEAD, _as_bytes, _decode_upkeep, effective_fee
+from dataclasses import replace
+
+from scripts.keeper_bot import (
+    CATCH_UP,
+    SKIP_AHEAD,
+    _as_bytes,
+    _decode_upkeep,
+    effective_fee,
+    select_due,
+)
 
 # Box value of upkeep 0 on LocalNet app 11172.
 LIVE_BOX_HEX = (
@@ -61,12 +70,14 @@ def test_the_recorded_box_is_the_length_the_mbr_formula_assumes() -> None:
     assert 2_500 + 400 * (9 + len(raw)) == BOX_MBR_FIXED + 400 * call_data_length
 
 
-def test_effective_fee_matches_the_contract() -> None:
+def test_effective_fee_walks_the_documented_curve() -> None:
     """The bot's twin of `execute`'s escalation arithmetic.
 
-    Linear from base to cap over one missed interval, then flat; lateness
-    measured from the last service, so a keeper draining a backlog is paid the
-    ceiling once rather than once per replay.
+    Linear from base to cap over one missed interval, then flat. This pins the
+    curve's shape only — the twin is checked *against the contract* by
+    `tests/test_keeper.py::test_the_fee_rises_linearly_to_the_cap_and_holds`
+    and, on a real chain, by `scripts/keeper_e2e.py` stage 16, which asserts
+    every fee the contract charged equals what this function predicted.
     """
     upkeep = _decode_upkeep(0, bytes.fromhex(LIVE_BOX_HEX))
     serviced = upkeep.last_serviced_round
@@ -92,3 +103,32 @@ def test_as_bytes_accepts_bytes_and_base64() -> None:
     assert _as_bytes(raw) == raw
     assert _as_bytes(bytearray(raw)) == raw
     assert _as_bytes(base64.b64encode(raw).decode()) == raw
+
+
+def test_select_due_takes_the_richest_work_first() -> None:
+    """The bot's actual selection, not a copy of it.
+
+    This is the one behavioural change escalation asks of a keeper: take what
+    pays most now, rather than whatever has the lowest id. A regression to
+    registry order has to fail something.
+    """
+    base = _decode_upkeep(0, bytes.fromhex(LIVE_BOX_HEX))
+    late = replace(base, upkeep_id=1, fee_cap=12_000, next_execution_round=7_898)
+    richer = replace(
+        base, upkeep_id=2, fee_per_execution=6_000, fee_cap=0, next_execution_round=7_898
+    )
+    not_due = replace(base, upkeep_id=3, fee_cap=0, next_execution_round=99_999)
+    broke = replace(base, upkeep_id=4, fee_cap=0, balance=1)
+
+    at_round = base.last_serviced_round + 20  # a whole interval past the service
+    order = select_due([richer, late, not_due, broke], at_round)
+
+    assert [u.upkeep_id for u in order] == [1, 2], "escalated first, then the richer one"
+    assert effective_fee(order[0], at_round) == 12_000
+    assert select_due([richer, late], at_round, is_blocked=lambda i: i == 1)[0].upkeep_id == 2
+
+
+def test_select_due_falls_back_to_id_order_when_nothing_escalates() -> None:
+    base = _decode_upkeep(0, bytes.fromhex(LIVE_BOX_HEX))
+    flat = [replace(base, upkeep_id=i, fee_cap=0, next_execution_round=7_898) for i in (3, 1, 2)]
+    assert [u.upkeep_id for u in select_due(flat, 7_900)] == [1, 2, 3]

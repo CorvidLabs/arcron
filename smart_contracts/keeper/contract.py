@@ -17,13 +17,24 @@ from algopy.arc4 import abimethod
 
 # Minimum spacing between executions of one upkeep, in rounds.
 MIN_INTERVAL_ROUNDS = 10
+# Maximum spacing, in rounds — about 90 years at Algorand's block time, so it
+# forbids nothing anyone wants. It exists to make the escalation multiply
+# provably safe without appealing to how old the chain is: see MAX_UPKEEP_FEE.
+MAX_INTERVAL_ROUNDS = 1_000_000_000
 # Minimum ALGO reward per execution (µALGO). A keeper pays ~3,000 µALGO in
 # transaction fees per execution, so this floor keeps executions profitable.
 MIN_UPKEEP_FEE = 4_000
 # Ceiling on both the base fee and the escalation cap (µALGO). Nothing needs a
-# thousand ALGO per execution, and bounding it keeps the escalation arithmetic
-# — a multiply by up to one interval's worth of rounds — far from overflowing
-# on a contract that can never be patched.
+# thousand ALGO per execution.
+#
+# It also bounds the only multiply in the contract. `execute` computes
+# `(fee_cap - fee_per_execution) * excess`, where `excess` is at most
+# `interval_rounds` — so with both factors capped at a billion the product is
+# at most 1e18, comfortably inside a uint64's 1.8e19. Without the interval
+# bound the only thing holding that product down would be `excess <=
+# Global.round`, which is true but relies on the chain never reaching ~1.8e10
+# rounds. On a contract that can never be patched, "no chain lives that long"
+# is not the argument to rest on.
 MAX_UPKEEP_FEE = 1_000_000_000
 # Maximum size of the stored call data (first app arg), in bytes.
 MAX_CALL_DATA = 1_024
@@ -89,6 +100,7 @@ class Keeper(ARC4Contract):
         will ever pay for one execution; zero means the fee never escalates.
         """
         assert interval_rounds >= MIN_INTERVAL_ROUNDS, "Interval below minimum"
+        assert interval_rounds <= MAX_INTERVAL_ROUNDS, "Interval above maximum"
         assert fee_per_execution >= MIN_UPKEEP_FEE, "Fee below minimum"
         assert fee_per_execution <= MAX_UPKEEP_FEE, "Fee above maximum"
         assert policy <= SKIP_AHEAD, "Unknown catch-up policy"
@@ -198,11 +210,22 @@ class Keeper(ARC4Contract):
         base: UInt64 = upkeep.fee_per_execution.as_uint64()
         cap: UInt64 = upkeep.fee_cap.as_uint64()
         fee: UInt64 = base
-        if cap > base:
-            # Escalation is measured from the last service, not from the
-            # schedule. Escalation exists to clear a market; once a keeper has
-            # arrived the market has cleared, so the backlog it then drains
-            # pays base rather than the ceiling.
+        # `due > last_serviced_round` means this upkeep was on schedule the
+        # last time it ran, so being late now is genuine neglect. When it is
+        # false the call is a replay of a backlog, and a replay never pays
+        # more than base.
+        #
+        # Both halves are needed. Measuring lateness from the last service is
+        # what stops a burst drained in one go from paying the ceiling on
+        # every replay. On its own it is not enough: under CATCH_UP a replay
+        # only advances the schedule by one interval, so a keeper that waits
+        # two intervals between replays is late again by its own measure, and
+        # collects the ceiling every time while the backlog grows without
+        # bound. Measured: 34 runs took 100% of a 400,000 µALGO escrow and
+        # left the upkeep 5,400 rounds further behind than it started.
+        if cap > base and due > upkeep.last_serviced_round.as_uint64():
+            # Escalation exists to clear a market; once a keeper has arrived
+            # the market has cleared.
             lateness: UInt64 = Global.round - upkeep.last_serviced_round.as_uint64()
             excess: UInt64 = UInt64(0)
             if lateness > interval:
@@ -211,6 +234,13 @@ class Keeper(ARC4Contract):
                 excess = interval
             # Linear from base to cap over one missed interval, then flat.
             fee = base + (cap - base) * excess // interval
+            # An upkeep can only bid what it holds. Without this, an escrow
+            # that has fallen below the escalated fee freezes the upkeep for
+            # good — lateness only grows, so the price it cannot pay only
+            # rises. Dropping back to the base fee keeps it executable by
+            # anyone until the escrow is genuinely empty.
+            if upkeep.balance.as_uint64() < fee:
+                fee = base
         assert upkeep.balance.as_uint64() >= fee, "Insufficient funding"
 
         next_due: UInt64 = due + interval
