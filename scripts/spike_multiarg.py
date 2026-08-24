@@ -70,14 +70,15 @@ UPKEEP_HEAD_BYTES = 82
 # ---------------------------------------------------------------- variants
 
 
-def _variant_source(max_args: int) -> str:
+def _variant_source(max_args: int, source: str | None = None) -> str:
     """Today's keeper, with `call_data: byte[]` replaced by `call_args: byte[][]`.
 
     Text substitution rather than a checked-in copy: if the keeper changes and
     a substitution stops matching, this raises instead of quietly measuring a
-    contract nobody has.
+    contract nobody has. `source` lets another spike stack its own patch first,
+    which is how the combined cost of #8 and #9 is measured.
     """
-    source = KEEPER_SOURCE.read_text()
+    source = KEEPER_SOURCE.read_text() if source is None else source
     substitutions = [
         ("    call_data: arc4.DynamicBytes\n", "    call_args: arc4.DynamicArray[arc4.DynamicBytes]\n"),
         ("        call_data: arc4.DynamicBytes,\n", "        call_args: arc4.DynamicArray[arc4.DynamicBytes],\n"),

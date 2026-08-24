@@ -122,11 +122,30 @@ itself uses at arg 15 — so arity 2 is already universal for a cooperating
 target. The ceiling only buys reach into targets you do *not* control.
 
 Four leaves 827 bytes of page headroom for #7, #14 and #9, which also add
-code. Six fits today (384 bytes spare) and might not once they land. Since the
-ceiling is a single integer in a repetitive `if`/`elif` chain, it is the
-cheapest parameter to re-tune during implementation: **fix it last, from
-measured size with the rest of the batch in**, and do not let it push the
-program to a second page.
+code — and that headroom turns out to be the binding constraint. Stacking the
+whole 1.0 batch (`poetry run python -m scripts.spike_asa_fee`) measures:
+
+| Contract | Approval | Pages | Headroom |
+|---|---|---|---|
+| today | 729 B | 1 | 1,319 |
+| #9 alone | 1,163 B | 1 | 885 |
+| #8 alone, ceiling 4 | 1,221 B | 1 | 827 |
+| #8 + #9 | 1,668 B | 1 | 380 |
+| #7 + #14 alone *(indicative)* | 887 B | 1 | 1,161 |
+| **the whole batch** *(indicative)* | **1,854 B** | **1** | **194** |
+
+At a ceiling of 4 the batch fits, with 194 bytes to spare. At 6 it does not:
+the fan-out alone costs 443 bytes more, which puts the batch at roughly 2,300
+and onto a second page. **The ceiling is not a preference — it is what keeps
+1.0 on one page.**
+
+(#7 and #14 are designed but not written; their row is a faithful sketch of
+that design's shape and must be re-measured against the real thing.)
+
+Since the ceiling is a single integer in a repetitive `if`/`elif` chain, it is
+still the cheapest parameter to re-tune: **fix it last, from measured size
+with the rest of the batch in**, and do not let it push the program to a
+second page.
 
 ### 3. Foreign arrays stay out of the struct; resource discovery is a convention
 
