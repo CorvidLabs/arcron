@@ -1,0 +1,103 @@
+{
+    "name": "Pulse",
+    "structs": {},
+    "methods": [
+        {
+            "name": "tick",
+            "args": [],
+            "returns": {
+                "type": "uint64"
+            },
+            "actions": {
+                "create": [],
+                "call": [
+                    "NoOp"
+                ]
+            },
+            "readonly": false,
+            "events": [],
+            "recommendations": {}
+        }
+    ],
+    "arcs": [
+        22,
+        28
+    ],
+    "desc": "Demo upkeep target: a public heartbeat counter.\n\n    Designed to be driven by the Keeper contract: `tick` takes no arguments\n    beyond its method selector, so a registered upkeep can call it on a\n    schedule. Permissionless by design \u2014 it is a demo, not a gate.\n    ",
+    "networks": {},
+    "state": {
+        "schema": {
+            "global": {
+                "ints": 2,
+                "bytes": 0
+            },
+            "local": {
+                "ints": 0,
+                "bytes": 0
+            }
+        },
+        "keys": {
+            "global": {
+                "beats": {
+                    "keyType": "AVMString",
+                    "valueType": "AVMUint64",
+                    "key": "YmVhdHM="
+                },
+                "last_beat_round": {
+                    "keyType": "AVMString",
+                    "valueType": "AVMUint64",
+                    "key": "bGFzdF9iZWF0X3JvdW5k"
+                }
+            },
+            "local": {},
+            "box": {}
+        },
+        "maps": {
+            "global": {},
+            "local": {},
+            "box": {}
+        }
+    },
+    "bareActions": {
+        "create": [
+            "NoOp"
+        ],
+        "call": []
+    },
+    "sourceInfo": {
+        "approval": {
+            "sourceInfo": [
+                {
+                    "pc": [
+                        80,
+                        93
+                    ],
+                    "errorMessage": "check self.beats exists"
+                }
+            ],
+            "pcOffsetMethod": "none"
+        },
+        "clear": {
+            "sourceInfo": [],
+            "pcOffsetMethod": "none"
+        }
+    },
+    "source": {
+        "approval": "I3ByYWdtYSB2ZXJzaW9uIDExCiNwcmFnbWEgdHlwZXRyYWNrIGZhbHNlCgovLyBhbGdvcHkuYXJjNC5BUkM0Q29udHJhY3QuYXBwcm92YWxfcHJvZ3JhbSgpIC0+IHVpbnQ2NDoKbWFpbjoKICAgIGludGNibG9jayAwIDEKICAgIGJ5dGVjYmxvY2sgImJlYXRzIiAibGFzdF9iZWF0X3JvdW5kIgogICAgdHhuIEFwcGxpY2F0aW9uSUQKICAgIGJueiBtYWluX2FmdGVyX2lmX2Vsc2VAMgogICAgLy8gc21hcnRfY29udHJhY3RzL3B1bHNlL2NvbnRyYWN0LnB5OjE1CiAgICAvLyBzZWxmLmJlYXRzID0gR2xvYmFsU3RhdGUoVUludDY0KDApKQogICAgYnl0ZWNfMCAvLyAiYmVhdHMiCiAgICBpbnRjXzAgLy8gMAogICAgYXBwX2dsb2JhbF9wdXQKICAgIC8vIHNtYXJ0X2NvbnRyYWN0cy9wdWxzZS9jb250cmFjdC5weToxNgogICAgLy8gc2VsZi5sYXN0X2JlYXRfcm91bmQgPSBHbG9iYWxTdGF0ZShVSW50NjQoMCkpCiAgICBieXRlY18xIC8vICJsYXN0X2JlYXRfcm91bmQiCiAgICBpbnRjXzAgLy8gMAogICAgYXBwX2dsb2JhbF9wdXQKCm1haW5fYWZ0ZXJfaWZfZWxzZUAyOgogICAgLy8gc21hcnRfY29udHJhY3RzL3B1bHNlL2NvbnRyYWN0LnB5OjYKICAgIC8vIGNsYXNzIFB1bHNlKEFSQzRDb250cmFjdCk6CiAgICB0eG4gTnVtQXBwQXJncwogICAgYnogbWFpbl9fX2FsZ29weV9kZWZhdWx0X2NyZWF0ZUA3CiAgICBwdXNoYnl0ZXMgMHg0ZDRkNWYwYiAvLyBtZXRob2QgInRpY2soKXVpbnQ2NCIKICAgIHR4bmEgQXBwbGljYXRpb25BcmdzIDAKICAgIG1hdGNoIG1haW5fdGlja19yb3V0ZUA1CiAgICBlcnIKCm1haW5fdGlja19yb3V0ZUA1OgogICAgLy8gc21hcnRfY29udHJhY3RzL3B1bHNlL2NvbnRyYWN0LnB5OjE4CiAgICAvLyBAYWJpbWV0aG9kKCkKICAgIHR4biBPbkNvbXBsZXRpb24KICAgICEKICAgIHR4biBBcHBsaWNhdGlvbklECiAgICAmJgogICAgYXNzZXJ0CiAgICBiIHRpY2sKCm1haW5fX19hbGdvcHlfZGVmYXVsdF9jcmVhdGVANzoKICAgIHR4biBPbkNvbXBsZXRpb24KICAgICEKICAgIHR4biBBcHBsaWNhdGlvbklECiAgICAhCiAgICAmJgogICAgcmV0dXJuCgoKLy8gc21hcnRfY29udHJhY3RzLnB1bHNlLmNvbnRyYWN0LlB1bHNlLnRpY2tbcm91dGluZ10oKSAtPiB2b2lkOgp0aWNrOgogICAgLy8gc21hcnRfY29udHJhY3RzL3B1bHNlL2NvbnRyYWN0LnB5OjIwCiAgICAvLyBzZWxmLmJlYXRzLnZhbHVlICs9IDEKICAgIGludGNfMCAvLyAwCiAgICBieXRlY18wIC8vICJiZWF0cyIKICAgIGFwcF9nbG9iYWxfZ2V0X2V4CiAgICBhc3NlcnQgLy8gY2hlY2sgc2VsZi5iZWF0cyBleGlzdHMKICAgIGludGNfMSAvLyAxCiAgICArCiAgICBieXRlY18wIC8vICJiZWF0cyIKICAgIHN3YXAKICAgIGFwcF9nbG9iYWxfcHV0CiAgICAvLyBzbWFydF9jb250cmFjdHMvcHVsc2UvY29udHJhY3QucHk6MjEKICAgIC8vIHNlbGYubGFzdF9iZWF0X3JvdW5kLnZhbHVlID0gR2xvYmFsLnJvdW5kCiAgICBieXRlY18xIC8vICJsYXN0X2JlYXRfcm91bmQiCiAgICBnbG9iYWwgUm91bmQKICAgIGFwcF9nbG9iYWxfcHV0CiAgICAvLyBzbWFydF9jb250cmFjdHMvcHVsc2UvY29udHJhY3QucHk6MjIKICAgIC8vIHJldHVybiBzZWxmLmJlYXRzLnZhbHVlCiAgICBpbnRjXzAgLy8gMAogICAgYnl0ZWNfMCAvLyAiYmVhdHMiCiAgICBhcHBfZ2xvYmFsX2dldF9leAogICAgYXNzZXJ0IC8vIGNoZWNrIHNlbGYuYmVhdHMgZXhpc3RzCiAgICAvLyBzbWFydF9jb250cmFjdHMvcHVsc2UvY29udHJhY3QucHk6MTgKICAgIC8vIEBhYmltZXRob2QoKQogICAgaXRvYgogICAgcHVzaGJ5dGVzIDB4MTUxZjdjNzUKICAgIHN3YXAKICAgIGNvbmNhdAogICAgbG9nCiAgICBpbnRjXzEgLy8gMQogICAgcmV0dXJuCg==",
+        "clear": "I3ByYWdtYSB2ZXJzaW9uIDExCiNwcmFnbWEgdHlwZXRyYWNrIGZhbHNlCgovLyBhbGdvcHkuYXJjNC5BUkM0Q29udHJhY3QuY2xlYXJfc3RhdGVfcHJvZ3JhbSgpIC0+IHVpbnQ2NDoKbWFpbjoKICAgIHB1c2hpbnQgMQogICAgcmV0dXJuCg=="
+    },
+    "byteCode": {
+        "approval": "CyACAAEmAgViZWF0cw9sYXN0X2JlYXRfcm91bmQxGEAABigiZykiZzEbQQAYgARNTV8LNhoAjgEAAQAxGRQxGBBEQgAIMRkUMRgUEEMiKGVEIwgoTGcpMgZnIihlRBaABBUffHVMULAjQw==",
+        "clear": "C4EBQw=="
+    },
+    "compilerInfo": {
+        "compiler": "puya",
+        "compilerVersion": {
+            "major": 5,
+            "minor": 9,
+            "patch": 0
+        }
+    },
+    "events": [],
+    "templateVariables": {}
+}

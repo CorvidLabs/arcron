@@ -1,0 +1,10 @@
+# Changes here will be overwritten by Copier; NEVER EDIT MANUALLY
+_commit: 1.8.1
+_src_path: gh:algorandfoundation/algokit-python-template
+author_email: leif.algo@pm.me
+author_name: 0xLeif
+contract_name: hello_world
+deployment_language: python
+preset_name: starter
+project_name: corvid_vault
+

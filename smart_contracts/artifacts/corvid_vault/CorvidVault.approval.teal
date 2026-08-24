@@ -1,0 +1,640 @@
+#pragma version 11
+#pragma typetrack false
+
+// algopy.arc4.ARC4Contract.approval_program() -> uint64:
+main:
+    intcblock 0 1 4 8
+    bytecblock "balance" "asset_id" "total_staked" 0x151f7c75
+    txn ApplicationID
+    bnz main_after_if_else@2
+    // smart_contracts/corvid_vault/contract.py:41-42
+    // # Global state: the CORVID ASA this vault accepts (0 until bootstrap).
+    // self.asset_id = GlobalState(UInt64(0))
+    bytec_1 // "asset_id"
+    intc_0 // 0
+    app_global_put
+    // smart_contracts/corvid_vault/contract.py:43-44
+    // # Global state: total CORVID currently staked (surplus above this is fees).
+    // self.total_staked = GlobalState(UInt64(0))
+    bytec_2 // "total_staked"
+    intc_0 // 0
+    app_global_put
+
+main_after_if_else@2:
+    // smart_contracts/corvid_vault/contract.py:28
+    // class CorvidVault(ARC4Contract):
+    txn NumAppArgs
+    bz main___algopy_default_create@18
+    pushbytes 0xb9368f54 // method "opt_in_to_application()void"
+    txna ApplicationArgs 0
+    match main_opt_in_to_application_route@5
+
+main_switch_case_next@6:
+    // smart_contracts/corvid_vault/contract.py:28
+    // class CorvidVault(ARC4Contract):
+    txn OnCompletion
+    !
+    assert
+    txn ApplicationID
+    assert
+    pushbytess 0x1e32019a 0xe5715691 0x31214176 0xaaa4cf34 0x1d3424fe 0xd0331507 0xa5234093 // method "bootstrap(pay,uint64)void", method "deposit(axfer)uint64", method "withdraw(uint64)uint64", method "vault_balance()uint64", method "post(pay,axfer,address,byte[])uint64", method "message_count(address)uint64", method "delete_message(uint64)void"
+    txna ApplicationArgs 0
+    match bootstrap deposit withdraw vault_balance post message_count delete_message
+    err
+
+main_opt_in_to_application_route@5:
+    // smart_contracts/corvid_vault/contract.py:67
+    // @abimethod(allow_actions=["OptIn"])
+    txn OnCompletion
+    intc_1 // OptIn
+    ==
+    txn ApplicationID
+    &&
+    assert
+    b opt_in_to_application
+
+main___algopy_default_create@18:
+    txn OnCompletion
+    !
+    txn ApplicationID
+    !
+    &&
+    return
+
+
+// smart_contracts.corvid_vault.contract.CorvidVault.bootstrap[routing]() -> void:
+bootstrap:
+    // smart_contracts/corvid_vault/contract.py:48
+    // @abimethod()
+    txn GroupIndex
+    intc_1 // 1
+    -
+    dup
+    gtxns TypeEnum
+    intc_1 // pay
+    ==
+    assert // transaction type is pay
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_3 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    // smart_contracts/corvid_vault/contract.py:51
+    // assert self.asset_id.value == 0, "Already bootstrapped"
+    intc_0 // 0
+    bytec_1 // "asset_id"
+    app_global_get_ex
+    assert // check self.asset_id exists
+    !
+    assert // Already bootstrapped
+    // smart_contracts/corvid_vault/contract.py:53
+    // mbr_payment.receiver == Global.current_application_address
+    dig 1
+    gtxns Receiver
+    global CurrentApplicationAddress
+    ==
+    // smart_contracts/corvid_vault/contract.py:52-54
+    // assert (
+    //     mbr_payment.receiver == Global.current_application_address
+    // ), "Payment must fund the app account"
+    assert // Payment must fund the app account
+    // smart_contracts/corvid_vault/contract.py:55
+    // assert mbr_payment.amount >= BOOTSTRAP_MBR, "Payment must cover the app MBR"
+    dig 1
+    gtxns Amount
+    pushint 200000
+    >=
+    assert // Payment must cover the app MBR
+    // smart_contracts/corvid_vault/contract.py:56
+    // assert mbr_payment.sender == Txn.sender, "Payment sender must be the caller"
+    swap
+    gtxns Sender
+    txn Sender
+    ==
+    assert // Payment sender must be the caller
+    // smart_contracts/corvid_vault/contract.py:58
+    // self.asset_id.value = asset.id
+    bytec_1 // "asset_id"
+    dig 1
+    app_global_put
+    // smart_contracts/corvid_vault/contract.py:60-65
+    // # Opt the app account into the ASA (0-amount transfer to self).
+    // itxn.AssetTransfer(
+    //     xfer_asset=asset,
+    //     asset_receiver=Global.current_application_address,
+    //     asset_amount=0,
+    // ).submit()
+    itxn_begin
+    // smart_contracts/corvid_vault/contract.py:63
+    // asset_receiver=Global.current_application_address,
+    global CurrentApplicationAddress
+    // smart_contracts/corvid_vault/contract.py:64
+    // asset_amount=0,
+    intc_0 // 0
+    itxn_field AssetAmount
+    itxn_field AssetReceiver
+    itxn_field XferAsset
+    // smart_contracts/corvid_vault/contract.py:60-61
+    // # Opt the app account into the ASA (0-amount transfer to self).
+    // itxn.AssetTransfer(
+    intc_2 // axfer
+    itxn_field TypeEnum
+    intc_0 // 0
+    itxn_field Fee
+    // smart_contracts/corvid_vault/contract.py:60-65
+    // # Opt the app account into the ASA (0-amount transfer to self).
+    // itxn.AssetTransfer(
+    //     xfer_asset=asset,
+    //     asset_receiver=Global.current_application_address,
+    //     asset_amount=0,
+    // ).submit()
+    itxn_submit
+    // smart_contracts/corvid_vault/contract.py:48
+    // @abimethod()
+    intc_1 // 1
+    return
+
+
+// smart_contracts.corvid_vault.contract.CorvidVault.opt_in_to_application[routing]() -> void:
+opt_in_to_application:
+    // smart_contracts/corvid_vault/contract.py:70
+    // self.balance[Txn.sender] = UInt64(0)
+    txn Sender
+    bytec_0 // "balance"
+    intc_0 // 0
+    app_local_put
+    // smart_contracts/corvid_vault/contract.py:67
+    // @abimethod(allow_actions=["OptIn"])
+    intc_1 // 1
+    return
+
+
+// smart_contracts.corvid_vault.contract.CorvidVault.deposit[routing]() -> void:
+deposit:
+    // smart_contracts/corvid_vault/contract.py:72
+    // @abimethod()
+    txn GroupIndex
+    intc_1 // 1
+    -
+    dup
+    gtxns TypeEnum
+    intc_2 // axfer
+    ==
+    assert // transaction type is axfer
+    // smart_contracts/corvid_vault/contract.py:75
+    // assert self.asset_id.value != 0, "Not bootstrapped"
+    intc_0 // 0
+    bytec_1 // "asset_id"
+    app_global_get_ex
+    assert // check self.asset_id exists
+    dup
+    assert // Not bootstrapped
+    // smart_contracts/corvid_vault/contract.py:76
+    // assert axfer.xfer_asset.id == self.asset_id.value, "Wrong asset"
+    dig 1
+    gtxns XferAsset
+    ==
+    assert // Wrong asset
+    // smart_contracts/corvid_vault/contract.py:78
+    // axfer.asset_receiver == Global.current_application_address
+    dup
+    gtxns AssetReceiver
+    global CurrentApplicationAddress
+    ==
+    // smart_contracts/corvid_vault/contract.py:77-79
+    // assert (
+    //     axfer.asset_receiver == Global.current_application_address
+    // ), "Deposit must go to the app account"
+    assert // Deposit must go to the app account
+    // smart_contracts/corvid_vault/contract.py:80
+    // assert axfer.asset_amount > 0, "Amount must be positive"
+    gtxns AssetAmount
+    dup
+    assert // Amount must be positive
+    // smart_contracts/corvid_vault/contract.py:82
+    // new_balance = self.balance[Txn.sender] + axfer.asset_amount
+    txn Sender
+    intc_0 // 0
+    bytec_0 // "balance"
+    app_local_get_ex
+    assert // check self.balance exists for account
+    dig 1
+    +
+    // smart_contracts/corvid_vault/contract.py:83
+    // self.balance[Txn.sender] = new_balance
+    txn Sender
+    bytec_0 // "balance"
+    dig 2
+    app_local_put
+    // smart_contracts/corvid_vault/contract.py:84
+    // self.total_staked.value += axfer.asset_amount
+    intc_0 // 0
+    bytec_2 // "total_staked"
+    app_global_get_ex
+    assert // check self.total_staked exists
+    uncover 2
+    +
+    bytec_2 // "total_staked"
+    swap
+    app_global_put
+    // smart_contracts/corvid_vault/contract.py:72
+    // @abimethod()
+    itob
+    bytec_3 // 0x151f7c75
+    swap
+    concat
+    log
+    intc_1 // 1
+    return
+
+
+// smart_contracts.corvid_vault.contract.CorvidVault.withdraw[routing]() -> void:
+withdraw:
+    // smart_contracts/corvid_vault/contract.py:87
+    // @abimethod()
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_3 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    // smart_contracts/corvid_vault/contract.py:90
+    // current = self.balance[Txn.sender]
+    txn Sender
+    intc_0 // 0
+    bytec_0 // "balance"
+    app_local_get_ex
+    assert // check self.balance exists for account
+    // smart_contracts/corvid_vault/contract.py:91
+    // assert amount > 0, "Amount must be positive"
+    dig 1
+    assert // Amount must be positive
+    // smart_contracts/corvid_vault/contract.py:92
+    // assert current >= amount, "Insufficient balance"
+    dup
+    dig 2
+    >=
+    assert // Insufficient balance
+    // smart_contracts/corvid_vault/contract.py:94
+    // new_balance = current - amount
+    dig 1
+    -
+    // smart_contracts/corvid_vault/contract.py:95-99
+    // itxn.AssetTransfer(
+    //     xfer_asset=Asset(self.asset_id.value),
+    //     asset_receiver=Txn.sender,
+    //     asset_amount=amount,
+    // ).submit()
+    itxn_begin
+    // smart_contracts/corvid_vault/contract.py:96
+    // xfer_asset=Asset(self.asset_id.value),
+    intc_0 // 0
+    bytec_1 // "asset_id"
+    app_global_get_ex
+    assert // check self.asset_id exists
+    // smart_contracts/corvid_vault/contract.py:97
+    // asset_receiver=Txn.sender,
+    txn Sender
+    dig 3
+    itxn_field AssetAmount
+    itxn_field AssetReceiver
+    itxn_field XferAsset
+    // smart_contracts/corvid_vault/contract.py:95
+    // itxn.AssetTransfer(
+    intc_2 // axfer
+    itxn_field TypeEnum
+    intc_0 // 0
+    itxn_field Fee
+    // smart_contracts/corvid_vault/contract.py:95-99
+    // itxn.AssetTransfer(
+    //     xfer_asset=Asset(self.asset_id.value),
+    //     asset_receiver=Txn.sender,
+    //     asset_amount=amount,
+    // ).submit()
+    itxn_submit
+    // smart_contracts/corvid_vault/contract.py:100
+    // self.balance[Txn.sender] = new_balance
+    txn Sender
+    bytec_0 // "balance"
+    dig 2
+    app_local_put
+    // smart_contracts/corvid_vault/contract.py:101
+    // self.total_staked.value -= amount
+    intc_0 // 0
+    bytec_2 // "total_staked"
+    app_global_get_ex
+    assert // check self.total_staked exists
+    uncover 2
+    -
+    bytec_2 // "total_staked"
+    swap
+    app_global_put
+    // smart_contracts/corvid_vault/contract.py:87
+    // @abimethod()
+    itob
+    bytec_3 // 0x151f7c75
+    swap
+    concat
+    log
+    intc_1 // 1
+    return
+
+
+// smart_contracts.corvid_vault.contract.CorvidVault.vault_balance[routing]() -> void:
+vault_balance:
+    // smart_contracts/corvid_vault/contract.py:107
+    // return self.balance.get(Txn.sender, default=UInt64(0))
+    txn Sender
+    intc_0 // 0
+    bytec_0 // "balance"
+    app_local_get_ex
+    intc_0 // 0
+    cover 2
+    select
+    // smart_contracts/corvid_vault/contract.py:104
+    // @abimethod(readonly=True)
+    itob
+    bytec_3 // 0x151f7c75
+    swap
+    concat
+    log
+    intc_1 // 1
+    return
+
+
+// smart_contracts.corvid_vault.contract.CorvidVault.post[routing]() -> void:
+post:
+    // smart_contracts/corvid_vault/contract.py:109
+    // @abimethod()
+    txn GroupIndex
+    pushint 2
+    -
+    dup
+    gtxns TypeEnum
+    intc_1 // pay
+    ==
+    assert // transaction type is pay
+    txn GroupIndex
+    intc_1 // 1
+    -
+    dup
+    gtxns TypeEnum
+    intc_2 // axfer
+    ==
+    assert // transaction type is axfer
+    txna ApplicationArgs 1
+    dup
+    cover 2
+    len
+    pushint 32
+    ==
+    assert // invalid number of bytes for arc4.static_array<arc4.uint8, 32>
+    txna ApplicationArgs 2
+    dup
+    intc_0 // 0
+    extract_uint16 // on error: invalid array length header
+    pushint 2
+    +
+    dig 1
+    len
+    ==
+    assert // invalid number of bytes for arc4.dynamic_array<arc4.uint8>
+    // smart_contracts/corvid_vault/contract.py:123
+    // assert self.asset_id.value != 0, "Not bootstrapped"
+    intc_0 // 0
+    bytec_1 // "asset_id"
+    app_global_get_ex
+    assert // check self.asset_id exists
+    dup
+    assert // Not bootstrapped
+    // smart_contracts/corvid_vault/contract.py:124
+    // assert self.balance[Txn.sender] > 0, "Only staked members can post"
+    txn Sender
+    intc_0 // 0
+    bytec_0 // "balance"
+    app_local_get_ex
+    assert // check self.balance exists for account
+    assert // Only staked members can post
+    // smart_contracts/corvid_vault/contract.py:127
+    // fee_payment.xfer_asset.id == self.asset_id.value
+    dig 2
+    gtxns XferAsset
+    ==
+    // smart_contracts/corvid_vault/contract.py:126-128
+    // assert (
+    //     fee_payment.xfer_asset.id == self.asset_id.value
+    // ), "Fee must be paid in the vault asset"
+    assert // Fee must be paid in the vault asset
+    // smart_contracts/corvid_vault/contract.py:130
+    // fee_payment.asset_receiver == Global.current_application_address
+    dig 1
+    gtxns AssetReceiver
+    global CurrentApplicationAddress
+    ==
+    // smart_contracts/corvid_vault/contract.py:129-131
+    // assert (
+    //     fee_payment.asset_receiver == Global.current_application_address
+    // ), "Fee must go to the app account"
+    assert // Fee must go to the app account
+    // smart_contracts/corvid_vault/contract.py:132
+    // assert fee_payment.asset_amount >= MESSAGE_FEE, "Fee below minimum"
+    swap
+    gtxns AssetAmount
+    pushint 100000
+    >=
+    assert // Fee below minimum
+    // smart_contracts/corvid_vault/contract.py:134
+    // body = ciphertext.native
+    extract 2 0
+    dup
+    cover 2
+    // smart_contracts/corvid_vault/contract.py:135
+    // size = body.length
+    len
+    dup
+    // smart_contracts/corvid_vault/contract.py:136
+    // assert UInt64(0) < size <= MAX_MESSAGE_SIZE, "Ciphertext size out of bounds"
+    bz post_bool_false@4
+    dup
+    pushint 1024
+    <=
+    bz post_bool_false@4
+    intc_1 // 1
+
+post_bool_merge@5:
+    // smart_contracts/corvid_vault/contract.py:136
+    // assert UInt64(0) < size <= MAX_MESSAGE_SIZE, "Ciphertext size out of bounds"
+    assert // Ciphertext size out of bounds
+    // smart_contracts/corvid_vault/contract.py:138
+    // counter_box = Box(UInt64, key=op.concat(b"i", recipient.bytes))
+    pushbytes 0x69
+    uncover 2
+    dup
+    cover 2
+    concat
+    dup
+    cover 2
+    // smart_contracts/corvid_vault/contract.py:139
+    // index = counter_box.get(default=UInt64(0))
+    dup
+    box_get
+    swap
+    btoi
+    intc_0 // 0
+    swap
+    uncover 2
+    select
+    dup
+    cover 3
+    // smart_contracts/corvid_vault/contract.py:142
+    // key=op.concat(op.concat(b"m", recipient.bytes), op.itob(index)),
+    pushbytes 0x6d
+    uncover 3
+    concat
+    swap
+    itob
+    dup
+    cover 4
+    concat
+    swap
+    // smart_contracts/corvid_vault/contract.py:145-148
+    // # Box MBR: the recipient's counter box on their first message
+    // # (2500 + 400 * (33-byte name + 8-byte value)) plus the message box
+    // # (2500 + 400 * (41-byte name + content size)).
+    // required_mbr = 2_500 + 400 * (41 + size)
+    pushint 41
+    uncover 6
+    +
+    pushint 400
+    *
+    pushint 2500
+    +
+    swap
+    // smart_contracts/corvid_vault/contract.py:149
+    // if not counter_box:
+    box_len
+    bury 1
+    bnz post_after_if_else@7
+    // smart_contracts/corvid_vault/contract.py:150
+    // required_mbr += UInt64(2_500 + 400 * 41)
+    pushint 18900
+    +
+
+post_after_if_else@7:
+    // smart_contracts/corvid_vault/contract.py:152
+    // mbr_payment.receiver == Global.current_application_address
+    dig 6
+    dup
+    gtxns Receiver
+    global CurrentApplicationAddress
+    ==
+    // smart_contracts/corvid_vault/contract.py:151-153
+    // assert (
+    //     mbr_payment.receiver == Global.current_application_address
+    // ), "MBR payment must fund the app account"
+    assert // MBR payment must fund the app account
+    // smart_contracts/corvid_vault/contract.py:154
+    // assert mbr_payment.amount >= required_mbr, "MBR payment too small"
+    gtxns Amount
+    <=
+    assert // MBR payment too small
+    // smart_contracts/corvid_vault/contract.py:156
+    // message_box.value = body
+    dup
+    box_del
+    pop
+    dig 4
+    box_put
+    // smart_contracts/corvid_vault/contract.py:157
+    // counter_box.value = index + 1
+    intc_1 // 1
+    +
+    itob
+    uncover 2
+    swap
+    box_put
+    // smart_contracts/corvid_vault/contract.py:109
+    // @abimethod()
+    bytec_3 // 0x151f7c75
+    swap
+    concat
+    log
+    intc_1 // 1
+    return
+
+post_bool_false@4:
+    intc_0 // 0
+    b post_bool_merge@5
+
+
+// smart_contracts.corvid_vault.contract.CorvidVault.message_count[routing]() -> void:
+message_count:
+    // smart_contracts/corvid_vault/contract.py:160
+    // @abimethod(readonly=True)
+    txna ApplicationArgs 1
+    dup
+    len
+    pushint 32
+    ==
+    assert // invalid number of bytes for arc4.static_array<arc4.uint8, 32>
+    // smart_contracts/corvid_vault/contract.py:163
+    // counter_box = Box(UInt64, key=op.concat(b"i", recipient.bytes))
+    pushbytes 0x69
+    swap
+    concat
+    // smart_contracts/corvid_vault/contract.py:164
+    // return counter_box.get(default=UInt64(0))
+    box_get
+    swap
+    btoi
+    intc_0 // 0
+    swap
+    uncover 2
+    select
+    // smart_contracts/corvid_vault/contract.py:160
+    // @abimethod(readonly=True)
+    itob
+    bytec_3 // 0x151f7c75
+    swap
+    concat
+    log
+    intc_1 // 1
+    return
+
+
+// smart_contracts.corvid_vault.contract.CorvidVault.delete_message[routing]() -> void:
+delete_message:
+    // smart_contracts/corvid_vault/contract.py:166
+    // @abimethod()
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_3 // 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    // smart_contracts/corvid_vault/contract.py:171
+    // key=op.concat(op.concat(b"m", Txn.sender.bytes), op.itob(index)),
+    pushbytes 0x6d
+    txn Sender
+    concat
+    swap
+    itob
+    concat
+    // smart_contracts/corvid_vault/contract.py:173
+    // assert message_box, "Message not found"
+    dup
+    box_len
+    bury 1
+    assert // Message not found
+    // smart_contracts/corvid_vault/contract.py:174
+    // del message_box.value
+    box_del
+    pop
+    // smart_contracts/corvid_vault/contract.py:166
+    // @abimethod()
+    intc_1 // 1
+    return

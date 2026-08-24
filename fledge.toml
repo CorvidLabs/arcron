@@ -1,0 +1,18 @@
+# fledge.toml — project task definitions
+# Docs: https://github.com/CorvidLabs/fledge#task-runner
+# Project: nest — CORVID Vault (Algorand Python / Puya + AlgoKit)
+
+[tasks]
+build = "poetry run python -m smart_contracts build"
+test = "poetry run pytest tests/ -q"
+spec = "specsync check --strict"
+# Requires LocalNet running (algokit localnet start):
+smoke = "poetry run python -m scripts.smoke_localnet"
+
+[lanes.ci]
+description = "Full CI pipeline: compile contract, unit tests, spec drift check"
+steps = ["build", "test", "spec"]
+
+[lanes.local]
+description = "CI plus LocalNet end-to-end smoke test (needs algokit localnet start)"
+steps = ["build", "test", "spec", "smoke"]
