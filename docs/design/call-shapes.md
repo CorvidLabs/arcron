@@ -1,6 +1,6 @@
 # Design: call shapes — multi-argument and foreign arrays
 
-**Status:** proposed, for review — fan-out ceiling **decided: 3**
+**Status:** implemented at a fan-out ceiling of 3. The foreign-array half is a documented convention, not code — see `docs/integrating.md`.
 **Issue:** [#8](https://github.com/CorvidLabs/archon/issues/8)
 **Depends on:** [#24](https://github.com/CorvidLabs/archon/issues/24) (measured), and shares a struct with [#7 and #14](scheduling-and-fees.md)
 **Reproduce every number here:** `poetry run python -m scripts.spike_multiarg --network localnet`, and the batch table with `poetry run python -m scripts.spike_asa_fee --network localnet`

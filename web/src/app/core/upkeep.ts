@@ -2,10 +2,10 @@
  * The upkeep registry as the chain stores it.
  *
  * Box values are ARC-4 head/tail encoded `Upkeep` structs — the same layout
- * `scripts/keeper_bot.py::_decode_upkeep` reads. The head is 106 bytes: a
- * 32-byte creator, the target app, a 2-byte offset to the dynamic call data,
- * then the eight uint64 fields. The tail holds a uint16 length followed by the
- * call data itself.
+ * `scripts/keeper_bot.py::_decode_upkeep` reads. The head is 130 bytes: a
+ * 32-byte creator, the target app, a 2-byte offset to the dynamic argument
+ * list, then the eleven uint64 fields. The tail is an ARC-4 `byte[][]` — a
+ * count, an offset per argument, then each argument's own length and bytes.
  */
 
 import algosdk from 'algosdk';
@@ -13,15 +13,19 @@ import algosdk from 'algosdk';
 /** Box names are `"u"` followed by the id as a big-endian uint64. */
 export const BOX_NAME_PREFIX = 'u';
 const BOX_NAME_BYTES = 9;
-const HEAD_BYTES = 106;
+const HEAD_BYTES = 130;
 
 /** Mirrors `BOX_MBR_FIXED` in smart_contracts/keeper/contract.py. */
-export const BOX_MBR_FIXED = 2_500 + 400 * 117;
+export const BOX_MBR_FIXED = 2_500 + 400 * 139;
 /** Mirrors MIN_UPKEEP_FEE / MAX_UPKEEP_FEE / MIN_INTERVAL_ROUNDS. */
 export const MIN_UPKEEP_FEE = 4_000;
 export const MAX_UPKEEP_FEE = 1_000_000_000;
 export const MIN_INTERVAL_ROUNDS = 10;
 export const MAX_INTERVAL_ROUNDS = 1_000_000_000;
+/** How many app args an execution may carry, counting the selector. */
+export const MAX_CALL_ARGS = 3;
+/** What holding one more asset costs the app account, permanently. */
+export const ASSET_OPT_IN_MBR = 100_000;
 /** Outer fee plus the extra fee covering `execute`'s two inner transactions. */
 export const EXECUTE_FEE = 1_000 + 2_000;
 
@@ -33,7 +37,8 @@ export interface Upkeep {
   readonly id: bigint;
   readonly creator: string;
   readonly targetApp: bigint;
-  readonly callData: Uint8Array;
+  /** Every app arg of the registered call, in order; element 0 is app arg 0. */
+  readonly callArgs: readonly Uint8Array[];
   readonly intervalRounds: bigint;
   readonly nextExecutionRound: bigint;
   readonly feePerExecution: bigint;
@@ -44,11 +49,44 @@ export interface Upkeep {
   readonly feeCap: bigint;
   /** The round it last ran in — not the round it was scheduled for. */
   readonly lastServicedRound: bigint;
+  /** An optional ASA bonus on top of the ALGO fee; 0n means ALGO only. */
+  readonly feeAsset: bigint;
+  readonly assetFee: bigint;
+  readonly assetBalance: bigint;
+}
+
+/**
+ * The ARC-4 `byte[][]` an upkeep stores: a uint16 count, a uint16 offset per
+ * argument, then each argument's own uint16 length and bytes.
+ *
+ * The offsets are relative to the *end of the count*, not to the start of the
+ * array — the one detail worth stating, because getting it wrong produces a
+ * plausible-looking encoding that decodes to garbage.
+ */
+export function encodeCallArgs(callArgs: readonly Uint8Array[]): Uint8Array {
+  const count = callArgs.length;
+  const headerBytes = 2 + 2 * count;
+  const bodies = callArgs.map((arg) => {
+    const body = new Uint8Array(2 + arg.length);
+    new DataView(body.buffer).setUint16(0, arg.length);
+    body.set(arg, 2);
+    return body;
+  });
+  const out = new Uint8Array(headerBytes + bodies.reduce((sum, body) => sum + body.length, 0));
+  const view = new DataView(out.buffer);
+  view.setUint16(0, count);
+  let position = headerBytes;
+  bodies.forEach((body, index) => {
+    view.setUint16(2 + 2 * index, position - 2);
+    out.set(body, position);
+    position += body.length;
+  });
+  return out;
 }
 
 /** What one upkeep box costs the app account, per the contract's formula. */
-export function boxMbr(callDataLength: number): number {
-  return BOX_MBR_FIXED + 400 * callDataLength;
+export function boxMbr(callArgs: readonly Uint8Array[]): number {
+  return BOX_MBR_FIXED + 400 * encodeCallArgs(callArgs).length;
 }
 
 export function upkeepBoxName(id: bigint | number): Uint8Array {
@@ -69,7 +107,14 @@ export function decodeUpkeep(id: bigint, raw: Uint8Array): Upkeep {
   }
   const view = new DataView(raw.buffer, raw.byteOffset, raw.byteLength);
   const tailOffset = view.getUint16(40);
-  const callDataLength = view.getUint16(tailOffset);
+  const argCount = view.getUint16(tailOffset);
+  const callArgs: Uint8Array[] = [];
+  for (let index = 0; index < argCount; index += 1) {
+    // Offsets are measured from just after the count, so the +2.
+    const argAt = tailOffset + 2 + view.getUint16(tailOffset + 2 + 2 * index);
+    const length = view.getUint16(argAt);
+    callArgs.push(raw.slice(argAt + 2, argAt + 2 + length));
+  }
   return {
     id,
     creator: algosdk.encodeAddress(raw.subarray(0, 32)),
@@ -82,7 +127,10 @@ export function decodeUpkeep(id: bigint, raw: Uint8Array): Upkeep {
     policy: view.getBigUint64(82),
     feeCap: view.getBigUint64(90),
     lastServicedRound: view.getBigUint64(98),
-    callData: raw.slice(tailOffset + 2, tailOffset + 2 + callDataLength),
+    feeAsset: view.getBigUint64(106),
+    assetFee: view.getBigUint64(114),
+    assetBalance: view.getBigUint64(122),
+    callArgs,
   };
 }
 

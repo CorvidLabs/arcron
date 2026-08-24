@@ -2,6 +2,7 @@
 from algopy import (
     ARC4Contract,
     Application,
+    Asset,
     Box,
     Global,
     GlobalState,
@@ -36,24 +37,39 @@ MIN_UPKEEP_FEE = 4_000
 # rounds. On a contract that can never be patched, "no chain lives that long"
 # is not the argument to rest on.
 MAX_UPKEEP_FEE = 1_000_000_000
-# Maximum size of the stored call data (first app arg), in bytes.
+# Maximum size of the stored argument list, in bytes — the whole ARC-4
+# encoding, not one argument. The AVM's own cap on an app call's arguments is
+# 2,048 bytes, so this stays conservative, and a 1,024-byte box is already a
+# 409,600 µALGO deposit.
 MAX_CALL_DATA = 1_024
+# How many app args an execution may carry, counting the selector. Every count
+# needs its own branch in `execute` and each branch is larger than the last,
+# so this is what keeps the contract inside one 2,048-byte program page. Three
+# covers a selector plus two ABI arguments — and any arity at all for a target
+# that declares its arguments as a single struct, the trick ARC-4 itself uses
+# at arg 15.
+MAX_CALL_ARGS = 3
+# What an app account's minimum balance rises by for each asset it can hold.
+ASSET_OPT_IN_MBR = 100_000
 # Catch-up policy. Zero is today's behaviour, so an upkeep that says nothing
 # means what upkeeps have always meant.
 CATCH_UP = 0
 SKIP_AHEAD = 1
-# Box minimum balance, less the call data: 2,500 µALGO per box plus 400 per
-# byte of name and value. The name is 9 bytes (b"u" + itob(id)) and an encoded
-# Upkeep is 108 bytes plus the call data — a 106-byte head, then a 2-byte
-# length prefix on the dynamic call_data. A box therefore costs
-# BOX_MBR_FIXED + 400 * len(call_data) µALGO.
-BOX_MBR_FIXED = 2_500 + 400 * 117
+# Box minimum balance, less the argument list: 2,500 µALGO per box plus 400
+# per byte of name and value. The name is 9 bytes (b"u" + itob(id)) and the
+# Upkeep head is 130. Unlike a `byte[]`, a `byte[][]` carries its own length
+# prefix inside the encoding, so the whole tail is `call_args.bytes`. A box
+# therefore costs BOX_MBR_FIXED + 400 * len(encoded call_args) µALGO.
+BOX_MBR_FIXED = 2_500 + 400 * 139
 
 
 class Upkeep(arc4.Struct):
     creator: arc4.Address
     target_app: arc4.UInt64
-    call_data: arc4.DynamicBytes
+    # Every app arg of the registered call, in order. Element 0 is whatever
+    # app arg 0 should be — the ARC-4 selector for an ARC-4 target. Archon
+    # stays agnostic about what the bytes mean.
+    call_args: arc4.DynamicArray[arc4.DynamicBytes]
     interval_rounds: arc4.UInt64
     next_execution_round: arc4.UInt64
     fee_per_execution: arc4.UInt64
@@ -68,6 +84,13 @@ class Upkeep(arc4.Struct):
     # Escalation is measured from it, and the console and notifier read it
     # instead of deriving a value that is wrong for anything catching up.
     last_serviced_round: arc4.UInt64
+    # An optional ASA bonus paid on top of the ALGO fee. Zero means ALGO only,
+    # which is what every upkeep is unless its creator says otherwise — the
+    # ALGO fee is never replaced, so no keeper ever needs to hold or value an
+    # asset to be paid for its work.
+    fee_asset: arc4.UInt64
+    asset_fee: arc4.UInt64
+    asset_balance: arc4.UInt64
 
 
 class Keeper(ARC4Contract):
@@ -88,16 +111,21 @@ class Keeper(ARC4Contract):
         mbr_payment: gtxn.PaymentTransaction,
         funding_payment: gtxn.PaymentTransaction,
         target_app: Application,
-        call_data: arc4.DynamicBytes,
+        call_args: arc4.DynamicArray[arc4.DynamicBytes],
         interval_rounds: UInt64,
         fee_per_execution: UInt64,
         policy: UInt64,
         fee_cap: UInt64,
+        fee_asset: UInt64,
+        asset_fee: UInt64,
     ) -> UInt64:
         """Register an upkeep; returns its id.
 
-        `policy` is CATCH_UP or SKIP_AHEAD. `fee_cap` is the most this upkeep
-        will ever pay for one execution; zero means the fee never escalates.
+        `call_args` is every app arg of the call, in order. `policy` is
+        CATCH_UP or SKIP_AHEAD. `fee_cap` is the most this upkeep will ever pay
+        for one execution in ALGO; zero means the fee never escalates.
+        `fee_asset` and `asset_fee` add an ASA bonus on top of the ALGO fee;
+        zero means ALGO only.
         """
         assert interval_rounds >= MIN_INTERVAL_ROUNDS, "Interval below minimum"
         assert interval_rounds <= MAX_INTERVAL_ROUNDS, "Interval above maximum"
@@ -109,8 +137,16 @@ class Keeper(ARC4Contract):
         # not ask for.
         assert fee_cap == 0 or fee_cap >= fee_per_execution, "Fee cap below the fee"
         assert fee_cap <= MAX_UPKEEP_FEE, "Fee cap above maximum"
-        size = call_data.native.length
-        assert UInt64(0) < size <= MAX_CALL_DATA, "Call data size out of bounds"
+        # A bonus of nothing is a nonsense state that pays 24 bytes of box MBR
+        # for a feature it does not use; reject it rather than store it.
+        assert fee_asset == 0 or asset_fee > 0, "Asset fee must be positive"
+        arg_count: UInt64 = call_args.length
+        # Bounded here rather than in `execute`: an argument list longer than
+        # the fan-out would register happily and then fail on every execution,
+        # for good, which is the same shape as the fee-cap trap.
+        assert UInt64(0) < arg_count <= MAX_CALL_ARGS, "Argument count out of bounds"
+        size = call_args.bytes.length
+        assert size <= MAX_CALL_DATA, "Argument list too large"
 
         required_mbr = BOX_MBR_FIXED + 400 * size
         assert (
@@ -137,7 +173,7 @@ class Keeper(ARC4Contract):
         box.value = Upkeep(
             creator=arc4.Address(Txn.sender),
             target_app=arc4.UInt64(target_app.id),
-            call_data=call_data.copy(),
+            call_args=call_args.copy(),
             interval_rounds=arc4.UInt64(interval_rounds),
             next_execution_round=arc4.UInt64(Global.round + interval_rounds),
             fee_per_execution=arc4.UInt64(fee_per_execution),
@@ -148,6 +184,9 @@ class Keeper(ARC4Contract):
             # Never serviced, so the first execution is measured from now and
             # arrives exactly one interval later: on time, at the base fee.
             last_serviced_round=arc4.UInt64(Global.round),
+            fee_asset=arc4.UInt64(fee_asset),
+            asset_fee=arc4.UInt64(asset_fee),
+            asset_balance=arc4.UInt64(0),
         )
         self.next_upkeep_id.value = upkeep_id + 1
         return upkeep_id
@@ -167,7 +206,7 @@ class Keeper(ARC4Contract):
         upkeep = box.value.copy()
         new_balance: UInt64 = upkeep.balance.as_uint64() + funding_payment.amount
         box.value = upkeep._replace(
-            balance=arc4.UInt64(new_balance), call_data=upkeep.call_data.copy()
+            balance=arc4.UInt64(new_balance), call_args=upkeep.call_args.copy()
         )
         return new_balance
 
@@ -183,15 +222,30 @@ class Keeper(ARC4Contract):
         assert box, "Upkeep not found"
         upkeep = box.value.copy()
         assert upkeep.creator.native == Txn.sender, "Only the creator can cancel"
+        # The unspent bonus goes back too, which the creator can only receive
+        # if they hold the asset. Checked before anything is refunded, so a
+        # creator who cannot take the ASA does not lose the ALGO as well.
+        bonus_asset: UInt64 = upkeep.fee_asset.as_uint64()
+        bonus: UInt64 = upkeep.asset_balance.as_uint64()
+        if bonus > 0:
+            assert Txn.sender.is_opted_in(
+                Asset(bonus_asset)
+            ), "Opt in to the fee asset before cancelling"
 
         # The box MBR is released by the delete below, so it is refundable.
         refund: UInt64 = (
             upkeep.balance.as_uint64()
             + BOX_MBR_FIXED
-            + 400 * upkeep.call_data.native.length
+            + 400 * upkeep.call_args.bytes.length
         )
         del box.value
         itxn.Payment(receiver=Txn.sender, amount=refund).submit()
+        if bonus > 0:
+            itxn.AssetTransfer(
+                xfer_asset=Asset(bonus_asset),
+                asset_receiver=Txn.sender,
+                asset_amount=bonus,
+            ).submit()
         return refund
 
     @abimethod()
@@ -252,18 +306,121 @@ class Keeper(ARC4Contract):
             next_due = due + (missed + 1) * interval
         new_balance: UInt64 = upkeep.balance.as_uint64() - fee
         times: UInt64 = upkeep.times_executed.as_uint64() + 1
+
+        # The ASA bonus is paid only when there is one, the escrow can cover it
+        # and the keeper can receive it. A keeper that has not opted in is not
+        # a failed execution — it takes the full ALGO fee and forfeits the
+        # bonus, which stays in escrow for the creator. Reverting instead would
+        # quietly shrink the keeper set for exactly the upkeeps paying extra.
+        bonus_asset: UInt64 = upkeep.fee_asset.as_uint64()
+        bonus: UInt64 = upkeep.asset_fee.as_uint64()
+        asset_balance: UInt64 = upkeep.asset_balance.as_uint64()
+        pays_bonus = (
+            bonus_asset > 0
+            and asset_balance >= bonus
+            and Txn.sender.is_opted_in(Asset(bonus_asset))
+        )
+        if pays_bonus:
+            asset_balance = asset_balance - bonus
+
         box.value = upkeep._replace(
             next_execution_round=arc4.UInt64(next_due),
             balance=arc4.UInt64(new_balance),
             times_executed=arc4.UInt64(times),
             last_serviced_round=arc4.UInt64(Global.round),
-            call_data=upkeep.call_data.copy(),
+            asset_balance=arc4.UInt64(asset_balance),
+            call_args=upkeep.call_args.copy(),
         )
 
-        itxn.ApplicationCall(
-            app_id=upkeep.target_app.as_uint64(),
-            app_args=(upkeep.call_data.native,),
-            on_completion=OnCompleteAction.NoOp,
-        ).submit()
+        # One static branch per argument count. Building the array in a loop
+        # compiles but does not work: Puya models `app_args` as
+        # compile-time-numbered slots and hoists the inner transaction out of
+        # the loop, so only the last assignment survives. `register` bounds the
+        # count, so the final branch is unreachable.
+        target: UInt64 = upkeep.target_app.as_uint64()
+        arg_count: UInt64 = upkeep.call_args.length
+        if arg_count == 1:
+            itxn.ApplicationCall(
+                app_id=target,
+                app_args=(upkeep.call_args[0].native,),
+                on_completion=OnCompleteAction.NoOp,
+            ).submit()
+        elif arg_count == 2:
+            itxn.ApplicationCall(
+                app_id=target,
+                app_args=(upkeep.call_args[0].native, upkeep.call_args[1].native,),
+                on_completion=OnCompleteAction.NoOp,
+            ).submit()
+        elif arg_count == 3:
+            itxn.ApplicationCall(
+                app_id=target,
+                app_args=(upkeep.call_args[0].native, upkeep.call_args[1].native, upkeep.call_args[2].native,),
+                on_completion=OnCompleteAction.NoOp,
+            ).submit()
+        else:
+            assert False, "Unsupported argument count"
         itxn.Payment(receiver=Txn.sender, amount=fee).submit()
+        if pays_bonus:
+            itxn.AssetTransfer(
+                xfer_asset=Asset(bonus_asset),
+                asset_receiver=Txn.sender,
+                asset_amount=bonus,
+            ).submit()
         return next_due
+
+    @abimethod()
+    def opt_in_asset(
+        self, mbr_payment: gtxn.PaymentTransaction, upkeep_id: UInt64, asset: Asset
+    ) -> UInt64:
+        """Let the app account hold `asset`, so an upkeep can escrow a bonus.
+
+        Permissionless, but tied to an upkeep that actually names the asset:
+        an app that anyone could opt in to anything would accrete junk
+        holdings for good, since there is no opt-out. The deposit is not
+        refundable — reference-counting it would cost a box per asset and more
+        code than the 0.1 ALGO it would ever return.
+        """
+        box = Box(Upkeep, key=op.concat(b"u", op.itob(upkeep_id)))
+        assert box, "Upkeep not found"
+        assert (
+            box.value.fee_asset.as_uint64() == asset.id
+        ), "That upkeep does not use this asset"
+        assert (
+            mbr_payment.receiver == Global.current_application_address
+        ), "MBR payment must fund the app account"
+        assert mbr_payment.amount >= ASSET_OPT_IN_MBR, "MBR payment too small"
+        itxn.AssetTransfer(
+            xfer_asset=asset,
+            asset_receiver=Global.current_application_address,
+            asset_amount=0,
+        ).submit()
+        return UInt64(ASSET_OPT_IN_MBR)
+
+    @abimethod()
+    def top_up_asset(
+        self, upkeep_id: UInt64, asset_funding: gtxn.AssetTransferTransaction
+    ) -> UInt64:
+        """Add ASA to an upkeep's bonus escrow; returns the new asset balance.
+
+        Separate from `register` because an asset transfer cannot be an
+        optional member of a transaction group: folding it in would make every
+        ALGO-only registration carry a zero-amount transfer of an asset it
+        does not use.
+        """
+        box = Box(Upkeep, key=op.concat(b"u", op.itob(upkeep_id)))
+        assert box, "Upkeep not found"
+        upkeep = box.value.copy()
+        assert (
+            asset_funding.asset_receiver == Global.current_application_address
+        ), "Asset funding must go to the app account"
+        assert (
+            asset_funding.xfer_asset.id == upkeep.fee_asset.as_uint64()
+        ), "Wrong asset for this upkeep"
+        new_asset_balance: UInt64 = (
+            upkeep.asset_balance.as_uint64() + asset_funding.asset_amount
+        )
+        box.value = upkeep._replace(
+            asset_balance=arc4.UInt64(new_asset_balance),
+            call_args=upkeep.call_args.copy(),
+        )
+        return new_asset_balance

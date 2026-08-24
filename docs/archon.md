@@ -63,10 +63,12 @@ All methods are ARC-4 ABI methods on the keeper app
 
 | Method | Callers | Purpose |
 |--------|---------|---------|
-| `register(mbr_payment, funding_payment, target_app, call_data, interval_rounds, fee_per_execution, policy, fee_cap) → uint64` | anyone | Create an upkeep; returns its id. Two payment args fund the box MBR and the escrow. `policy` is `CATCH_UP` (0) or `SKIP_AHEAD` (1); `fee_cap` is the most one run may ever pay, or 0 for no escalation. |
+| `register(mbr_payment, funding_payment, target_app, call_args, interval_rounds, fee_per_execution, policy, fee_cap, fee_asset, asset_fee) → uint64` | anyone | Create an upkeep; returns its id. Two payment args fund the box MBR and the escrow. `call_args` is every app arg of the call, in order. `policy` is `CATCH_UP` (0) or `SKIP_AHEAD` (1); `fee_cap` is the most one run may ever pay in ALGO, or 0 for no escalation. `fee_asset`/`asset_fee` add an ASA bonus, or 0 for ALGO only. |
 | `execute(upkeep_id) → uint64` | anyone (permissionless) | Fire a due, funded upkeep; pays the caller the effective fee and records the round it ran in. Returns the next due round. |
 | `top_up(upkeep_id, funding_payment) → uint64` | anyone | Add escrow; returns new balance. |
-| `cancel(upkeep_id) → uint64` | creator only | Delete the upkeep; refunds remaining escrow **plus the box MBR** the deletion releases. Returns the refunded amount. |
+| `cancel(upkeep_id) → uint64` | creator only | Delete the upkeep; refunds remaining escrow **plus the box MBR** the deletion releases, and any unspent ASA bonus. Returns the refunded ALGO. |
+| `opt_in_asset(mbr_payment, upkeep_id, asset) → uint64` | anyone | Let the app account hold an upkeep's bonus asset. 0.1 ALGO, permanent, not refundable. |
+| `top_up_asset(upkeep_id, asset_funding) → uint64` | anyone | Add to an upkeep's ASA bonus escrow; returns the new asset balance. |
 
 Constraints (asserted on-chain):
 
@@ -74,9 +76,14 @@ Constraints (asserted on-chain):
   call data `0 < len ≤ 1_024` bytes.
 - `policy` is `CATCH_UP` or `SKIP_AHEAD`; `fee_cap` is either 0 or between
   `fee_per_execution` and 1,000,000,000 µALGO.
-- Executions are NoOp inner app calls with exactly one app arg (the stored
-  call data — typically the target method's 4-byte selector) and no foreign
-  arrays.
+- Executions are NoOp inner app calls carrying every stored app arg, up to
+  three counting the selector — enough for an ARC-4 method of arity two, and
+  for any arity at all if the target declares its arguments as one struct.
+  Foreign arrays are not stored: a keeper supplies resource references on its
+  own transaction, and they reach the target (measured in #24).
+- An upkeep may carry an ASA bonus paid **on top of** the ALGO fee, never
+  instead of it, so no keeper needs to hold or value an asset to be paid. A
+  keeper that is not opted in takes the ALGO fee and forfeits the bonus.
 - Scheduling is interval-based from the *scheduled* round. Under `CATCH_UP`,
   `next_due += interval` on each execution, so an upkeep missed for many
   intervals stays due until it has caught up. Under `SKIP_AHEAD` one execution
@@ -95,17 +102,18 @@ Constraints (asserted on-chain):
 ARC-4 head/tail tuple encoding of:
 
 ```
-creator: Address | target_app: uint64 | call_data: DynamicBytes
+creator: Address | target_app: uint64 | call_args: DynamicArray[DynamicBytes]
 interval_rounds: uint64 | next_execution_round: uint64
 fee_per_execution: uint64 | balance: uint64 | times_executed: uint64
 policy: uint64 | fee_cap: uint64 | last_serviced_round: uint64
+fee_asset: uint64 | asset_fee: uint64 | asset_balance: uint64
 ```
 
 | Bytes | Field |
 |-------|-------|
 | `[0:32]` | creator address |
 | `[32:40]` | target app id |
-| `[40:42]` | offset to the call_data tail (currently 106) |
+| `[40:42]` | offset to the call_args tail (currently 130) |
 | `[42:50]` | interval_rounds |
 | `[50:58]` | next_execution_round |
 | `[58:66]` | fee_per_execution |
@@ -114,7 +122,10 @@ policy: uint64 | fee_cap: uint64 | last_serviced_round: uint64
 | `[82:90]` | policy |
 | `[90:98]` | fee_cap |
 | `[98:106]` | last_serviced_round |
-| `[106:]` | tail: `uint16 length` + call data |
+| `[106:114]` | fee_asset |
+| `[114:122]` | asset_fee |
+| `[122:130]` | asset_balance |
+| `[130:]` | tail: ARC-4 `byte[][]` — a count, an offset per argument, then each argument's length and bytes |
 
 Reference decoder: `scripts/keeper_bot.py::_decode_upkeep`; its TypeScript twin
 is `web/src/app/core/upkeep.ts`. Both are pinned to the *same* recorded box, in
@@ -123,8 +134,8 @@ cannot drift apart.
 
 ## Economics
 
-- Creator costs, per upkeep: box MBR `2_500 + 400 × (117 + len(call_data))`
-  µALGO (50,900 for a 4-byte selector) + escrowed `funding`. Both come back
+- Creator costs, per upkeep: box MBR `2_500 + 400 × (139 + len(encoded call_args))`
+  µALGO (62,100 for a bare 4-byte selector) + escrowed `funding`. Both come back
   on `cancel`, so registering an upkeep costs only transaction fees in the
   end.
 - **Post-quantum accounts work, with one thing to watch.** Algorand 5 derives a
@@ -430,7 +441,7 @@ observe the world.
 
 - No off-chain access. Contracts have no network access, and `execute` fires an
   inner app call to another app on the same chain.
-- No keeper discretion. `call_data` is fixed at registration, so a keeper
+- No keeper discretion. `call_args` is fixed at registration, so a keeper
   replays exactly what the creator specified. This is what makes keepers
   trustless, and it is also why no keeper can inject fresh data.
 
@@ -502,7 +513,7 @@ answer stays reproducible:
 attached to the keeper's own `execute` call reach Archon's inner call *and* the
 target's own inner transactions, two levels down. So a keeper can supply
 *availability* without supplying *data* — and the trust model does not move,
-because `call_data` is still fixed at registration and the keeper still cannot
+because `call_args` is still fixed at registration and the keeper still cannot
 change what is called.
 
 That makes far more buildable today than "no foreign arrays" suggests: a target
@@ -590,10 +601,16 @@ out, the dogfood plan and the mainnet gate are in
 
 ## Known limitations (v1)
 
-- ALGO escrow only (no ASA-denominated fees yet). First candidate: CORVID,
-  CorvidLabs' ASA — mainnet asset
-  [`3225439167`](https://explorer.perawallet.app/asset/3225439167) (6 decimals).
-- Single-arg NoOp call shape; no multi-arg or foreign-array calls.
+- ASA fees are a **capability, not a commitment**: escrow and fees are ALGO by
+  default and no token is required. An upkeep may add a bonus in any asset;
+  CORVID (mainnet asset
+  [`3225439167`](https://explorer.perawallet.app/asset/3225439167), 6 decimals)
+  is a candidate, wired in nowhere.
+- Three app args per execution, counting the selector. Foreign arrays are
+  supplied by the keeper rather than stored; there is no on-chain way for an
+  upkeep to declare which resources it needs, so a keeper has to know out of
+  band. See the `resources()` convention in `docs/integrating.md`.
+- The console shows ASA bonuses in base units, not the asset's decimals.
 - Catch-up is now a choice, not a limitation: a creator picks `CATCH_UP`
   (replay every missed interval, the default) or `SKIP_AHEAD` (run once and
   land on the next slot that is still ahead) at registration. Designed in

@@ -80,6 +80,7 @@ class Snapshot:
                     "target_app": upkeep.target_app,
                     "policy": upkeep.policy,
                     "fee_cap": upkeep.fee_cap,
+                    "fee_asset": upkeep.fee_asset,
                     "last_serviced_round": upkeep.last_serviced_round,
                 }
                 for upkeep in upkeeps

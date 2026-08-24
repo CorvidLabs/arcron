@@ -14,7 +14,7 @@ import { WalletService } from './wallet.service';
 import * as txns from './keeper-txns';
 import type { Upkeep } from './upkeep';
 
-export type Operation = 'register' | 'top_up' | 'cancel' | 'execute';
+export type Operation = 'register' | 'top_up' | 'cancel' | 'execute' | 'opt_in_asset' | 'top_up_asset';
 
 export interface Activity {
   readonly operation: Operation;
@@ -45,6 +45,26 @@ export class KeeperService {
     await this.send('top_up', upkeep.id, async (algod, appId, signing) => {
       const result = await txns.topUp(algod, appId, signing, upkeep.id, amount);
       return { result, message: `Escrow now ${algos(result.returnValue ?? 0n)}` };
+    });
+  }
+
+  /** Let the app hold an upkeep's bonus asset. Permanent, and costs 0.1 ALGO. */
+  async optInAsset(upkeep: Upkeep): Promise<void> {
+    await this.send('opt_in_asset', upkeep.id, async (algod, appId, signing) => {
+      const result = await txns.optInAsset(
+        algod, appId, signing, upkeep.id, Number(upkeep.feeAsset),
+      );
+      return { result, message: `App can now hold asset ${upkeep.feeAsset}` };
+    });
+  }
+
+  /** Add to an upkeep's bonus escrow, in the asset's base units. */
+  async topUpAsset(upkeep: Upkeep, amount: number): Promise<void> {
+    await this.send('top_up_asset', upkeep.id, async (algod, appId, signing) => {
+      const result = await txns.topUpAsset(
+        algod, appId, signing, upkeep.id, Number(upkeep.feeAsset), amount,
+      );
+      return { result, message: `Bonus escrow now ${result.returnValue ?? 0n} base units` };
     });
   }
 

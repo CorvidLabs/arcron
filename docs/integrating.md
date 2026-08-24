@@ -165,6 +165,97 @@ scheduled draw fixes a beacon round and a participant supplies the beacon
 reference when resolving. `smart_contracts/treasury/` credits recipients who
 then claim. `smart_contracts/deadman/` allocates to a beneficiary who claims.
 
+## Reaching resources your hook cannot name
+
+A scheduled call can only touch what the executing transaction makes
+available. Archon stores no foreign arrays — but it does not need to. Resource
+availability supplied on the *keeper's* transaction reaches two levels down:
+to Archon's inner call, and to your own inner transactions from it. Measured
+in [#24](https://github.com/CorvidLabs/archon/issues/24), across payments,
+asset transfers, balance reads, holding reads and inner app calls.
+
+The budget is **8 references per transaction**. Archon spends two — the upkeep
+box and your app — leaving **6** in any mix of accounts, assets and apps.
+
+What is missing is discovery: nothing on chain tells a keeper which resources
+your upkeep needs. The convention Archon proposes is a readonly view a keeper
+simulates before executing:
+
+```
+resources()(address[],uint64[],uint64[])
+```
+
+Return the accounts, assets and apps your hook will reach for. A keeper
+simulates it for free, attaches what it names, and executes. A target that
+does not implement it fails the simulate and the keeper attaches nothing,
+which is exactly today's behaviour — nothing existing breaks.
+
+Three things make this safe, and worth knowing before you rely on it:
+
+- **References grant availability, not authority.** Your hook already decides
+  what it touches, and `call_args` is still fixed by whoever registered the
+  upkeep.
+- **A wrong answer is free.** A rejected execution costs a keeper nothing, so
+  it can simulate and skip.
+- **Six is the ceiling**, and `resources()` lets a keeper learn that before
+  spending anything rather than in a rejection.
+
+Not enforced by the contract, and not yet read by `scripts/keeper_bot.py` —
+this is a convention with no user yet, and a convention with no user is one
+that gets the details wrong. If you need it, say so on
+[#8](https://github.com/CorvidLabs/archon/issues/8) and it becomes a keeper
+feature rather than a paragraph.
+
+## Calls with arguments
+
+An execution carries up to **three app args, counting the selector** — enough
+for an ARC-4 method of arity two:
+
+```python
+@abimethod()
+def settle(self, market_id: UInt64) -> UInt64: ...
+```
+
+For anything wider, declare the arguments as a single struct or tuple. That is
+the trick ARC-4 itself uses at arg 15, and it makes any arity reachable:
+
+```python
+class Settlement(arc4.Struct):
+    market_id: arc4.UInt64
+    epoch: arc4.UInt64
+    limit: arc4.UInt64
+
+@abimethod()
+def settle(self, settlement: Settlement) -> UInt64: ...
+```
+
+Every argument is fixed at registration. If your hook needs a value that
+changes between runs, it has to derive it — from its own state, from a
+resource it pulls, or from the round. Archon will not supply it, by design.
+
+## An ASA bonus
+
+An upkeep can pay a bonus in any asset **on top of** its ALGO fee, never
+instead of it. That is deliberate: a keeper's real costs are ALGO, so keeping
+the ALGO fee mandatory is what lets the contract guarantee profitability
+without anyone having to price your token.
+
+```
+register(..., fee_asset=<asset id>, asset_fee=<base units>)
+opt_in_asset(mbr_payment, upkeep_id, asset)   # 0.1 ALGO, permanent
+top_up_asset(upkeep_id, asset_funding)
+```
+
+Two things to know:
+
+- **The app must opt in before it can hold the asset**, which costs 0.1 ALGO
+  of minimum balance permanently. There is no opt-out, so the deposit does not
+  come back.
+- **A keeper that is not opted in to your asset still executes**, takes the
+  ALGO fee, and forfeits the bonus — which stays in your escrow and comes back
+  on cancel. Your bonus reaches the keepers who want it and costs you nothing
+  with the ones who do not.
+
 ## Funding and operations
 
 An upkeep is funded escrow. Executions are paid from it:
@@ -176,8 +267,8 @@ funded runs = balance / fee_cap                  # with one, this is the number
 
 At the 4,000 µALGO minimum fee, 1 ALGO buys 250 executions — about 10 days of
 an hourly cadence, or 8 months of a daily one. Registering also costs box MBR
-(`2,500 + 400 × (117 + len(call_data))` µALGO, so 50,900 for a 4-byte
-selector), and **that comes back in full when you cancel**.
+(`2,500 + 400 × (139 + len(encoded call_args))` µALGO, so 62,100 for a bare
+4-byte selector), and **that comes back in full when you cancel**.
 
 If you set a fee ceiling, budget against the ceiling — and read it as the
 price you will *usually* pay, not the worst case.

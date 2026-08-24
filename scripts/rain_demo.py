@@ -136,15 +136,17 @@ def main(argv: list[str] | None = None) -> None:
 
     upkeep_id = keeper_client.send.register(
         args=RegisterArgs(
-            mbr_payment=payment(_box_mbr(call_data)),
+            mbr_payment=payment(_box_mbr([call_data])),
             funding_payment=payment(FEE * 4),
             target_app=rain.app_id,
-            call_data=call_data,
+            call_args=[call_data],
             interval_rounds=INTERVAL_ROUNDS,
             fee_per_execution=FEE,
             # A missed day's draw is not worth replaying; only the latest matters.
             policy=SKIP_AHEAD,
             fee_cap=0,
+            fee_asset=0,
+            asset_fee=0,
         )
     ).abi_return
     upkeep, _ = _read_upkeep(algorand, keeper_client.app_id, upkeep_id)

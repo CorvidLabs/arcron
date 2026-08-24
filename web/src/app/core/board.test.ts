@@ -15,7 +15,7 @@ function upkeep(overrides: Partial<Upkeep> = {}): Upkeep {
     id: 1n,
     creator: 'E5M2OH5XNDMNABJ6VOFOUVR2IKRPCGQH43PVC5P3DWQQ2LV2VJV2FJZQ3E',
     targetApp: 1043n,
-    callData: new Uint8Array([0x4d, 0x4d, 0x5f, 0x0b]),
+    callArgs: [new Uint8Array([0x4d, 0x4d, 0x5f, 0x0b])],
     intervalRounds: 10n,
     nextExecutionRound: 1_000n,
     feePerExecution: 4_000n,
@@ -24,6 +24,9 @@ function upkeep(overrides: Partial<Upkeep> = {}): Upkeep {
     policy: 0n,
     feeCap: 0n,
     lastServicedRound: 990n,
+    feeAsset: 0n,
+    assetFee: 0n,
+    assetBalance: 0n,
     ...overrides,
   };
 }

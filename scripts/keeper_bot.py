@@ -124,6 +124,9 @@ class Upkeep:
     policy: int
     fee_cap: int
     last_serviced_round: int
+    fee_asset: int
+    asset_fee: int
+    asset_balance: int
 
 
 def effective_fee(upkeep: Upkeep, current_round: int) -> int:
@@ -187,9 +190,9 @@ def _decode_upkeep(upkeep_id: int, raw: bytes) -> Upkeep:
     """Decode a box value of the contract's Upkeep ARC-4 struct.
 
     ABI head/tail layout (see smart_contracts/keeper/contract.py): a 32-byte
-    creator, then the static fields inline, with the dynamic call_data in the
-    tail (the offset at bytes [40:42] points to it; the bot doesn't need it —
-    the contract stores and sends it itself). The head is 106 bytes; its
+    creator, then the static fields inline, with the dynamic argument list in
+    the tail (the offset at bytes [40:42] points to it; the bot doesn't need
+    it — the contract stores and sends it itself). The head is 130 bytes; its
     TypeScript twin is `web/src/app/core/upkeep.ts`.
     """
     return Upkeep(
@@ -203,6 +206,9 @@ def _decode_upkeep(upkeep_id: int, raw: bytes) -> Upkeep:
         policy=int.from_bytes(raw[82:90], "big"),
         fee_cap=int.from_bytes(raw[90:98], "big"),
         last_serviced_round=int.from_bytes(raw[98:106], "big"),
+        fee_asset=int.from_bytes(raw[106:114], "big"),
+        asset_fee=int.from_bytes(raw[114:122], "big"),
+        asset_balance=int.from_bytes(raw[122:130], "big"),
     )
 
 

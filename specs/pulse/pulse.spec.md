@@ -14,9 +14,10 @@ depends_on: []
 ## Purpose
 
 Pulse is a demo upkeep target: a public heartbeat counter. It exists to
-prove the Keeper contract end-to-end — `tick` takes no arguments beyond its
-method selector, so a registered upkeep can call it on a schedule.
-Permissionless by design; it is a demo, not a gate.
+prove the Keeper contract end-to-end. `tick` takes no arguments beyond its
+method selector, which was the only shape a registered upkeep could call
+before #8; `tick_with` takes real arguments, which is the shape it can call
+now. Permissionless by design; it is a demo, not a gate.
 
 ## Public API
 
@@ -31,11 +32,13 @@ Permissionless by design; it is a demo, not a gate.
 | Method | Parameters | Returns | Description |
 |--------|-----------|---------|-------------|
 | `tick` | — | `uint64` | Increments `beats`, records the current round, returns the new count. |
+| `tick_with` | `beats: uint64, note: string` | `uint64` | Advances `beats` by the argument rather than by one and records the note. A hook with arguments of its own — unreachable through an upkeep before #8, because an ARC-4 method needs its selector and each argument in an app arg of its own. |
 
 ## Invariants
 
-1. `beats` increases by exactly 1 per successful `tick` call.
-2. `last_beat_round` always equals the round of the most recent `tick`.
+1. `beats` increases by exactly 1 per successful `tick` call, and by the `beats` argument per successful `tick_with` call.
+2. `last_beat_round` always equals the round of the most recent call of either.
+3. Neither method reads anything but its own arguments, so an upkeep against Pulse proves the call shape and nothing else.
 
 ## Behavioral Examples
 
@@ -44,6 +47,12 @@ Permissionless by design; it is a demo, not a gate.
 - **Given** a Keeper upkeep registered against Pulse with `tick`'s selector
 - **When** the upkeep is executed
 - **Then** `beats` increments by 1 via the keeper's inner app call
+
+### Scenario: A multi-argument upkeep
+
+- **Given** a Keeper upkeep registered with `tick_with`'s selector, `7` and `"archon"`
+- **When** the upkeep is executed
+- **Then** `beats` advances by 7 and `last_note` holds the string — every app arg arrived
 
 ## Error Cases
 
@@ -70,3 +79,4 @@ Permissionless by design; it is a demo, not a gate.
 | Date | Author | Change |
 |------|--------|--------|
 | 2026-08-23 | CorvidLabs | Initial demo target: tick heartbeat counter |
+| 2026-08-24 | CorvidLabs | Added `tick_with` for issue #8: the demo target now demonstrates a hook with arguments of its own, which is the shape Archon could not call before. |
