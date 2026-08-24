@@ -35,9 +35,9 @@ from smart_contracts.artifacts.keeper.keeper_client import (
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
-# The canonical TestNet Keeper app (see README); override with --app-id or
-# KEEPER_APP_ID. LocalNet has no canonical app — pass one.
-DEFAULT_APP_ID = 769802474
+# The ARC-4 head of an Upkeep, in bytes. Also the value the contract writes as
+# the offset to the argument list, which makes it a version fingerprint.
+HEAD_BYTES = 130
 # Covers the two inner transactions (app call + keeper payment); the outer
 # fee is the standard 1,000 µALGO.
 EXTRA_FEE_MICROALGO = 2_000
@@ -194,7 +194,23 @@ def _decode_upkeep(upkeep_id: int, raw: bytes) -> Upkeep:
     the tail (the offset at bytes [40:42] points to it; the bot doesn't need
     it — the contract stores and sends it itself). The head is 130 bytes; its
     TypeScript twin is `web/src/app/core/upkeep.ts`.
+
+    Rejects anything that is not this struct rather than decoding it. A box
+    from an older deployment is shorter, and reading past its end silently
+    yields zeros and garbage — a keeper would then compute a fee from numbers
+    that were never in the box. The tail offset is the cheapest possible
+    fingerprint: the contract always writes 130 there.
     """
+    if len(raw) < HEAD_BYTES + 2:
+        raise ValueError(
+            f"upkeep {upkeep_id}: box is {len(raw)} bytes, too short to be an Upkeep"
+        )
+    tail_offset = int.from_bytes(raw[40:42], "big")
+    if tail_offset != HEAD_BYTES:
+        raise ValueError(
+            f"upkeep {upkeep_id}: tail offset is {tail_offset}, not {HEAD_BYTES} — "
+            f"this box was written by a different version of the contract"
+        )
     return Upkeep(
         upkeep_id=upkeep_id,
         target_app=int.from_bytes(raw[32:40], "big"),
@@ -230,17 +246,21 @@ def scan_upkeeps(algod, app_id: int) -> list[Upkeep]:
 
 
 def resolve_app_id(parser: argparse.ArgumentParser, app_id: int | None, network: str) -> int:
-    """The app to service: --app-id, else KEEPER_APP_ID, else the TestNet app."""
+    """The app to service: --app-id, else KEEPER_APP_ID.
+
+    Deliberately no default. There is no deployment of the current contract,
+    and defaulting to a stale one is worse than asking: an older app's boxes
+    are a different shape, so a keeper would scan them, decode nothing it
+    could trust, and act on it.
+    """
     if app_id is not None:
         return app_id
     from_env = os.environ.get("KEEPER_APP_ID")
     if from_env:
         return int(from_env)
-    if network == net.TESTNET:
-        return DEFAULT_APP_ID
     parser.error(
-        f"--app-id (or KEEPER_APP_ID) is required on {network}; there is no "
-        f"canonical app id off TestNet"
+        f"--app-id (or KEEPER_APP_ID) is required on {network}: there is no "
+        f"canonical Arcron deployment to default to"
     )
 
 

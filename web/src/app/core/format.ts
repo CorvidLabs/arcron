@@ -23,11 +23,6 @@ export function algos(microAlgo: bigint, options: { sign?: boolean } = {}): stri
   return `${prefix}${value} ALGO`;
 }
 
-/** The exact figure, for tooltips and anywhere rounding would mislead. */
-export function microAlgos(value: bigint): string {
-  return `${value.toLocaleString('en-US')} µALGO`;
-}
-
 export function shortAddress(address: string): string {
   return `${address.slice(0, 6)}…${address.slice(-4)}`;
 }

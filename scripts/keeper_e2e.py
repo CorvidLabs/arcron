@@ -1036,6 +1036,80 @@ def main(argv: list[str] | None = None) -> None:
     logger.info(f"  ✔ ALGO refund {refunded.abi_return} µALGO, plus {bonus * 3} base units")
 
     # ------------------------------------------------------------------
+    logger.info("── 20. One escrow can never pay for another (#12) ──")
+    # The app account is shared by every upkeep; only the boxes are separate.
+    # So the accounting invariant worth stating is that the app's *spendable*
+    # balance always covers the sum of every escrow — and that no upkeep can
+    # draw on another's. Checked after each mutation rather than once at the
+    # end, because a transient violation is still a bug.
+    varied: list[int] = []
+    # Deliberately varied box sizes and fees: the MBR is charged per byte, so
+    # a registry of identical upkeeps would not exercise the formula.
+    for args, fee, funding in (
+        ([_selector(CALL_SIGNATURE)], FEE, FEE * 2),
+        ([_selector("tick_with(uint64,string)uint64"), (1).to_bytes(8, "big"),
+          abi.ABIType.from_string("string").encode("x" * 40)], FEE * 2, FEE * 6),
+        # Funded for exactly one run, so it drains while its neighbours do not.
+        ([_selector(CALL_SIGNATURE)], FEE, FEE),
+    ):
+        varied.append(
+            _register_with_interval(
+                algorand, keeper_client, deployer, pulse_client.app_id, funding,
+                INTERVAL_ROUNDS, call_args=args, fee=fee,
+            )
+        )
+        _assert_solvent(algorand, keeper_client, app_id)
+
+    # The poorest upkeep, executed until its own escrow is empty, must never
+    # reach into the richest one's.
+    poor, rich = varied[2], varied[1]
+    rich_before, _ = _read_upkeep(algorand, app_id, rich)
+    runs = 0
+    while True:
+        state, _ = _read_upkeep(algorand, app_id, poor)
+        if state.balance < state.fee_per_execution:
+            break
+        net.wait_for_round(algorand, state.next_execution_round, poker=deployer)
+        keeper_client.send.execute(
+            args=ExecuteArgs(upkeep_id=poor),
+            params=algokit_utils.CommonAppCallParams(
+                extra_fee=algokit_utils.AlgoAmount(micro_algo=keeper_bot.EXTRA_FEE_MICROALGO)
+            ),
+        )
+        runs += 1
+        _assert_solvent(algorand, keeper_client, app_id)
+
+    drained, _ = _read_upkeep(algorand, app_id, poor)
+    rich_after, _ = _read_upkeep(algorand, app_id, rich)
+    _assert("the poor upkeep spent exactly its own escrow", drained.balance, 0)
+    _assert("and it ran only what it funded", runs, 1)
+    _assert("its neighbour is untouched", rich_after.balance, rich_before.balance)
+    # Wait until it is genuinely due, so the rejection is about the money and
+    # not about the schedule.
+    net.wait_for_round(algorand, drained.next_execution_round, poker=deployer)
+    _expect_failure(
+        "a drained upkeep cannot borrow from the app account",
+        "Insufficient funding",
+        lambda: keeper_client.send.execute(
+            args=ExecuteArgs(upkeep_id=poor),
+            params=algokit_utils.CommonAppCallParams(
+                extra_fee=algokit_utils.AlgoAmount(micro_algo=keeper_bot.EXTRA_FEE_MICROALGO)
+            ),
+        ),
+    )
+
+    # Cancelling returns exactly what that upkeep put in, and leaves the rest
+    # of the registry solvent.
+    for cleanup_id in varied:
+        keeper_client.send.cancel(
+            args=CancelArgs(upkeep_id=cleanup_id),
+            params=algokit_utils.CommonAppCallParams(
+                extra_fee=algokit_utils.AlgoAmount(micro_algo=1_000)
+            ),
+        )
+        _assert_solvent(algorand, keeper_client, app_id)
+
+    # ------------------------------------------------------------------
     # Return the stranger's remaining balance; on TestNet that is real ALGO.
     algorand.send.payment(
         algokit_utils.PaymentParams(

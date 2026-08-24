@@ -7,8 +7,8 @@ quick overview see `../README.md`; for runnable flows see `../examples/`.
 
 | Item | Value |
 |------|-------|
-| Keeper app | [`769802474`](https://testnet.explorer.perawallet.app/application/769802474) |
-| Pulse demo target | [`769772906`](https://testnet.explorer.perawallet.app/application/769772906) |
+| Keeper app | none at this version — both TestNet apps predate the 1.0 batch |
+| Pulse demo target | none at this version |
 | Reference bot | `scripts/keeper_bot.py` |
 | Proof | All 14 stages of `scripts/keeper_e2e.py` passed against it on-chain — first permissionless execution at round 66629036, catch-up stage through 66629138. The e2e now has 17 stages; the extra three cover #7 and #14, which this deployment predates. |
 | Deprecated | [`769772891`](https://testnet.explorer.perawallet.app/application/769772891) — see [migration](#migrating-off-the-deprecated-app) |
@@ -168,7 +168,7 @@ an external entry point that anyone may call once an upkeep is due.
 
 | | |
 |---|---|
-| Keeper app | `769802474` (TestNet) |
+| Keeper app | not deployed at this version |
 | Upkeeps registered | none — the e2e cancels everything it creates |
 | Always-on keeper | **none running** |
 | Last executions | rounds 66629036–66629138, from the deployment verification |

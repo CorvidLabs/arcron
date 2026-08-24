@@ -6,6 +6,8 @@
 build = "poetry run python -m smart_contracts build"
 test = "poetry run pytest tests/ -q"
 spec = "specsync check --strict"
+# Print the hash of the contract this tree builds; add --app-id to check a deployment.
+verify = "poetry run python -m scripts.verify_build --no-rebuild"
 web-install = "cd web && bun install"
 web-test = "cd web && bun test"
 web-build = "cd web && bun run ng build"

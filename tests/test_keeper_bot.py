@@ -16,12 +16,15 @@ import base64
 
 from dataclasses import replace
 
+import pytest
+
 from scripts.keeper_bot import (
     CATCH_UP,
     SKIP_AHEAD,
     _as_bytes,
     _decode_upkeep,
     effective_fee,
+    resolve_app_id,
     select_due,
 )
 
@@ -150,3 +153,40 @@ def test_select_due_falls_back_to_id_order_when_nothing_escalates() -> None:
     due = base.last_serviced_round + 10
     flat = [replace(base, upkeep_id=i, fee_cap=0, next_execution_round=due) for i in (3, 1, 2)]
     assert [u.upkeep_id for u in select_due(flat, due + 2)] == [1, 2, 3]
+
+
+def test_decode_rejects_a_box_from_an_older_contract() -> None:
+    """Silently decoding the wrong struct is worse than refusing to.
+
+    A box written by a deployment that predates the 1.0 batch is 88 bytes
+    against this struct's 130-byte head. Read past its end and Python hands
+    back zeros, so a keeper would compute a fee from numbers that were never
+    in the box — and act on it. The tail offset is the fingerprint: the
+    contract always writes 130 there.
+    """
+    old_box = bytes.fromhex(
+        "2759a71fb768d8d0053eab8aea563a42a2f11a07e6df5175fb1da10d2ebaaa6b"
+        "000000002de1cd6a"  # target_app
+        "0052"  # tail offset = 82, the head this struct replaced
+        "000000000000000a0000000003f864f30000000000000fa0"
+        "0000000000003e800000000000000001"
+        "00044d4d5f0b"
+    )
+    with pytest.raises(ValueError, match="too short to be an Upkeep"):
+        _decode_upkeep(4, old_box)
+
+    # Long enough, but still not this struct: caught by the offset.
+    wrong_shape = bytearray(bytes.fromhex(LIVE_BOX_HEX))
+    wrong_shape[40:42] = (82).to_bytes(2, "big")
+    with pytest.raises(ValueError, match="different version of the contract"):
+        _decode_upkeep(4, bytes(wrong_shape))
+
+
+def test_resolve_app_id_refuses_to_guess() -> None:
+    """No default: there is no deployment of this contract to default to."""
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    assert resolve_app_id(parser, 123, "testnet") == 123
+    with pytest.raises(SystemExit):
+        resolve_app_id(parser, None, "testnet")
