@@ -51,12 +51,25 @@ jobs:
           fi
           poetry --version && bun --version && fledge --version
 
+      - name: Select the Python interpreter
+        run: |
+          # Must happen before installing: a fresh checkout has no .venv, so
+          # poetry would otherwise take the default python3 — which on this
+          # runner is 3.14, and coincurve publishes no wheels for 3.14. The
+          # install then tries to build it from source and fails obscurely.
+          if ! command -v python3.13 >/dev/null 2>&1; then
+            echo "::error::python3.13 not found on this runner (default is $(python3 --version 2>&1))"
+            exit 1
+          fi
+          poetry env use "$(command -v python3.13)"
+          poetry run python --version
+
       - name: Install Python dependencies
         run: poetry install --no-interaction
 
       - name: Python version guard
         run: |
-          # coincurve has no wheels for 3.14; the repo pins 3.13 deliberately.
+          # Belt and braces: assert what actually got installed into.
           version=$(poetry run python -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
           echo "Python $version"
           case "$version" in
@@ -111,6 +124,9 @@ jobs:
           fi
           command -v algokit >/dev/null 2>&1 || { echo "::error::algokit is not installed"; exit 1; }
           algokit --version
+
+      - name: Select the Python interpreter
+        run: poetry env use "$(command -v python3.13)"
 
       - name: Install Python dependencies
         run: poetry install --no-interaction
