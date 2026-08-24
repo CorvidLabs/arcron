@@ -7,7 +7,15 @@ import { ArchonService } from '../core/archon.service';
 import { algos, duration, microAlgos, runwayLabel } from '../core/format';
 import { methodSelector, PULSE_TICK_SIGNATURE } from '../core/keeper-abi';
 import { KeeperService } from '../core/keeper.service';
-import { boxMbr, CATCH_UP, MIN_INTERVAL_ROUNDS, MIN_UPKEEP_FEE, SKIP_AHEAD, toHex } from '../core/upkeep';
+import {
+  boxMbr,
+  CATCH_UP,
+  MAX_UPKEEP_FEE,
+  MIN_INTERVAL_ROUNDS,
+  MIN_UPKEEP_FEE,
+  SKIP_AHEAD,
+  toHex,
+} from '../core/upkeep';
 
 const CADENCES = [
   { label: '30 s', seconds: 30 },
@@ -26,7 +34,9 @@ const CADENCES = [
         <h2>Register an upkeep</h2>
         <p class="subtitle">
           Escrow ALGO to have any keeper call your app on a schedule. The call is a NoOp with one
-          app arg — a method selector.
+          app arg — a method selector. A fee ceiling makes a neglected upkeep more attractive, but
+          only competing keepers keep the price below it — leave it at zero unless an upkeep is
+          actually going unserviced.
         </p>
       </header>
 
@@ -108,7 +118,7 @@ const CADENCES = [
           @if (!keeper.canSign()) {
             <p class="hint">Connect an account to register.</p>
           } @else if (status() !== 'VALID') {
-            <p class="hint">Check the highlighted fields — every value has an on-chain minimum.</p>
+            <p class="hint">{{ problem() }}</p>
           }
         </div>
       </form>
@@ -159,7 +169,20 @@ export class RegisterForm {
     policy: [Number(SKIP_AHEAD), Validators.required],
     // Zero is off: the fee never moves. Opt in, rather than surprising a
     // creator with an escrow that drains three times faster than the headline.
-    feeCap: [0, [Validators.required, Validators.min(0)]],
+    feeCap: [0, [Validators.required, Validators.min(0), Validators.max(MAX_UPKEEP_FEE / 1e6)]],
+  }, {
+    // Cross-field rules the chain enforces too. Catching them here turns a
+    // rejected transaction into a disabled button.
+    validators: (group) => {
+      const fee = Number(group.get('feePerExecution')?.value ?? 0);
+      const cap = Number(group.get('feeCap')?.value ?? 0);
+      const funding = Number(group.get('funding')?.value ?? 0);
+      if (cap !== 0 && cap < fee) return { capBelowFee: true };
+      // `register` funds against the price the upkeep can actually be
+      // charged, so an upkeep with a ceiling must escrow one run at it.
+      if (funding < Math.max(fee, cap)) return { fundingBelowWorstCase: true };
+      return null;
+    },
   });
 
   /**
@@ -208,12 +231,29 @@ export class RegisterForm {
     return worstCase === feePerExecution ? label : `${label}, at the ceiling`;
   });
 
+  /** The specific reason the form will not submit, when there is one. */
+  protected readonly problem = computed(() => {
+    this.status();
+    const errors = this.form.errors;
+    if (errors?.['capBelowFee']) {
+      return 'A fee ceiling must be at least the fee per execution, or zero for no escalation.';
+    }
+    if (errors?.['fundingBelowWorstCase']) {
+      const { feePerExecution, feeCap } = this.value();
+      const worst = Math.max(feePerExecution, feeCap);
+      return `Funding must cover one execution at the price this upkeep can be charged — ${worst} ALGO.`;
+    }
+    return 'Check the highlighted fields — every value has an on-chain minimum.';
+  });
+
   protected readonly capHint = computed(() => {
     const { feeCap, feePerExecution } = this.value();
     if (feeCap === 0) return 'off — the fee never changes';
     if (feeCap < feePerExecution) return 'must be at least the fee, or zero';
     const multiple = (feeCap / feePerExecution).toFixed(1);
-    return `rises to ${multiple}× over one missed interval, then holds`;
+    // Not a worst case: a keeper with no competition is better off waiting for
+    // the ceiling, so a creator should expect to pay it rather than hope not to.
+    return `rises to ${multiple}× over one missed interval — expect to pay it`;
   });
 
   private readonly mbr = computed(() => {

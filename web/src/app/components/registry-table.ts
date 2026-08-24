@@ -311,9 +311,16 @@ export class RegistryTable {
     this.expanded.update((current) => (current === row.upkeep.id ? null : row.upkeep.id));
   }
 
-  /** Three more runs is the friendliest default top-up. */
+  /** Three more runs is the friendliest default top-up.
+   *
+   * Priced at the ceiling when there is one: three base fees can leave an
+   * upkeep still unexecutable the moment it falls behind, which is the
+   * opposite of what someone clicking "top up" wants.
+   */
   protected defaultTopUp(row: Row): string {
-    return (Number(row.upkeep.feePerExecution * 3n) / 1e6).toString();
+    const { feePerExecution, feeCap } = row.upkeep;
+    const worstCase = feeCap > feePerExecution ? feeCap : feePerExecution;
+    return (Number(worstCase * 3n) / 1e6).toString();
   }
 
   protected execute(row: Row): void {

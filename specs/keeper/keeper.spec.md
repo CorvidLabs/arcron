@@ -67,7 +67,9 @@ contract class, the `Upkeep` struct, and its constants.
 9. The **effective fee** is `fee_per_execution` when `fee_cap <= fee_per_execution`; otherwise it rises linearly from the fee to the cap across one missed interval and then holds at the cap: `fee + (fee_cap - fee) * min(max(lateness - interval, 0), interval) / interval`, where `lateness = Global.round - last_serviced_round`. It is therefore never above `fee_cap` and never below `fee_per_execution`.
 10. Lateness is measured from `last_serviced_round`, never from `next_execution_round`. Only the first execution of a catch-up burst can be escalated; every replay behind it pays the base fee, because the upkeep was serviced moments earlier.
 11. `last_serviced_round` is the round `execute` ran in, set to `Global.round` at registration and at every execution. It is the only on-chain record of when an upkeep actually ran; `next_execution_round - interval_rounds` is the round it was *scheduled* for and the two differ by the whole backlog whenever an upkeep is catching up.
-12. Under `CATCH_UP`, `next_execution_round += interval_rounds`, so a neglected upkeep stays due until it has replayed every missed interval. Under `SKIP_AHEAD` it advances to the first slot strictly greater than `Global.round` that is still a whole number of intervals from the original schedule, so one execution clears any backlog without the schedule drifting.
+12. `register` requires funding for one execution at the price the upkeep can be charged — `fee_cap` when one is set. Escalation pins the fee at the cap once an upkeep is a whole interval late and lateness only grows, so an upkeep funded only for a base-fee run but carrying a higher cap would be unexecutable by anyone from the first time it fell behind.
+13. Re-entrancy is impossible: the AVM refuses to re-enter an application from inside its own execution (`attempt to re-enter <app>`), so a target cannot call `execute` back. The contract's own ordering — state written before any inner transaction — is a second line rather than the only one. Measured in `scripts/spike_reentrancy.py`.
+14. Under `CATCH_UP`, `next_execution_round += interval_rounds`, so a neglected upkeep stays due until it has replayed every missed interval. Under `SKIP_AHEAD` it advances to the first slot strictly greater than `Global.round` that is still a whole number of intervals from the original schedule, so one execution clears any backlog without the schedule drifting.
 
 ## Behavioral Examples
 
@@ -118,7 +120,7 @@ contract class, the `Upkeep` struct, and its constants.
 | Non-zero `fee_cap` below `fee_per_execution` | Fails with "Fee cap below the fee" |
 | Empty or over-1024-byte call data | Fails with "Call data size out of bounds" |
 | MBR payment below computed box MBR | Fails with "MBR payment too small" |
-| Funding below one execution fee | Fails with "Funding must cover at least one execution" |
+| Funding below one execution at the effective worst case (`fee_cap` when set, else `fee_per_execution`) | Fails with "Funding must cover at least one execution" |
 | `execute` before the due round | Fails with "Not due" |
 | `execute` with escrow below the **effective** fee | Fails with "Insufficient funding" |
 | `execute`/`cancel`/`top_up` for a missing id | Fails with "Upkeep not found" |

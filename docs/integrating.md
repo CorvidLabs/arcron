@@ -179,10 +179,26 @@ an hourly cadence, or 8 months of a daily one. Registering also costs box MBR
 (`2,500 + 400 × (117 + len(call_data))` µALGO, so 50,900 for a 4-byte
 selector), and **that comes back in full when you cancel**.
 
-If you set a fee ceiling, budget against the ceiling. A late execution is
-charged more, and the escrow has to cover *that* price for the upkeep to stay
-executable — an upkeep with a 4,000 µALGO fee and a 12,000 µALGO ceiling goes
-dormant below 12,000, not below 4,000.
+If you set a fee ceiling, budget against the ceiling — and read it as the
+price you will *usually* pay, not the worst case.
+
+Escalation pays more for lateness, so a keeper that is the only one watching
+an upkeep has every reason to wait for the fee to peak before executing. It
+clears a market only when there is a market: with several keepers competing,
+one of them takes the work early at a lower price, and the ceiling is rarely
+reached. With one keeper, the ceiling *is* the price, and the cadence is
+roughly half what you asked for. Archon's TestNet deployment currently has one
+keeper.
+
+So: leave the ceiling at zero unless an upkeep is genuinely going unserviced.
+It buys reliability from a competitive keeper set and buys nothing from a
+single one.
+
+The escrow also has to cover the ceiling for the upkeep to stay executable —
+an upkeep with a 4,000 µALGO fee and a 12,000 µALGO ceiling goes dormant below
+12,000, not below 4,000. `register` enforces one capped run up front, so a
+capped upkeep can never be unexecutable from birth, but later runs can draw it
+below that line.
 
 - **Anyone can `top_up`.** Funding is permissionless, so a counterparty with an
   interest in your schedule running can pay for it. Only the creator can

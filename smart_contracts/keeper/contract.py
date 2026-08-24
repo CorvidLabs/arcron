@@ -108,8 +108,16 @@ class Keeper(ARC4Contract):
         assert (
             funding_payment.receiver == Global.current_application_address
         ), "Funding must go to the app account"
+        # "One execution" means one at the price this upkeep can actually be
+        # charged. An upkeep escrowed for one run at the base fee but carrying
+        # a higher cap would work until the first time it fell behind and then
+        # be permanently unexecutable — its fee pinned at a cap its escrow
+        # cannot reach — until someone topped it up.
+        required_funding: UInt64 = fee_per_execution
+        if fee_cap > fee_per_execution:
+            required_funding = fee_cap
         assert (
-            funding_payment.amount >= fee_per_execution
+            funding_payment.amount >= required_funding
         ), "Funding must cover at least one execution"
 
         upkeep_id = self.next_upkeep_id.value

@@ -23,6 +23,7 @@ from algopy import (
     UInt64,
     arc4,
     itxn,
+    op,
 )
 from algopy.arc4 import abimethod
 
@@ -47,6 +48,9 @@ class ResourceProbe(ARC4Contract):
         # Who the target sees as its caller, which is not who sent the
         # transaction once Archon is in the middle.
         self.last_caller = GlobalState(Account())
+        # A keeper app and one of its upkeeps, for the re-entrancy probe.
+        self.keeper_app = GlobalState(UInt64(0))
+        self.keeper_upkeep = GlobalState(UInt64(0))
 
     @abimethod()
     def configure(
@@ -142,6 +146,38 @@ class ResourceProbe(ARC4Contract):
         self.last_caller.value = Txn.sender
         self.probes_run.value += 1
         return arc4.Address(Txn.sender)
+
+    @abimethod()
+    def configure_reentry(self, keeper_app: UInt64, upkeep_id: UInt64) -> None:
+        """Point `reenter` at a keeper app and one of its upkeeps."""
+        self.keeper_app.value = keeper_app
+        self.keeper_upkeep.value = upkeep_id
+
+    @abimethod()
+    def reenter(self) -> UInt64:
+        """Call the keeper's `execute` back, from inside its own execution.
+
+        Archon writes an upkeep's state before submitting the inner call, so a
+        re-entrant execution has to satisfy the schedule afresh. Whether that
+        is enough to stop one — and who a nested execution pays, given the
+        sender it sees is this app rather than the keeper — is measured in
+        `scripts/spike_reentrancy.py` rather than argued about.
+
+        Re-enters once and only once: unconditional recursion would just hit
+        the AVM's depth limit and tell us nothing.
+        """
+        self.probes_run.value += 1
+        if self.probes_run.value > 1:
+            return self.probes_run.value
+        itxn.ApplicationCall(
+            app_id=Application(self.keeper_app.value),
+            app_args=(
+                arc4.arc4_signature("execute(uint64)uint64"),
+                op.itob(self.keeper_upkeep.value),
+            ),
+            on_completion=OnCompleteAction.NoOp,
+        ).submit()
+        return self.probes_run.value
 
     @abimethod()
     def probe_app_call(self) -> UInt64:

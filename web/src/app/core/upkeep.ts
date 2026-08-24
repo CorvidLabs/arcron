@@ -17,8 +17,9 @@ const HEAD_BYTES = 106;
 
 /** Mirrors `BOX_MBR_FIXED` in smart_contracts/keeper/contract.py. */
 export const BOX_MBR_FIXED = 2_500 + 400 * 117;
-/** Mirrors MIN_UPKEEP_FEE / MIN_INTERVAL_ROUNDS. */
+/** Mirrors MIN_UPKEEP_FEE / MAX_UPKEEP_FEE / MIN_INTERVAL_ROUNDS. */
 export const MIN_UPKEEP_FEE = 4_000;
+export const MAX_UPKEEP_FEE = 1_000_000_000;
 export const MIN_INTERVAL_ROUNDS = 10;
 /** Outer fee plus the extra fee covering `execute`'s two inner transactions. */
 export const EXECUTE_FEE = 1_000 + 2_000;

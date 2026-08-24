@@ -219,3 +219,27 @@ def test_summary_counts_what_it_can_and_flags_what_is_stuck() -> None:
     assert "7 executions" in text
     assert "0.028 ALGO paid" in text
     assert "1 out of funds" in text
+
+
+def test_a_snapshot_from_before_escalation_does_not_report_the_ceiling() -> None:
+    """An upgrade must not make every upkeep in an old state file look late.
+
+    Snapshots persist to disk, so the first run after this feature ships reads
+    a `previous` written without `fee_cap` or `last_serviced_round`. Defaulting
+    the service round to zero would make every upkeep maximally late and price
+    every execution at the ceiling.
+    """
+    from scripts.notifier import _burst_cost, _fee_now
+
+    legacy = {
+        "times_executed": 0,
+        "balance": 100_000,
+        "fee_per_execution": 4_000,
+        "interval_rounds": 10,
+        "next_execution_round": 1_000,
+        "target_app": 1043,
+    }
+    assert _fee_now(legacy, 9_999_999) == 4_000
+
+    current = {**legacy, "times_executed": 2, "fee_cap": 12_000, "last_serviced_round": 1_010}
+    assert _burst_cost(legacy, current, 2) == 8_000

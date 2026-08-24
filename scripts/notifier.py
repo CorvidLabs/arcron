@@ -204,10 +204,14 @@ def _fee_now(state: dict, current_round: int) -> int:
     `scripts/keeper_bot.py::effective_fee`, over a snapshot's plain dict.
     """
     base, cap = state["fee_per_execution"], state.get("fee_cap", 0)
-    if cap <= base:
+    # A snapshot written before escalation existed has neither key. Read that
+    # as "no escalation" rather than defaulting the service round to zero,
+    # which would make every upkeep in an old state file look maximally late
+    # and report the ceiling as the price of everything.
+    if cap <= base or "last_serviced_round" not in state:
         return base
     interval = max(state["interval_rounds"], 1)
-    lateness = max(current_round - state.get("last_serviced_round", 0), 0)
+    lateness = max(current_round - state["last_serviced_round"], 0)
     excess = min(max(lateness - interval, 0), interval)
     return base + (cap - base) * excess // interval
 
