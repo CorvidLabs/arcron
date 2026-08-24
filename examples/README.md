@@ -37,6 +37,7 @@ poetry run python -m scripts.keeper_bot          # loop block-by-block
 ```
 
 Signs as `KEEPER_MNEMONIC` if set, else `DEPLOYER_MNEMONIC`. Each execution
-costs the bot ~1,000 µALGO (outer txn fee; the inner txns are covered by the
-`extra_fee`) and pays `fee_per_execution` (≥ 4,000 µALGO), so servicing a due
-upkeep nets ≥ 3,000 µALGO.
+costs the bot 3,000 µALGO — a 1,000 µALGO outer txn fee plus the 2,000 µALGO
+`extra_fee` that covers the two inner transactions through fee pooling — and
+pays `fee_per_execution` (≥ 4,000 µALGO), so servicing a due upkeep nets
+≥ 1,000 µALGO.

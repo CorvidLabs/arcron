@@ -102,7 +102,10 @@ poetry run python -m scripts.keeper_bot --app-id N # other keeper instance
 - Signs as `KEEPER_MNEMONIC`, else `DEPLOYER_MNEMONIC`; fees are paid to that
   account, and it pays the outer fees — keep it funded.
 - Multiple competing bots are safe: the contract re-checks due-ness
-  atomically; the loser just loses its 1,000 µALGO outer fee.
+  atomically, so exactly one keeper is paid per due round. What the *loser*
+  pays is not yet established — Algorand rejects failing transactions at
+  validation rather than committing them, which suggests a lost race costs
+  nothing on-chain, unlike an EVM revert. Unverified; see issue #13.
 - A failing upkeep (e.g. target rejects the call) is skipped for the rest of
   the bot run to avoid burning fees every round.
 
@@ -118,6 +121,51 @@ fledge lanes run local    # ci + LocalNet e2e smoke
   was proven with the TestNet e2e (`scripts/keeper_testnet_demo.py`).
 - Specs (`specs/keeper/`, `specs/pulse/`) are enforced by
   `specsync check --strict`; update them with any contract surface change.
+
+## Capability boundary
+
+Archon is the clock, not the eyes. It schedules on-chain calls; it cannot
+observe the world.
+
+- No off-chain access. Contracts have no network access, and `execute` fires an
+  inner app call to another app on the same chain.
+- No keeper discretion. `call_data` is fixed at registration, so a keeper
+  replays exactly what the creator specified. This is what makes keepers
+  trustless, and it is also why no keeper can inject fresh data.
+
+**Oracle pairing** is the supported answer for data-driven automation: a
+reporter pushes values into an oracle contract, an Archon upkeep triggers
+`settle()` on a cadence, and settlement reads the stored value. Archon supplies
+the timing guarantee — that settlement cannot be stalled, delayed or
+selectively timed by an interested party — not the data.
+
+One case needs no oracle trust at all: a **staleness check** that compares the
+feed's last-updated round against the current round and flags the feed if it
+has gone quiet. Comparing timestamps cannot be lied to.
+
+## Building on Archon
+
+The v1 hook shape is a NoOp ABI method taking no arguments of its own, called
+with just its selector. Two properties matter when writing one:
+
+- **It is called on every cadence**, whether or not there is work to do. The
+  no-op path must be cheap.
+- **A hook that fails trips keeper backoff** and stops being serviced. Fail
+  soft — record the condition in state rather than throwing.
+
+**The pull-payment pattern.** Scheduled calls should do accounting only and let
+counterparties claim in transactions they send themselves:
+
+```
+scheduled_call()  # zero-arg, Archon calls this. Records allocations, moves nothing.
+claim()           # the recipient calls this and pulls their funds.
+```
+
+This sidesteps resource availability — `Txn.sender` is always available to a
+contract, whereas an arbitrary payout address may not be — and it isolates
+failure: a payout to a closed or hostile account fails that claim alone instead
+of failing the whole execution and disrupting the schedule. Most applications
+that look like they need multi-arg calls do not, once payouts are pull-based.
 
 ## Known limitations (v1)
 
