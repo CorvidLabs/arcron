@@ -265,6 +265,45 @@ later — it carries the round, the fee collected, what escrow was left and the
 transaction id, so any claim can be checked against the chain. Use
 `--log-format text` for a human at a terminal.
 
+### Announcing what happened
+
+A network whose work is invisible looks dead even when it is running fine.
+`scripts/notifier.py` watches the registry and says what changed — to a
+Discord channel, or to the terminal when no webhook is set:
+
+```bash
+poetry run python -m scripts.notifier --network testnet          # prints here
+DISCORD_WEBHOOK_URL=https://… poetry run python -m scripts.notifier --network testnet
+docker compose -f deploy/compose.yaml up -d notifier              # alongside the keeper
+```
+
+```
+**Upkeep 9 executed** — 0.004 ALGO paid, next due at round 2976
+↳ keeper `FIYLSRRX…XO4LGA`
+⚠️ **Upkeep 4 has run dry** — escrow 0.001 ALGO is below its 0.004 ALGO fee,
+   so no keeper can run it. Anyone can top it up.
+⚠️ **Upkeep 7 is going unserviced** — funded and due, but 812 rounds late.
+```
+
+Three properties worth knowing:
+
+- **It holds no keys and cannot sign.** A notifier that could sign would be a
+  liability with no upside, so that is enforced by a test rather than promised
+  in a comment: `tests/test_notifier.py` fails if anything key-shaped appears
+  in the module.
+- **It needs no indexer, even for "which keeper".** Box state records that an
+  upkeep ran, never who ran it — but the notifier knows the rounds between its
+  last scan and this one, so it reads those few blocks directly. Attribution
+  is derived from the *execution* round rather than the upkeep's scheduled
+  round, which differ whenever an upkeep is catching up after an outage.
+- **Restarting is quiet.** The last announced state is persisted, so a restart
+  replays nothing. Starting fresh against a busy app announces what is
+  currently *broken* and stays silent about what is merely healthy.
+
+It surfaces failures deliberately. An upkeep out of funds, or funded and due
+with nobody servicing it, is the network not working — and saying so builds
+more trust than a feed of good news.
+
 ### Knowing it is still alive
 
 A keeper fails silently in two ways, and both take the network down with it.
