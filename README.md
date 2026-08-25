@@ -251,7 +251,9 @@ any reason. Nothing here is a promise yet.
 | rc | the exact bytecode intended for MainNet | our credibility |
 | mainnet | everything, forever | real money |
 
-The gates between them are in [`docs/releases.md`](docs/releases.md), and they
+Getting outside upkeeps registered is **alpha** work, not beta work: beta is
+the freeze, so feedback that could still change the struct has to arrive before
+it. The gates are in [`docs/releases.md`](docs/releases.md), and they
 are deliberately specific: the contract has no upgrade path, so a stage whose
 clock can be argued down is not a gate.
 
