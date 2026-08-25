@@ -6,8 +6,8 @@ Guidance for AI agents working in this repo. Also see `README.md`.
 
 Arcron — Algorand smart contracts (Algorand Python / Puya + AlgoKit). Main
 project: `smart_contracts/keeper/` — a permissionless keeper network, live on
-TestNet (app 769802474; 769772891 is its deprecated predecessor, which predates
-the box-MBR fix). `pulse/` is its demo target.
+TestNet (app 769823086; 769802474 and 769772891 are superseded and predate the
+1.0 contract). `pulse/` is its demo target (app 769823097).
 
 ## Commands
 

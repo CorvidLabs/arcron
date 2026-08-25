@@ -22,7 +22,7 @@ spec: keeper.spec.md
 
 - Implemented and unit-tested: register (+5 validation paths), execute (happy path, not-due, insufficient funding, unknown id), top_up, cancel (+refund, double-cancel).
 - The mock AVM records but does not execute inner app calls, and does not enforce minimum balances — both are covered by `scripts/keeper_e2e.py` on LocalNet.
-- **Live on TestNet**: Keeper app `769802474`, Pulse app `769772906` (deployer `E5M2OH5XNDMNABJ6VOFOUVR2IKRPCGQH43PVC5P3DWQQ2LV2VJV2FJZQ3E`). The full 14-stage e2e passes against it on-chain, including the box-MBR regression and the losing-keeper measurement. App `769772891` is the deprecated predecessor: it predates the box-MBR fix, its registry has been emptied, and 243,000 µALGO of box MBR is stranded there permanently — the fix exists precisely so that cannot happen again.
+- **Live on TestNet**: Keeper app `769823086`, Pulse app `769823097` (deployer `E5M2OH5XNDMNABJ6VOFOUVR2IKRPCGQH43PVC5P3DWQQ2LV2VJV2FJZQ3E`) — the alpha-1 deployment of the 1.0 contract. The full 20-stage e2e passes against it on-chain, including the box-MBR regression, the losing-keeper measurement, and the escalation-lockout and patient-keeper regressions. Two apps are superseded and must not be used: `769802474` predates the 1.0 struct (its registry is empty), and `769772891` predates the box-MBR fix — its registry has been emptied, and 243,000 µALGO of box MBR is stranded there permanently. The fix exists precisely so that cannot happen again.
 
 ## Notes
 

@@ -10,8 +10,9 @@ quick overview see `../README.md`; for runnable flows see `../examples/`.
 | Keeper app | [`769823086`](https://testnet.explorer.perawallet.app/application/769823086) |
 | Pulse demo target | [`769823097`](https://testnet.explorer.perawallet.app/application/769823097) |
 | Reference bot | `scripts/keeper_bot.py` |
-| Proof | All 14 stages of `scripts/keeper_e2e.py` passed against it on-chain — first permissionless execution at round 66629036, catch-up stage through 66629138. The e2e now has 17 stages; the extra three cover #7 and #14, which this deployment predates. |
-| Deprecated | [`769772891`](https://testnet.explorer.perawallet.app/application/769772891) — see [migration](#migrating-off-the-deprecated-app) |
+| Proof | All 20 stages of `scripts/keeper_e2e.py` pass against it on-chain, including the box-MBR regression, the losing-keeper measurement, and the escalation-lockout and patient-keeper regressions. |
+| Stage | **alpha-1** — see [release stages](releases.md) |
+| Superseded | [`769802474`](https://testnet.explorer.perawallet.app/application/769802474) (predates the 1.0 struct) and [`769772891`](https://testnet.explorer.perawallet.app/application/769772891) — see [migration](#migrating-off-the-deprecated-app) |
 
 ### Migrating off the deprecated app
 
@@ -308,7 +309,7 @@ and the mnemonic lives in repository secrets.
 `--log-format json` (the container default) emits one object per line:
 
 ```json
-{"event": "started", "keeper": "E5M2…FJZQ3E", "app_id": 769802474, "network": "testnet"}
+{"event": "started", "keeper": "E5M2…FJZQ3E", "app_id": 769823086, "network": "testnet"}
 {"event": "scan", "round": 66629378, "upkeeps": 3, "due": 1, "skipped": 0}
 {"event": "executed", "round": 66629379, "upkeep_id": 9, "target_app": 1043,
  "fee_collected": 4000, "escrow_remaining": 8000, "next_due_round": 66629389,

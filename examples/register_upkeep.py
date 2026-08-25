@@ -29,8 +29,8 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 # --- Configure these -------------------------------------------------------
-KEEPER_APP_ID = 769802474  # canonical TestNet keeper app
-TARGET_APP_ID = 769772906  # your app (Pulse demo target shown here)
+KEEPER_APP_ID = 769823086  # canonical TestNet keeper app (alpha-1)
+TARGET_APP_ID = 769823097  # your app (Pulse demo target shown here)
 METHOD_SIGNATURE = "tick()uint64"  # your method
 INTERVAL_ROUNDS = 100  # execute at most every ~5 minutes
 FEE_PER_EXECUTION = 4_000  # µALGO paid to the keeper per execution (min 4,000)
