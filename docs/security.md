@@ -127,8 +127,33 @@ everywhere else in the contract is a rejected transaction, not a wrong number.
 
 ## Immutability: there is no upgrade path
 
-Deliberate, and the reason to trust an escrow held by nobody. It has three
-consequences worth stating plainly:
+**Algorand applications can be upgradeable.** An `UpdateApplication` call
+replaces an app's approval and clear programs in place, and plenty of
+contracts allow it, gated on an admin key or a governance vote. This one does
+not, and that is a choice rather than a platform limit.
+
+The choice is enforced in the program itself. The approval program asserts
+`OnCompletion == NoOp` before it does anything else, so `UpdateApplication`
+and `DeleteApplication` are both rejected. Nothing can change that later,
+because the only thing that could is an update.
+
+You can check it rather than believe it:
+
+```bash
+poetry run python -m scripts.verify_build --network testnet --app-id 769823086
+```
+
+That compares the deployed bytecode against a clean build of this source, so
+the guard you read here is the guard that is running.
+
+The reason is that an upgradeable keeper contract is one where somebody can
+change the rules after you have escrowed funds. Whoever holds the update key
+could redirect payouts, raise fees, or drain escrow, and no amount of good
+intent removes the fact that they *could*. Being unable to fix a bug is the
+price of that guarantee, and it is why an escrow held by nobody is worth
+trusting.
+
+Three consequences worth stating plainly:
 
 1. **A bug cannot be fixed.** The response to a serious bug is to tell
    creators to `cancel`, not to patch.
@@ -137,7 +162,8 @@ consequences worth stating plainly:
    do it for them, because `cancel` is creator-only. This has happened once
    already and stranded 243,000 µALGO of box MBR in the old app.
 3. **`OnCompletion` is pinned to NoOp** on both the outer call and the inner
-   one, so there is no update or delete path to reach even by accident.
+   one, so there is no update or delete path to reach even by accident, and
+   none to be added later.
 
 ## Known and accepted risks
 
