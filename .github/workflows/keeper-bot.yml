@@ -1,15 +1,27 @@
-# A cron-driven keeper, as a starting point rather than the end state.
+# A cron-driven keeper. A stopgap, not the end state.
 #
-# Deliberately manual-only: enabling the schedule below without setting the
-# KEEPER_MNEMONIC secret would fail every five minutes and train everyone to
-# ignore this workflow. Uncomment the schedule once the secret exists.
+# The schedule is live, and the job skips itself cleanly when KEEPER_MNEMONIC
+# is not set, so turning it on before the secret exists produces a green run
+# with a notice rather than a failure every half hour that everyone learns to
+# ignore.
 #
-# Note the trade-offs before relying on it:
-#   * GitHub's cron granularity is ~5 minutes and runs are best-effort, so
-#     upkeeps with short intervals will be serviced late or missed.
-#   * Each run is a fresh process, so a failing upkeep is retried every time.
-#   * The mnemonic lives in repository secrets.
-# A long-lived process (deploy/compose.yaml) avoids all three.
+# Half-hourly is chosen against the upkeeps that actually exist: the shortest
+# live cadence is about six hours, so a check every thirty minutes is late by
+# at most eight percent of one interval. It costs roughly 1,440 runs a month.
+# On a private repository those minutes are billed, so raising the cadence is
+# not free: see docs/hosting.md for the arithmetic.
+#
+# What this does not give you, and why it is a stopgap:
+#   * Scheduled workflows are best-effort. GitHub delays them under load and
+#     may drop them, which is fine for servicing upkeeps whose fees escalate
+#     and poor as evidence of the continuous uptime the beta gate wants.
+#   * Scheduled workflows are disabled after 60 days without repository
+#     activity, silently.
+#   * Each run is a fresh process, so scripts/keeper_backoff.py has no memory
+#     between runs and a persistently failing upkeep is retried every time.
+#   * The mnemonic lives in repository secrets, readable by any workflow here.
+#
+# A long-lived process avoids all four. deploy/vps/install.sh sets one up.
 
 name: Keeper bot
 
@@ -20,8 +32,9 @@ on:
         description: Keeper app id to service
         required: false
         default: "769823086"
-  # schedule:
-  #   - cron: "*/5 * * * *"
+  schedule:
+    # Every half hour. See the note above before changing this.
+    - cron: "*/30 * * * *"
 
 concurrency:
   group: keeper-bot
@@ -43,7 +56,22 @@ jobs:
           pip install "poetry>=2.0,<3.0"
           poetry install --only main --no-root --no-interaction
 
+      - name: Check the keeper account is configured
+        id: configured
+        env:
+          KEEPER_MNEMONIC: ${{ secrets.KEEPER_MNEMONIC }}
+        run: |
+          if [ -z "$KEEPER_MNEMONIC" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::KEEPER_MNEMONIC is not set, so nothing was serviced." \
+                 "Add it as a repository secret to start keeping. Until then this" \
+                 "workflow is a no-op rather than a failure."
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Service due upkeeps
+        if: steps.configured.outputs.ready == 'true'
         env:
           KEEPER_MNEMONIC: ${{ secrets.KEEPER_MNEMONIC }}
           KEEPER_APP_ID: ${{ inputs.app_id || '769823086' }}
