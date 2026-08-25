@@ -1,9 +1,12 @@
 # Release stages
 
-Arcron's contract has no upgrade path. That makes a release different from a
-version bump: what ships is permanent, and every stage below is really an
-answer to one question: **what is frozen, and what is at stake if it is
-wrong?**
+Arcron's contract is upgradeable until its creator calls `freeze`, and rc is
+where that decision gets recorded either way. It buys less than it sounds
+like: an update replaces code, not the shape of boxes that already exist, so
+the `Upkeep` struct is permanent from beta whichever way the decision goes.
+That is what makes a release here different from a version bump, and every
+stage below is really an answer to one question: **what is frozen, and what is
+at stake if it is wrong?**
 
 | Stage | Chain | What is frozen | At stake |
 |---|---|---|---|

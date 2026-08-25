@@ -92,9 +92,9 @@ contract class, the `Upkeep` struct, and its constants.
 
 ### Scenario: Cancel with remaining escrow
 
-- **Given** an upkeep with 12,000 µALGO escrowed and a 4-byte selector as call data (41,300 µALGO of box MBR)
+- **Given** an upkeep with 12,000 µALGO escrowed and a bare 4-byte selector as its call data, whose 10-byte encoded argument list costs 62,100 µALGO of box MBR
 - **When** its creator calls `cancel`
-- **Then** the box is deleted and 53,300 µALGO (escrow plus the released box MBR) is returned to the creator via inner payment
+- **Then** the box is deleted and 74,100 µALGO (escrow plus the released box MBR) is returned to the creator via inner payment
 
 ### Scenario: A missed week, under each policy
 

@@ -154,8 +154,8 @@ a five-file lockstep or the bot and console silently misread the registry:
 
 1. `smart_contracts/keeper/contract.py`: struct, `register`, `execute`
 2. `scripts/keeper_bot.py::_decode_upkeep`, where offsets shift
-3. `web/src/app/core/upkeep.ts`, its TypeScript twin
-4. `tests/test_keeper_bot.py`: the pinned box vector, plus its twin in `web/src/app/core/upkeep.test.ts`
+3. `js/src/upkeep.ts`, its TypeScript twin
+4. `tests/test_keeper_bot.py`: the pinned box vector, plus its twin in `js/test/upkeep.test.ts`
 5. `specs/keeper/`: Public API, requirements, testing, Change Log
 
 Beyond the struct:

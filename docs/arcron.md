@@ -26,7 +26,8 @@ of 2026-08-24 and carries both defects that fix addressed:
 
 **If you registered an upkeep against it**, call `cancel` and you will get the
 remaining escrow back. You will *not* get the box MBR back. The old contract
-has no path to return it, and it cannot be upgraded. Note the old ABI is
+has no path to return it, and it predates `update`, so its programs cannot be
+replaced either. Note the old ABI is
 `cancel(uint64)void`, a different selector from the current
 `cancel(uint64)uint64`, so a client generated from this repo cannot call it;
 build the call from the old signature directly.
@@ -129,8 +130,8 @@ fee_asset: uint64 | asset_fee: uint64 | asset_balance: uint64
 | `[130:]` | tail: ARC-4 `byte[][]` (a count, an offset per argument, then each argument's length and bytes) |
 
 Reference decoder: `scripts/keeper_bot.py::_decode_upkeep`; its TypeScript twin
-is `web/src/app/core/upkeep.ts`. Both are pinned to the *same* recorded box, in
-`tests/test_keeper_bot.py` and `web/src/app/core/upkeep.test.ts`, so they
+is `js/src/upkeep.ts`. Both are pinned to the *same* recorded box, in
+`tests/test_keeper_bot.py` and `js/test/upkeep.test.ts`, so they
 cannot drift apart.
 
 ## Economics
@@ -216,7 +217,7 @@ compounds:
 
 | Cadence | Rounds | At 2.8 s | At the measured 2.66 s | Drift per cycle |
 |---------|--------|----------|------------------------|-----------------|
-| hourly | 1,286 | 1.0 h | 1.0 h | ~2 min |
+| hourly | 1,286 | 1.0 h | 1.0 h | ~3 min |
 | daily | 30,857 | 24.0 h | 22.8 h | ~1.2 h |
 | weekly | 216,000 | 168.0 h | 159.7 h | ~8.3 h |
 
@@ -295,7 +296,7 @@ exits, so a redeploy never abandons a half-signed execution. A second signal
 exits immediately.
 
 **systemd**, for a host that already runs Python: `deploy/keeper-bot.service`,
-with the mnemonic in `/etc/arcron/keeper.env` (chmod 600).
+with the mnemonic in `/etc/arcron/keeper.env` (chmod 640, owned root:keeper).
 
 **GitHub Actions** (`.github/workflows/keeper-bot.yml`) runs `--once` on a
 schedule. It is deliberately manual-dispatch-only until someone sets the
@@ -594,8 +595,10 @@ that look like they need multi-arg calls do not, once payouts are pull-based.
 
 ## What 1.0 will be
 
-The contract cannot be upgraded, so struct changes are batched into one last
-release and the surface is then frozen: per-upkeep catch-up policy, fee
+An update replaces code, not the shape of boxes that already exist, so a
+struct change means a new app id however a deployment is governed. Struct
+changes are therefore batched into one last release and the surface is then
+frozen: per-upkeep catch-up policy, fee
 escalation, resource declaration, and ASA-denominated fees as a capability
 (ALGO remains the default; no token is required). Scope, what is deliberately
 out, the dogfood plan and the mainnet gate are in
@@ -609,9 +612,12 @@ out, the dogfood plan and the mainnet gate are in
   [`3225439167`](https://explorer.perawallet.app/asset/3225439167), 6 decimals)
   is a candidate, wired in nowhere.
 - Three app args per execution, counting the selector. Foreign arrays are
-  supplied by the keeper rather than stored; there is no on-chain way for an
-  upkeep to declare which resources it needs, so a keeper has to know out of
-  band. See the `resources()` convention in `docs/integrating.md`.
+  supplied by the keeper rather than stored, and there is no on-chain way for
+  an upkeep to declare which resources it needs. It does not need one: a
+  keeper simulates the call first and algod reports what it touched. A
+  `resources()` declaration convention was proposed and then withdrawn for
+  exactly that reason. See [Reaching resources your hook cannot name](integrating.md#reaching-resources-your-hook-cannot-name)
+  and [docs/design/call-shapes.md](design/call-shapes.md).
 - The console shows ASA bonuses in base units, not the asset's decimals.
 - Catch-up is now a choice, not a limitation: a creator picks `CATCH_UP`
   (replay every missed interval, the default) or `SKIP_AHEAD` (run once and

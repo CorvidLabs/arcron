@@ -77,10 +77,19 @@ Out of scope:
 
 ## Key handling
 
-Nothing in this repository should ever hold a key it does not need:
+**`DEPLOYER_MNEMONIC` is the one that matters.** It creates the app, and
+while that app is unfrozen it can replace the app's programs, which means it
+can rewrite the rules and reach every escrow. `poetry run python -m
+scripts.govern status` reports whether a deployment is still in that state.
+Everything below is less valuable than that key.
 
-- `scripts/keeper_bot.py` signs, and needs a funded account.
+Nothing else in this repository should ever hold a key it does not need:
+
+- `scripts/keeper_bot.py` signs executions, and needs a funded account. Losing
+  it costs that account's ALGO and nothing else.
 - `scripts/notifier.py` cannot sign at all, and a test enforces that.
 - The console signs through a wallet or through LocalNet's KMD; it never sees
   a mnemonic.
-- `.env.*` is gitignored and must stay that way.
+- Env files are gitignored anywhere in the tree, not just at the root, and
+  must stay that way. `deploy/keeper.env` is the one the deployment guide
+  tells you to create, and it was briefly not covered.

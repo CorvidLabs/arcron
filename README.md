@@ -15,10 +15,17 @@ The job matters; whoever runs it does not, and nobody owns it.*
 | [`web`](web/) | The console: registry dashboard + keeper controls | Runs against LocalNet and TestNet |
 
 > [!WARNING]
-> **Unaudited, and TestNet only.** No third party has reviewed this contract,
-> and it has **no upgrade path**, so a bug cannot be patched in place. Read
-> [`docs/security.md`](docs/security.md) before escrowing anything: the threat
-> model, the accepted risks, and what happens if a bug is found.
+> **Unaudited, and TestNet only.** No third party has reviewed this contract.
+> A deployment also starts **upgradeable**: until its creator calls `freeze`,
+> they can replace the programs. That cuts both ways. A bug can be fixed in
+> place, and the rules can be changed after you have escrowed funds. Calling
+> `freeze` gives up both, permanently, and `frozen` is global state so anyone
+> can check which of the two a deployment is:
+> ```
+> poetry run python -m scripts.govern status --network testnet --app-id 769823086
+> ```
+> Read [`docs/security.md`](docs/security.md) before escrowing anything: the
+> threat model, the accepted risks, and what happens if a bug is found.
 >
 > Apps [`769802474`](https://testnet.explorer.perawallet.app/application/769802474)
 > and [`769772891`](https://testnet.explorer.perawallet.app/application/769772891)
@@ -288,8 +295,9 @@ any reason. Nothing here is a promise yet.
 Getting outside upkeeps registered is **alpha** work, not beta work: beta is
 the freeze, so feedback that could still change the struct has to arrive before
 it. The gates are in [`docs/releases.md`](docs/releases.md), and they
-are deliberately specific: the contract has no upgrade path, so a stage whose
-clock can be argued down is not a gate.
+are deliberately specific: a struct change means a new app id whether or not
+the programs can still be replaced, so a stage whose clock can be argued down
+is not a gate.
 
 ## Running a keeper bot
 

@@ -83,8 +83,12 @@ if self.pending.value == 0:
 ### A hook that fails stops being serviced
 
 This is the failure mode that matters most. When a target rejects, the keeper
-bot marks that upkeep failed and skips it for the rest of the run. Keep
-failing and you are simply not serviced any more, quietly.
+bot backs that upkeep off exponentially: it waits 1, then 2, then 4 of the
+upkeep's own intervals, up to 8, capped at about an hour in absolute terms
+(1,286 rounds). That state is written to disk, so it survives a restart and a
+`--once` cron invocation does not retry a doomed upkeep every run. Losing a
+race to another keeper does not count as a failure and never backs off. Keep
+failing and you are serviced more and more rarely, quietly.
 
 Failing costs the keeper nothing. Algorand rejects the transaction before it
 reaches a block, so no fee is charged (measured; see
@@ -419,9 +423,9 @@ app.send.claim(
 
 Prove it on LocalNet before TestNet, and prove it on TestNet before you rely
 on it. `scripts/keeper_e2e.py` is the reference for what that looks like; each
-demo script here (`embargo_demo.py`, `rain_demo.py`, `deadman_demo.py`,
-`watchdog_demo.py`, `treasury_demo.py`, `subscription_demo.py`) is a smaller
-worked version.
+demo script here (`embargo_demo.py`, `rain_demo.py`, `community_rain_demo.py`,
+`deadman_demo.py`, `watchdog_demo.py`, `treasury_demo.py`,
+`subscription_demo.py`) is a smaller worked version.
 
 **Unit tests will not catch the things that break integrations.**
 `algorand-python-testing` mocks *record* inner app calls without executing
@@ -434,7 +438,7 @@ Start here:
 
 ```bash
 algokit localnet start
-fledge lanes run local          # the whole suite, including six worked demos
+fledge lanes run local          # the whole suite, including seven worked demos
 ```
 
 Then register against the live TestNet keeper app `769823086` with

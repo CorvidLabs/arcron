@@ -67,7 +67,7 @@ and console will silently misread the registry:
 
 1. `smart_contracts/keeper/contract.py`
 2. `scripts/keeper_bot.py::_decode_upkeep`
-3. `web/src/app/core/upkeep.ts`
+3. `js/src/upkeep.ts`
 4. the pinned box vector in `tests/test_keeper_bot.py`
 5. `specs/keeper/`
 

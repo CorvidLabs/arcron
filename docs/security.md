@@ -255,7 +255,7 @@ floor is permanent and cannot be raised.
 
 ## Verifying a deployment
 
-The contract has no update path, so what is deployed is what was deployed. To
+A frozen contract has no update path, so what is deployed is what was deployed. To
 confirm *which* source that is:
 
 ```
@@ -275,14 +275,24 @@ they differ from a fresh build.
 
 ## Deployer key handling
 
+The deployer creates the app, and while that app is unfrozen the deployer
+**is** the key that can replace its programs. Treat it as the most valuable
+secret in the project, not as a funding account.
+
 - **The MainNet deployer must be a fresh account**, never one that has touched
   TestNet. The TestNet deployer in this repository is a throwaway and is
-  treated as compromised.
-- `.env.*` files are gitignored and must stay that way. No mnemonic belongs in
-  this repository, in a commit message, or in an issue.
-- Deployment creates the app and funds its base minimum balance. After that
-  the deployer has no privileges over the contract at all. There is no owner,
-  so the key's only remaining value is to whoever holds its ALGO.
+  assumed compromised.
+- **It can rewrite a live contract while `frozen` is 0.** Whoever holds it
+  could replace `execute` with something that pays them and drain every
+  escrow. That is the cost of keeping an update path, and it is why `frozen`
+  is readable on-chain rather than promised in a document.
+- **For MainNet it should not be a bare mnemonic on a laptop.** A multisig or
+  a rekeyed authorising address means no single machine can rewrite the
+  contract. Neither is wired up here yet, and `scripts/govern.py` signs
+  in-process from `DEPLOYER_MNEMONIC`, so this is a gap rather than a
+  practice. It should be closed before anything holds real money.
+- **Once frozen, the key stops mattering** to anyone but its own ALGO. There
+  is no owner, no admin, and no path back to one.
 
 ## If a bug is found
 
