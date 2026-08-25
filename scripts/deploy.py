@@ -25,7 +25,7 @@ import logging
 
 import algokit_utils
 
-from scripts import network as net
+from scripts import multisig as ms, network as net
 from scripts.govern import _deployed, _frozen
 from scripts.verify_build import _digest, _programs, _spec, rebuild
 
@@ -50,6 +50,18 @@ def main(argv: list[str] | None = None) -> int:
 
     algorand = net.connect(args.network)
     algod = algorand.client.algod
+
+    if ms.configured():
+        # A multisig cannot sign in process, so creating from one is a separate
+        # flow: `scripts/multisig_e2e.py` is the worked version, and the
+        # deployment guide has the commands. Refusing is better than quietly
+        # deploying from the single-key DEPLOYER and leaving a contract whose
+        # creator is not the multisig anyone was told to expect.
+        logger.error(
+            f"A multisig is configured ({ms.describe()}), and this command signs "
+            "in process. See docs/deploying.md for the multisig deployment flow."
+        )
+        return 1
 
     from smart_contracts.keeper.deploy_config import deploy as deploy_keeper
 

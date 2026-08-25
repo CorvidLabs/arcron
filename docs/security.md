@@ -286,11 +286,16 @@ secret in the project, not as a funding account.
   could replace `execute` with something that pays them and drain every
   escrow. That is the cost of keeping an update path, and it is why `frozen`
   is readable on-chain rather than promised in a document.
-- **For MainNet it should not be a bare mnemonic on a laptop.** A multisig or
-  a rekeyed authorising address means no single machine can rewrite the
-  contract. Neither is wired up here yet, and `scripts/govern.py` signs
-  in-process from `DEPLOYER_MNEMONIC`, so this is a gap rather than a
-  practice. It should be closed before anything holds real money.
+- **For MainNet it should not be a bare mnemonic on a laptop.** Set
+  `ARCRON_MULTISIG_THRESHOLD` and `ARCRON_MULTISIG_ADDRESSES` and the creator
+  becomes a multisig address: `govern update` and `govern freeze` then write an
+  unsigned transaction for the holders to sign wherever their keys live, and
+  `scripts/deploy.py` refuses to run at all rather than quietly deploying from
+  the single key instead. `fledge run smoke-multisig` proves on LocalNet that
+  one holder of three cannot update and two can.
+- **Three keys, threshold two, on different devices held by different people.**
+  Any one can be lost without losing control, and any one can be compromised
+  without losing the contract. Three keys in one drawer is one key.
 - **Once frozen, the key stops mattering** to anyone but its own ALGO. There
   is no owner, no admin, and no path back to one.
 

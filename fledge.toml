@@ -24,6 +24,7 @@ deploy-mainnet = "poetry run python -m scripts.deploy --network mainnet"
 # freezing is the rc gate, not a thing to do early.
 govern = "poetry run python -m scripts.govern"
 smoke-govern = "poetry run python -m scripts.govern_e2e --network localnet"
+smoke-multisig = "poetry run python -m scripts.multisig_e2e --network localnet"
 # Record the live deployment as JSON, for pages that must build without a network.
 snapshot = "poetry run python -m scripts.testnet_snapshot --network testnet --app-id 769823086"
 # One install for the whole Bun workspace (js + web). Installing per-package
@@ -54,7 +55,7 @@ steps = ["build", "test", "spec", "js-install", "js-test", "web-test", "web-buil
 
 [lanes.local]
 description = "CI plus the LocalNet end-to-end test (needs algokit localnet start)"
-steps = ["build", "test", "spec", "js-install", "js-test", "web-test", "web-build", "smoke-keeper", "smoke-embargo", "smoke-rain", "smoke-community-rain", "smoke-deadman", "smoke-watchdog", "smoke-treasury", "smoke-subscription", "smoke-govern"]
+steps = ["build", "test", "spec", "js-install", "js-test", "web-test", "web-build", "smoke-keeper", "smoke-embargo", "smoke-rain", "smoke-community-rain", "smoke-deadman", "smoke-watchdog", "smoke-treasury", "smoke-subscription", "smoke-govern", "smoke-multisig"]
 
 [lanes.endurance]
 description = "The local lane plus a soak: many consecutive executions, no drift"

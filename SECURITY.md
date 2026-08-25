@@ -81,7 +81,9 @@ Out of scope:
 while that app is unfrozen it can replace the app's programs, which means it
 can rewrite the rules and reach every escrow. `poetry run python -m
 scripts.govern status` reports whether a deployment is still in that state.
-Everything below is less valuable than that key.
+Everything below is less valuable than that key. For anything holding real
+money it should be a multisig rather than one mnemonic: see
+[`docs/deploying.md`](docs/deploying.md).
 
 Nothing else in this repository should ever hold a key it does not need:
 

@@ -115,6 +115,51 @@ So the update path is temporary by construction, readable on-chain, and given
 up before the network asks anyone to rely on it. `docs/security.md` has the
 full reasoning.
 
+## Multisig control
+
+A single mnemonic on a single machine is the wrong home for a key that can
+rewrite a live contract. The creator can be an Algorand multisig address
+instead. Nothing in the contract changes: it compares `Txn.sender` against
+`Global.creator_address`, and a multisig address is an address like any other.
+What changes is that producing a signature takes several people.
+
+Configure it in `.env.<network>`:
+
+```
+ARCRON_MULTISIG_THRESHOLD=2
+ARCRON_MULTISIG_ADDRESSES=ADDR1,ADDR2,ADDR3
+```
+
+With that set, `govern update` and `govern freeze` stop signing and start
+writing an unsigned transaction instead:
+
+```bash
+fledge run govern -- update --network testnet --app-id <id> --out update.json
+
+# each holder, wherever their key lives
+SIGNER_MNEMONIC="..." fledge run govern -- sign --file update.json --app-id <id>
+
+# anyone, once the threshold is met
+fledge run govern -- submit --file update.json --app-id <id>
+```
+
+A signature is not a secret, so the file can be emailed, committed to a private
+gist, or carried on a stick. Only the mnemonics stay put. Submitting below the
+threshold is refused locally, and would be refused by the network anyway.
+
+`fledge run smoke-multisig` proves the whole flow on LocalNet: a 2 of 3 creates
+the app, one signature is rejected by the network, two are accepted, one holder
+alone cannot update, and a *different* pair can.
+
+`scripts/deploy.py` refuses to run when a multisig is configured, rather than
+quietly deploying from the single-key `DEPLOYER` and leaving a contract whose
+creator is not the multisig anyone was told to expect.
+
+**Which holders, and how many.** Three keys with a threshold of two is the
+usual shape: any one can be lost without losing control, and any one can be
+compromised without losing the contract. Keep them on different devices held by
+different people; three keys in one drawer is one key.
+
 ## Checking a deployment you did not make
 
 ```bash

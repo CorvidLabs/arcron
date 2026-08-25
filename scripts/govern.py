@@ -22,12 +22,13 @@ import argparse
 import base64
 import hashlib
 import logging
+import pathlib
 import sys
 
 import algokit_utils
 from algosdk import transaction
 
-from scripts import network as net
+from scripts import multisig as ms, network as net
 from scripts.verify_build import _digest, _programs, _spec, rebuild
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -54,8 +55,10 @@ def _deployed(algod, app_id: int) -> tuple[bytes, bytes]:
 def status(algorand, app_id: int) -> int:
     algod = algorand.client.algod
     frozen = _frozen(algod, app_id)
+    creator = algod.application_info(app_id)["params"].get("creator")
     approval, clear = _deployed(algod, app_id)
     logger.info(f"app {app_id}")
+    logger.info(f"  creator   {creator}")
     logger.info(f"  approval  {len(approval):>5} bytes")
     logger.info(f"  combined  sha256 {_digest(approval, clear)}")
     if frozen < 0:
@@ -68,7 +71,7 @@ def status(algorand, app_id: int) -> int:
     return 0
 
 
-def update(algorand, app_id: int, no_rebuild: bool) -> int:
+def update(algorand, app_id: int, no_rebuild: bool, out: 'pathlib.Path | None' = None) -> int:
     algod = algorand.client.algod
     if _frozen(algod, app_id) != 0:
         logger.error("Refusing: this app is frozen, or has no freeze flag at all.")
@@ -86,8 +89,25 @@ def update(algorand, app_id: int, no_rebuild: bool) -> int:
     logger.info(f"  deployed  sha256 {_digest(live_approval, live_clear)}  {len(live_approval)} bytes")
     logger.info(f"  this tree sha256 {_digest(approval, clear)}  {len(approval)} bytes")
 
-    deployer = algorand.account.from_environment("DEPLOYER")
     params = algod.suggested_params()
+    if ms.configured():
+        # No single machine should be able to rewrite a live contract, so the
+        # transaction is written out for the holders to sign wherever their
+        # keys are. A signature is not a secret; the file can be passed around.
+        sender = ms.address()
+        unsigned = transaction.ApplicationUpdateTxn(
+            sender=sender, sp=params, index=app_id,
+            approval_program=approval, clear_program=clear,
+            app_args=[bytes.fromhex(hashlib.new("sha512_256", b"update()void").hexdigest()[:8])],
+        )
+        target = out or pathlib.Path(f"arcron-update-{app_id}.json")
+        ms.export_unsigned(unsigned, target)
+        logger.info(f"Wrote {target} for {ms.describe()} to sign.")
+        logger.info("  Each holder: SIGNER_MNEMONIC=... govern sign --file <that> --app-id N")
+        logger.info("  Then anyone: govern submit --file <that> --app-id N")
+        return 0
+
+    deployer = algorand.account.from_environment("DEPLOYER")
     signed = transaction.ApplicationUpdateTxn(
         sender=deployer.address,
         sp=params,
@@ -108,7 +128,7 @@ def update(algorand, app_id: int, no_rebuild: bool) -> int:
     return 0
 
 
-def freeze(algorand, app_id: int, assume_yes: bool) -> int:
+def freeze(algorand, app_id: int, assume_yes: bool, out: 'pathlib.Path | None' = None) -> int:
     algod = algorand.client.algod
     frozen = _frozen(algod, app_id)
     if frozen < 0:
@@ -129,6 +149,18 @@ def freeze(algorand, app_id: int, assume_yes: bool) -> int:
         if answer != str(app_id):
             logger.info("Not frozen.")
             return 1
+
+    if ms.configured():
+        selector = bytes.fromhex(hashlib.new("sha512_256", b"freeze()void").hexdigest()[:8])
+        unsigned = transaction.ApplicationCallTxn(
+            sender=ms.address(), sp=algod.suggested_params(), index=app_id,
+            on_complete=transaction.OnComplete.NoOpOC, app_args=[selector],
+        )
+        target = out or pathlib.Path(f"arcron-freeze-{app_id}.json")
+        ms.export_unsigned(unsigned, target)
+        logger.info(f"Wrote {target} for {ms.describe()} to sign.")
+        logger.info("  This is the one that cannot be undone. Read it before signing.")
+        return 0
 
     deployer = algorand.account.from_environment("DEPLOYER")
     client = algorand.client.get_app_client_by_id(
@@ -152,19 +184,46 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument("command", choices=("status", "update", "freeze"))
+    parser.add_argument("command", choices=("status", "update", "freeze", "sign", "submit"))
     net.add_network_argument(parser)
     parser.add_argument("--app-id", type=int, required=True, help="the keeper app to act on")
     parser.add_argument("--no-rebuild", action="store_true", help="update: trust the built artifacts")
     parser.add_argument("--yes", action="store_true", help="freeze: skip the confirmation")
+    parser.add_argument(
+        "--out", type=pathlib.Path,
+        help="update/freeze under a multisig: where to write the unsigned transaction",
+    )
+    parser.add_argument(
+        "--file", type=pathlib.Path, help="sign/submit: the transaction file to act on"
+    )
     args = parser.parse_args(argv)
 
     algorand = net.connect(args.network)
     if args.command == "status":
         return status(algorand, args.app_id)
+    if args.command in ("sign", "submit"):
+        if args.file is None:
+            logger.error(f"{args.command} needs --file")
+            return 1
+        if args.command == "sign":
+            import os
+
+            secret = os.environ.get("SIGNER_MNEMONIC")
+            if not secret:
+                logger.error(
+                    "Set SIGNER_MNEMONIC to the mnemonic of one of the signers. "
+                    "It is read from the environment and never written anywhere."
+                )
+                return 1
+            have = ms.sign(args.file, secret)
+            logger.info(f"Signed. {have} of {ms.threshold()} signatures collected.")
+            return 0
+        txid = ms.submit(algorand.client.algod, args.file)
+        logger.info(f"Submitted {txid}")
+        return 0
     if args.command == "update":
-        return update(algorand, args.app_id, args.no_rebuild)
-    return freeze(algorand, args.app_id, args.yes)
+        return update(algorand, args.app_id, args.no_rebuild, args.out)
+    return freeze(algorand, args.app_id, args.yes, args.out)
 
 
 if __name__ == "__main__":
