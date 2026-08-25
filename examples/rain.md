@@ -12,18 +12,18 @@ if you never want a prize draw.
 ```
 enter()    a ticket, recorded in a box; the buyer pays its MBR
 deposit()  anyone adds to the pot
-draw()     ZERO ARGS — what Arcron calls. Locks the prize, snapshots the
+draw()     ZERO ARGS, the call Arcron makes. Locks the prize, snapshots the
            ticket count, fixes a future beacon round. Moves nothing.
 resolve()  a participant calls this after that round, attaching the beacon
            reference, and the winner falls out
 claim()    the winner pulls their prize
 ```
 
-The scheduled call does **accounting only**. That is not an aesthetic choice:
+The scheduled call does accounting only. That is not an aesthetic choice:
 
 - An Arcron inner call reaches only what the keeper's own transaction makes
   available, and nothing tells a keeper to attach a randomness beacon. A
-  `draw()` that read the beacon would simply fail. (Measured — see the
+  `draw()` that read the beacon would simply fail. (Measured; see the
   resource table in [`docs/arcron.md`](../docs/arcron.md).)
 - Even if it worked, it would put a third-party app in the path of every
   scheduled execution. A beacon outage would stall the draw for everybody.
@@ -36,11 +36,11 @@ So money and resources are both **pulled** by the party who wants them.
 
 The winner comes from Algorand's VRF randomness beacon, not from block state
 that a proposer could grind. The beacon answers only for rounds that have
-already passed, so `draw()` commits to a round eight ahead — at the moment the
+already passed, so `draw()` commits to a round eight ahead. At the moment the
 draw opens, the outcome is unknowable to everyone, including whoever opened it.
 
 LocalNet has no beacon, so `smart_contracts/beacon_stub/` stands in. It is
-deliberately **not** random — `sha256(itob(round))` — which is what lets the
+deliberately **not** random (`sha256(itob(round))`), which is what lets the
 demo predict the winner independently and assert the contract agrees:
 
 ```python
@@ -57,7 +57,7 @@ poetry run python -m scripts.rain_demo --network localnet
 ```
 
 ```
-── 3. The keeper opens a draw — accounting only ──
+── 3. The keeper opens a draw, accounting only ──
   ✔ draw id = 1        ✔ prize locked = 981100     ✔ pot emptied into the prize = 0
   Draw 1 open; the beacon decides it at round 4165
 ── 4. A participant resolves it, supplying the beacon ──

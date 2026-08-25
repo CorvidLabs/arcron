@@ -34,5 +34,5 @@ After scheduling, no method SHALL exist that alters the content, the release rou
 ## Out of Scope
 
 - Encryption, threshold reveal, or any mechanism that would make the content unreadable before release.
-- Editing, retraction or cancellation — their absence is the feature.
+- Editing, retraction or cancellation. Their absence is the feature.
 - Multiple releases, or a release schedule, in one instance.

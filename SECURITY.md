@@ -18,9 +18,9 @@ TestNet as a demonstration and do not put value on it that you would mind
 losing.
 
 **The contracts cannot be patched in place.** They are deployed with no update
-or delete path, which is deliberate — an upgradeable keeper contract is one
-where somebody can change the rules after you have escrowed funds. The
-consequence is that a bug cannot be fixed on a live deployment. The remedy is
+or delete path. That is deliberate: an upgradeable keeper contract is one where
+somebody can change the rules after you have escrowed funds. The consequence is
+that a bug cannot be fixed on a live deployment. The remedy is
 always the same: `cancel` your upkeep, recover your escrow and box MBR, and
 move to a corrected deployment.
 
@@ -71,7 +71,7 @@ Out of scope:
   priority
 - `smart_contracts/beacon_stub/` is deliberately not random and is LocalNet
   scaffolding
-- keeper liveness — nobody is obliged to execute your upkeep, and that is the
+- keeper liveness. Nobody is obliged to execute your upkeep, and that is the
   design rather than a defect
 - the throwaway TestNet deployer account being funded or drained
 
@@ -80,7 +80,7 @@ Out of scope:
 Nothing in this repository should ever hold a key it does not need:
 
 - `scripts/keeper_bot.py` signs, and needs a funded account.
-- `scripts/notifier.py` **cannot sign at all**, and a test enforces that.
+- `scripts/notifier.py` cannot sign at all, and a test enforces that.
 - The console signs through a wallet or through LocalNet's KMD; it never sees
   a mnemonic.
 - `.env.*` is gitignored and must stay that way.

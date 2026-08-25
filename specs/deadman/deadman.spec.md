@@ -13,9 +13,9 @@ depends_on: []
 
 ## Purpose
 
-A dead man's switch: an owner checks in on a cadence, and if they stop — for
-whatever reason — the escrow becomes the beneficiary's. Nobody can prevent it,
-because there is no operator to lean on and the firing is done by whichever
+A dead man's switch: an owner checks in on a cadence. If the check-ins stop,
+for whatever reason, the escrow becomes the beneficiary's. Nobody can prevent
+it, because there is no operator to lean on and the firing is done by whichever
 keeper happens to be watching.
 
 This is the demonstration of what a permissionless keeper network gives you
@@ -23,7 +23,7 @@ that a cron job cannot: the scenario *is* that your infrastructure went away,
 so a scheduler you run yourself is worth nothing.
 
 `sweep` does not pay anyone. Paying the beneficiary from a scheduled call
-would mean reaching an account that call cannot reach — an Arcron inner call
+would mean reaching an account that call cannot reach. An Arcron inner call
 sees only what the keeper's own transaction makes available. Firing therefore
 *allocates*, and the beneficiary *pulls*. See "pull the resource" in
 `docs/arcron.md`.
@@ -49,14 +49,14 @@ sees only what the keeper's own transaction makes available. Firing therefore
 |--------|-----------|---------|-------------|
 | `arm` | `deposit: pay, beneficiary: address, interval_rounds: uint64` | `uint64` | Owner only, once. Deposits the escrow and returns the first deadline. |
 | `check_in` | — | `uint64` | Owner only. Pushes the deadline out; returns the new one. |
-| `sweep` | — | `uint64` | Zero-argument, permissionless — Arcron's shape. Returns the round it fired in, or `0` when there is nothing to do. |
+| `sweep` | — | `uint64` | Permissionless and zero-argument, which is Arcron's shape. Returns the round it fired in, or `0` when there is nothing to do. |
 | `claim` | — | `uint64` | The beneficiary pulls what was released. |
 | `rounds_remaining` | — | `uint64` | Readonly. Rounds until firing, or zero once due or fired. |
 | `has_fired` | — | `bool` | Readonly. |
 
 ## Invariants
 
-1. `sweep` never fails: unarmed, already fired, or before the deadline, it returns `0` and changes nothing. A failing target would trip keeper backoff and stop the switch being watched at all — the one outcome that must not happen.
+1. `sweep` never fails: unarmed, already fired, or before the deadline, it returns `0` and changes nothing. A failing target would trip keeper backoff and stop the switch being watched at all. That is the one outcome that must not happen.
 2. Once fired, the switch is permanently inert: `fired_round` is set exactly once and never cleared, and further sweeps do nothing.
 3. After firing, the owner cannot check in, cannot re-arm, and cannot recover the escrow. Going quiet is irreversible.
 4. Only the owner can check in; only the beneficiary can claim; anyone at all can sweep.
@@ -101,7 +101,7 @@ sees only what the keeper's own transaction makes available. Firing therefore
 
 If the *upkeep's* escrow is exhausted before the deadline, the switch silently
 stops being watched. Nothing on-chain announces this, and the contract cannot
-detect it — from the switch's point of view, nobody sweeping and nobody
+detect it: from the switch's point of view, nobody sweeping and nobody
 existing look identical.
 
 This is the failure that would matter most to a real user, so:
@@ -109,9 +109,9 @@ This is the failure that would matter most to a real user, so:
 - fund the upkeep for far longer than the check-in interval; at 4,000 µALGO
   per sweep, a year of 10-round sweeps is roughly 12 ALGO;
 - `poetry run python -m scripts.keeper_bot --check` reports an upkeep whose
-  escrow has fallen below one fee as **starved**, which is exactly this
+  escrow has fallen below one fee as starved, which is exactly this
   condition, and exits non-zero;
-- top up from any account — funding an upkeep is permissionless, so a
+- any account can top it up, because funding an upkeep is permissionless, so a
   beneficiary with an interest in the switch being watched can pay for it
   themselves.
 

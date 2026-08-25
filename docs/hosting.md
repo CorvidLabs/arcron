@@ -2,8 +2,8 @@
 
 A keeper is a plain process that watches rounds and calls `execute` on due
 upkeeps. It holds a hot key, it needs to be up, and it earns fees. Nothing
-about it is special to us: **the network is permissionless, so these are the
-options for anybody**, not just for the deployment we run.
+about it is special to us. The network is permissionless, so these are the
+options for anybody, not for our deployment alone.
 
 The requirement is more forgiving than it first looks. Upkeeps here run on
 cadences of hours, and a neglected upkeep's fee *escalates* toward its cap. A
@@ -20,7 +20,7 @@ upkeep, which is not yet true.
 | A small always-on host | ~$2 to $5/mo | continuous | on that host | container |
 | A laptop | nothing | poor | on your laptop | one plist |
 
-### A. A server you already run — recommended
+### A. A server you already run (recommended)
 
 If you have a VPS doing anything else, put the keeper on it. It is a small
 Python process; it will not notice.
@@ -82,7 +82,7 @@ The things that are not about money:
 - **Each run is a fresh process**, so `scripts/keeper_backoff.py` has no memory
   between runs and a persistently failing upkeep is retried every time.
 
-Good as a **backstop** next to a real keeper. Two keepers running from
+Good as a backstop next to a real keeper. Two keepers running from
 different places is also a more honest demonstration of the network's premise
 than one.
 

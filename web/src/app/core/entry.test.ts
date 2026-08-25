@@ -1,7 +1,7 @@
 /**
  * A hosted console has to show the same registry to everyone who follows the
  * same link. That is only true if the link beats whatever the visitor's
- * browser remembers — and if a linked app id never escapes the chain it
+ * browser remembers, and if a linked app id never escapes the chain it
  * belongs to.
  */
 
@@ -51,7 +51,7 @@ describe('opening from a link', () => {
 });
 
 describe('switching network in the picker', () => {
-    test('uses memory, then the network canonical app — never the link', () => {
+    test('uses memory, then the network canonical app, never the link', () => {
         expect(rememberedAppId('testnet', '4242')).toBe(4242);
         expect(rememberedAppId('testnet', null)).toBe(769823086);
         // LocalNet has no canonical deployment: it is whatever you just deployed.

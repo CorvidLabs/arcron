@@ -1,7 +1,7 @@
 /**
  * Live view of a keeper app: current round, app account, upkeep registry.
  *
- * Reads are permissionless — the registry is public box state, so the whole
+ * Reads are permissionless. The registry is public box state, so the whole
  * dashboard works with no wallet connected. Everything is exposed as signals
  * and refreshed on a poll, because a keeper network is only interesting as it
  * moves: rounds tick, upkeeps come due, escrows drain.
@@ -37,7 +37,7 @@ export type ConnectionStatus = 'connecting' | 'ready' | 'error';
 export class ArcronService {
   private timer: ReturnType<typeof setInterval> | null = null;
 
-  /** Resolved once, before the signals below read it — field order matters. */
+  /** Resolved once, before the signals below read it, so field order matters. */
   private readonly entry = readEntry();
   readonly network = signal<NetworkKey>(this.entry.network);
   readonly appId = signal<number | null>(this.entry.appId);
@@ -64,9 +64,9 @@ export class ArcronService {
   /**
    * Seconds per round, for turning round counts into human time.
    *
-   * On a dev-mode chain the measurement is meaningless — a block appears when
-   * a transaction does, so watching the clock would report whatever the gap
-   * between your own transactions happened to be. There we keep the nominal
+   * On a dev-mode chain the measurement is meaningless, because a block
+   * appears when a transaction does, so watching the clock would report
+   * whatever the gap between your own transactions happened to be. There we keep the nominal
    * rate, which is what the same schedule would mean on a real chain.
    */
   readonly secondsPerRound = computed<number>(
@@ -116,8 +116,8 @@ export class ArcronService {
       else localStorage.setItem(key, String(appId));
     });
     // Keep the address bar describing what is on screen, so the URL is always
-    // the shareable link — no copy button to find, and a reload comes back to
-    // the same registry rather than to whatever was last remembered.
+    // the shareable link, with no copy button to find, and a reload comes back
+    // to the same registry rather than to whatever was last remembered.
     effect(() => {
       const link = entryLink(location.pathname, this.network(), this.appId());
       history.replaceState(history.state, '', link);
@@ -239,7 +239,7 @@ function readEntry(): Entry {
   );
 }
 
-/** The app id for a network the *user* switched to — memory only, never the link. */
+/** The app id for a network the *user* switched to, from memory only and never the link. */
 function readAppId(network: NetworkKey): number | null {
   return rememberedAppId(network, localStorage.getItem(APP_ID_STORAGE_KEY(network)));
 }

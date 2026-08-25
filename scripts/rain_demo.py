@@ -1,8 +1,8 @@
 """A pot that pays a random ticket holder on a schedule, end to end.
 
 Shows the shape that makes this work under Arcron's v1 call shape: the
-scheduled call does accounting only, and the step that needs a resource — the
-beacon read — happens in a transaction a participant sends for themselves,
+scheduled call does accounting only, and the step that needs a resource (the
+beacon read) happens in a transaction a participant sends for themselves,
 attaching the reference a keeper could not.
 
 Run:  poetry run python -m scripts.rain_demo [--network localnet]
@@ -43,7 +43,7 @@ PLAYERS = 3
 def _expected_ticket(commit_round: int, tickets: int) -> int:
     """What the stub beacon will say, computed independently.
 
-    The stub is sha256(itob(round)) — deterministic on purpose — so the winner
+    The stub is sha256(itob(round)), deterministic on purpose, so the winner
     can be predicted here and compared against the one the contract picks.
     """
     digest = hashlib.sha256(commit_round.to_bytes(8, "big")).digest()
@@ -152,7 +152,7 @@ def main(argv: list[str] | None = None) -> None:
     upkeep, _ = _read_upkeep(algorand, keeper_client.app_id, upkeep_id)
 
     # ------------------------------------------------------------------
-    logger.info("── 3. The keeper opens a draw — accounting only ──")
+    logger.info("── 3. The keeper opens a draw, accounting only ──")
     net.wait_for_round(algorand, upkeep.next_execution_round, poker=host)
     keeper_bot.main(
         ["--once", "--network", args.network, "--app-id", str(keeper_client.app_id)]
@@ -165,7 +165,7 @@ def main(argv: list[str] | None = None) -> None:
     commit_round = state.commit_round
     logger.info(f"  Draw 1 open; the beacon decides it at round {commit_round}")
 
-    # Nobody can know the winner yet — the deciding round has not happened.
+    # Nobody can know the winner yet: the deciding round has not happened.
     assert commit_round > algod.status()["last-round"], "the draw was decided too early"
 
     # ------------------------------------------------------------------
@@ -212,7 +212,7 @@ def main(argv: list[str] | None = None) -> None:
 
     # ------------------------------------------------------------------
     logger.info("── 6. A quiet cadence is uneventful ──")
-    # The pot is empty again, so the scheduled call must do nothing at all —
+    # The pot is empty again, so the scheduled call must do nothing at all;
     # a failure here would trip keeper backoff and stop the draw forever.
     after, _ = _read_upkeep(algorand, keeper_client.app_id, upkeep_id)
     net.wait_for_round(algorand, after.next_execution_round, poker=host)

@@ -4,7 +4,7 @@
  * This is the property that matters in practice: Pera, Defly, Lute, Exodus
  * and Kibisis each bring their own connection, so the console works out of the
  * box. Only the generic WalletConnect entry needs a project id, and it is only
- * offered when one is configured — a regression there would silently drop
+ * offered when one is configured. A regression there would silently drop
  * every wallet from the picker at runtime.
  */
 

@@ -40,7 +40,7 @@ const SORTS: readonly { key: SortKey; label: string }[] = [
         <div>
           <h2>Work available</h2>
           <p class="subtitle">
-            The registry as a keeper sees it. Every figure here comes from box state — no
+            The registry as a keeper sees it. Every figure here comes from box state. No
             indexer, no backend.
           </p>
         </div>
@@ -105,7 +105,7 @@ const SORTS: readonly { key: SortKey; label: string }[] = [
         <div class="group">
           <h3 class="warn">Stuck: escrow below one fee <span class="count">{{ dormant().length }}</span></h3>
           <p class="subtitle">
-            No keeper can execute these — the creator has to top them up. Shown because
+            No keeper can execute these until the creator tops them up. Shown because
             hiding the network's failures helps nobody.
           </p>
           <ul class="work">
@@ -117,7 +117,7 @@ const SORTS: readonly { key: SortKey; label: string }[] = [
                 </div>
                 <div class="pay">
                   <span class="sub">
-                    {{ row.reward }} fee@if (row.escalated) { <span class="escalated">— escalated</span> }, {{ row.runway }}
+                    {{ row.reward }} fee@if (row.escalated) { <span class="escalated">(escalated)</span> }, {{ row.runway }}
                   </span>
                 </div>
                 <div class="when"><span class="sub">{{ row.due }}</span></div>
@@ -222,7 +222,7 @@ export class UpkeepBoard {
   protected readonly paidToKeepers = computed(() => algos(this.stats().paidToKeepers));
   protected readonly medianLateness = computed(() => {
     const stats = this.stats();
-    if (stats.due === 0) return '—';
+    if (stats.due === 0) return '-';
     return rounds(stats.medianLateness);
   });
 

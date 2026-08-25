@@ -20,11 +20,10 @@ cannot be the data provider: a provider that goes down has no incentive to
 announce it and usually no ability to. Arcron supplies a watcher whose payment
 does not depend on the provider's cooperation.
 
-The contract **only compares rounds**. It never inspects the reported value,
-so it cannot be fed a wrong price — which makes it an honest demonstration of
-how Arcron composes with data systems without pretending Arcron can supply
-data. It is the one oracle-adjacent pattern that requires no oracle trust at
-all.
+The contract only compares rounds. It never inspects the reported value, so it
+cannot be fed a wrong price. That makes it an honest demonstration of how
+Arcron composes with data systems without pretending Arcron can supply data. It
+is the one oracle-adjacent pattern that requires no oracle trust at all.
 
 ## Public API
 
@@ -48,14 +47,14 @@ all.
 |--------|-----------|---------|-------------|
 | `configure` | `reporter: address, threshold_rounds: uint64` | `uint64` | Creator only, once. Names the reporter, sets the tolerance, and starts the clock. |
 | `update` | `value: uint64` | `uint64` | Reporter only. Records a value and clears any stale flag; returns the round. |
-| `check_freshness` | — | `uint64` | Zero-argument, permissionless — Arcron's shape. Returns the round it flagged in, or `0`. |
+| `check_freshness` | — | `uint64` | Zero-argument and permissionless, the shape Arcron calls. Returns the round it flagged in, or `0`. |
 | `is_stale` | — | `bool` | Readonly. The flag as of the last check. |
 | `rounds_since_update` | — | `uint64` | Readonly. |
 | `reading` | — | `uint64` | Readonly. The reported value, which the watchdog itself never inspects. |
 
 ## Invariants
 
-1. `check_freshness` never fails: unconfigured, fresh, or already flagged, it returns `0` and does almost nothing. A failing target would trip keeper backoff and leave nobody watching — the outcome this contract exists to prevent.
+1. `check_freshness` never fails: unconfigured, fresh, or already flagged, it returns `0` and does almost nothing. A failing target would trip keeper backoff and leave nobody watching, exactly the outcome this contract exists to prevent.
 2. Freshness depends only on rounds. The reported value never affects whether the feed is flagged.
 3. A feed is flagged only when silence *exceeds* the threshold; silence of exactly the threshold is still fresh.
 4. Each outage is flagged once. Repeated checks during an episode change nothing and emit nothing.
@@ -65,17 +64,18 @@ all.
 
 ## Recovery policy, and why
 
-**The flag clears automatically on the next update.** The alternative —
-one-way flagging until something explicitly clears it — was rejected for two
+**The flag clears automatically on the next update.** The alternative is
+one-way flagging until something explicitly clears it. It was rejected for two
 reasons:
 
 1. The flag answers a factual question, "has an update landed within the
    threshold?", which has a correct answer at every moment. A sticky flag
    answers a different question, "did it ever go quiet", which consumers who
    care about that can get from `stale_episodes` and `last_recovery_round`.
-2. One-way flagging needs someone with authority to clear it. That is either
-   the reporter — the party whose outage caused it, which is no safer — or an
-   admin, which reintroduces exactly the operator this design removes.
+2. One-way flagging needs someone with authority to clear it. That means
+   either the reporter or an admin. The reporter is the party whose outage
+   caused the flag, so trusting them is no safer; an admin reintroduces
+   exactly the operator this design removes.
 
 So the contract records and the consumer decides: a cautious consumer can
 refuse to act for N rounds after `last_recovery_round` without needing anyone's
@@ -114,11 +114,11 @@ permission or cooperation.
 ## Known limitation: the flag is only as fresh as the last sweep
 
 `is_stale` reports what the last check found. Between checks a feed can go
-quiet without the flag being set — someone has to observe it, which is the
-whole premise. A consumer able to read `rounds_since_update` should do that
-arithmetic itself; the flag's value is that the observation is **recorded
-on-chain by a party with no stake in hiding it**, and that it emits an event
-an off-chain monitor can alert on.
+quiet without the flag being set. Someone has to observe it, which is the whole
+premise. A consumer able to read `rounds_since_update` should do that
+arithmetic itself; the flag's value is that the observation is recorded
+on-chain by a party with no stake in hiding it, and that it emits an event an
+off-chain monitor can alert on.
 
 ## Dependencies
 

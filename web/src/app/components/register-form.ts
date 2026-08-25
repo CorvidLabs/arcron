@@ -35,10 +35,10 @@ const CADENCES = [
       <header>
         <h2>Register an upkeep</h2>
         <p class="subtitle">
-          Escrow ALGO to have any keeper call your app on a schedule. The call is a NoOp with one
-          app arg — a method selector. A fee ceiling makes a neglected upkeep more attractive, but
-          only competing keepers keep the price below it — leave it at zero unless an upkeep is
-          actually going unserviced.
+          Escrow ALGO to have any keeper call your app on a schedule. The call is a NoOp carrying
+          one app arg, a method selector. A fee ceiling makes a neglected upkeep more attractive,
+          though only competing keepers hold the price below it. Leave it at zero unless an upkeep
+          is actually going unserviced.
         </p>
       </header>
 
@@ -86,7 +86,7 @@ const CADENCES = [
           <label>
             <span class="eyebrow">Fee per execution (ALGO)</span>
             <input type="number" step="0.001" formControlName="feePerExecution" />
-            <small>min {{ minFeeAlgo }} — keepers spend ~0.003 in group fees</small>
+            <small>min {{ minFeeAlgo }} (keepers spend ~0.003 in group fees)</small>
           </label>
 
           <label>
@@ -224,8 +224,8 @@ export class RegisterForm {
 
   /**
    * Reactive-forms state is not signal-based, so validity has to be pulled
-   * into a signal — a computed() reading `form.valid` directly would cache
-   * the first answer and the submit button would never enable.
+   * into a signal. A computed() reading `form.valid` directly would cache the
+   * first answer and the submit button would never enable.
    */
   protected readonly status = toSignal(this.form.statusChanges, { initialValue: this.form.status });
 
@@ -256,7 +256,7 @@ export class RegisterForm {
       const args = encodeCall(signature, values);
       if (args.length > MAX_CALL_ARGS) {
         return {
-          error: `${args.length} app args — an execution carries at most ${MAX_CALL_ARGS}, counting the selector`,
+          error: `${args.length} app args, but an execution carries at most ${MAX_CALL_ARGS}, counting the selector`,
         };
       }
       return { args };
@@ -280,12 +280,12 @@ export class RegisterForm {
     const types = this.argumentTypes();
     const built = this.encoded();
     if ('error' in built) return built.error;
-    return `${types.join(', ')} — one value per line`;
+    return `${types.join(', ')} (one value per line)`;
   });
 
   protected readonly assetHint = computed(() => {
     const { feeAsset } = this.value();
-    if (feeAsset === 0) return 'none — the upkeep pays its keeper in ALGO only';
+    if (feeAsset === 0) return 'none, so the upkeep pays its keeper in ALGO only';
     return 'the app must opt in to this asset, which costs 0.1 ALGO and cannot be undone';
   });
 
@@ -315,27 +315,27 @@ export class RegisterForm {
       return 'A fee ceiling must be at least the fee per execution, or zero for no escalation.';
     }
     if (errors?.['bonusOfNothing']) {
-      return 'A bonus asset needs a bonus per run — or set the asset id to zero.';
+      return 'A bonus asset needs a bonus per run. Set the asset id to zero to drop it.';
     }
     const built = this.encoded();
     if ('error' in built) return built.error;
     if (errors?.['fundingBelowWorstCase']) {
       const { feePerExecution, feeCap } = this.value();
       const worst = Math.max(feePerExecution, feeCap);
-      return `Funding must cover one execution at the price this upkeep can be charged — ${worst} ALGO.`;
+      return `Funding must cover ${worst} ALGO, the price this upkeep can be charged for one execution.`;
     }
-    return 'Check the highlighted fields — every value has an on-chain minimum.';
+    return 'Check the highlighted fields. Every value has an on-chain minimum.';
   });
 
   protected readonly capHint = computed(() => {
     const { feeCap, feePerExecution } = this.value();
-    if (feeCap === 0) return 'off — the fee never changes';
+    if (feeCap === 0) return 'off, so the fee never changes';
     if (feePerExecution <= 0) return 'set a fee per execution first';
     if (feeCap < feePerExecution) return 'must be at least the fee, or zero';
     const multiple = (feeCap / feePerExecution).toFixed(1);
     // Not a worst case: a keeper with no competition is better off waiting for
     // the ceiling, so a creator should expect to pay it rather than hope not to.
-    return `rises to ${multiple}× over one missed interval — expect to pay it`;
+    return `rises to ${multiple}× over one missed interval, so expect to pay it`;
   });
 
   private readonly mbr = computed(() => {
@@ -345,14 +345,14 @@ export class RegisterForm {
 
   protected readonly upFront = computed(() => {
     const mbr = this.mbr();
-    if (mbr === null) return '—';
+    if (mbr === null) return '-';
     return algos(mbr + BigInt(Math.round(this.value().funding * 1e6)));
   });
 
   protected readonly mbrNote = computed(() => {
     const mbr = this.mbr();
     if (mbr === null) return 'fix the signature to price the box';
-    return `${algos(mbr)} box MBR — refunded in full on cancel`;
+    return `${algos(mbr)} box MBR, refunded in full on cancel`;
   });
 
   protected readonly canSubmit = computed(

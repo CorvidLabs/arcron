@@ -19,7 +19,7 @@ It is the reference implementation of the technique that makes real
 applications buildable on Arcron's v1 call shape: **the scheduled call does
 accounting only.** `draw` locks a prize, snapshots the ticket count and fixes a
 future beacon round. It moves no money, calls no other app, and touches nothing
-it cannot reach — which is exactly what a bare Arcron inner call can do.
+it cannot reach. That is exactly what a bare Arcron inner call can do.
 
 Everything needing a resource happens in a transaction somebody sends for
 themselves. `resolve` inner-calls the randomness beacon, so its *caller*
@@ -27,8 +27,9 @@ attaches the beacon reference; a scheduled call could not, because an Arcron
 inner call reaches only what the keeper's own transaction makes available.
 `claim` pays the winner, who is the sender and therefore always available.
 
-Pull, not push — for money and for resources alike. A push payout to a closed
-account would fail the whole execution and stall the schedule for everyone.
+Pull rather than push, for money and for resources alike. A push payout to a
+closed account would fail the whole execution and stall the schedule for
+everyone.
 
 ## Public API
 
@@ -66,11 +67,11 @@ account would fail the whole execution and stall the schedule for everyone.
 
 1. `draw` never fails: with no tickets, no pot, a pot no larger than the reservation, or a draw already open, it returns `0` and changes nothing.
 2. `draw` moves no funds and makes no inner call, so it cannot fail for want of a resource.
-3. A draw's `commit_round` is always in the future when it opens, so the outcome cannot be known to anyone — including whoever opened it — at that moment.
+3. A draw's `commit_round` is always in the future when it opens, so at that moment the outcome cannot be known to anyone, including whoever opened it.
 4. `resolve` succeeds only after `commit_round` has passed, and only once per draw.
 5. The winning ticket is `beacon_value[0:8] mod tickets_snapshot`, taken over the ticket count as it was when the draw opened.
 6. Every prize is allocated before it is paid; funds leave only to the account claiming their own allocation.
-7. Each draw reserves exactly one `ALLOCATION_MBR` from the pot, and that reservation returns to the pot when the prize is claimed — or immediately, if the winner already had an unclaimed allocation.
+7. Each draw reserves exactly one `ALLOCATION_MBR` from the pot, and that reservation returns to the pot when the prize is claimed, or immediately if the winner already had an unclaimed allocation.
 8. Deposits arriving after a draw opens belong to the next draw.
 
 ## Behavioral Examples
@@ -79,7 +80,7 @@ account would fail the whole execution and stall the schedule for everyone.
 
 - **Given** a rain app with tickets but an empty pot
 - **When** Arcron calls `draw` on its cadence
-- **Then** it returns `0`, changes nothing, and the keeper is paid — a failure here would trip keeper backoff and stop the draw permanently
+- **Then** it returns `0`, changes nothing, and the keeper is paid. A failure here would trip keeper backoff and stop the draw permanently
 
 ### Scenario: A draw nobody can predict
 
@@ -113,7 +114,7 @@ account would fail the whole execution and stall the schedule for everyone.
 | Module | What is used |
 |--------|-------------|
 | `algopy` (Algorand Python / Puya) | ARC-4 framework, `Box`, `GlobalState`, `gtxn`, `itxn`, `arc4.emit`, `op` |
-| Randomness beacon (ARC-21) | `must_get(uint64,byte[])byte[]` — TestNet `600011887`, MainNet `1615566206`, verified against the deployed programs |
+| Randomness beacon (ARC-21) | `must_get(uint64,byte[])byte[]` on TestNet `600011887` and MainNet `1615566206`, verified against the deployed programs |
 
 ### Consumed By
 

@@ -94,7 +94,7 @@ export class SignerBar {
 
   protected readonly prompt = computed(() =>
     this.arcron.network() === 'localnet'
-      ? 'LocalNet accounts come from KMD — no extension, no mnemonic. Any wallet below works too.'
+      ? 'LocalNet accounts come from KMD, with no extension or mnemonic. Any wallet below works too.'
       : 'Reads are permissionless; connect a wallet to register, execute or cancel upkeeps.',
   );
 

@@ -1,5 +1,5 @@
 /* ============================================================
-   Arcron console — built on the CorvidLabs design system.
+   Arcron console, built on the CorvidLabs design system.
    Tokens come from brand/tokens.css; nothing here re-derives a
    colour. Editorial and high-contrast: paper, ink, one accent.
    ============================================================ */
@@ -125,7 +125,7 @@ button.small {
   font-size: 0.8rem;
 }
 
-/* A disabled action shouldn't keep the filled, "press me" look — but it must
+/* A disabled action shouldn't keep the filled, "press me" look, but it must
    stay readable, so it loses its fill, not its label. */
 button:disabled {
   cursor: not-allowed;

@@ -44,11 +44,11 @@ is not deployed to any public network.
 | `probe_read_balance` | — | `uint64` | Read the configured account's ALGO balance. |
 | `probe_read_holding` | — | `uint64` | Read the configured account's holding of the asset. |
 | `probe_app_call` | — | `uint64` | Inner app call to the configured app. |
-| `report_budget` | — | `uint64` | Records the opcode budget available to this call — directly, and through an Arcron upkeep, which is how the figures in `docs/integrating.md` were measured. |
+| `report_budget` | — | `uint64` | Records the opcode budget available to this call, both directly and through an Arcron upkeep, which is how the figures in `docs/integrating.md` were measured. |
 | `configure_reentry` | `keeper_app: uint64, upkeep_id: uint64` | `void` | Point `reenter` at a keeper app and one of its upkeeps. |
 | `reenter` | — | `uint64` | Calls the keeper's `execute` back from inside its own execution, once. Measures whether a target can re-enter Arcron and who a nested execution would pay. |
-| `report_caller` | — | `address` | Records who the target sees as its caller. Called through an upkeep this is Arcron's app account, not the keeper — which decides whether a target can pay a keeper itself. |
-| `absorb` | `number: uint64, text: string` | `uint64` | A hook with arguments of its own — the shape Arcron cannot call today. Records the budget it was handed and both arguments, so a call that loses one is distinguishable from a call that works. |
+| `report_caller` | — | `address` | Records who the target sees as its caller. Called through an upkeep this is Arcron's app account rather than the keeper, and that decides whether a target can pay a keeper itself. |
+| `absorb` | `number: uint64, text: string` | `uint64` | A hook with arguments of its own, a shape Arcron cannot call today. Records the budget it was handed and both arguments, so a call that loses one is distinguishable from a call that works. |
 
 ## Invariants
 
@@ -71,7 +71,7 @@ is not deployed to any public network.
 
 - **Given** the same upkeep
 - **When** the keeper attaches that account to its own `execute` transaction
-- **Then** the probe's inner payment succeeds — availability flows two levels down
+- **Then** the probe's inner payment succeeds, so availability flows two levels down
 
 ### Scenario: The target cannot see the keeper
 
@@ -83,7 +83,7 @@ is not deployed to any public network.
 
 - **Given** an upkeep registered against `reenter()uint64`, with or without a catch-up backlog
 - **When** a keeper executes it and the probe calls `execute` back
-- **Then** the whole group fails with `attempt to re-enter <app>` — the AVM refuses, before the contract's own ordering is even consulted
+- **Then** the whole group fails with `attempt to re-enter <app>`. The AVM refuses before the contract's own ordering is even consulted
 
 ### Scenario: A hook with arguments needs an app arg per argument
 
@@ -97,7 +97,7 @@ is not deployed to any public network.
 |-----------|----------|
 | Resource not referenced anywhere in the group | Fails with `unavailable Account`/`unavailable App` |
 | More than 8 total references on the keeper's transaction | Rejected with `exceed MaxAppTotalTxnReferences = 8` |
-| Asset transfer to an account not opted in | Fails for opt-in reasons, not availability — the spike opts the subject in first to keep the cases apart |
+| Asset transfer to an account not opted in | Fails for opt-in reasons rather than availability; the spike opts the subject in first to keep the cases apart |
 
 ## Dependencies
 

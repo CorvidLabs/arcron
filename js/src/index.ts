@@ -6,7 +6,7 @@
  * here is the twin of `scripts/keeper_bot.py::_decode_upkeep`, and both are
  * pinned to the same recorded box, byte for byte, by tests that run in the
  * same CI as the contract. Split them apart and nothing enforces the
- * relationship — a contract change would leave a decoder quietly reading the
+ * relationship. A contract change would leave a decoder quietly reading the
  * wrong offsets, which is exactly how an escrow balance gets misreported.
  *
  * Nothing here depends on a UI framework.

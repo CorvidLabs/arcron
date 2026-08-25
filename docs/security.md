@@ -2,7 +2,7 @@
 
 **Arcron is unaudited.** No third party has reviewed this contract. What
 follows is the project's own analysis, written down so that it can be argued
-with rather than taken on trust — every claim names how it was checked, and
+with rather than taken on trust. Every claim names how it was checked, and
 the ones that are merely reasoned are marked as such.
 
 If you escrow ALGO in this contract you are relying on that analysis. Read
@@ -13,7 +13,7 @@ If you escrow ALGO in this contract you are relying on that analysis. Read
 Arcron holds escrow for other people and pays it out to whoever does the work.
 There is no owner, no admin key, no rake and **no upgrade path**. That last
 one is the load-bearing design decision: it means nobody can change the rules
-after you have escrowed funds, and it means a bug cannot be patched in place.
+after you have escrowed funds, and that a bug cannot be patched in place.
 
 Three parties can act:
 
@@ -31,13 +31,13 @@ Three parties can act:
   state and paid to `Txn.sender`. Checked by `tests/test_keeper.py`'s
   escalation sweep and, on chain, by `keeper_e2e.py` stage 16, which asserts
   every fee the contract actually charged equals what the bot predicted.
-- **Can it serve an upkeep slowly to be paid more?** With a fee ceiling, yes
-  — this is escalation working as designed, and it is bounded by `fee_cap`.
+- **Can it serve an upkeep slowly to be paid more?** With a fee ceiling, yes.
+  This is escalation working as designed, and it is bounded by `fee_cap`.
   What it *cannot* do is farm the ceiling repeatedly off a backlog: a replay
   never escalates. That guard exists because without it a keeper waiting two
   intervals between replays collected the ceiling every time while the backlog
-  grew without bound — **measured at 100% of a 400,000 µALGO escrow across 34
-  runs**. Pinned by `test_a_patient_keeper_cannot_farm_the_ceiling_off_a_backlog`.
+  grew without bound, measured at 100% of a 400,000 µALGO escrow across 34
+  runs. Pinned by `test_a_patient_keeper_cannot_farm_the_ceiling_off_a_backlog`.
   See also [the lone-keeper caveat](#a-keeper-with-no-competition-is-paid-the-ceiling).
 - **Can it drain one upkeep to pay another?** No. Each box carries its own
   balance, checked before payment. `keeper_e2e.py` stage 20 drains one upkeep
@@ -56,10 +56,10 @@ Three parties can act:
   always covers the sum of every escrow; stage 20 asserts it after every
   registration, execution and cancellation.
 - **Can it register an upkeep that traps its own funds?** Not any more. Three
-  states that used to register happily and then fail on every execution — an
+  states used to register happily and then fail on every execution: an
   argument list longer than the fan-out, a `fee_cap` the escrow could never
-  reach, a `fee_asset` with a zero bonus — are now rejected at registration.
-  Escrow always leaves by `cancel` if nothing else.
+  reach, and a `fee_asset` with a zero bonus. All three are now rejected at
+  registration. Escrow always leaves by `cancel` if nothing else.
 - **Can it point an upkeep at a hostile app to hurt keepers?** It can make
   executions fail. That costs the keeper nothing, and `scripts/keeper_bot.py`
   backs such an upkeep off exponentially and persists that across restarts.
@@ -70,13 +70,13 @@ Three parties can act:
   refuses outright with `attempt to re-enter <app>`. Measured under both
   catch-up policies, with and without a backlog, by
   `scripts/spike_reentrancy.py`. Arcron also writes box state before
-  submitting any inner transaction, which is the right ordering independently
-  — but it is the second line of defence, not the first.
+  submitting any inner transaction, which is the right ordering independently.
+  But it is the second line of defence, not the first.
 - **Can it spend the keeper's ALGO?** No. Arcron's inner transactions carry a
   zero fee, so they draw on the group's pooled fee, which the keeper sized.
   A target's own inner transactions are paid by the target.
 - **Can it burn the keeper's opcode budget?** It can consume the pool it was
-  given — a target is handed about 1,179 opcodes for a one-argument call,
+  given. A target is handed about 1,179 opcodes for a one-argument call,
   measured in `scripts/spike_multiarg.py`. Exhausting it fails the execution,
   which costs the keeper nothing.
 - **Can it reach resources it was not given?** Only what the keeper's
@@ -115,7 +115,7 @@ fee = base + (fee_cap - fee_per_execution) * excess // interval_rounds
 `MAX_UPKEEP_FEE` and `MAX_INTERVAL_ROUNDS` are both 10⁹, so the product is at
 most 10¹⁸ against a uint64's 1.8 × 10¹⁹. That bound comes from the inputs
 alone. An earlier version relied on `excess ≤ Global.round` instead, which is
-true but rests on the chain never reaching ~1.8 × 10¹⁰ rounds — not an
+true but rests on the chain never reaching ~1.8 × 10¹⁰ rounds. That is not an
 argument to stake an unpatchable contract on. Tested at both ceilings
 simultaneously in `test_the_escalation_multiply_cannot_overflow_at_the_extremes`.
 
@@ -147,7 +147,7 @@ These are real, understood, and shipped anyway. Each says why.
 
 Escalation pays more for lateness, so a keeper that is the only one watching
 an upkeep is better off waiting for the fee to peak. It clears a market only
-when there is a market. With one keeper, `fee_cap` is not a worst case — it is
+when there is a market. With one keeper, `fee_cap` is not a worst case. It is
 the price, and the cadence is roughly half what was asked for.
 
 **Mitigation:** the default is no escalation (`fee_cap = 0`), and the console
@@ -172,7 +172,7 @@ which would defeat the design.
 ### A refund can fail if the creator's account is empty
 
 Algorand rejects a payment that leaves the receiver below the 100,000 µALGO
-account minimum — measured: `balance 4000 below min 100000`. A creator whose
+account minimum (measured: `balance 4000 below min 100000`). A creator whose
 account has been closed out cannot receive a refund smaller than that until
 someone funds the account first. The keeper side of this is already defended:
 `keeper_bot.py` refuses to start below `ACCOUNT_MBR + one execution`.
@@ -180,8 +180,8 @@ someone funds the account first. The keeper side of this is already defended:
 ### Overpaid MBR is not returned
 
 `register` accepts an MBR payment larger than the box costs and credits the
-excess to nobody. It cannot be stolen — it only makes the app account *more*
-solvent — but it is not refunded either. Send the exact amount; the contract
+excess to nobody. It cannot be stolen (it only makes the app account *more*
+solvent), but it is not refunded either. Send the exact amount; the contract
 exports the formula and the console computes it.
 
 ### Registry spam degrades keepers
@@ -194,21 +194,21 @@ would cache boxes and re-read on change.
 ### An asset upkeep at the minimum fee only attracts keepers who want the asset
 
 An execution costs a keeper 3,000 µALGO in fees, or 4,000 when an ASA bonus is
-paid — the bonus is a third inner transaction. At `MIN_UPKEEP_FEE` a plain
-upkeep clears 1,000 µALGO and an asset upkeep clears **exactly nothing**
+paid, because the bonus is a third inner transaction. At `MIN_UPKEEP_FEE` a
+plain upkeep clears 1,000 µALGO and an asset upkeep clears exactly nothing
 (measured). That is the intended shape: the ALGO covers the keeper's costs and
 the asset is the pay.
 
 The consequence is a liveness one, not a safety one. An asset upkeep at the
 floor is worth running only to a keeper that values the asset, so if none do,
-it goes unserviced — funded, due, and ignored. A creator who wants generic
+it goes unserviced: funded, due, and ignored. A creator who wants generic
 keepers to take it as well should set an ALGO fee above the floor.
 
 ### Post-quantum keepers are covered only while bytes are free
 
 A Falcon-1024-signed `execute` is about 13× the size of an ed25519 one
 (measured in `scripts/spike_quantum.py`). Algorand charges
-`max(min_fee, size × fee_per_byte)`, and that per-byte rate is zero today —
+`max(min_fee, size × fee_per_byte)`, and that per-byte rate is zero today,
 which is the only reason `MIN_UPKEEP_FEE` covers a post-quantum keeper. The
 floor is permanent and cannot be raised.
 
@@ -221,14 +221,14 @@ confirm *which* source that is:
 poetry run python -m scripts.verify_build --network testnet --app-id <id>
 ```
 
-It rebuilds from the working tree and compares the compiled bytecode — not the
-TEAL text, which loses comments and formatting on assembly — against what
+It rebuilds from the working tree and compares the compiled bytecode (not the
+TEAL text, which loses comments and formatting on assembly) against what
 algod reports for that app. With no `--app-id` it prints the local hashes,
 which is what a release records so a third party can check later without
 trusting us.
 
-Reproducing the build needs Python 3.13 (**never 3.14** — coincurve has no
-wheels) and `puyapy >=5.0,<5.10`, both pinned in `pyproject.toml`. The
+Reproducing the build needs Python 3.13 (**never 3.14**, because coincurve has
+no wheels) and `puyapy >=5.0,<5.10`, both pinned in `pyproject.toml`. The
 ARC-56 specs in `smart_contracts/artifacts/` are committed, and CI fails if
 they differ from a fresh build.
 
@@ -240,8 +240,8 @@ they differ from a fresh build.
 - `.env.*` files are gitignored and must stay that way. No mnemonic belongs in
   this repository, in a commit message, or in an issue.
 - Deployment creates the app and funds its base minimum balance. After that
-  the deployer has **no privileges over the contract at all** — there is no
-  owner — so the key's only remaining value is to whoever holds its ALGO.
+  the deployer has no privileges over the contract at all. There is no owner,
+  so the key's only remaining value is to whoever holds its ALGO.
 
 ## If a bug is found
 
@@ -263,5 +263,5 @@ consequence of having no owner. That trade is the point.
 
 Open an issue on [CorvidLabs/arcron](https://github.com/CorvidLabs/arcron/issues)
 for anything that is already public. For anything that is not, and while there
-is no published contact, do not open an issue — the repository is private and
+is no published contact, do not open an issue. The repository is private and
 the deployment holds test funds only.

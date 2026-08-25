@@ -146,7 +146,7 @@ export class NetworkBar {
   constructor() {
     // brand/theme.js wires every [data-corvid-theme-toggle] once, when it
     // loads. Angular renders this header after that would have happened, so
-    // the script is loaded here instead — once the button it looks for exists.
+    // the script is loaded here instead, once the button it looks for exists.
     afterNextRender(() => {
       const script = document.createElement('script');
       script.src = 'brand/theme.js';

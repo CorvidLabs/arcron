@@ -27,7 +27,7 @@ export interface NetworkConfig {
   readonly defaultAppId?: number;
   /**
    * Seconds per round to assume before the chain has been watched long
-   * enough to measure it — Algorand's nominal block time.
+   * enough to measure it, taken from Algorand's nominal block time.
    */
   readonly nominalRoundSeconds: number;
   /**

@@ -2,7 +2,7 @@
 
 Reading the [Arcron](https://github.com/CorvidLabs/arcron) upkeep registry and
 building the transactions that change it. No UI framework, no backend, no
-indexer — everything here comes from box state any algod will serve.
+indexer. Everything here comes from box state any algod will serve.
 
 ```ts
 import { decodeUpkeep, effectiveFee, upkeepBoxName } from '@corvidlabs/arcron';
@@ -20,8 +20,8 @@ in the same CI as the contract itself. `keeper-abi.test.ts` checks every method
 signature against the compiled ARC-56 artifact in the same tree.
 
 That is not ceremony. During development the TypeScript encoder had the ARC-4
-offset base wrong — offsets are measured from after the array count, not from
-its start — and it produced a plausible-looking encoding that decoded to
+offset base wrong. Offsets are measured from after the array count, not from
+its start, and it produced a plausible-looking encoding that decoded to
 garbage. The only thing that caught it was the byte-for-byte comparison with
 the Python implementation. In a separate repository that ships.
 

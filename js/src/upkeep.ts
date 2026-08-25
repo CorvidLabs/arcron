@@ -1,10 +1,10 @@
 /**
  * The upkeep registry as the chain stores it.
  *
- * Box values are ARC-4 head/tail encoded `Upkeep` structs — the same layout
+ * Box values are ARC-4 head/tail encoded `Upkeep` structs, the same layout
  * `scripts/keeper_bot.py::_decode_upkeep` reads. The head is 130 bytes: a
  * 32-byte creator, the target app, a 2-byte offset to the dynamic argument
- * list, then the eleven uint64 fields. The tail is an ARC-4 `byte[][]` — a
+ * list, then the eleven uint64 fields. The tail is an ARC-4 `byte[][]`: a
  * count, an offset per argument, then each argument's own length and bytes.
  */
 
@@ -47,7 +47,7 @@ export interface Upkeep {
   readonly policy: bigint;
   /** The most this upkeep will ever pay for one run; 0n means it never escalates. */
   readonly feeCap: bigint;
-  /** The round it last ran in — not the round it was scheduled for. */
+  /** The round it last ran in, not the round it was scheduled for. */
   readonly lastServicedRound: bigint;
   /** An optional ASA bonus on top of the ALGO fee; 0n means ALGO only. */
   readonly feeAsset: bigint;
@@ -60,7 +60,7 @@ export interface Upkeep {
  * argument, then each argument's own uint16 length and bytes.
  *
  * The offsets are relative to the *end of the count*, not to the start of the
- * array — the one detail worth stating, because getting it wrong produces a
+ * array. That one detail is worth stating, because getting it wrong produces a
  * plausible-looking encoding that decodes to garbage.
  */
 export function encodeCallArgs(callArgs: readonly Uint8Array[]): Uint8Array {
@@ -141,11 +141,11 @@ export function decodeUpkeep(id: bigint, raw: Uint8Array): Upkeep {
  * smart_contracts/keeper/contract.py, and of `effective_fee` in
  * scripts/keeper_bot.py. The fee rises linearly from the base to the cap over
  * one missed interval and then holds, and lateness is measured from the last
- * service rather than from the schedule — so a keeper draining a backlog is
+ * service rather than from the schedule, so a keeper draining a backlog is
  * paid the ceiling once, not once per replay. A zero cap never escalates, and
  * an upkeep never bids more than it holds: an escrow below the escalated fee
  * drops back to the base fee rather than freezing at a price it cannot pay.
- * A replay of a backlog never escalates at all — `nextExecutionRound <=
+ * A replay of a backlog never escalates at all: `nextExecutionRound <=
  * lastServicedRound` means the upkeep was already behind when it last ran.
  */
 export function effectiveFee(upkeep: Upkeep, currentRound: bigint): bigint {

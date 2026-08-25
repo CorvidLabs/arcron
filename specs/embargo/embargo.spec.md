@@ -15,9 +15,9 @@ depends_on: []
 
 A timed release: content that becomes official at a round nobody controls.
 
-The author commits content and a release round. From that moment there is no
-method — not for the author, not for anyone — that changes the content, moves
-the round, or cancels the release. `publish` is a zero-argument NoOp, which is
+The author commits content and a release round. From that moment no method
+exists, for the author or for anyone else, that changes the content, moves the
+round, or cancels the release. `publish` is a zero-argument NoOp, which is
 exactly the call shape an Arcron upkeep can make, so any keeper in the world
 can be the one to fire it and be paid for doing so.
 
@@ -29,9 +29,8 @@ wants it to.
 readable by anyone from the moment they are written, on any public chain. What
 is guaranteed is an unstoppable, timestamped publication *event*, not a sealed
 envelope. For content that must be unreadable until it opens, store a hash
-commitment here and keep the payload off-chain — noting that revealing it later
-requires someone to act, which is precisely what a keeper network cannot do for
-you.
+commitment here and keep the payload off-chain. Revealing it later requires
+someone to act, which is precisely what a keeper network cannot do for you.
 
 ## Public API
 
@@ -41,7 +40,7 @@ you.
 |----------|-------|-------------|
 | `CONTENT_KEY` | `b"content"` | Box name holding the released content. |
 | `BOX_MBR_FIXED` | `2_500 + 400 * 7` (`5_300`) | Box minimum balance less the content; a box costs `BOX_MBR_FIXED + 400 * len(content)` µALGO. |
-| `MAX_CONTENT` | `2_048` | Maximum content size in bytes — a statement or any CID, bounded so the MBR stays predictable. |
+| `MAX_CONTENT` | `2_048` | Maximum content size in bytes, enough for a statement or any CID and bounded so the MBR stays predictable. |
 
 ### Exported Types
 
@@ -75,7 +74,7 @@ you.
 
 - **Given** content scheduled for round R and an upkeep due at R−13
 - **When** a keeper executes the upkeep
-- **Then** the inner call fails, nothing is published, and the keeper pays no fee — Algorand rejects the failing transaction before it reaches a block
+- **Then** the inner call fails, nothing is published, and the keeper pays no fee, because Algorand rejects the failing transaction before it reaches a block
 
 ### Scenario: Published by someone other than the author
 
@@ -87,7 +86,7 @@ you.
 
 - **Given** content scheduled but not yet published
 - **When** the author tries to reschedule or replace it
-- **Then** the call fails with "Already scheduled" — there is no such lever
+- **Then** the call fails with "Already scheduled"; there is no such lever
 
 ## Error Cases
 
@@ -103,7 +102,7 @@ you.
 | `publish` with nothing scheduled | Fails with "Nothing scheduled" |
 
 Note: when `publish` is reached through an Arcron upkeep, the assert's message
-does not survive the app boundary — a failure inside an inner call to another
+does not survive the app boundary. A failure inside an inner call to another
 app is reported as a program counter, because the source map belongs to that
 app. Match on the failing app id when asserting against it.
 

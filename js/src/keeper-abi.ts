@@ -30,12 +30,12 @@ export function methodSelector(signature: string): Uint8Array {
   return algosdk.ABIMethod.fromSignature(signature).getSelector();
 }
 
-/** The demo target's hook — the default when registering an upkeep. */
+/** The demo target's hook, the default when registering an upkeep. */
 export const PULSE_TICK_SIGNATURE = 'tick()uint64';
 
 /**
  * The app args a call to `signature` needs: its selector, then each argument
- * ARC-4 encoded. `values` are the arguments as typed by a person — one string
+ * ARC-4 encoded. `values` are the arguments as typed by a person, one string
  * per argument, in order.
  *
  * Throws with a message worth showing if the signature will not parse or a
@@ -83,5 +83,5 @@ function parseAbiValue(type: string, raw: string): algosdk.ABIValue {
     if (hex.length % 2 !== 0 || !/^[0-9a-fA-F]*$/.test(hex)) throw new Error('expected hex bytes');
     return Uint8Array.from(hex.match(/.{2}/g) ?? [], (byte) => parseInt(byte, 16));
   }
-  throw new Error(`${type} is not supported here — encode it as byte[] hex`);
+  throw new Error(`${type} is not supported here; encode it as byte[] hex`);
 }
