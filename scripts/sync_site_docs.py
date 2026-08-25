@@ -29,6 +29,9 @@ REPO = pathlib.Path(__file__).resolve().parent.parent
 
 # source, slug, title, one-line description, section
 PAGES = [
+    ("docs/status.md", "status", "Where it stands",
+     "What exists, what state each contract is in, what is proven, what is still unknown, and what happens next.",
+     "Start here"),
     ("docs/integrating.md", "integrating", "Integrating",
      "Hooking your contract into Arcron: the hook shape, authorization, and the failure modes that stop an upkeep being serviced.",
      "Building on it"),
