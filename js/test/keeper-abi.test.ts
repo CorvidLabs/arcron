@@ -1,11 +1,11 @@
 /** The signatures the web app calls must match the compiled contract. */
 
 import { describe, expect, test } from 'bun:test';
-import { KEEPER_METHOD_SIGNATURES, methodSelector, PULSE_TICK_SIGNATURE } from './keeper-abi';
-import { toHex } from './upkeep';
+import { KEEPER_METHOD_SIGNATURES, methodSelector, PULSE_TICK_SIGNATURE } from '../src/keeper-abi';
+import { toHex } from '../src/upkeep';
 
 const arc56 = await Bun.file(
-  new URL('../../../../smart_contracts/artifacts/keeper/Keeper.arc56.json', import.meta.url),
+  new URL('../../smart_contracts/artifacts/keeper/Keeper.arc56.json', import.meta.url),
 ).json();
 
 function signatureOf(method: { name: string; args: { type: string }[]; returns: { type: string } }) {

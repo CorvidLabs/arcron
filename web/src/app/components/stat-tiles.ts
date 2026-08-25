@@ -1,8 +1,8 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 
 import { ArcronService } from '../core/arcron.service';
-import { algos, duration } from '../core/format';
-import { isExecutable } from '../core/upkeep';
+import { algos, duration } from '@corvidlabs/arcron/format';
+import { isExecutable } from '@corvidlabs/arcron/upkeep';
 
 @Component({
   selector: 'arcron-stat-tiles',

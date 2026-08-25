@@ -14,7 +14,7 @@ import { computed, effect, Injectable, inject, signal, untracked } from '@angula
 import { WalletManager } from '@txnlab/use-wallet';
 
 import { ArcronService, describe } from './arcron.service';
-import type { Signing } from './keeper-txns';
+import type { Signing } from '@corvidlabs/arcron/keeper-txns';
 import { managerNetworks, walletsFor } from './wallets';
 
 /** Closing a wallet's modal is a decision, not a failure. */

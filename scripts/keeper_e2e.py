@@ -249,6 +249,11 @@ def _assert_rejected_by_algod(rejection: str) -> None:
     )
 
 
+# Populated by `_raw_execute`, so an assertion can read what an execution did
+# rather than what an account balance says afterwards.
+_LAST_CONFIRMATION: dict = {}
+
+
 def _raw_execute(
     algorand, app_id: int, account, upkeep_id: int, target_app: int, assets=()
 ) -> str:
@@ -278,7 +283,29 @@ def _raw_execute(
     signed = account.signer.sign_transactions([txn], [0])
     # send_transactions encodes the signed objects; send_raw_transaction wants
     # bytes and would fail client-side, which would look like a rejection.
-    return algorand.client.algod.send_transactions(signed)
+    txid = algorand.client.algod.send_transactions(signed)
+    # Wait for it, and keep the confirmation. Reading an account balance
+    # straight after sending reads state the node has not applied yet — which
+    # is invisible on LocalNet, where dev mode commits a block per
+    # transaction, and a flake on a public endpoint.
+    _LAST_CONFIRMATION.clear()
+    _LAST_CONFIRMATION.update(
+        transaction.wait_for_confirmation(algorand.client.algod, txid, 6)
+    )
+    return txid
+
+
+def _paid_to_caller() -> int:
+    """What the last raw execution paid its caller, from its own confirmation.
+
+    Deliberately not an account balance: this reads what the contract did,
+    not what a node currently believes an account holds.
+    """
+    for inner in _LAST_CONFIRMATION.get("inner-txns", []):
+        txn = inner.get("txn", {}).get("txn", {})
+        if txn.get("type") == "pay":
+            return int(txn.get("amt", 0))
+    return 0
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -989,15 +1016,10 @@ def main(argv: list[str] | None = None) -> None:
     # and must still be paid its ALGO fee rather than having the call fail.
     _assert("the stranger cannot hold the asset", _asset_of(stranger.address), None)
     bonus_upkeep, _ = _read_upkeep(algorand, app_id, bonus_id)
-    algo_before = _balance(algorand, stranger.address)
     net.wait_for_round(algorand, bonus_upkeep.next_execution_round, poker=deployer)
     _raw_execute(algorand, app_id, stranger, bonus_id, pulse_client.app_id, assets=[asset_id])
     after_stranger, _ = _read_upkeep(algorand, app_id, bonus_id)
-    _assert(
-        "an un-opted-in keeper still earns the ALGO fee",
-        _balance(algorand, stranger.address) - algo_before + KEEPER_TXN_COST,
-        FEE,
-    )
+    _assert("an un-opted-in keeper still earns the ALGO fee", _paid_to_caller(), FEE)
     _assert("and the bonus stays in escrow", after_stranger.asset_balance, bonus * 4)
 
     # Now a keeper that has opted in.

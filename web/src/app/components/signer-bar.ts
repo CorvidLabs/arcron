@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 
 import { ArcronService } from '../core/arcron.service';
-import { shortAddress } from '../core/format';
+import { shortAddress } from '@corvidlabs/arcron/format';
 import { WalletService } from '../core/wallet.service';
 
 @Component({

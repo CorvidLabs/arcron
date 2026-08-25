@@ -28,7 +28,8 @@
     "algosdk": "^3.7.0",
     "buffer": "^6.0.3",
     "rxjs": "~7.8.0",
-    "tslib": "^2.3.0"
+    "tslib": "^2.3.0",
+    "@corvidlabs/arcron": "workspace:*"
   },
   "devDependencies": {
     "@angular/build": "^22.1.5",

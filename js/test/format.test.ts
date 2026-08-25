@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, test } from 'bun:test';
-import { algos, dueLabel, duration, intervalLabel, roundsAsTime, runwayLabel } from './format';
+import { algos, dueLabel, duration, intervalLabel, roundsAsTime, runwayLabel } from '../src/format';
 
 const ROUND_SECONDS = 2.8; // Algorand's nominal block time
 

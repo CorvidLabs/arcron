@@ -23,7 +23,7 @@ import {
   toHex,
   upkeepBoxName,
   upkeepIdFromBoxName,
-} from './upkeep';
+} from '../src/upkeep';
 
 const LIVE_BOX_HEX =
   '5defa167e82d6882b1a57beb7d3bb8583440a2e2e19a27358c94744a4fa7e3cf' +

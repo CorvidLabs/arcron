@@ -96,8 +96,13 @@ jobs:
             exit 1
           fi
 
-      - name: Console dependencies
-        run: fledge run web-install
+      - name: JavaScript dependencies
+        run: fledge run js-install
+
+      - name: Contract TypeScript tests
+        # The decoder here is the twin of the Python one and is pinned to the
+        # same recorded box; these run beside the contract on purpose.
+        run: fledge run js-test
 
       - name: Console tests
         run: fledge run web-test

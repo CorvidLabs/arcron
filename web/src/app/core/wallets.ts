@@ -20,7 +20,7 @@ import { lute } from '@txnlab/use-wallet-lute';
 import { pera } from '@txnlab/use-wallet-pera';
 import { walletConnect } from '@txnlab/use-wallet-walletconnect';
 
-import { NETWORKS, type NetworkKey } from './networks';
+import { NETWORKS, type NetworkKey } from '@corvidlabs/arcron/networks';
 
 /** Set at runtime (window config or a build define) to enable WalletConnect. */
 declare global {

@@ -10,8 +10,8 @@
 import { computed, effect, Injectable, signal } from '@angular/core';
 import algosdk from 'algosdk';
 
-import { DEFAULT_NETWORK, isNetworkKey, NETWORKS, type NetworkKey } from './networks';
-import { decodeUpkeep, type Upkeep, upkeepIdFromBoxName } from './upkeep';
+import { DEFAULT_NETWORK, isNetworkKey, NETWORKS, type NetworkKey } from '@corvidlabs/arcron/networks';
+import { decodeUpkeep, type Upkeep, upkeepIdFromBoxName } from '@corvidlabs/arcron/upkeep';
 
 const POLL_INTERVAL_MS = 2_500;
 /** Round-rate samples kept; at the poll interval this is ~2 minutes of chain. */

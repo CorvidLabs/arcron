@@ -9,10 +9,10 @@
 import { computed, Injectable, inject, signal } from '@angular/core';
 
 import { ArcronService, describe } from './arcron.service';
-import { algos } from './format';
+import { algos } from '@corvidlabs/arcron/format';
 import { WalletService } from './wallet.service';
-import * as txns from './keeper-txns';
-import type { Upkeep } from './upkeep';
+import * as txns from '@corvidlabs/arcron/keeper-txns';
+import type { Upkeep } from '@corvidlabs/arcron/upkeep';
 
 export type Operation = 'register' | 'top_up' | 'cancel' | 'execute' | 'opt_in_asset' | 'top_up_asset';
 
