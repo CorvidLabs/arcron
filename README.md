@@ -239,7 +239,23 @@ cp .env.testnet.template .env.testnet   # or: algokit generate env-file -a targe
 poetry run python -m scripts.keeper_e2e --network testnet
 ```
 
-### Running a keeper bot
+### Release stages
+
+Arcron is at **alpha-1**: running on TestNet, and redeployable at any time for
+any reason. Nothing here is a promise yet.
+
+| Stage | What is frozen | At stake |
+|---|---|---|
+| **alpha** | nothing | nothing — we run every part |
+| beta | the ABI surface and the `Upkeep` struct | other people's test upkeeps |
+| rc | the exact bytecode intended for MainNet | our credibility |
+| mainnet | everything, forever | real money |
+
+The gates between them are in [`docs/releases.md`](docs/releases.md), and they
+are deliberately specific: the contract has no upgrade path, so a stage whose
+clock can be argued down is not a gate.
+
+## Running a keeper bot
 
 The bot services the live keeper app: it scans the upkeep boxes every round
 and calls `execute` on anything due and funded, collecting the fees. It signs
