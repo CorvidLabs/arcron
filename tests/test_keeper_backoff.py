@@ -160,3 +160,46 @@ def test_blocked_ids_reports_what_is_being_skipped(state_file) -> None:
     assert backoff.blocked_ids(1_000) == [5, 9]
     assert backoff.blocked_ids(1_006) == [5]
     assert backoff.blocked_ids(2_000) == []
+
+
+# --- a target must not be able to disguise itself as a lost race -------
+
+
+def test_a_target_saying_not_due_is_not_a_lost_race() -> None:
+    """The failure Kimi found: the marker was matched anywhere in the string.
+
+    A target's own assert text travels back in the same error, and the target
+    chooses that text. One asserting "cooldown not due" was read as another
+    keeper having won, so the upkeep was never backed off and the bot retried
+    a broken target forever at its own expense.
+
+    algod names the application that failed, and the target does not control
+    that.
+    """
+    target = (
+        "Runtime error when executing Pulse (appId: 1004) in transaction 0: "
+        "cooldown not due"
+    )
+    keeper = (
+        "Runtime error when executing Keeper (appId: 1002) in transaction 0: Not due"
+    )
+    assert is_lost_race(keeper) is True
+    assert is_lost_race(target) is False
+
+
+def test_a_real_keeper_error_is_still_a_failure() -> None:
+    """Attribution to the keeper is necessary, not sufficient."""
+    assert (
+        is_lost_race(
+            "Runtime error when executing Keeper (appId: 1) in transaction 0: "
+            "Fee below minimum"
+        )
+        is False
+    )
+
+
+def test_an_error_with_no_attribution_falls_back_to_the_message() -> None:
+    """Not every error shape names the app; the message is then all there is."""
+    assert is_lost_race("logic eval error: Not due") is True
+    assert is_lost_race("upkeep not found") is True
+    assert is_lost_race("something else entirely") is False

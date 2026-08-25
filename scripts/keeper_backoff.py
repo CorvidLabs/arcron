@@ -37,14 +37,35 @@ MAX_INTERVAL_MULTIPLIER = 8
 # Retrying costs nothing, so a slow upkeep should not mean a slow recovery:
 # without this, a daily upkeep at 8x would go unretried for over a week.
 MAX_BACKOFF_ROUNDS = 1_286  # roughly an hour at 2.8 s/round
-# Errors that mean "someone else got there first", not "this upkeep is broken".
-RACE_MARKERS = ("not due", "upkeep not found")
+# The keeper's own reasons for refusing: another keeper got there first, or
+# the upkeep is gone.
+RACE_MESSAGES = ("not due", "upkeep not found")
+# algod names the application that failed, as
+# "Runtime error when executing Keeper (appId: N) in transaction 0: Not due".
+# That attribution is what makes the message trustworthy. A target's own error
+# text travels back in the same string, and a target asserting something like
+# "cooldown not due" would otherwise be read as a lost race and retried
+# forever at the keeper's expense. The target controls its text; it does not
+# control which app the node says failed.
+KEEPER_ATTRIBUTION = "executing keeper"
+_ATTRIBUTION_MARKER = "when executing "
 
 
 def is_lost_race(reason: str) -> bool:
-    """True when a failure means another keeper won, not that anything broke."""
+    """True when a failure means another keeper won, not that anything broke.
+
+    Wrong in either direction costs something. Treating a broken target as a
+    lost race retries it forever; treating a lost race as a broken target
+    backs off an upkeep that is perfectly healthy.
+    """
     lowered = reason.lower()
-    return any(marker in lowered for marker in RACE_MARKERS)
+    if not any(message in lowered for message in RACE_MESSAGES):
+        return False
+    if _ATTRIBUTION_MARKER in lowered:
+        # The node said which app failed, so believe it rather than the text.
+        return KEEPER_ATTRIBUTION in lowered
+    # No attribution in this error shape: the message is all there is.
+    return True
 
 
 @dataclass

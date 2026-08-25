@@ -41,6 +41,9 @@ HEAD_BYTES = 130
 # Covers the two inner transactions (app call + keeper payment); the outer
 # fee is the standard 1,000 µALGO.
 EXTRA_FEE_MICROALGO = 2_000
+# The bonus transfer, when an upkeep pays one and this keeper can receive
+# it. Overpaying is harmless: an unused fee is simply not charged.
+BONUS_FEE_MICROALGO = 1_000
 # First delay after an algod/endpoint error; it doubles up to the cap, so a
 # node that is down does not get hammered and a blip costs almost nothing.
 ERROR_RETRY_SECONDS = 5
@@ -498,12 +501,20 @@ def main(argv: list[str] | None = None) -> None:
                 if shutdown.requested:
                     break
                 try:
+                    # An upkeep offering an ASA bonus sends a third inner
+                    # transaction when the bonus is actually paid, and only a
+                    # keeper opted in to that asset can receive it. Paying the
+                    # base fee would leave exactly those executions a thousand
+                    # microAlgos short, so the keeper best placed to earn the
+                    # bonus is the one whose call fails, and the upkeep paying
+                    # the most is the one that goes unserviced.
+                    extra_fee = EXTRA_FEE_MICROALGO
+                    if upkeep.fee_asset > 0 and upkeep.asset_balance >= upkeep.asset_fee:
+                        extra_fee += BONUS_FEE_MICROALGO
                     response = client.send.execute(
                         args=ExecuteArgs(upkeep_id=upkeep.upkeep_id),
                         params=algokit_utils.CommonAppCallParams(
-                            extra_fee=algokit_utils.AlgoAmount(
-                                micro_algo=EXTRA_FEE_MICROALGO
-                            )
+                            extra_fee=algokit_utils.AlgoAmount(micro_algo=extra_fee)
                         ),
                     )
                     executed_count += 1
