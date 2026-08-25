@@ -42,7 +42,16 @@
                   "maximumError": "8kB"
                 }
               ],
-              "outputHashing": "all"
+              "outputHashing": "all",
+              "assets": [
+                {
+                  "glob": "**/*",
+                  "input": "public",
+                  "ignore": [
+                    "axe.min.js"
+                  ]
+                }
+              ]
             },
             "development": {
               "optimization": false,
