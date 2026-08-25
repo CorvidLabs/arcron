@@ -125,15 +125,28 @@ def collected(path: pathlib.Path) -> int:
     return sum(1 for s in signed.multisig.subsigs if s.signature)
 
 
+def blob_threshold(path: pathlib.Path) -> int:
+    """The threshold inside the signed blob, which is the one that counts.
+
+    The JSON alongside it is decoration: a signature covers the transaction
+    bytes and the multisig envelope, not the filename, not the note, and not
+    the `threshold` field somebody could edit.
+    """
+    return _load(path).multisig.threshold
+
+
+def app_id(path: pathlib.Path) -> int:
+    """The app this transaction acts on, or 0 if it is not an app call."""
+    return int(getattr(_load(path).transaction, "index", 0) or 0)
+
+
 def submit(algod, path: pathlib.Path) -> str:
     """Send a fully signed transaction. Returns the transaction id."""
     signed = _load(path)
     have = collected(path)
-    payload = json.loads(path.read_text())
-    if have < payload["threshold"]:
-        raise RuntimeError(
-            f"Only {have} of {payload['threshold']} signatures. Not submitting."
-        )
+    need = blob_threshold(path)
+    if have < need:
+        raise RuntimeError(f"Only {have} of {need} signatures. Not submitting.")
     txid = algod.send_transaction(signed)
     transaction.wait_for_confirmation(algod, txid, 6)
     return txid

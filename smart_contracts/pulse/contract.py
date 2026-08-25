@@ -2,6 +2,11 @@
 from algopy import ARC4Contract, Global, GlobalState, String, UInt64, arc4
 from algopy.arc4 import abimethod
 
+# The most one call may add. Reaching the uint64 ceiling at this rate needs
+# more calls than the chain will ever carry, so `tick` cannot be made to
+# overflow by anyone willing to pay for it.
+MAX_BEATS_PER_TICK = 1_000_000
+
 
 class Pulse(ARC4Contract):
     """Demo upkeep target: a public heartbeat counter.
@@ -31,6 +36,14 @@ class Pulse(ARC4Contract):
         its selector and each argument in an app arg of its own and Arcron
         could only send one.
         """
+        # Bound the increment. Unbounded, one call could set the counter near
+        # the uint64 ceiling, after which every `tick` overflows and panics.
+        # The AVM panics rather than saturating, so the panic fails the inner
+        # call, which fails the whole execution, which means a keeper can never
+        # service this app again. That is a permanent wedge of the demo target
+        # for the price of one transaction, and on a contract with no update
+        # path there is no way back.
+        assert beats <= MAX_BEATS_PER_TICK, "Too many beats for one tick"
         self.beats.value += beats
         self.last_beat_round.value = Global.round
         self.last_note.value = note.native

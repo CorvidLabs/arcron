@@ -58,10 +58,12 @@ execution and stall the schedule for everyone else.
 1. `distribute` never fails: unconfigured or with an empty balance it returns `0` and changes nothing. A failing hook trips keeper backoff and would end the schedule.
 2. Allocated never exceeds the snapshot. The remainder from integer division stays in the treasury for the next distribution, never stranded and never over-allocated.
 3. Shares total exactly `TOTAL_SHARE_BPS` and every share is positive.
-4. Recipients and shares are immutable after configuration. There is no method to add, remove, redirect or reweight.
-5. Funds leave only to a recipient claiming their own allocation.
-6. Deposits arriving after a snapshot belong to the next distribution.
-7. An unclaimed allocation never blocks a later distribution.
+4. Recipients are distinct and none is the zero address. `claim` stops at the first entry matching the sender, so a duplicate's share could never be pulled, and an address nobody can send from could never pull anything. Both strand money permanently on a contract configured once and never updated.
+5. `distribute` cannot overflow. It divides before multiplying and adds back the remainder's share, because `snapshot * share_bps` overflows uint64 above about 1.84 million ALGO and the AVM panics rather than saturating, which would fail every later distribution and strand the balance.
+6. Recipients and shares are immutable after configuration. There is no method to add, remove, redirect or reweight.
+7. Funds leave only to a recipient claiming their own allocation.
+8. Deposits arriving after a snapshot belong to the next distribution.
+9. An unclaimed allocation never blocks a later distribution.
 
 ## Why the recipient set is immutable
 

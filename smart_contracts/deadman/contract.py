@@ -78,6 +78,10 @@ class DeadMan(ARC4Contract):
         ), "Deposit must go to the app account"
         assert deposit.amount > 0, "Nothing to release"
         assert beneficiary.native != self.owner.value, "Beneficiary must not be the owner"
+        # An address nobody can send from can never claim, so the escrow
+        # would be stranded on a contract with no delete path. Same trap the
+        # subscription contract had with a zero-address provider.
+        assert beneficiary.native != Global.zero_address, "Beneficiary required"
 
         self.beneficiary.value = beneficiary.native
         self.interval_rounds.value = interval_rounds

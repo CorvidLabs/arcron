@@ -3,7 +3,7 @@
   "sources": [
     "../../pulse/contract.py"
   ],
-  "mappings": ";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;AAeQ;AAAyB;AAAzB;AACA;AAAmC;AAAnC;AACA;AAA6B;;AAA7B;AAZR;;AAAA;;;AAAA;;AAAA;AAAA;AAAA;;AAAA;AAAA;;;;;;;;;;;;AAAA;;;AAAA;;;;;;AAAA;;;;;;;;;AAgBQ;AAAA;AAAA;AAAA;AAAoB;AAApB;AAAA;AAAA;AAAA;AACA;AAA6B;;AAA7B;AACO;AAAA;AAAA;AAAA;AAJV;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AAMA;;;AAAA;AAAA;AAAA;;AAAA;AAAA;AAAA;AAAA;;;AAAA;AAAA;AAAA;AAAA;;AAAA;AAAA;;AAAA;AAAA;AAAA;AAQG;AAAA;AAAA;AAAA;AAAA;;AAAA;AAAA;AAAA;AAAA;AACA;AAA6B;;AAA7B;AACuB;;;AAAvB;AAAA;AAAA;AACO;AAAA;AAAA;AAAA;AAXV;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA",
+  "mappings": ";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;AAoBQ;AAAyB;AAAzB;AACA;AAAmC;AAAnC;AACA;AAA6B;;AAA7B;AAZR;;AAAA;;;AAAA;;AAAA;AAAA;AAAA;;AAAA;AAAA;;;;;;;;;;;;AAAA;;;AAAA;;;;;;AAAA;;;;;;;;;AAgBQ;AAAA;AAAA;AAAA;AAAoB;AAApB;AAAA;AAAA;AAAA;AACA;AAA6B;;AAA7B;AACO;AAAA;AAAA;AAAA;AAJV;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AAMA;;;AAAA;AAAA;AAAA;;AAAA;AAAA;AAAA;AAAA;;;AAAA;AAAA;AAAA;AAAA;;AAAA;AAAA;;AAAA;AAAA;AAAA;AAeU;;AAAS;;;;AAAT;AAAP;AACA;AAAA;AAAA;AAAA;AAAA;;AAAA;AAAA;AAAA;AAAA;AACA;AAA6B;;AAA7B;AACuB;;;AAAvB;AAAA;AAAA;AACO;AAAA;AAAA;AAAA;AAnBV;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA",
   "op_pc_offset": 0,
   "pc_events": {
     "1": {
@@ -621,6 +621,55 @@
       ]
     },
     "149": {
+      "op": "dig 1",
+      "defined_out": [
+        "beats#0",
+        "beats#0 (copy)",
+        "note#0"
+      ],
+      "stack_out": [
+        "beats#0",
+        "note#0",
+        "beats#0 (copy)"
+      ]
+    },
+    "151": {
+      "op": "pushint 1000000",
+      "defined_out": [
+        "1000000",
+        "beats#0",
+        "beats#0 (copy)",
+        "note#0"
+      ],
+      "stack_out": [
+        "beats#0",
+        "note#0",
+        "beats#0 (copy)",
+        "1000000"
+      ]
+    },
+    "155": {
+      "op": "<=",
+      "defined_out": [
+        "beats#0",
+        "note#0",
+        "tmp%0#1"
+      ],
+      "stack_out": [
+        "beats#0",
+        "note#0",
+        "tmp%0#1"
+      ]
+    },
+    "156": {
+      "error": "Too many beats for one tick",
+      "op": "assert // Too many beats for one tick",
+      "stack_out": [
+        "beats#0",
+        "note#0"
+      ]
+    },
+    "157": {
       "op": "intc_0 // 0",
       "stack_out": [
         "beats#0",
@@ -628,7 +677,7 @@
         "0"
       ]
     },
-    "150": {
+    "158": {
       "op": "bytec_0 // \"beats\"",
       "defined_out": [
         "\"beats\"",
@@ -643,7 +692,7 @@
         "\"beats\""
       ]
     },
-    "151": {
+    "159": {
       "op": "app_global_get_ex",
       "defined_out": [
         "beats#0",
@@ -658,7 +707,7 @@
         "maybe_exists%0#0"
       ]
     },
-    "152": {
+    "160": {
       "error": "check self.beats exists",
       "op": "assert // check self.beats exists",
       "stack_out": [
@@ -667,7 +716,7 @@
         "maybe_value%0#0"
       ]
     },
-    "153": {
+    "161": {
       "op": "uncover 2",
       "stack_out": [
         "note#0",
@@ -675,40 +724,40 @@
         "beats#0"
       ]
     },
-    "155": {
+    "163": {
       "op": "+",
       "defined_out": [
         "note#0",
-        "tmp%0#1"
+        "tmp%1#1"
       ],
       "stack_out": [
         "note#0",
-        "tmp%0#1"
+        "tmp%1#1"
       ]
     },
-    "156": {
+    "164": {
       "op": "bytec_0 // \"beats\"",
       "stack_out": [
         "note#0",
-        "tmp%0#1",
+        "tmp%1#1",
         "\"beats\""
       ]
     },
-    "157": {
+    "165": {
       "op": "swap",
       "stack_out": [
         "note#0",
         "\"beats\"",
-        "tmp%0#1"
+        "tmp%1#1"
       ]
     },
-    "158": {
+    "166": {
       "op": "app_global_put",
       "stack_out": [
         "note#0"
       ]
     },
-    "159": {
+    "167": {
       "op": "bytec_1 // \"last_beat_round\"",
       "defined_out": [
         "\"last_beat_round\"",
@@ -719,70 +768,70 @@
         "\"last_beat_round\""
       ]
     },
-    "160": {
+    "168": {
       "op": "global Round",
       "defined_out": [
         "\"last_beat_round\"",
         "note#0",
-        "tmp%1#1"
+        "tmp%2#1"
       ],
       "stack_out": [
         "note#0",
         "\"last_beat_round\"",
-        "tmp%1#1"
+        "tmp%2#1"
       ]
     },
-    "162": {
+    "170": {
       "op": "app_global_put",
       "stack_out": [
         "note#0"
       ]
     },
-    "163": {
+    "171": {
       "op": "extract 2 0",
       "defined_out": [
-        "tmp%2#1"
+        "tmp%3#1"
       ],
       "stack_out": [
-        "tmp%2#1"
+        "tmp%3#1"
       ]
     },
-    "166": {
+    "174": {
       "op": "bytec_2 // \"last_note\"",
       "defined_out": [
         "\"last_note\"",
-        "tmp%2#1"
+        "tmp%3#1"
       ],
       "stack_out": [
-        "tmp%2#1",
+        "tmp%3#1",
         "\"last_note\""
       ]
     },
-    "167": {
+    "175": {
       "op": "swap",
       "stack_out": [
         "\"last_note\"",
-        "tmp%2#1"
+        "tmp%3#1"
       ]
     },
-    "168": {
+    "176": {
       "op": "app_global_put",
       "stack_out": []
     },
-    "169": {
+    "177": {
       "op": "intc_0 // 0",
       "stack_out": [
         "0"
       ]
     },
-    "170": {
+    "178": {
       "op": "bytec_0 // \"beats\"",
       "stack_out": [
         "0",
         "\"beats\""
       ]
     },
-    "171": {
+    "179": {
       "op": "app_global_get_ex",
       "defined_out": [
         "maybe_exists%1#0",
@@ -793,14 +842,14 @@
         "maybe_exists%1#0"
       ]
     },
-    "172": {
+    "180": {
       "error": "check self.beats exists",
       "op": "assert // check self.beats exists",
       "stack_out": [
         "maybe_value%1#0"
       ]
     },
-    "173": {
+    "181": {
       "op": "itob",
       "defined_out": [
         "aggregate%val_as_bytes%0#0"
@@ -809,7 +858,7 @@
         "aggregate%val_as_bytes%0#0"
       ]
     },
-    "174": {
+    "182": {
       "op": "bytec_3 // 0x151f7c75",
       "defined_out": [
         "0x151f7c75",
@@ -820,14 +869,14 @@
         "0x151f7c75"
       ]
     },
-    "175": {
+    "183": {
       "op": "swap",
       "stack_out": [
         "0x151f7c75",
         "aggregate%val_as_bytes%0#0"
       ]
     },
-    "176": {
+    "184": {
       "op": "concat",
       "defined_out": [
         "tmp%5#0"
@@ -836,11 +885,11 @@
         "tmp%5#0"
       ]
     },
-    "177": {
+    "185": {
       "op": "log",
       "stack_out": []
     },
-    "178": {
+    "186": {
       "op": "intc_1 // 1",
       "defined_out": [
         "1"
@@ -849,7 +898,7 @@
         "1"
       ]
     },
-    "179": {
+    "187": {
       "op": "return",
       "stack_out": []
     }
