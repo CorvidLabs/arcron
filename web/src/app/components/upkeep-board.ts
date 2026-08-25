@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@a
 
 import { ArcronService } from '../core/arcron.service';
 import { type BoardEntry, type SortKey, sortEntries, summarise, toEntry } from '../core/board';
-import { algos, dueLabel, intervalLabel, microAlgos, rounds, runwayLabel } from '../core/format';
+import { algos, dueLabel, intervalLabel, rounds, runwayLabel } from '../core/format';
 import { KeeperService } from '../core/keeper.service';
 import { roundsUntilDue, toHex } from '../core/upkeep';
 import { WalletService } from '../core/wallet.service';
@@ -208,7 +208,7 @@ export class UpkeepBoard {
 
   protected readonly sorts = SORTS;
   protected readonly sort = signal<SortKey>('reward');
-  protected readonly executionCost = microAlgos(3_000n);
+  protected readonly executionCost = algos(3_000n);
 
   private readonly entries = computed(() => {
     const round = this.arcron.round();

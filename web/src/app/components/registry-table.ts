@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 
 import { ArcronService } from '../core/arcron.service';
-import { algos, dueLabel, intervalLabel, microAlgos, runwayLabel, shortAddress } from '../core/format';
+import { algos, dueLabel, intervalLabel, runwayLabel, shortAddress } from '../core/format';
 import { KeeperService } from '../core/keeper.service';
 import { WalletService } from '../core/wallet.service';
 import {
@@ -290,7 +290,7 @@ export class RegistryTable {
         fee: algos(upkeep.feePerExecution),
         // The tooltip has to describe the number it is attached to: the cell
         // shows the escalated fee when there is one, and the base fee when not.
-        feeExact: microAlgos(fee > upkeep.feePerExecution ? fee : upkeep.feePerExecution),
+        feeExact: algos(fee > upkeep.feePerExecution ? fee : upkeep.feePerExecution),
         feeNow: fee > upkeep.feePerExecution ? algos(fee) : null,
         policy: upkeep.policy === SKIP_AHEAD ? 'skips ahead' : 'catches up',
         ceiling: escalates(upkeep) ? algos(upkeep.feeCap) : null,

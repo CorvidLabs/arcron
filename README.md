@@ -3,23 +3,29 @@
 **Arcron** is a permissionless keeper network for Algorand — anyone registers
 a scheduled contract call, any keeper executes it for the fee. By
 [CorvidLabs](https://github.com/CorvidLabs), built with Algorand Python
-(Puya) and AlgoKit. Live on TestNet.
+(Puya) and AlgoKit.
 
-*An arcron was an Athenian magistrate — an annual office responsible for the
-city's business happening at its appointed time. The office mattered; whoever
-filled it did not, and nobody owned it.*
+*ARC and cron: Algorand's standards, and the scheduler everyone already knows.
+The job matters; whoever runs it does not, and nobody owns it.*
 
 | Contract | What it is | Status |
 |----------|-----------|--------|
-| [`smart_contracts/keeper`](smart_contracts/keeper/contract.py) | The Arcron network: upkeep scheduling with ALGO escrow and keeper rewards | **Live on TestNet** — app [`769802474`](https://testnet.explorer.perawallet.app/application/769802474) |
-| [`smart_contracts/pulse`](smart_contracts/pulse/contract.py) | Demo upkeep target (heartbeat counter) | Live on TestNet — app `769772906` |
+| [`smart_contracts/keeper`](smart_contracts/keeper/contract.py) | The Arcron network: upkeep scheduling with ALGO escrow and keeper rewards | Runs on LocalNet; **not yet deployed** at this version |
+| [`smart_contracts/pulse`](smart_contracts/pulse/contract.py) | Demo upkeep target: a heartbeat counter, with and without arguments | Runs on LocalNet |
 | [`web`](web/) | The console: registry dashboard + keeper controls | Runs against LocalNet and TestNet |
 
-App [`769772891`](https://testnet.explorer.perawallet.app/application/769772891) is the
-**deprecated** predecessor: it predates the box-MBR fix of 2026-08-24 and should
-not be used. Its registry is empty and its remaining escrow has been reclaimed —
-see [migration](docs/arcron.md#migrating-off-the-deprecated-app) if you
-registered anything against it.
+> [!WARNING]
+> **Unaudited, and nothing here is deployed at this version.** The TestNet apps
+> [`769802474`](https://testnet.explorer.perawallet.app/application/769802474)
+> and [`769772891`](https://testnet.explorer.perawallet.app/application/769772891)
+> both predate the current contract and should not be used; their registries are
+> empty and their escrow has been reclaimed. The contract has **no upgrade
+> path**, so read [`docs/security.md`](docs/security.md) — the threat model,
+> the accepted risks and what happens if a bug is found — before escrowing
+> anything anywhere.
+>
+> You can check what any deployment is actually running:
+> `poetry run python -m scripts.verify_build --network testnet --app-id <id>`
 
 **Building on it?** [`docs/integrating.md`](docs/integrating.md) is the whole
 integration story in one pass — the hook shape, authorization, the failure
@@ -241,8 +247,8 @@ poetry run python -m scripts.keeper_bot          # loop block-by-block
 poetry run python -m scripts.keeper_bot --once --network localnet --app-id $APP
 ```
 
-Defaults to the canonical TestNet app `769802474`; override with `--app-id`
-or `KEEPER_APP_ID`. An upkeep that fails to execute backs off exponentially,
+`--app-id` (or `KEEPER_APP_ID`) is required: there is no canonical Arcron
+deployment to default to. An upkeep that fails to execute backs off exponentially,
 and that state survives restarts, so a cron-driven `--once` bot does not
 re-attempt a doomed upkeep on every run. Failing costs nothing — Algorand
 rejects it before it reaches a block — so the schedule is gentle, capped at

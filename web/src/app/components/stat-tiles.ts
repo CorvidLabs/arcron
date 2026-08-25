@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 
 import { ArcronService } from '../core/arcron.service';
-import { algos, duration, microAlgos } from '../core/format';
+import { algos, duration } from '../core/format';
 import { isExecutable } from '../core/upkeep';
 
 @Component({
@@ -72,7 +72,7 @@ export class StatTiles {
   });
 
   protected readonly escrowed = computed(() => algos(this.arcron.totalEscrowed()));
-  protected readonly escrowedExact = computed(() => microAlgos(this.arcron.totalEscrowed()));
+  protected readonly escrowedExact = computed(() => algos(this.arcron.totalEscrowed()));
 
   protected readonly spendable = computed(() => {
     const account = this.arcron.appAccount();

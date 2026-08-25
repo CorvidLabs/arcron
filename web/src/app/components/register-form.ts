@@ -4,7 +4,7 @@ import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { map } from 'rxjs';
 
 import { ArcronService } from '../core/arcron.service';
-import { algos, duration, microAlgos, runwayLabel } from '../core/format';
+import { algos, duration, runwayLabel } from '../core/format';
 import { encodeCall, PULSE_TICK_SIGNATURE } from '../core/keeper-abi';
 import { KeeperService } from '../core/keeper.service';
 import {
@@ -352,7 +352,7 @@ export class RegisterForm {
   protected readonly mbrNote = computed(() => {
     const mbr = this.mbr();
     if (mbr === null) return 'fix the signature to price the box';
-    return `${algos(mbr)} box MBR (${microAlgos(mbr)}) — refunded in full on cancel`;
+    return `${algos(mbr)} box MBR — refunded in full on cancel`;
   });
 
   protected readonly canSubmit = computed(
