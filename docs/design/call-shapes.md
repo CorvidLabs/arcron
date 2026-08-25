@@ -1,6 +1,6 @@
 # Design: call shapes — multi-argument and foreign arrays
 
-**Status:** implemented at a fan-out ceiling of 3. The foreign-array half is a documented convention, not code — see `docs/integrating.md`.
+**Status:** implemented at a fan-out ceiling of 3. The foreign-array half needed nothing at all — see the correction below.
 **Issue:** [#8](https://github.com/CorvidLabs/arcron/issues/8)
 **Depends on:** [#24](https://github.com/CorvidLabs/arcron/issues/24) (measured), and shares a struct with [#7 and #14](scheduling-and-fees.md)
 **Reproduce every number here:** `poetry run python -m scripts.spike_multiarg --network localnet`, and the batch table with `poetry run python -m scripts.spike_asa_fee --network localnet`
@@ -156,45 +156,32 @@ covers *any* arity for a target that packs its arguments into one struct, and
 234 bytes is enough room to fix something during implementation without
 re-opening the decision.
 
-### 3. Foreign arrays stay out of the struct; resource discovery is a convention
+### 3. Foreign arrays stay out of the struct — and discovery needs nothing either
 
-Do not store a resource list. Instead, publish a convention: a target that
-needs resources exposes a readonly
+Do not store a resource list. #24 measured that availability supplied on the
+keeper's transaction already reaches two levels down, so the capability exists
+without a struct field.
 
-```
-resources()(address[],uint64[],uint64[])
-```
+This section originally went further and proposed a convention: a readonly
+`resources()` view for a target to declare what it needs, which a keeper would
+simulate and attach. **That was unnecessary, and it is withdrawn.**
 
-which the keeper simulates before executing and attaches — up to the 6 slots
-#24 measured — to its own `execute` transaction. A target that does not
-implement it fails the simulate and the keeper attaches nothing, which is
-exactly today's behaviour, so nothing existing breaks.
+Simulation already answers the question. A keeper simulates the call, the node
+reports the resources it *would* have required, and the keeper attaches those
+and sends. `algokit-utils` does it by default — `populate_app_call_resources`.
+Measured on LocalNet against a target reaching for an account no argument
+names: a raw transaction with no references fails with `unavailable Account`,
+and the identical call through a keeper that simulates first succeeds.
 
-Storing the list instead would cost 32 bytes per address of box MBR, burn
-struct budget in a contract that cannot be upgraded, cap out at 6 anyway, and
-**freeze the list at registration** — a treasury whose recipients change would
-need cancel-and-re-register. It would buy nothing in exchange, because
-availability is granted by the keeper's transaction either way; a stored list
-would only ever be documentation the keeper reads. The view is that same
-documentation, minus the MBR and minus the freeze, and it stays correct when
-the target's needs change.
+That is strictly better than a convention on three counts. It needs **nothing
+from the target**, so it works for apps written before Arcron existed. It
+stays correct when a target's needs **change between runs**, which a declared
+list cannot. And it has **no adoption problem** — a convention with no users
+is a convention whose details are wrong.
 
-Three properties make the convention safe:
-
-- **References grant availability, not authority.** The target already decides
-  what it touches, and the call is still fixed by the creator.
-- **A wrong answer is free.** [#13](https://github.com/CorvidLabs/arcron/issues/13)
-  measured that a rejected execution costs a keeper nothing — the transaction
-  never commits. A keeper can simulate and skip.
-- **The 6-reference ceiling still binds**, and `resources()` lets a keeper
-  learn that *before* spending anything, rather than in a rejection.
-
-The honest cost: nothing enforces it, it adds an algod round-trip per due
-upkeep, and it is an Arcron convention rather than a standard anyone else
-honours. An ARC is the eventual answer; not in 1.0.
-
-This is the "written decision that it is out of scope, with the reasoning
-recorded" that #8's acceptance criteria allows for the foreign-array half.
+The lesson is worth keeping rather than quietly deleting: the design reasoned
+its way to a plausible mechanism without first checking whether the platform
+already provided one. It did.
 
 ### 4. `on_completion` stays pinned to NoOp
 
@@ -255,7 +242,7 @@ Beyond the struct:
   the target rather than inferred from success.
 - **The "base MBR only" regression** must be re-run, because the fixed
   component changes. That test is the reason to trust the new formula.
-- **`docs/integrating.md`** gains the `resources()` convention and a revised
+- **`docs/integrating.md`** gains the simulation-discovery note and a revised
   budget figure — a target now sees 1,216 rather than 1,250.
 
 ## Open questions for review
@@ -269,11 +256,9 @@ Beyond the struct:
    measured, so this was no longer an estimate — the whole batch is 1,814
    bytes at 3 and 1,990 at 4, against a 2,048-byte page. The failure mode is
    quiet, so the batch takes the setting with room in it.
-3. **Should `resources()` be part of 1.0 at all, or just documented?** The
-   keeper bot change is small; the argument for deferring is that no demo
-   needs it yet, and a convention with no user is a convention that gets the
-   details wrong. Recommendation: document it in `docs/integrating.md` for
-   1.0, implement the keeper-side simulate only when a real target wants it.
+3. ~~**Should `resources()` be part of 1.0 at all?**~~ **Withdrawn.**
+   Simulation already reports what a call needs, for every target, with no
+   cooperation. There is nothing to standardise.
 4. **Does `MAX_CALL_DATA` stay 1,024?** It becomes a cap on the encoded
    payload. The AVM's own `MaxAppTotalArgLen` is 2,048, so 1,024 stays
    conservative — but it is now shared across every argument, and a 1,024-byte

@@ -168,43 +168,50 @@ then claim. `smart_contracts/deadman/` allocates to a beneficiary who claims.
 ## Reaching resources your hook cannot name
 
 A scheduled call can only touch what the executing transaction makes
-available. Arcron stores no foreign arrays — but it does not need to. Resource
-availability supplied on the *keeper's* transaction reaches two levels down:
-to Arcron's inner call, and to your own inner transactions from it. Measured
-in [#24](https://github.com/CorvidLabs/arcron/issues/24), across payments,
-asset transfers, balance reads, holding reads and inner app calls.
+available. Arcron stores no foreign arrays — and it turns out it does not need
+to, and neither do you.
 
-The budget is **8 references per transaction**. Arcron spends two — the upkeep
-box and your app — leaving **6** in any mix of accounts, assets and apps.
+Resource availability supplied on the *keeper's* transaction reaches two levels
+down: to Arcron's inner call, and to your own inner transactions from it.
+Measured in [#24](https://github.com/CorvidLabs/arcron/issues/24) across
+payments, asset transfers, balance reads, holding reads and inner app calls.
+The budget is **8 references per transaction**; Arcron spends two — the upkeep
+box and your app — leaving **6**.
 
-What is missing is discovery: nothing on chain tells a keeper which resources
-your upkeep needs. The convention Arcron proposes is a readonly view a keeper
-simulates before executing:
+**A keeper does not have to be told which ones you need.** Simulation reports
+the resources a call *would* have required, so a keeper simulates first,
+attaches what the simulation names, and then sends. `algokit-utils` does this
+by default — its `populate_app_call_resources` send parameter — so a keeper
+built on it services your hook with no configuration and no cooperation from
+you.
 
-```
-resources()(address[],uint64[],uint64[])
-```
+Measured on LocalNet against a target that reaches for an account no argument
+names:
 
-Return the accounts, assets and apps your hook will reach for. A keeper
-simulates it for free, attaches what it names, and executes. A target that
-does not implement it fails the simulate and the keeper attaches nothing,
-which is exactly today's behaviour — nothing existing breaks.
+| | |
+|---|---|
+| A raw transaction with no references | fails — `unavailable Account …` |
+| The same call through a keeper that simulates first | **succeeds** |
 
-Three things make this safe, and worth knowing before you rely on it:
+So there is nothing to declare and nothing to implement. **Write your hook to
+reach for what it needs and let the keeper discover it.**
 
-- **References grant availability, not authority.** Your hook already decides
-  what it touches, and `call_args` is still fixed by whoever registered the
-  upkeep.
-- **A wrong answer is free.** A rejected execution costs a keeper nothing, so
-  it can simulate and skip.
-- **Six is the ceiling**, and `resources()` lets a keeper learn that before
-  spending anything rather than in a rejection.
+An earlier version of this guide proposed a `resources()` view for your app to
+declare them. That was unnecessary: simulation answers the same question for
+every target, including ones whose needs change between runs, and including
+ones written before the convention existed. It is not implemented and will not
+be.
 
-Not enforced by the contract, and not yet read by `scripts/keeper_bot.py` —
-this is a convention with no user yet, and a convention with no user is one
-that gets the details wrong. If you need it, say so on
-[#8](https://github.com/CorvidLabs/arcron/issues/8) and it becomes a keeper
-feature rather than a paragraph.
+Two things still worth knowing:
+
+- **Six is a real ceiling.** A hook that reaches for more than six distinct
+  accounts, assets and apps cannot be serviced, however it is discovered. That
+  is the constraint the *pull* pattern exists to sidestep — allocate in the
+  scheduled call, and let each recipient's own transaction carry its own
+  availability.
+- **Simulation sees the state at simulation time.** A hook whose resource needs
+  depend on state that changes between the simulate and the send can still be
+  mis-served. Keep what a scheduled hook touches predictable.
 
 ## Calls with arguments
 
