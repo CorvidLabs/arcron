@@ -3,8 +3,10 @@
 #   sudo cp deploy/keeper-bot.service /etc/systemd/system/
 #   sudo systemctl enable --now keeper-bot
 #
-# Expects the repository at /opt/arcron with its Poetry environment installed,
-# and /etc/arcron/keeper.env holding KEEPER_MNEMONIC (chmod 600).
+# deploy/vps/install.sh puts everything where this expects it. By hand:
+# the runtime tree at /opt/arcron with its virtualenv at /opt/arcron/.venv
+# (poetry install with POETRY_VIRTUALENVS_IN_PROJECT=true), and
+# /etc/arcron/keeper.env holding KEEPER_MNEMONIC, chmod 640 root:keeper.
 
 [Unit]
 Description=Arcron keeper bot
@@ -17,7 +19,7 @@ Type=simple
 User=keeper
 WorkingDirectory=/opt/arcron
 EnvironmentFile=/etc/arcron/keeper.env
-ExecStart=/usr/local/bin/poetry run python -m scripts.keeper_bot --network testnet --log-format json
+ExecStart=/opt/arcron/.venv/bin/python -m scripts.keeper_bot --network testnet --log-format json
 # Finish the scan in flight, then exit.
 KillSignal=SIGTERM
 TimeoutStopSec=30
