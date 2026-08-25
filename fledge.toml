@@ -15,6 +15,9 @@ js-test = "cd js && bun test"
 web-install = "bun install"
 web-test = "cd web && bun test"
 web-build = "cd web && bun run ng build"
+# The console as hosted on corvidlabs.xyz. Every asset it references is
+# relative, so the base href is the only thing that has to know the path.
+web-build-hosted = "cd web && bun run ng build --base-href /arcron/console/ --output-path dist/hosted"
 web-serve = "cd web && bun run ng serve"
 # Require LocalNet running (algokit localnet start):
 smoke-keeper = "poetry run python -m scripts.keeper_e2e --network localnet"
