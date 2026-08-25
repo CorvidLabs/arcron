@@ -7,8 +7,8 @@ full picture — keep all three consistent when conventions change.
 
 Arcron — Algorand smart contracts (Algorand Python / Puya + AlgoKit). Main
 project: `smart_contracts/keeper/` — a permissionless keeper network, live on
-TestNet (app 769802474; 769772891 is its deprecated, pre-box-MBR-fix
-predecessor). `pulse/` is its demo target (app 769772906).
+TestNet (app 769823086; 769802474 and 769772891 are superseded, predating the
+1.0 contract). `pulse/` is its demo target (app 769823097).
 
 ## Commands
 

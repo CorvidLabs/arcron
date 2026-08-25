@@ -19,7 +19,7 @@ on:
       app_id:
         description: Keeper app id to service
         required: false
-        default: "769802474"
+        default: "769823086"
   # schedule:
   #   - cron: "*/5 * * * *"
 
@@ -46,6 +46,6 @@ jobs:
       - name: Service due upkeeps
         env:
           KEEPER_MNEMONIC: ${{ secrets.KEEPER_MNEMONIC }}
-          KEEPER_APP_ID: ${{ inputs.app_id || '769802474' }}
+          KEEPER_APP_ID: ${{ inputs.app_id || '769823086' }}
           ALGOD_SERVER: https://testnet-api.algonode.cloud
         run: poetry run python -m scripts.keeper_bot --once --network testnet --log-format json
