@@ -338,6 +338,16 @@ def test_the_wrong_asset_is_refused(context: AlgopyTestContext) -> None:
         contract.deposit_asset(transfer)
 
 
+@pytest.fixture()
+def asset_rain_pair(context: AlgopyTestContext):
+    """A configured asset draw, and the asset it pays in."""
+    prize = context.any.asset()
+    context.ledger.patch_global_fields(round=UInt64(START_ROUND))
+    contract = Rain()
+    contract.configure(UInt64(BEACON_APP), arc4.Address(), prize.id)
+    return contract, prize
+
+
 # --- regressions from the adversarial review ---------------------------
 
 
@@ -472,3 +482,47 @@ def test_the_opt_in_refuses_a_different_asset(context: AlgopyTestContext) -> Non
     )
     with pytest.raises(Exception, match="Wrong asset"):
         contract.opt_in_prize_asset(decoy, payment)
+
+
+def test_an_asset_draw_will_not_open_without_algo_for_the_winners_box(
+    context: AlgopyTestContext, asset_rain_pair
+) -> None:
+    """Invariant 12, which had no test.
+
+    An asset draw reserves nothing from the pot, so the ALGO for the winner's
+    allocation box has to already be in the app account. Without this check
+    `resolve` would fail on minimum balance with the draw open, and a draw
+    that cannot be resolved can never be reopened.
+    """
+    contract, prize = asset_rain_pair
+    _enter(context, contract)
+    contract.deposit_asset(
+        context.any.txn.asset_transfer(
+            xfer_asset=prize,
+            asset_receiver=context.ledger.get_app(contract).address,
+            asset_amount=500,
+        )
+    )
+
+    app = context.ledger.get_app(contract)
+    # Spendable ALGO below one allocation box: the draw declines rather than
+    # opening one it cannot resolve.
+    context.ledger.update_account(app.address, balance=UInt64(200_000), min_balance=UInt64(190_000))
+    assert int(contract.draw()) == 0
+    assert contract.draw_open.value == 0
+
+    # Funded, it opens.
+    context.ledger.update_account(app.address, balance=UInt64(500_000), min_balance=UInt64(100_000))
+    assert int(contract.draw()) > 0
+
+
+def test_tick_with_refuses_an_increment_that_could_wedge_the_counter(
+    context: AlgopyTestContext,
+) -> None:
+    """The bound that stops one call making every later tick overflow."""
+    from smart_contracts.pulse.contract import MAX_BEATS_PER_TICK, Pulse
+
+    pulse = Pulse()
+    assert int(pulse.tick_with(UInt64(MAX_BEATS_PER_TICK), arc4.String("ok"))) == MAX_BEATS_PER_TICK
+    with pytest.raises(Exception, match="Too many beats"):
+        pulse.tick_with(UInt64(MAX_BEATS_PER_TICK + 1), arc4.String("no"))
