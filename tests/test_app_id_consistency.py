@@ -31,6 +31,7 @@ HISTORICAL = {
     "CLAUDE.md",
     "docs/releases.md",
     "docs/arcron.md",
+    "SECURITY.md",
     "tests/test_app_id_consistency.py",
 }
 

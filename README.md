@@ -319,9 +319,36 @@ fails if code drifts from the documented public API.
 ## Roadmap
 
 - [x] Off-chain keeper bot (watches rounds, executes due upkeeps) — `scripts/keeper_bot.py`
-- [ ] ASA-denominated upkeep fees (CORVID — mainnet ASA [`3225439167`](https://explorer.perawallet.app/asset/3225439167))
+- [x] ASA-denominated upkeep fees — a capability, not a commitment: escrow and fees stay ALGO by default, and CORVID (mainnet ASA [`3225439167`](https://explorer.perawallet.app/asset/3225439167)) is not wired in
 - [x] End-to-end verification on LocalNet (`fledge lanes run local`) — found and fixed an 800 µALGO box-MBR undercharge
 - [x] Redeploy TestNet with the box-MBR fix — app [`769802474`](https://testnet.explorer.perawallet.app/application/769802474), e2e-verified on-chain
+- [x] Redeploy for the 1.0 contract — **alpha-1**, app [`769823086`](https://testnet.explorer.perawallet.app/application/769823086), all 20 e2e stages green on-chain
 - [x] Web front end: registry dashboard + keeper console — `web/`
 - [x] Wallet signing (Pera, Defly, Lute, Exodus, Kibisis; KMD on LocalNet)
-- [ ] Multi-arg / foreign-array call shapes, if real use cases demand them
+- [x] Multi-arg call shapes — up to three ARC-4 arguments per upkeep
+- [x] Release stages, with the gate that ends each one — [`docs/releases.md`](docs/releases.md)
+
+## Contributing
+
+The most useful contribution is not code: **run a keeper**. The network only
+works because third parties execute due upkeeps, and that is deliberately open
+to anyone — no allowlist, no stake, no registration. See
+[Operating a bot](docs/arcron.md#operating-a-bot).
+
+For code, [CONTRIBUTING.md](CONTRIBUTING.md) covers what will otherwise bite
+you: the Python version (never 3.14), the `fledge lanes run ci` gate, and
+spec-sync strict, which fails a pull request on documentation drift a newcomer
+would have no way to anticipate.
+
+Security reports go through [SECURITY.md](SECURITY.md), privately rather than
+as a public issue.
+
+## Licence
+
+[Apache-2.0](LICENSE) for the code, which carries an express patent grant —
+worth having for protocol code other people are asked to build on.
+
+**The brand assets in `web/public/brand/` are excluded**: they are CorvidLabs
+trademarks, not licensed code. Fork Arcron freely, and replace those files with
+your own marks if you run it as your own project. [NOTICE](NOTICE) says exactly
+which files that covers and why.

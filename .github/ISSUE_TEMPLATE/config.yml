@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/CorvidLabs/arcron/security/advisories/new
+    about: Report privately as a draft advisory, never as a public issue.
+  - name: Running a keeper
+    url: https://github.com/CorvidLabs/arcron/blob/main/docs/arcron.md#operating-a-bot
+    about: How to run a bot and earn fees — the most useful contribution there is.
