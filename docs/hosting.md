@@ -53,8 +53,19 @@ the app to service.
 
 ### B. GitHub Actions on a schedule
 
-`.github/workflows/keeper-bot.yml` already does this, with the schedule
-commented out. Uncomment it once `KEEPER_MNEMONIC` is a repository secret.
+`.github/workflows/keeper-bot.yml` does this, and the schedule is live at
+half-hourly. It skips itself cleanly when `KEEPER_MNEMONIC` is not set, so the
+workflow being on before the secret exists produces a green run with a notice
+rather than a failure every half hour that everyone learns to ignore.
+
+To start keeping, add `KEEPER_MNEMONIC` as a repository secret. Generate the
+account yourself and give it only what it needs: it refuses to start below
+103,000 microAlgos, and a couple of ALGO of float is plenty while fees top it
+up.
+
+Half-hourly is chosen against the upkeeps that exist rather than in the
+abstract. The shortest live cadence is about six hours, so a check every
+thirty minutes is late by at most eight percent of one interval.
 
 **The cost is the thing to check first**, because it is billed per minute on a
 private repository and a keeper runs constantly. A run is roughly two minutes,
