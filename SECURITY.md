@@ -34,12 +34,12 @@ was in turn superseded by the 1.0 contract, whose `Upkeep` struct is a
 different shape; its registry is empty. `docs/arcron.md` records the migration.
 
 The live deployment is
-[`769823086`](https://testnet.explorer.perawallet.app/application/769823086).
+[`769891898`](https://testnet.explorer.perawallet.app/application/769891898).
 Check that any app really is the code you think it is, comparing compiled
 bytecode rather than source text:
 
 ```bash
-poetry run python -m scripts.verify_build --network testnet --app-id 769823086
+poetry run python -m scripts.verify_build --network testnet --app-id 769891898
 ```
 
 ## What stage this is at

@@ -71,7 +71,7 @@ A new deployment starts **unfrozen**: its creator can replace the programs.
 That is deliberate, and temporary.
 
 ```bash
-fledge run govern -- status --network testnet --app-id 769823086
+fledge run govern -- status --network testnet --app-id 769891898
 fledge run govern -- update --network testnet --app-id <id>
 fledge run govern -- freeze --network testnet --app-id <id>
 ```
@@ -80,7 +80,7 @@ fledge run govern -- freeze --network testnet --app-id <id>
 trusting anyone:
 
 ```
-app 769823086
+app 769891898
   approval   1932 bytes
   combined  sha256 bb466d637cc9441f408e8af29cc68398ab2d4320a02629e22c95cf057ce6d0fb
   frozen    absent: this app predates the freeze flag and has no update path

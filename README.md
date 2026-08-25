@@ -10,8 +10,8 @@ The job matters; whoever runs it does not, and nobody owns it.*
 
 | Contract | What it is | Status |
 |----------|-----------|--------|
-| [`smart_contracts/keeper`](smart_contracts/keeper/contract.py) | The Arcron network: upkeep scheduling with ALGO escrow and keeper rewards | **Live on TestNet**, app [`769823086`](https://testnet.explorer.perawallet.app/application/769823086) |
-| [`smart_contracts/pulse`](smart_contracts/pulse/contract.py) | Demo upkeep target: a heartbeat counter, with and without arguments | Live on TestNet, app [`769823097`](https://testnet.explorer.perawallet.app/application/769823097) |
+| [`smart_contracts/keeper`](smart_contracts/keeper/contract.py) | The Arcron network: upkeep scheduling with ALGO escrow and keeper rewards | **Live on TestNet**, app [`769891898`](https://testnet.explorer.perawallet.app/application/769891898) |
+| [`smart_contracts/pulse`](smart_contracts/pulse/contract.py) | Demo upkeep target: a heartbeat counter, with and without arguments | Live on TestNet, app [`769891902`](https://testnet.explorer.perawallet.app/application/769891902) |
 | [`web`](web/) | The console: registry dashboard + keeper controls | Runs against LocalNet and TestNet |
 
 > [!WARNING]
@@ -22,7 +22,7 @@ The job matters; whoever runs it does not, and nobody owns it.*
 > `freeze` gives up both, permanently, and `frozen` is global state so anyone
 > can check which of the two a deployment is:
 > ```
-> poetry run python -m scripts.govern status --network testnet --app-id 769823086
+> poetry run python -m scripts.govern status --network testnet --app-id 769891898
 > ```
 > Read [`docs/security.md`](docs/security.md) before escrowing anything: the
 > threat model, the accepted risks, and what happens if a bug is found.
@@ -36,7 +36,7 @@ The job matters; whoever runs it does not, and nobody owns it.*
 > Check what any deployment is actually running. It compares compiled
 > bytecode, not source text:
 > ```
-> poetry run python -m scripts.verify_build --network testnet --app-id 769823086
+> poetry run python -m scripts.verify_build --network testnet --app-id 769891898
 > ```
 
 **Building on it?** [`docs/integrating.md`](docs/integrating.md) is the whole
@@ -366,7 +366,7 @@ invariants, error cases and testing. `specsync check --strict` runs in the
 - [x] ASA-denominated upkeep fees, a capability rather than a commitment: escrow and fees stay ALGO by default, and CORVID (mainnet ASA [`3225439167`](https://explorer.perawallet.app/asset/3225439167)) is not wired in
 - [x] End-to-end verification on LocalNet (`fledge lanes run local`), which found and fixed an 800 µALGO box-MBR undercharge
 - [x] Redeploy TestNet with the box-MBR fix: app [`769802474`](https://testnet.explorer.perawallet.app/application/769802474), e2e-verified on-chain
-- [x] Redeploy for the 1.0 contract, **alpha-1** on app [`769823086`](https://testnet.explorer.perawallet.app/application/769823086), all 20 e2e stages green on-chain
+- [x] Redeploy for the 1.0 contract, **alpha-1** on app [`769891898`](https://testnet.explorer.perawallet.app/application/769891898), all 20 e2e stages green on-chain
 - [x] Web front end: registry dashboard + keeper console in `web/`
 - [x] Wallet signing (Pera, Defly, Lute, Exodus, Kibisis; KMD on LocalNet)
 - [x] Multi-arg call shapes, up to three ARC-4 arguments per upkeep

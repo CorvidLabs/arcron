@@ -51,7 +51,7 @@ sender to check. Derive the address off-chain with
 
 ```python
 from algosdk.logic import get_application_address
-get_application_address(769823086)
+get_application_address(769891898)
 ```
 
 **Leave it permissionless.** Anyone may call the hook, as `Pulse` and the
@@ -464,5 +464,5 @@ algokit localnet start
 fledge lanes run local          # the whole suite, including seven worked demos
 ```
 
-Then register against the live TestNet keeper app `769823086` with
+Then register against the live TestNet keeper app `769891898` with
 `examples/register_upkeep.py`.

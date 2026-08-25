@@ -62,6 +62,12 @@ def _rewrite_links(body: str, base: str) -> str:
         if "#" in target:
             target, anchor = target.split("#", 1)
             anchor = "#" + anchor
+        # A link to an anchor on this same page, which every table of contents
+        # is made of. Splitting the anchor off leaves an empty target, and an
+        # earlier version of this then treated it as an unpublished file and
+        # stripped the link, turning every contents list into dead text.
+        if not target:
+            return f"[{label}]({anchor})"
         name = target.split("/")[-1]
         if name in PUBLISHED:
             return f"[{label}]({base}{PUBLISHED[name]}/{anchor})"

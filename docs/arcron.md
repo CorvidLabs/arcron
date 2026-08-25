@@ -7,8 +7,8 @@ quick overview see `../README.md`; for runnable flows see `../examples/`.
 
 | Item | Value |
 |------|-------|
-| Keeper app | [`769823086`](https://testnet.explorer.perawallet.app/application/769823086) |
-| Pulse demo target | [`769823097`](https://testnet.explorer.perawallet.app/application/769823097) |
+| Keeper app | [`769891898`](https://testnet.explorer.perawallet.app/application/769891898) |
+| Pulse demo target | [`769891902`](https://testnet.explorer.perawallet.app/application/769891902) |
 | Reference bot | `scripts/keeper_bot.py` |
 | Proof | All 20 stages of `scripts/keeper_e2e.py` pass against it on-chain, including the box-MBR regression, the losing-keeper measurement, and the escalation-lockout and patient-keeper regressions. |
 | Stage | **alpha-1**, see [release stages](releases.md) |
@@ -42,7 +42,7 @@ returns to exactly its base MBR.
 ## Architecture
 
 ```
-creator                keeper app (769823086)               target app
+creator                keeper app (769891898)               target app
    | register + escrow ALGO  |                                    |
    |------------------------>|  box "u"+id: Upkeep struct         |
    |                         |                                    |
@@ -170,7 +170,7 @@ an external entry point that anyone may call once an upkeep is due.
 
 | | |
 |---|---|
-| Keeper app | `769823086` (TestNet) |
+| Keeper app | `769891898` (TestNet) |
 | Upkeeps registered | none; the e2e cancels everything it creates |
 | Always-on keeper | **none running** |
 | Last executions | rounds 66629036 to 66629138, from the deployment verification |
@@ -310,7 +310,7 @@ and the mnemonic lives in repository secrets.
 `--log-format json` (the container default) emits one object per line:
 
 ```json
-{"event": "started", "keeper": "E5M2…FJZQ3E", "app_id": 769823086, "network": "testnet"}
+{"event": "started", "keeper": "E5M2…FJZQ3E", "app_id": 769891898, "network": "testnet"}
 {"event": "scan", "round": 66629378, "upkeeps": 3, "due": 1, "skipped": 0}
 {"event": "executed", "round": 66629379, "upkeep_id": 9, "target_app": 1043,
  "fee_collected": 4000, "escrow_remaining": 8000, "next_due_round": 66629389,

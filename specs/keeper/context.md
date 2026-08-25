@@ -22,7 +22,7 @@ spec: keeper.spec.md
 
 - Implemented and unit-tested: register (+5 validation paths), execute (happy path, not-due, insufficient funding, unknown id), top_up, cancel (+refund, double-cancel).
 - The mock AVM records but does not execute inner app calls, and does not enforce minimum balances. Both gaps are covered by `scripts/keeper_e2e.py` on LocalNet.
-- **Live on TestNet**: the alpha-1 deployment of the 1.0 contract is Keeper app `769823086` and Pulse app `769823097` (deployer `E5M2OH5XNDMNABJ6VOFOUVR2IKRPCGQH43PVC5P3DWQQ2LV2VJV2FJZQ3E`). The full 20-stage e2e passes against it on-chain, including the box-MBR regression, the losing-keeper measurement, and the escalation-lockout and patient-keeper regressions. Two apps are superseded and must not be used: `769802474` predates the 1.0 struct (its registry is empty), and `769772891` predates the box-MBR fix. The registry of `769772891` has been emptied, but 243,000 µALGO of box MBR is stranded there permanently. The fix exists precisely so that cannot happen again.
+- **Live on TestNet**: the alpha-2 deployment is Keeper app `769891898`, Pulse app `769891902` (deployer `E5M2OH5XNDMNABJ6VOFOUVR2IKRPCGQH43PVC5P3DWQQ2LV2VJV2FJZQ3E`), combined sha256 `0afab368…`, and it starts unfrozen so the creator can still replace its programs. It is the first deployment carrying governance and every fix from five adversarial review rounds. Three deployments are superseded and must not be used: `769823086` (alpha-1) predates governance and is immutable, `769802474` predates the 1.0 struct, and `769772891` predates the box-MBR fix and has 243,000 µALGO stranded in it permanently.
 
 ## Notes
 
