@@ -19,6 +19,7 @@ from scripts import network as net
 from scripts.keeper_e2e import _assert, _box_mbr, _read_upkeep, _selector
 from smart_contracts.artifacts.keeper.keeper_client import (
     CancelArgs,
+    ExecuteArgs,
     OptInAssetArgs,
     RegisterArgs,
     TopUpAssetArgs,
@@ -164,7 +165,87 @@ def main(argv: list[str] | None = None) -> None:
     _assert("the escrow and box MBR came back", refund > 0, True)
     _assert("and actually reached the creator", after > before, True)
 
-    logger.info("── 5. And a frozen creator can still cancel ──")
+    logger.info("── 5. An execution still happens when the bonus cannot be paid ──")
+    # cancel was covered above; execute pays the bonus on a different path and
+    # was only ever covered by a unit test using an upkeep whose bonus was
+    # never funded. Here the bonus is really funded and really taken back, so
+    # the keeper's ALGO fee and the inner call to the target have to survive
+    # an asset transfer that cannot happen.
+    third_issuer = algorand.account.random()
+    algorand.send.payment(
+        algokit_utils.PaymentParams(
+            sender=creator.address, receiver=third_issuer.address,
+            amount=algokit_utils.AlgoAmount(micro_algo=2_000_000),
+        )
+    )
+    third_asset = algorand.send.asset_create(
+        algokit_utils.AssetCreateParams(
+            sender=third_issuer.address, total=1_000_000, decimals=0,
+            asset_name="Taken Points", unit_name="TKP", clawback=third_issuer.address,
+        )
+    ).asset_id
+    third = keeper.send.register(
+        args=RegisterArgs(
+            mbr_payment=payment(_box_mbr([call_data])),
+            funding_payment=payment(FEE * 4),
+            target_app=pulse.app_id,
+            call_args=[call_data],
+            interval_rounds=INTERVAL,
+            fee_per_execution=FEE,
+            policy=CATCH_UP,
+            fee_cap=0,
+            fee_asset=third_asset,
+            asset_fee=BONUS,
+        )
+    ).abi_return
+    keeper.send.opt_in_asset(
+        args=OptInAssetArgs(
+            mbr_payment=payment(ASSET_OPT_IN_MBR), upkeep_id=third, asset=third_asset
+        ),
+        params=algokit_utils.CommonAppCallParams(
+            extra_fee=algokit_utils.AlgoAmount(micro_algo=1_000)
+        ),
+    )
+    algorand.send.asset_opt_in(
+        algokit_utils.AssetOptInParams(sender=creator.address, asset_id=third_asset)
+    )
+    algorand.send.asset_transfer(
+        algokit_utils.AssetTransferParams(
+            sender=third_issuer.address, receiver=creator.address,
+            asset_id=third_asset, amount=BONUS * 2,
+        )
+    )
+    keeper.send.top_up_asset(
+        args=TopUpAssetArgs(
+            upkeep_id=third,
+            asset_funding=algorand.create_transaction.asset_transfer(
+                algokit_utils.AssetTransferParams(
+                    sender=creator.address, receiver=keeper.app_address,
+                    asset_id=third_asset, amount=BONUS * 2,
+                )
+            ),
+        )
+    )
+    algorand.send.asset_transfer(
+        algokit_utils.AssetTransferParams(
+            sender=third_issuer.address, receiver=third_issuer.address,
+            clawback_target=keeper.app_address, asset_id=third_asset, amount=BONUS * 2,
+        )
+    )
+    beats_before = pulse.state.global_state.beats
+    upkeep, _ = _read_upkeep(algorand, keeper.app_id, third)
+    net.wait_for_round(algorand, upkeep.next_execution_round, poker=creator)
+    keeper.send.execute(
+        args=ExecuteArgs(upkeep_id=third),
+        params=algokit_utils.CommonAppCallParams(
+            extra_fee=algokit_utils.AlgoAmount(micro_algo=2_000)
+        ),
+    )
+    _assert("the target was still called", pulse.state.global_state.beats, beats_before + 1)
+    upkeep, _ = _read_upkeep(algorand, keeper.app_id, third)
+    _assert("and the execution was recorded", upkeep.times_executed, 1)
+
+    logger.info("── 6. And a frozen creator can still cancel ──")
     # The other way an issuer can make a transfer fail. A frozen holding still
     # reports a balance, so checking the amount is not enough, and the creator
     # cannot escape by opting out: a frozen account cannot close a holding.
