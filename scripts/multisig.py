@@ -22,6 +22,7 @@ submit the result: a signature is not a secret.
 """
 
 import base64
+import hashlib
 import json
 import logging
 import os
@@ -117,6 +118,49 @@ def sign(path: pathlib.Path, signer_mnemonic: str) -> int:
     payload["msig"] = base64.b64encode(encoding.msgpack_encode(signed).encode()).decode()
     path.write_text(json.dumps(payload, indent=2) + "\n")
     return collected(path)
+
+
+def describe_transaction(path: pathlib.Path) -> list[str]:
+    """What the transaction in this file would actually do, in plain terms.
+
+    A holder is asked to sign base64 msgpack, which nobody can read. Signing
+    what you cannot read is the whole failure mode of a multisig: it turns
+    several people into one person who happened to click several times. This
+    is what `govern show` prints, and it is worth reading before signing.
+    """
+    signed = _load(path)
+    txn = signed.transaction
+    lines = [
+        f"type          {txn.type}",
+        f"sender        {txn.sender}",
+        f"network       {txn.genesis_id}",
+        f"valid rounds  {txn.first_valid_round} to {txn.last_valid_round}",
+        f"fee           {txn.fee} microAlgos",
+    ]
+    on_complete = getattr(txn, "on_complete", None)
+    if on_complete is not None:
+        names = {0: "NoOp", 1: "OptIn", 2: "CloseOut", 3: "ClearState",
+                 4: "UpdateApplication", 5: "DeleteApplication"}
+        label = names.get(int(on_complete), str(on_complete))
+        lines.append(f"app id        {getattr(txn, 'index', 0)}")
+        lines.append(f"on complete   {label}")
+        if label == "UpdateApplication":
+            approval = getattr(txn, "approval_program", b"") or b""
+            clear = getattr(txn, "clear_program", b"") or b""
+            lines.append(f"REPLACES THE PROGRAMS with {len(approval)} + {len(clear)} bytes")
+            lines.append(f"  approval sha256 {hashlib.sha256(approval).hexdigest()}")
+            lines.append("  Compare that against `fledge run verify` on the commit you expect.")
+        args = getattr(txn, "app_args", None) or []
+        if args:
+            lines.append("app args      " + ", ".join(a.hex() for a in args))
+    if txn.type == "pay":
+        lines.append(f"receiver      {getattr(txn, 'receiver', '')}")
+        lines.append(f"amount        {getattr(txn, 'amt', 0)} microAlgos")
+    if getattr(txn, "rekey_to", None):
+        lines.append(f"!! REKEYS the sender to {txn.rekey_to}. Do not sign unless you meant this.")
+    if getattr(txn, "close_remainder_to", None):
+        lines.append(f"!! CLOSES the sender to {txn.close_remainder_to}. Do not sign unless you meant this.")
+    return lines
 
 
 def collected(path: pathlib.Path) -> int:

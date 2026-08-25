@@ -103,7 +103,8 @@ def update(algorand, app_id: int, no_rebuild: bool, out: 'pathlib.Path | None' =
         target = out or pathlib.Path(f"arcron-update-{app_id}.json")
         ms.export_unsigned(unsigned, target)
         logger.info(f"Wrote {target} for {ms.describe()} to sign.")
-        logger.info("  Each holder: SIGNER_MNEMONIC=... govern sign --file <that> --app-id N")
+        logger.info("  Each holder: govern show --file <that> --app-id N   (read it first)")
+        logger.info("               SIGNER_MNEMONIC=... govern sign --file <that> --app-id N")
         logger.info("  Then anyone: govern submit --file <that> --app-id N")
         return 0
 
@@ -184,7 +185,9 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument("command", choices=("status", "update", "freeze", "sign", "submit"))
+    parser.add_argument(
+        "command", choices=("status", "update", "freeze", "show", "sign", "submit")
+    )
     net.add_network_argument(parser)
     parser.add_argument("--app-id", type=int, required=True, help="the keeper app to act on")
     parser.add_argument("--no-rebuild", action="store_true", help="update: trust the built artifacts")
@@ -201,6 +204,14 @@ def main(argv: list[str] | None = None) -> int:
     algorand = net.connect(args.network)
     if args.command == "status":
         return status(algorand, args.app_id)
+    if args.command == "show":
+        if args.file is None:
+            logger.error("show needs --file")
+            return 1
+        for line in ms.describe_transaction(args.file):
+            logger.info(f"  {line}")
+        logger.info(f"  signatures    {ms.collected(args.file)} of {ms.threshold()}")
+        return 0
     if args.command in ("sign", "submit"):
         if args.file is None:
             logger.error(f"{args.command} needs --file")

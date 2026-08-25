@@ -136,12 +136,35 @@ writing an unsigned transaction instead:
 ```bash
 fledge run govern -- update --network testnet --app-id <id> --out update.json
 
-# each holder, wherever their key lives
+# each holder: read it first, then sign, wherever their key lives
+fledge run govern -- show --file update.json --app-id <id>
 SIGNER_MNEMONIC="..." fledge run govern -- sign --file update.json --app-id <id>
 
 # anyone, once the threshold is met
 fledge run govern -- submit --file update.json --app-id <id>
 ```
+
+**`show` before `sign`, always.** The file is base64 msgpack, so signing it
+blind is signing whatever somebody put in it, and a multisig whose holders do
+not read what they sign is one person who clicked several times. `show`
+decodes it:
+
+```
+on complete   UpdateApplication
+REPLACES THE PROGRAMS with 2008 + 4 bytes
+  approval sha256 481ac7e4c927f4ac2a9e3f36cfa8483dfe093ec0f5fd0d214e606b3001266bbd
+  Compare that against `fledge run verify` on the commit you expect.
+```
+
+and shouts about the two things that would otherwise pass as routine:
+
+```
+!! REKEYS the sender to FKWV...ARHZU. Do not sign unless you meant this.
+!! CLOSES the sender to ... Do not sign unless you meant this.
+```
+
+A zero-amount payment that quietly rekeys the multisig is exactly the
+transaction somebody would wave through.
 
 A signature is not a secret, so the file can be emailed, committed to a private
 gist, or carried on a stick. Only the mnemonics stay put. Submitting below the
