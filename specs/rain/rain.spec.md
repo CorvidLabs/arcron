@@ -37,6 +37,7 @@ everyone.
 
 | Constant | Value | Description |
 |----------|-------|-------------|
+| `BEACON_WINDOW` | `1_000` | How long after `commit_round` the beacon still answers. The Foundation beacon retains roughly 1,512 rounds, so a draw nobody resolved inside it can never be resolved. Held short of the real retention so `abandon` cannot race a `resolve` that would still have worked. |
 | `BEACON_DELAY` | `8` | Rounds between opening a draw and the beacon value becoming readable, so the outcome is unknowable when the draw opens. |
 | `TICKET_PREFIX` | `b"t"` | Box prefix: `b"t" + itob(index)` → the holder's address. |
 | `ALLOCATION_PREFIX` | `b"a"` | Box prefix: `b"a" + address` → unclaimed µALGO. |
@@ -64,6 +65,7 @@ everyone.
 | `draw` | — | `uint64` | Zero-argument, the shape Arcron calls. Opens a draw and returns its id, or `0` when there is nothing to draw for. |
 | `resolve` | — | `address` | Permissionless. Reads the beacon for the committed round, picks the winning ticket, credits the allocation. |
 | `claim` | — | `uint64` | The winner pulls their prize; returns the amount. |
+| `abandon` | — | `uint64` | Reopens a draw whose beacon window has closed, returning the prize and the unused reservation to the pot. Permissionless, and only available once the outcome is unknowable to everyone. |
 | `allocation_of` | `who: address` | `uint64` | Readonly. What `who` can claim right now. |
 
 ## Invariants
