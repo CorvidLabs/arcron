@@ -278,13 +278,26 @@ class Keeper(ARC4Contract):
         #
         # So the ASA is best effort and the ALGO is not.
         bonus: UInt64 = upkeep.asset_balance.as_uint64()
+        # Opt-in first, because reading a balance or a freeze flag for an
+        # account that never opted in fails rather than answering.
+        if bonus > 0 and not Txn.sender.is_opted_in(Asset(bonus_asset)):
+            # Cancelling still returns the ALGO. Forcing an opt-in first would
+            # let an asset the creator cannot hold block their own refund.
+            bonus = UInt64(0)
         if bonus > 0:
             held: UInt64 = Asset(bonus_asset).balance(Global.current_application_address)
             if held < bonus:
                 bonus = held
-        if bonus > 0 and not Txn.sender.is_opted_in(Asset(bonus_asset)):
-            # Cancelling still returns the ALGO. Forcing an opt-in first would
-            # let an asset the creator cannot hold block their own refund.
+        if bonus > 0 and (
+            Asset(bonus_asset).frozen(Global.current_application_address)
+            or Asset(bonus_asset).frozen(Txn.sender)
+        ):
+            # A frozen holding still reports a balance, so checking the amount
+            # is not enough. The transfer would fail with "asset frozen in
+            # recipient", and it shares a transaction with the ALGO refund, so
+            # the creator would lose their escrow and box minimum balance for
+            # good. They cannot even escape by opting out: a frozen account
+            # cannot close an asset holding.
             bonus = UInt64(0)
 
         # The box MBR is released by the delete below, so it is refundable.
@@ -380,8 +393,10 @@ class Keeper(ARC4Contract):
         pays_bonus = (
             bonus_asset > 0
             and asset_balance >= bonus
-            and Asset(bonus_asset).balance(Global.current_application_address) >= bonus
             and Txn.sender.is_opted_in(Asset(bonus_asset))
+            and Asset(bonus_asset).balance(Global.current_application_address) >= bonus
+            and not Asset(bonus_asset).frozen(Global.current_application_address)
+            and not Asset(bonus_asset).frozen(Txn.sender)
         )
         if pays_bonus:
             asset_balance = asset_balance - bonus
