@@ -133,6 +133,37 @@ Related: do not set a cadence so tight that ordinary keeper lateness looks
 like a real condition. Arcron's minimum interval is 10 rounds, and the demos
 here use a floor of 30 rounds for anything that treats lateness as a signal.
 
+### Authorization to the keeper app is not authorization of cadence
+
+The check everyone reaches for:
+
+```python
+assert Txn.sender == Application(self.keeper_app.value).address, "Only the keeper app"
+```
+
+proves the keeper application called you. It does **not** prove that the
+interval you registered has elapsed, because registering an upkeep is
+permissionless. Anyone may point their own upkeep at your hook, on the
+shortest interval the keeper allows, and pay the fees themselves.
+
+That is harmless for a hook whose effect depends only on current state, which
+is most of them. It is not harmless for a hook that *counts* something. A
+billing hook that advances a period on every call can be fast-forwarded by
+anybody willing to spend two minimum fees per call, and whoever benefits from
+the count has an incentive to do it.
+
+If your hook counts, meters, or accrues, enforce the interval yourself:
+
+```python
+assert Global.round >= self.last_run.value + self.min_rounds.value, "Too soon"
+self.last_run.value = Global.round
+```
+
+An honest keeper never trips this, so the hook keeps the never-fail property
+that matters. `smart_contracts/subscription/` is the worked example, and it
+had exactly this bug: it recorded `last_charged_round` on every call and never
+read it.
+
 ## The pull pattern
 
 **Do the accounting in the scheduled call. Let counterparties collect in their

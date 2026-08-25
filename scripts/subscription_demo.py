@@ -69,7 +69,12 @@ def main(argv: list[str] | None = None) -> None:
     subscription, _ = algorand.client.get_typed_app_factory(
         SubscriptionFactory, default_sender=founder.address
     ).send.create.create(
-        args=CreateArgs(provider=provider.address, price_per_period=PRICE_PER_PERIOD)
+        args=CreateArgs(
+            provider=provider.address,
+            price_per_period=PRICE_PER_PERIOD,
+            # A period may not be billed faster than the upkeep's own cadence.
+            min_rounds_per_period=UPKEEP_INTERVAL,
+        )
     )
     algorand.send.payment(
         algokit_utils.PaymentParams(
@@ -180,6 +185,23 @@ def main(argv: list[str] | None = None) -> None:
     # The claim pays two fees: its own, and the inner payment's, which the
     # contract submits with fee=0 so the caller covers it.
     _assert("provider is better off by the claim, less both fees", after - before, claimed - 2_000)
+
+    # ------------------------------------------------------------------
+    logger.info("── 8. A lapsed subscriber can still leave ──")
+    # Requiring a full catch-up trapped exactly the people most likely to
+    # want out: Ada cannot afford what she owes, so she could never satisfy
+    # it, so her box MBR was stranded permanently.
+    before = algod.account_info(ada.address)["amount"]
+    refunded = subscription.send.withdraw(
+        params=algokit_utils.CommonAppCallParams(
+            sender=ada.address,
+            signer=ada.signer,
+            extra_fee=algokit_utils.AlgoAmount(micro_algo=1_000),
+        )
+    ).abi_return
+    after = algod.account_info(ada.address)["amount"]
+    _assert("Ada got her box minimum balance back", refunded, SUBSCRIBER_BOX_MBR)
+    _assert("and it actually reached her", after - before, refunded - 2_000)
 
     logger.info("")
     logger.info("Subscription demo passed.")

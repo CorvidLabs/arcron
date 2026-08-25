@@ -60,16 +60,28 @@ class Subscription(ARC4Contract):
         # Advanced by the scheduled call. Everything else is derived from it.
         self.period = GlobalState(UInt64(0))
         self.last_charged_round = GlobalState(UInt64(0))
+        # The shortest a period may be. Enforced here rather than trusted to
+        # the keeper: see `charge`.
+        self.min_rounds_per_period = GlobalState(UInt64(0))
         # Settled and owed to the provider, waiting to be claimed.
         self.provider_accrued = GlobalState(UInt64(0))
 
     # MARK: - Setup
 
     @abimethod(create="require")
-    def create(self, provider: arc4.Address, price_per_period: arc4.UInt64) -> None:
+    def create(
+        self,
+        provider: arc4.Address,
+        price_per_period: arc4.UInt64,
+        min_rounds_per_period: arc4.UInt64,
+    ) -> None:
         assert price_per_period.native > 0, "Price must be positive"
+        assert min_rounds_per_period.native > 0, "A period must span some rounds"
         self.provider.value = provider.native
         self.price_per_period.value = price_per_period.native
+        self.min_rounds_per_period.value = min_rounds_per_period.native
+        # So the first period cannot be billed the moment the app is created.
+        self.last_charged_round.value = Global.round
 
     @abimethod()
     def set_keeper(self, keeper_app: arc4.UInt64) -> None:
@@ -94,6 +106,19 @@ class Subscription(ARC4Contract):
         assert (
             Txn.sender == Application(self.keeper_app.value).address
         ), "Only the keeper app may advance billing"
+        # The sender check authenticates the messenger, not the schedule.
+        # Registering an upkeep is permissionless, so anyone can point one at
+        # this method on the shortest interval the keeper allows and pay for
+        # it themselves. Unenforced, a provider could fast-forward billing for
+        # about two minimum fees per fabricated period and settle a
+        # subscriber's whole balance to itself.
+        #
+        # An honest schedule never trips this: the keeper calls after the
+        # interval, so the assert cannot fire, and the hook keeps its
+        # never-fails property for the cadence it was registered with.
+        assert (
+            Global.round >= self.last_charged_round.value + self.min_rounds_per_period.value
+        ), "Period has not elapsed"
         self.period.value += 1
         self.last_charged_round.value = Global.round
         return self.period.value
@@ -172,7 +197,26 @@ class Subscription(ARC4Contract):
         box = Box(Subscriber, key=op.concat(BOX_PREFIX, Txn.sender.bytes))
         assert box, "Not subscribed"
         record = box.value.copy()
-        assert record.paid_through_period.native == self.period.value, "Settle first"
+
+        # Settle as far as the balance reaches, rather than demanding the
+        # subscriber be fully caught up. Requiring that trapped anyone who ran
+        # out: they could never afford the periods they owed, so they could
+        # never satisfy the check, so their box could never be deleted and its
+        # minimum balance was stranded for good. Lapsing is a state, not a
+        # punishment, and leaving is how you stop owing more.
+        periods: UInt64 = self.period.value - record.paid_through_period.native
+        if periods > 0:
+            owed: UInt64 = periods * self.price_per_period.value
+            paid: UInt64 = owed if record.balance.native >= owed else record.balance.native
+            periods_paid: UInt64 = paid // self.price_per_period.value
+            settled: UInt64 = periods_paid * self.price_per_period.value
+            self.provider_accrued.value += settled
+            record = Subscriber(
+                balance=arc4.UInt64(record.balance.native - settled),
+                paid_through_period=arc4.UInt64(
+                    record.paid_through_period.native + periods_paid
+                ),
+            )
 
         refund: UInt64 = record.balance.native + SUBSCRIBER_BOX_MBR
         del box.value

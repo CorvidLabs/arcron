@@ -53,35 +53,42 @@ own box is available by construction.
 
 | Method | Parameters | Returns | Description |
 |--------|-----------|---------|-------------|
-| `create` | `provider: address, price_per_period: uint64` | — | Creation only. Fixes the provider and the price. |
+| `create` | `provider: address, price_per_period: uint64, min_rounds_per_period: uint64` | — | Creation only. Fixes the provider, the price, and the shortest a period may be. |
 | `set_keeper` | `keeper_app: uint64` | — | Creator only, once. Names the keeper app allowed to advance billing. |
 | `charge` | — | `uint64` | Zero-argument, the shape Arcron calls. Advances the period and returns it. Touches no boxes and moves no money. |
 | `subscribe` | `deposit: pay` | `uint64` | Opens or tops up a subscription; returns the resulting balance. |
 | `settle` | `subscriber: address` | `uint64` | Bills one subscriber for elapsed periods; returns the number actually paid for. |
-| `withdraw` | — | `uint64` | Closes a settled subscription and refunds the balance plus box MBR. |
+| `withdraw` | — | `uint64` | Settles as far as the balance reaches, then closes the subscription and refunds what is left plus box MBR. |
 | `claim` | — | `uint64` | Provider only. Collects what settlement has credited. |
 
 ## Invariants
 
-1. `charge` cannot fail once authorization passes. It opens no box, submits no
-   inner transaction, and has no branch that rejects. A hook that fails trips
-   keeper backoff, and billing that silently stops is worse than billing that
-   is late.
-2. `charge` moves no money. Every transfer happens in a transaction sent by
+1. `charge` cannot fail for a keeper calling on the cadence the upkeep was
+   registered with. It opens no box, submits no inner transaction, and its one
+   rejection path cannot be reached by an honest schedule. A hook that fails
+   trips keeper backoff, and billing that silently stops is worse than billing
+   that is late.
+2. A period cannot be billed faster than `min_rounds_per_period`. The keeper
+   sender check authenticates the messenger, not the schedule: registering an
+   upkeep is permissionless, so anyone may point one at `charge` on the
+   shortest interval the keeper allows and pay for it themselves. Without this
+   a provider could fabricate periods for roughly two minimum fees each and
+   settle a subscriber's whole balance to itself.
+3. `charge` moves no money. Every transfer happens in a transaction sent by
    the party it concerns, or naming them explicitly.
-3. A subscriber is billed only for periods that began after they subscribed.
+4. A subscriber is billed only for periods that began after they subscribed.
    `paid_through_period` starts at the current period.
-4. A subscriber who cannot cover every elapsed period pays for as many whole
+5. A subscriber who cannot cover every elapsed period pays for as many whole
    periods as their balance allows and remains owing the rest. Partial payment
    never forgives a period.
-5. `provider_accrued` only ever increases by amounts debited from a subscriber
+6. `provider_accrued` only ever increases by amounts debited from a subscriber
    balance in the same call, so the contract can always pay what it has
    credited.
-6. A lapsed subscriber cannot block billing, settlement, or withdrawal for
+7. A lapsed subscriber cannot block billing, settlement, or withdrawal for
    anybody else.
-7. `withdraw` requires settlement first, so a subscriber cannot outrun the
+8. `withdraw` requires settlement first, so a subscriber cannot outrun the
    schedule by leaving while periods are owed.
-8. Box MBR is charged to the subscriber's first deposit and returned on
+9. Box MBR is charged to the subscriber's first deposit and returned on
    withdrawal, so the app account never subsidises a subscription.
 
 ## Why billing is split from charging
@@ -130,11 +137,12 @@ subject, so the provider can run it for anybody.
 | `create` with a zero price | Fails with "Price must be positive" |
 | `set_keeper` by a non-creator, or twice | Fails with "Only the creator can set the keeper" / "Keeper already set" |
 | `charge` from anything but the keeper app account | Fails with "Only the keeper app may advance billing" |
+| `charge` again before `min_rounds_per_period` has passed | Fails with "Period has not elapsed" |
+| `create` with a zero `min_rounds_per_period` | Fails with "A period must span some rounds" |
 | `subscribe` paying another receiver | Fails with "Pay this app" |
 | `subscribe` where the deposit is not from the caller | Fails with "Deposit must come from the caller" |
 | A first deposit not covering box MBR | Fails with "First deposit must cover the box" |
 | `settle` for an address with no box | Fails with "No such subscriber" |
-| `withdraw` before settling | Fails with "Settle first" |
 | `withdraw` without a subscription | Fails with "Not subscribed" |
 | `claim` by anyone but the provider | Fails with "Only the provider may claim" |
 | `claim` with nothing accrued | Fails with "Nothing accrued" |
