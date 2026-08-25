@@ -1,0 +1,6 @@
+{
+  "name": "arcron-workspace",
+  "private": true,
+  "description": "Bun workspace root. The contract's TypeScript lives in js/; web/ is the console that consumes it.",
+  "workspaces": ["js", "web"]
+}

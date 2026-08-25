@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 
 import { ArcronService } from '../core/arcron.service';
-import { algos, dueLabel, intervalLabel, runwayLabel, shortAddress } from '../core/format';
+import { algos, dueLabel, intervalLabel, runwayLabel, shortAddress } from '@corvidlabs/arcron/format';
 import { KeeperService } from '../core/keeper.service';
 import { WalletService } from '../core/wallet.service';
 import {
@@ -13,7 +13,7 @@ import {
   SKIP_AHEAD,
   toHex,
   type Upkeep,
-} from '../core/upkeep';
+} from '@corvidlabs/arcron';
 
 interface Row {
   readonly upkeep: Upkeep;

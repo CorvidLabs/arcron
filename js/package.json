@@ -1,0 +1,36 @@
+{
+  "name": "@corvidlabs/arcron",
+  "version": "1.0.0",
+  "description": "Read the Arcron upkeep registry and build its transactions.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/CorvidLabs/arcron.git",
+    "directory": "js"
+  },
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./upkeep": "./src/upkeep.ts",
+    "./keeper-abi": "./src/keeper-abi.ts",
+    "./keeper-txns": "./src/keeper-txns.ts",
+    "./board": "./src/board.ts",
+    "./format": "./src/format.ts",
+    "./networks": "./src/networks.ts"
+  },
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "test": "bun test"
+  },
+  "peerDependencies": {
+    "algosdk": "^3"
+  },
+  "devDependencies": {
+    "algosdk": "^3",
+    "@types/bun": "latest",
+    "typescript": "^5"
+  }
+}

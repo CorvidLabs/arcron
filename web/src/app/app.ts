@@ -8,7 +8,7 @@ import { SignerBar } from './components/signer-bar';
 import { StatTiles } from './components/stat-tiles';
 import { UpkeepBoard } from './components/upkeep-board';
 import { ArcronService } from './core/arcron.service';
-import { shortAddress } from './core/format';
+import { shortAddress } from '@corvidlabs/arcron/format';
 
 @Component({
   selector: 'app-root',

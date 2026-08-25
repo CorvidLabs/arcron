@@ -1,10 +1,10 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 
 import { ArcronService } from '../core/arcron.service';
-import { type BoardEntry, type SortKey, sortEntries, summarise, toEntry } from '../core/board';
-import { algos, dueLabel, intervalLabel, rounds, runwayLabel } from '../core/format';
+import { type BoardEntry, type SortKey, sortEntries, summarise, toEntry } from '@corvidlabs/arcron/board';
+import { algos, dueLabel, intervalLabel, rounds, runwayLabel } from '@corvidlabs/arcron/format';
 import { KeeperService } from '../core/keeper.service';
-import { roundsUntilDue, toHex } from '../core/upkeep';
+import { roundsUntilDue, toHex } from '@corvidlabs/arcron/upkeep';
 import { WalletService } from '../core/wallet.service';
 
 interface Row {

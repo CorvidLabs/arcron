@@ -1,8 +1,8 @@
 import { afterNextRender, ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 
 import { ArcronService } from '../core/arcron.service';
-import { duration } from '../core/format';
-import type { NetworkKey } from '../core/networks';
+import { duration } from '@corvidlabs/arcron/format';
+import type { NetworkKey } from '@corvidlabs/arcron/networks';
 
 @Component({
   selector: 'arcron-network-bar',

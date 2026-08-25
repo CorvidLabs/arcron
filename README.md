@@ -274,6 +274,24 @@ interval.
   Deploy configs disable the cache (`set_suggested_params_cache_timeout(0)`)
   and the e2e pins explicit validity rounds.
 
+## Running a keeper
+
+The bot is meant to run continuously, and `deploy/` has three ways to do it:
+
+| | For |
+|---|---|
+| `com.corvidlabs.arcron-keeper.plist` | macOS — a launchd agent, since systemd is not an option on a Mac host |
+| `keeper-bot.service` | Linux — a systemd unit |
+| `Dockerfile` + `compose.yaml` | a container, anywhere |
+
+All three read the same environment: `KEEPER_MNEMONIC`, `KEEPER_APP_ID` and an
+algod endpoint. Keep the mnemonic in a `chmod 600` file the unit points at
+rather than inline — a launchd plist under `LaunchAgents` is world-readable.
+
+A keeper is close to self-sustaining: it spends 0.003 ALGO of transaction fees
+per execution and collects at least 0.004, so it needs a starting balance
+rather than a budget. It refuses to start below 0.103 ALGO and warns below 0.4.
+
 ## Spec-driven development
 
 This repo is managed with [spec-sync](https://github.com/CorvidLabs/spec-sync)

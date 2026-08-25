@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  launchd equivalent of keeper-bot.service, for a macOS host — which is what
+  the self-hosted CI runner is, and systemd is not an option there.
+
+    cp deploy/com.corvidlabs.arcron-keeper.plist ~/Library/LaunchAgents/
+    # edit the paths and KEEPER_MNEMONIC path below first
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.corvidlabs.arcron-keeper.plist
+    launchctl print gui/$(id -u)/com.corvidlabs.arcron-keeper
+
+  To stop it:
+    launchctl bootout gui/$(id -u)/com.corvidlabs.arcron-keeper
+
+  KeepAlive restarts it if it exits for any reason, which is what a keeper
+  wants: the bot already handles algod being unreachable with its own backoff,
+  so an exit means something it could not recover from and a restart is the
+  right response.
+
+  The mnemonic is read from a file the plist points at rather than embedded
+  here, because a plist in LaunchAgents is world-readable.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.corvidlabs.arcron-keeper</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/sh</string>
+        <string>-lc</string>
+        <!-- Sources the env file, then execs the bot so signals reach it. -->
+        <string>set -a; . "$ARCRON_ENV_FILE"; set +a; exec poetry run python -m scripts.keeper_bot --network testnet --log-format json</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/CHANGEME/arcron</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <!-- chmod 600. Holds KEEPER_MNEMONIC, KEEPER_APP_ID, ALGOD_SERVER. -->
+        <key>ARCRON_ENV_FILE</key>
+        <string>/Users/CHANGEME/.config/arcron/keeper.env</string>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <!-- Do not restart faster than this, so a misconfiguration does not spin. -->
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+
+    <!-- launchd sends SIGTERM first; the bot finishes the scan in flight. -->
+    <key>ExitTimeOut</key>
+    <integer>30</integer>
+
+    <key>StandardOutPath</key>
+    <string>/Users/CHANGEME/Library/Logs/arcron-keeper.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/CHANGEME/Library/Logs/arcron-keeper.log</string>
+
+    <key>ProcessType</key>
+    <string>Background</string>
+</dict>
+</plist>

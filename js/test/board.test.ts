@@ -6,9 +6,9 @@
  */
 
 import { describe, expect, test } from 'bun:test';
-import { classify, sortEntries, summarise, toEntry } from './board';
-import { effectiveFee } from './upkeep';
-import type { Upkeep } from './upkeep';
+import { classify, sortEntries, summarise, toEntry } from '../src/board';
+import { effectiveFee } from '../src/upkeep';
+import type { Upkeep } from '../src/upkeep';
 
 function upkeep(overrides: Partial<Upkeep> = {}): Upkeep {
   return {
