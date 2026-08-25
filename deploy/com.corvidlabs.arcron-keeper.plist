@@ -37,7 +37,7 @@
 
     <key>EnvironmentVariables</key>
     <dict>
-        <!-- chmod 600. Holds KEEPER_MNEMONIC, KEEPER_APP_ID, ALGOD_SERVER. -->
+        <!-- chmod 640, owned root:keeper. Holds KEEPER_MNEMONIC, KEEPER_APP_ID, ALGOD_SERVER. -->
         <key>ARCRON_ENV_FILE</key>
         <string>/Users/CHANGEME/.config/arcron/keeper.env</string>
         <key>PATH</key>

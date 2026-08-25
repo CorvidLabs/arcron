@@ -154,7 +154,8 @@ if the ALGO default is still complete on its own.
 For an upkeep that never uses it: +24 bytes of box, +9,600 µALGO of MBR,
 refunded on cancel, and +517 bytes of program. Every ALGO-only upkeep pays
 the MBR so the contract can offer a feature it does not use, which is the
-honest price of a capability in a contract that cannot be upgraded.
+honest price of a capability in a contract whose struct cannot be reshaped
+after the fact.
 
 Stacked across the whole 1.0 batch (Part D, the numbers that decide whether it
 can ship as one contract at all). Every row is compiled: #7 and #14 are in the
@@ -168,15 +169,28 @@ contract, and #8 and #9 are patched onto it and built by puyapy.
 | + #8 at fan-out ceiling 3 | 1,285 B | 1 | 763 |
 | **the whole 1.0 batch** (estimated) | **1,814 B** | **1** | **234** |
 | **the whole 1.0 batch** (as built) | **1,932 B** | **1** | **116** |
+| **the keeper today**, plus `update` + `freeze` | **2,008 B** | **1** | **40** |
 
 A second page costs the deployer another 100,000 µALGO of minimum balance
 permanently, so this margin is the real constraint on 1.0's scope. The only
-dial was #8's fan-out ceiling, now **decided at 3**. At 4 the same batch is
-1,990 bytes and 58 bytes of headroom, which is one added assertion away from
-spilling.
+dial was #8's fan-out ceiling, now **decided at 3**. At 4 the 1.0 batch was
+1,990 bytes with 58 bytes of headroom, which was one added assertion away from
+spilling; with governance on top, ceiling 4 no longer fits on one page at all.
 
-#9 is what spends most of that room: 517 bytes, against #8's 319. Nothing
-else should be added to this batch without compiling it first.
+**Read the last row before adding anything.** Making the contract upgradeable
+until frozen cost 76 bytes (`update`, `freeze`, and the `frozen` global), and
+that is the whole of the difference between 116 bytes of headroom and 40.
+Governance ate two thirds of what the batch had left. Re-measure rather than
+quoting this table, because it is a table of history and only the last row is
+live:
+
+```bash
+poetry run python -c "import json,base64,pathlib; s=json.loads(sorted(pathlib.Path('smart_contracts/artifacts/keeper').glob('*.arc56.json'))[0].read_text()); n=len(base64.b64decode(s['byteCode']['approval'])); print(n, 2048-n)"
+```
+
+#9 is what spends most of the room the batch itself took: 517 bytes, against
+#8's 319. Nothing else should be added without compiling it first, and 40
+bytes is not room for much.
 
 Box MBR across the batch, for a one-argument upkeep: the fixed component
 becomes 139 (9 name + 130 head), so 149 bytes and 62,100 µALGO, up from
@@ -219,8 +233,8 @@ The five-file lockstep from [#31](https://github.com/CorvidLabs/arcron/issues/31
 
 1. `smart_contracts/keeper/contract.py`: struct, `register`, `execute`, `cancel`, `top_up_asset`, `opt_in_asset`, `BOX_MBR_FIXED`
 2. `scripts/keeper_bot.py::_decode_upkeep`: three more fields
-3. `web/src/app/core/upkeep.ts`, its TypeScript twin
-4. `tests/test_keeper_bot.py` and `web/src/app/core/upkeep.test.ts`: the pinned box vectors
+3. `js/src/upkeep.ts`, its TypeScript twin
+4. `tests/test_keeper_bot.py` and `js/test/upkeep.test.ts`: the pinned box vectors
 5. `specs/keeper/`: Public API, requirements, testing, Change Log
 
 Beyond the struct:

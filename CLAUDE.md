@@ -27,9 +27,12 @@ TestNet (app 769823086; 769802474 and 769772891 are superseded, predating the
 Full reasoning in [`docs/design/1.0.md`](docs/design/1.0.md). The short version,
 because these are easy to get wrong from memory:
 
-- **The contract cannot be upgraded.** A struct change means a new app id and
-  every creator cancelling and re-registering by hand. So #7, #14, #8 and #9
-  are batched into one release and the surface is then frozen.
+- **A struct change means a new app id**, and every creator cancelling and
+  re-registering by hand. That holds however a deployment is governed: an
+  update replaces code, not the shape of boxes that already exist. (The
+  contract *is* upgradeable until its creator calls `freeze`, which buys a
+  bug fix, not a reshaped struct. See `docs/security.md`.) So #7, #14, #8 and
+  #9 are batched into one release and the surface is then frozen.
 - **#9 is an ASA fee *capability*, not a commitment.** CORVID is not wired in;
   escrow and fees stay ALGO by default. "No token required" remains true.
 - **#15 (staking) and #22 (keeper-supplied data) are closed**, not merely

@@ -126,6 +126,13 @@ celerybeat.pid
 env/
 .env.*
 !.env.*.template
+# Any env file anywhere, not just the dot-prefixed ones at the root.
+# deploy/keeper.env.example tells you to create deploy/keeper.env and put a
+# mnemonic in it, and the patterns above do not match that basename: one
+# `git add deploy/` would have committed a live key.
+*.env
+!*.env.example
+!*.env.template
 !.env.template
 venv/
 ENV/

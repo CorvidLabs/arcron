@@ -61,8 +61,9 @@ zero-argument probe through that contract:
 | junk, then the real selector | **accepted** (the probe ran) |
 | the real selector, then junk | **rejected** (`err opcode executed`) |
 
-A construction that drops every argument but the last, on a contract that can
-never be upgraded, is worth knowing about before writing it. The fan-out below
+A construction that drops every argument but the last, on a contract whose
+call shape is fixed for every deployment that has frozen, is worth knowing
+about before writing it. The fan-out below
 is not a stylistic preference; it is the only correct construction.
 
 ## What the fan-out costs
@@ -135,6 +136,8 @@ implemented the batch can be compiled rather than estimated
 | + #9 (ASA bonus) | 1,483 B | 1 | 565 |
 | + #8 at ceiling 3 | 1,285 B | 1 | 763 |
 | **the whole 1.0 batch, ceiling 3** | **1,814 B** | **1** | **234** |
+| the same batch **as built** | 1,932 B | 1 | 116 |
+| **the keeper today**, plus `update` + `freeze` | **2,008 B** | **1** | **40** |
 
 With everything else fixed, the ceiling is the only dial left, so it is the
 one parameter the whole batch's fit depends on:
@@ -149,7 +152,9 @@ one parameter the whole batch's fit depends on:
 Four was the earlier recommendation, made against an estimate of #7 and #14
 that turned out 79 bytes light. Compiled, it leaves 58 bytes. That is one added
 assertion away from a second program page and another 100,000 µALGO of app
-minimum balance, forever, on a contract that can never be patched.
+minimum balance, forever, on a contract nobody can patch once it is frozen.
+Governance has since taken 76 bytes of its own, so ceiling 4 would not fit on
+one page today at all.
 
 **Three is the setting.** It covers a selector plus two ABI arguments, it
 covers *any* arity for a target that packs its arguments into one struct, and
@@ -197,8 +202,8 @@ this is stated explicitly and asserted from the box rather than from the
 formula.
 
 The 2-byte length prefix that `byte[]` carries in the box tail moves *inside*
-the array encoding, so the fixed component drops by two, from the 117 the
-contract uses today to 115:
+the array encoding, so the fixed component drops by two, from the 117 of the
+single-argument struct to 115 against the 106-byte head this spike measured:
 
 ```
 tail  = 2 + 4k + Σ len(arg_i)        # count, then an offset and a length each
@@ -209,6 +214,13 @@ MBR   = 2_500 + 400 × box
 
 Verified against the real boxes in Part C: 125 bytes and 52,500 µALGO for a
 bare selector, 149 bytes and 62,100 µALGO for `absorb(uint64,string)`.
+
+**As shipped the fixed component is 139, not 115.** The ASA-fee fields in the
+same release added 24 bytes to the head, taking it from 106 to 130, so
+`BOX_MBR_FIXED` is `2_500 + 400 × 139` and a bare selector's box costs 62,100
+µALGO rather than the 52,500 measured here. The shape of the formula is
+unchanged; only the head is bigger. `smart_contracts/keeper/contract.py` is
+the authority.
 
 ## Cost
 
@@ -227,8 +239,8 @@ plus what the shape change touches beyond it:
 
 1. `smart_contracts/keeper/contract.py`: struct, `register` bounds, the `execute` fan-out, `BOX_MBR_FIXED` 93 → 91
 2. `scripts/keeper_bot.py::_decode_upkeep`: decode `byte[][]`, not `byte[]`
-3. `web/src/app/core/upkeep.ts`, its TypeScript twin
-4. `tests/test_keeper_bot.py` and `web/src/app/core/upkeep.test.ts`: the pinned box vectors
+3. `js/src/upkeep.ts`, its TypeScript twin
+4. `tests/test_keeper_bot.py` and `js/test/upkeep.test.ts`: the pinned box vectors
 5. `specs/keeper/`: Public API, requirements, testing, Change Log
 
 Beyond the struct:
@@ -276,7 +288,14 @@ see the correction in "The foreign-array half is already solved".
 That keeps 1.0's only struct change here to one field replacing one field, and
 it removes the reason #8 looked like the expensive item in the batch. As
 built, the whole batch compiled to 1,932 bytes, leaving 116 inside one 2,048
-byte program page.
+byte program page. Adding `update`, `freeze` and the `frozen` global took that
+to **2,008 bytes with 40 spare**: governance consumed the difference, and 40
+bytes is not room for another call shape. The live number is one command away,
+so measure rather than trusting the figure above:
+
+```bash
+poetry run python -c "import json,base64,pathlib; s=json.loads(sorted(pathlib.Path('smart_contracts/artifacts/keeper').glob('*.arc56.json'))[0].read_text()); n=len(base64.b64decode(s['byteCode']['approval'])); print(n, 2048-n)"
+```
 
 #7 and #14 are already implemented, so the remaining order is: contract and
 spec, then both decoders and both pinned vectors in the same commit, then the

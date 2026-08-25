@@ -43,6 +43,9 @@ from algopy.arc4 import abimethod  # pyright: ignore[reportMissingModuleSource]
 BOX_PREFIX = b"s"
 # 2,500 per box + 400 per byte: 1 prefix + 32 address = 33 name, 16 value.
 SUBSCRIBER_BOX_MBR = 2_500 + 400 * (33 + 16)
+# The keeper's own interval ceiling. Beyond it nothing can be scheduled
+# anyway, and an unbounded value overflows the cadence comparison.
+MAX_ROUNDS_PER_PERIOD = 1_000_000_000
 
 
 class Subscriber(arc4.Struct):
@@ -77,6 +80,11 @@ class Subscription(ARC4Contract):
     ) -> None:
         assert price_per_period.native > 0, "Price must be positive"
         assert min_rounds_per_period.native > 0, "A period must span some rounds"
+        # An unbounded cadence overflows `last_charged_round + min_rounds` and
+        # freezes billing for good; a zero provider strands everything accrued.
+        # Both are self-inflicted and both are unfixable after creation.
+        assert min_rounds_per_period.native <= MAX_ROUNDS_PER_PERIOD, "Cadence too long"
+        assert provider.native != Global.zero_address, "Provider required"
         self.provider.value = provider.native
         self.price_per_period.value = price_per_period.native
         self.min_rounds_per_period.value = min_rounds_per_period.native
@@ -116,9 +124,17 @@ class Subscription(ARC4Contract):
         # An honest schedule never trips this: the keeper calls after the
         # interval, so the assert cannot fire, and the hook keeps its
         # never-fails property for the cadence it was registered with.
-        assert (
-            Global.round >= self.last_charged_round.value + self.min_rounds_per_period.value
-        ), "Period has not elapsed"
+        if Global.round < self.last_charged_round.value + self.min_rounds_per_period.value:
+            # Too soon: no period has elapsed, so there is nothing to bill.
+            #
+            # This returns rather than rejecting, which is the rule this
+            # repository's own integration guide gives for a hook with no work
+            # to do, and which an earlier version of this check broke. Under
+            # CATCH_UP a keeper draining a backlog replays immediately, so an
+            # assert here would fail the whole execute, trip keeper backoff,
+            # and stop billing altogether. Refusing to advance is enough: a
+            # griefer still pays the fee and still moves nothing.
+            return self.period.value
         self.period.value += 1
         self.last_charged_round.value = Global.round
         return self.period.value
@@ -174,11 +190,14 @@ class Subscription(ARC4Contract):
         if periods == 0:
             return UInt64(0)
 
-        owed = periods * self.price_per_period.value
-        paid = owed if record.balance.native >= owed else record.balance.native
+        # Take the smaller count first and multiply once. Computing
+        # `periods * price` up front overflows for a large price, and the AVM
+        # panics on overflow rather than saturating, which would leave the box
+        # undeletable on a contract that cannot be updated.
+        affordable: UInt64 = record.balance.native // self.price_per_period.value
         # Only credit periods actually paid for, so a partial payment does not
         # forgive the rest: the subscriber still owes from where they stopped.
-        periods_paid: UInt64 = paid // self.price_per_period.value
+        periods_paid: UInt64 = periods if periods <= affordable else affordable
 
         box.value = Subscriber(
             balance=arc4.UInt64(record.balance.native - periods_paid * self.price_per_period.value),
@@ -206,9 +225,8 @@ class Subscription(ARC4Contract):
         # punishment, and leaving is how you stop owing more.
         periods: UInt64 = self.period.value - record.paid_through_period.native
         if periods > 0:
-            owed: UInt64 = periods * self.price_per_period.value
-            paid: UInt64 = owed if record.balance.native >= owed else record.balance.native
-            periods_paid: UInt64 = paid // self.price_per_period.value
+            affordable: UInt64 = record.balance.native // self.price_per_period.value
+            periods_paid: UInt64 = periods if periods <= affordable else affordable
             settled: UInt64 = periods_paid * self.price_per_period.value
             self.provider_accrued.value += settled
             record = Subscriber(

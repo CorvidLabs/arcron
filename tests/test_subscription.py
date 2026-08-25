@@ -200,10 +200,11 @@ def test_billing_cannot_be_fast_forwarded(
     _charge(context, app, keeper)
     assert app.period.value == 1
 
-    # A second call in the same round, from the genuine keeper app.
+    # A second call in the same round, from the genuine keeper app. It must
+    # not advance, and must not fail: failing would trip keeper backoff, and
+    # under CATCH_UP a keeper draining a backlog replays immediately.
     with context.txn.create_group(active_txn_overrides={"sender": keeper.address}):
-        with pytest.raises(Exception, match="Period has not elapsed"):
-            app.charge()
+        assert int(app.charge()) == 1
     assert app.period.value == 1
 
     # One round short is still short.
@@ -211,8 +212,8 @@ def test_billing_cannot_be_fast_forwarded(
         round=app.last_charged_round.value + MIN_ROUNDS - 1
     )
     with context.txn.create_group(active_txn_overrides={"sender": keeper.address}):
-        with pytest.raises(Exception, match="Period has not elapsed"):
-            app.charge()
+        assert int(app.charge()) == 1
+    assert app.period.value == 1
 
     # On the cadence it was registered with, it goes through as before.
     assert _charge(context, app, keeper) == 2
@@ -224,6 +225,26 @@ def test_an_honest_keeper_is_never_refused(
     """The hook must keep its never-fails property for a real schedule."""
     for expected in (1, 2, 3, 4, 5):
         assert _charge(context, app, keeper) == expected
+
+
+def test_a_catch_up_replay_no_ops_rather_than_failing(
+    context: AlgopyTestContext, app: Subscription, keeper
+) -> None:
+    """The regression an assert here would have caused.
+
+    Under CATCH_UP an upkeep that fell behind stays due, so a keeper replays
+    it in the same round. If charge rejected that, the whole execute would
+    revert, the bot would record a failure and back the upkeep off, and
+    billing would stop entirely: the exact outcome the never-fail rule exists
+    to prevent.
+    """
+    _charge(context, app, keeper)
+    for _ in range(5):
+        with context.txn.create_group(active_txn_overrides={"sender": keeper.address}):
+            assert int(app.charge()) == 1  # no advance, no rejection
+    assert app.period.value == 1
+    # And once the cadence really has elapsed, it advances as normal.
+    assert _charge(context, app, keeper) == 2
 
 
 def test_a_lapsed_subscriber_can_still_leave(
@@ -279,3 +300,48 @@ def test_partial_dust_is_returned_rather_than_captured(
 
     assert app.provider_accrued.value == PRICE  # one whole period, no more
     assert refund == 7_000 + SUBSCRIBER_BOX_MBR
+
+
+def test_a_large_price_does_not_brick_the_box(
+    context: AlgopyTestContext, provider, keeper
+) -> None:
+    """`periods * price` used to be computed before capping by balance.
+
+    A price near the uint64 ceiling overflowed on the second period, and the
+    AVM panics rather than saturating, so settle and withdraw both failed
+    forever and the box could never be deleted. On a contract with no delete
+    path that strands the minimum balance permanently.
+    """
+    huge = 2**63
+    contract = Subscription()
+    contract.create(arc4.Address(provider), arc4.UInt64(huge), arc4.UInt64(MIN_ROUNDS))
+    contract.set_keeper(arc4.UInt64(keeper.id))
+
+    victim = context.any.account()
+    _subscribe(context, contract, victim, SUBSCRIBER_BOX_MBR + 1)
+    for _ in range(3):
+        _charge(context, contract, keeper)
+
+    # Nothing affordable, so nothing is billed, and neither call panics.
+    assert int(contract.settle(arc4.Address(victim))) == 0
+    with context.txn.create_group(active_txn_overrides={"sender": victim}):
+        refund = int(contract.withdraw())
+    assert refund == SUBSCRIBER_BOX_MBR + 1
+
+
+def test_create_refuses_settings_that_cannot_be_undone(
+    context: AlgopyTestContext, provider
+) -> None:
+    """Cheap validation belongs where the contract can never be patched."""
+    with pytest.raises(Exception, match="Cadence too long"):
+        Subscription().create(
+            arc4.Address(provider), arc4.UInt64(PRICE), arc4.UInt64(2**63)
+        )
+    with pytest.raises(Exception, match="Provider required"):
+        Subscription().create(
+            arc4.Address(), arc4.UInt64(PRICE), arc4.UInt64(MIN_ROUNDS)
+        )
+    with pytest.raises(Exception, match="A period must span some rounds"):
+        Subscription().create(
+            arc4.Address(provider), arc4.UInt64(PRICE), arc4.UInt64(0)
+        )

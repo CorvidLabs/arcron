@@ -21,6 +21,8 @@ draw()     ZERO ARGS, the call Arcron makes. Locks the prize, snapshots the
 resolve()  a participant calls this after that round, attaching the beacon
            reference, and the winner falls out
 claim()    the winner pulls their prize
+abandon()  anyone reopens a draw that nobody resolved in time: the prize goes
+           back to the pot and the next draw commits to a fresh round
 ```
 
 The scheduled call does accounting only. That is not an aesthetic choice:
@@ -53,6 +55,26 @@ expected_ticket = int.from_bytes(digest[:8], "big") % tickets
 ```
 
 Never point a real deployment at the stub.
+
+## A draw that nobody resolves
+
+`resolve()` works only while the beacon still remembers the committed round.
+The Foundation's beacon retains roughly 1,512 rounds, and `BEACON_WINDOW` is
+set to **1,000** rounds, a bit under an hour, deliberately short of that
+retention so abandoning cannot race a `resolve` that would still have worked.
+Past the window `resolve()` refuses, because the underlying `must_get` would
+panic anyway.
+
+Without a way out that would be fatal rather than inconvenient. `draw()`
+refuses to open another while one is open, so the pot would sit locked in
+`prize` forever with no way to reach it. That is what `abandon()` is for: it
+is permissionless, it returns the prize to the pot intact along with the
+allocation-box reservation `draw()` set aside, and it clears the draw so the
+next cadence opens a new one against a fresh beacon round.
+
+Nobody can profit by calling it. It only becomes available once the outcome has
+become unknowable to everyone, and it moves the money nowhere except back where
+it came from.
 
 ## Running it
 

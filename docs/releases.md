@@ -1,9 +1,12 @@
 # Release stages
 
-Arcron's contract has no upgrade path. That makes a release different from a
-version bump: what ships is permanent, and every stage below is really an
-answer to one question: **what is frozen, and what is at stake if it is
-wrong?**
+Arcron's contract is upgradeable until its creator calls `freeze`, and rc is
+where that decision gets recorded either way. It buys less than it sounds
+like: an update replaces code, not the shape of boxes that already exist, so
+the `Upkeep` struct is permanent from beta whichever way the decision goes.
+That is what makes a release here different from a version bump, and every
+stage below is really an answer to one question: **what is frozen, and what is
+at stake if it is wrong?**
 
 | Stage | Chain | What is frozen | At stake |
 |---|---|---|---|
@@ -39,10 +42,17 @@ an upkeep against it should expect to cancel and re-register.
 
 **Entry:** the e2e passes on a real chain.
 
-**Exit, and the reason this stage has real work in it:** beta is the freeze,
-so feedback that could change the struct has to arrive *before* it. Inviting
-people to use the network at beta gets their reports one stage too late, when
-acting on one means every creator cancelling and re-registering by hand.
+**Exit, and the reason this stage has real work in it:** beta is where the
+`Upkeep` struct stops being changeable for free, so feedback that could change
+it has to arrive *before* then. Inviting people to use the network at beta
+gets their reports one stage too late, when acting on one means every creator
+cancelling and re-registering by hand.
+
+Note that this is a different thing from the on-chain `freeze` call, which
+happens at rc and gives up the ability to replace the programs. A struct
+change is expensive from beta because it means a new app id whether or not the
+old one could be updated: an update replaces code, not the shape of boxes that
+already exist.
 
 Getting outside upkeeps registered is therefore alpha work, not beta work.
 While we are here a redeploy costs nothing but our own time, which is exactly
@@ -63,6 +73,9 @@ and re-registering by hand.
 - [ ] Both decoders pinned to the same recorded box, byte for byte
 - [ ] `docs/security.md` current, with every accepted risk listed
 - [ ] `verify_build` matches the deployment against a clean tree
+- [ ] `govern status` published, so anyone can see the deployment is still
+      updatable and by whom. beta does not require freezing: a struct change
+      is still a new app, but a fixable bug should be fixed
 - [ ] **30 days** of continuous TestNet uptime with a funded heartbeat, and the notifier running
 - [ ] A keeper running somewhere that is not a laptop
 - [ ] Documentation an integrator can follow without asking us anything
@@ -86,6 +99,12 @@ rewrite of it; this.
 **Gate:**
 
 - [ ] The bytecode is unchanged from the beta that earned it
+- [ ] **A decision recorded about `freeze`, either way.** Freezing is
+      optional and both answers are normal on Algorand: the Foundation's
+      randomness beacon, Reti and Folks Finance are immutable, while Tinyman,
+      Pact and AlgoFi keep an update path. What is not acceptable is drifting
+      into one by accident, so rc requires the choice to be written down in
+      the release row below, not that it go a particular way
 - [ ] **#12 complete**: threat model, escrow isolation proven on chain, arithmetic reviewed, immutability posture stated, incident playbook written
 - [ ] At least one **independent adversarial review** beyond our own
 - [ ] Outside upkeeps still registered and being serviced, unchanged since beta

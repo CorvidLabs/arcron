@@ -40,6 +40,7 @@ own box is available by construction.
 | Constant | Value | Description |
 |----------|-------|-------------|
 | `BOX_PREFIX` | `b"s"` | Prefix for subscriber boxes, keyed by address. |
+| `MAX_ROUNDS_PER_PERIOD` | `1_000_000_000` | Ceiling on `min_rounds_per_period`, matching the keeper's own interval ceiling. An unbounded cadence overflows the comparison in `charge` and freezes billing permanently. |
 | `SUBSCRIBER_BOX_MBR` | `2_500 + 400 * (33 + 16)` | Minimum balance one subscriber box locks in the app account. Charged to the subscriber's first deposit and refunded on withdrawal. |
 
 ### Exported Types
@@ -73,22 +74,28 @@ own box is available by construction.
    upkeep is permissionless, so anyone may point one at `charge` on the
    shortest interval the keeper allows and pay for it themselves. Without this
    a provider could fabricate periods for roughly two minimum fees each and
-   settle a subscriber's whole balance to itself.
-3. `charge` moves no money. Every transfer happens in a transaction sent by
+   settle a subscriber's whole balance to itself. A call that arrives too soon
+   returns rather than rejecting, so a `CATCH_UP` replay cannot trip keeper
+   backoff.
+3. Settlement never multiplies a period count it cannot afford. `periods *
+   price` computed before capping by balance overflows for a large price, and
+   the AVM panics rather than saturating, which would make the box
+   undeletable.
+4. `charge` moves no money. Every transfer happens in a transaction sent by
    the party it concerns, or naming them explicitly.
-4. A subscriber is billed only for periods that began after they subscribed.
+5. A subscriber is billed only for periods that began after they subscribed.
    `paid_through_period` starts at the current period.
-5. A subscriber who cannot cover every elapsed period pays for as many whole
+6. A subscriber who cannot cover every elapsed period pays for as many whole
    periods as their balance allows and remains owing the rest. Partial payment
    never forgives a period.
-6. `provider_accrued` only ever increases by amounts debited from a subscriber
+7. `provider_accrued` only ever increases by amounts debited from a subscriber
    balance in the same call, so the contract can always pay what it has
    credited.
-7. A lapsed subscriber cannot block billing, settlement, or withdrawal for
+8. A lapsed subscriber cannot block billing, settlement, or withdrawal for
    anybody else.
-8. `withdraw` requires settlement first, so a subscriber cannot outrun the
+9. `withdraw` requires settlement first, so a subscriber cannot outrun the
    schedule by leaving while periods are owed.
-9. Box MBR is charged to the subscriber's first deposit and returned on
+10. Box MBR is charged to the subscriber's first deposit and returned on
    withdrawal, so the app account never subsidises a subscription.
 
 ## Why billing is split from charging
@@ -137,8 +144,10 @@ subject, so the provider can run it for anybody.
 | `create` with a zero price | Fails with "Price must be positive" |
 | `set_keeper` by a non-creator, or twice | Fails with "Only the creator can set the keeper" / "Keeper already set" |
 | `charge` from anything but the keeper app account | Fails with "Only the keeper app may advance billing" |
-| `charge` again before `min_rounds_per_period` has passed | Fails with "Period has not elapsed" |
+| `charge` again before `min_rounds_per_period` has passed | Returns the current period unchanged. It does not reject: under `CATCH_UP` a keeper draining a backlog replays immediately, and rejecting would trip keeper backoff and stop billing altogether |
 | `create` with a zero `min_rounds_per_period` | Fails with "A period must span some rounds" |
+| `create` with a cadence above `MAX_ROUNDS_PER_PERIOD` | Fails with "Cadence too long" |
+| `create` with the zero address as provider | Fails with "Provider required" |
 | `subscribe` paying another receiver | Fails with "Pay this app" |
 | `subscribe` where the deposit is not from the caller | Fails with "Deposit must come from the caller" |
 | A first deposit not covering box MBR | Fails with "First deposit must cover the box" |

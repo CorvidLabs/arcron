@@ -11,7 +11,9 @@ If you escrow ALGO in this contract you are relying on that analysis. Read
 ## The shape of the thing
 
 Arcron holds escrow for other people and pays it out to whoever does the work.
-There is no owner, no admin key, no rake and **no upgrade path**. That last
+There is no owner, no rake, and no admin key over anyone's escrow. The
+upgrade path is temporary and readable on-chain, and is given up before the
+network asks anyone to rely on it. That last
 one is the load-bearing design decision: it means nobody can change the rules
 after you have escrowed funds, and that a bug cannot be patched in place.
 
@@ -125,45 +127,58 @@ down, never up.
 The AVM panics on overflow rather than wrapping, so the failure mode
 everywhere else in the contract is a rejected transaction, not a wrong number.
 
-## Immutability: there is no upgrade path
+## Immutability: upgradeable until frozen
 
 **Algorand applications can be upgradeable.** An `UpdateApplication` call
 replaces an app's approval and clear programs in place, and plenty of
-contracts allow it, gated on an admin key or a governance vote. This one does
-not, and that is a choice rather than a platform limit.
+contracts allow it behind an admin key. What this contract does is a choice,
+and it is a two-stage one.
 
-The choice is enforced in the program itself. The approval program asserts
-`OnCompletion == NoOp` before it does anything else, so `UpdateApplication`
-and `DeleteApplication` are both rejected. Nothing can change that later,
-because the only thing that could is an update.
+A deployment starts **unfrozen**. Its creator, and only its creator, can
+replace the programs. `freeze` gives that up permanently: nothing sets
+`frozen` back to 0, and no later call can restore an update path, because the
+only call that could is an update.
 
-You can check it rather than believe it:
+`frozen` is global state, so the promise can be checked rather than believed:
 
 ```bash
-poetry run python -m scripts.verify_build --network testnet --app-id 769823086
+poetry run python -m scripts.govern status --network testnet --app-id <id>
+poetry run python -m scripts.verify_build --network testnet --app-id <id>
 ```
 
-That compares the deployed bytecode against a clean build of this source, so
-the guard you read here is the guard that is running.
+The first says whether the creator can still change the rules. The second says
+whether the deployed bytecode is the source it claims to be. Together they are
+the whole trust question.
 
-The reason is that an upgradeable keeper contract is one where somebody can
-change the rules after you have escrowed funds. Whoever holds the update key
-could redirect payouts, raise fees, or drain escrow, and no amount of good
-intent removes the fact that they *could*. Being unable to fix a bug is the
-price of that guarantee, and it is why an escrow held by nobody is worth
-trusting.
+**While a deployment is unfrozen, its creator can change the rules after you
+have escrowed funds.** They could redirect payouts, raise fees, or drain
+escrow. No statement of intent removes that, which is why the state is
+readable and why freezing happens before anybody is asked to rely on it. Treat
+an unfrozen deployment as one you are trusting a person with, and a frozen one
+as one you are trusting only the bytecode with.
 
-Three consequences worth stating plainly:
+The reason the window exists at all is that being unable to fix a bug is
+expensive while nobody depends on the deployment yet. Two earlier deployments
+were abandoned rather than repaired, stranding 243,000 µALGO of box minimum
+balance and making every creator cancel and re-register by hand.
+Whether to freeze at all is a choice rather than a rule, and both answers
+are ordinary on Algorand. Checked on MainNet: the Foundation's randomness
+beacon, the Reti staking validator and Folks Finance pools accept `NoOp` only
+and can never be updated; Tinyman AMM v2, Pact and AlgoFi all handle
+`UpdateApplication`. [`releases.md`](releases.md) asks only that the decision
+be recorded, not that it go a particular way.
+
+Consequences worth stating plainly, all of which apply from `freeze` onward,
+and none of which apply to a deployment that never calls it:
 
 1. **A bug cannot be fixed.** The response to a serious bug is to tell
    creators to `cancel`, not to patch.
 2. **A struct change is a new application** at a new app id, with an empty
    registry, and every creator must cancel and re-register by hand. Nobody can
-   do it for them, because `cancel` is creator-only. This has happened once
-   already and stranded 243,000 µALGO of box MBR in the old app.
-3. **`OnCompletion` is pinned to NoOp** on both the outer call and the inner
-   one, so there is no update or delete path to reach even by accident, and
-   none to be added later.
+   do it for them, because `cancel` is creator-only.
+3. **`DeleteApplication` is refused always**, frozen or not. Deleting an app
+   with escrow in it would strand every µALGO, so there has never been a path
+   to it and freezing does not add one.
 
 ## Known and accepted risks
 
@@ -240,7 +255,7 @@ floor is permanent and cannot be raised.
 
 ## Verifying a deployment
 
-The contract has no update path, so what is deployed is what was deployed. To
+A frozen contract has no update path, so what is deployed is what was deployed. To
 confirm *which* source that is:
 
 ```
@@ -260,14 +275,29 @@ they differ from a fresh build.
 
 ## Deployer key handling
 
+The deployer creates the app, and while that app is unfrozen the deployer
+**is** the key that can replace its programs. Treat it as the most valuable
+secret in the project, not as a funding account.
+
 - **The MainNet deployer must be a fresh account**, never one that has touched
   TestNet. The TestNet deployer in this repository is a throwaway and is
-  treated as compromised.
-- `.env.*` files are gitignored and must stay that way. No mnemonic belongs in
-  this repository, in a commit message, or in an issue.
-- Deployment creates the app and funds its base minimum balance. After that
-  the deployer has no privileges over the contract at all. There is no owner,
-  so the key's only remaining value is to whoever holds its ALGO.
+  assumed compromised.
+- **It can rewrite a live contract while `frozen` is 0.** Whoever holds it
+  could replace `execute` with something that pays them and drain every
+  escrow. That is the cost of keeping an update path, and it is why `frozen`
+  is readable on-chain rather than promised in a document.
+- **For MainNet it should not be a bare mnemonic on a laptop.** Set
+  `ARCRON_MULTISIG_THRESHOLD` and `ARCRON_MULTISIG_ADDRESSES` and the creator
+  becomes a multisig address: `govern update` and `govern freeze` then write an
+  unsigned transaction for the holders to sign wherever their keys live, and
+  `scripts/deploy.py` refuses to run at all rather than quietly deploying from
+  the single key instead. `fledge run smoke-multisig` proves on LocalNet that
+  one holder of three cannot update and two can.
+- **Three keys, threshold two, on different devices held by different people.**
+  Any one can be lost without losing control, and any one can be compromised
+  without losing the contract. Three keys in one drawer is one key.
+- **Once frozen, the key stops mattering** to anyone but its own ALGO. There
+  is no owner, no admin, and no path back to one.
 
 ## If a bug is found
 

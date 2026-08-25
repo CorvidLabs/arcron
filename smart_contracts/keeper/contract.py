@@ -109,6 +109,42 @@ class Keeper(ARC4Contract):
 
     def __init__(self) -> None:
         self.next_upkeep_id = GlobalState(UInt64(0))
+        # 0 while the creator may still replace the programs, 1 once that is
+        # given up for good. Global state, so anyone can read it before they
+        # escrow anything: the promise is only worth what it can be checked
+        # against. See `freeze`.
+        self.frozen = GlobalState(UInt64(0))
+
+    @abimethod(allow_actions=["UpdateApplication"])
+    def update(self) -> None:
+        """Replace the programs. Creator only, and only before `freeze`.
+
+        This exists because being unable to fix a bug is expensive while
+        nobody depends on the deployment yet. Two earlier deployments were
+        abandoned rather than repaired, which stranded box minimum balance and
+        made every creator cancel and re-register by hand.
+
+        It is also a real power: while `frozen` is 0, the creator can change
+        the rules after funds are escrowed, and no statement of intent removes
+        that. So it is temporary by construction, readable on-chain, and given
+        up before the network asks anyone to rely on it.
+        """
+        assert Txn.sender == Global.creator_address, "Only the creator can update"
+        assert self.frozen.value == 0, "Frozen: the programs cannot be replaced"
+
+    @abimethod()
+    def freeze(self) -> None:
+        """Give up the ability to update, permanently. Creator only.
+
+        One way. Nothing sets `frozen` back to 0, and after this the only call
+        that could add such a path is an update, which is now refused. From
+        here the contract is exactly as immutable as one deployed with no
+        update path at all, and `verify_build` proves which programs it is
+        stuck with.
+        """
+        assert Txn.sender == Global.creator_address, "Only the creator can freeze"
+        assert self.frozen.value == 0, "Already frozen"
+        self.frozen.value = UInt64(1)
 
     @abimethod()
     def register(

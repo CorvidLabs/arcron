@@ -26,15 +26,38 @@ So `charge` does the smallest thing that can be done without naming anybody:
 @abimethod()
 def charge(self) -> UInt64:
     assert Txn.sender == Application(self.keeper_app.value).address, "..."
+    if Global.round < self.last_charged_round.value + self.min_rounds_per_period.value:
+        return self.period.value  # too soon: no period has elapsed
     self.period.value += 1
     self.last_charged_round.value = Global.round
     return self.period.value
 ```
 
-No boxes. No payments. No branch that can reject once authorization passes.
-Everything else is arithmetic against that counter, done in transactions the
-interested party sends themselves, where their own box is available by
-construction.
+No boxes. No payments. And no branch that *rejects* once authorization passes:
+the cadence guard returns. Everything else is arithmetic against that counter,
+done in transactions the interested party sends themselves, where their own box
+is available by construction.
+
+## The guard returns, and that is the point
+
+The sender check authenticates the messenger, not the schedule. Registering an
+upkeep is permissionless, so anyone can point one at `charge` on the shortest
+interval the keeper allows and pay for it themselves. Unguarded, a provider
+could fast-forward billing for about two minimum fees per fabricated period and
+settle a subscriber's whole balance to itself. Hence `min_rounds_per_period`.
+
+The subtlety is that the guard **returns** instead of asserting. An earlier
+version asserted, and that was a bug. Under CATCH_UP a keeper draining a
+backlog replays immediately, so the assert would fail the whole `execute`, trip
+keeper backoff, and stop billing altogether: the griefer would have cost the
+provider the schedule rather than the other way round. Returning is enough,
+because refusing to advance already denies the attack. A griefer pays the fee
+and moves nothing.
+
+This is the rule [`docs/integrating.md`](../docs/integrating.md) gives for a
+hook with no work to do, and the reason it is a rule. An honest schedule never
+reaches the branch anyway, so the hook keeps its never-fails property for the
+cadence it was registered with.
 
 ## The two halves have different failure tolerances
 

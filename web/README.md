@@ -80,20 +80,23 @@ would give keeper reputation a mechanical use rather than a decorative one.
 
 ## Layout
 
+Everything framework-independent lives one directory up, in `js/`, and the
+console consumes it as a package. Only the Angular half is here.
+
 ```
-src/app/core/
+../js/src/
   networks.ts        LocalNet/TestNet config, genesis ids, nominal round time
-  wallets.ts         the wallet catalogue (KMD on LocalNet, five public wallets)
-  wallet.service.ts  connect/disconnect/sign, use-wallet's store as signals
   upkeep.ts          the Upkeep box decoder (mirrors scripts/keeper_bot.py)
   keeper-abi.ts      method signatures, checked against the ARC-56 artifact
   keeper-txns.ts     register / top_up / cancel / execute over algosdk
-  arcron.service.ts  polling registry state as signals; measures the round rate
-  kmd.service.ts     LocalNet signing
-  keeper.service.ts  the four calls as UI state
+  board.ts           what a keeper is offered: classification, sorting, network stats
   format.ts          ALGO amounts and rounds-as-time
 src/app/core/
-  board.ts           what a keeper is offered: classification, sorting, network stats
+  entry.ts           where the console opens: link, then memory, then default
+  wallets.ts         the wallet catalogue (KMD on LocalNet, five public wallets)
+  wallet.service.ts  connect/disconnect/sign, use-wallet's store as signals
+  arcron.service.ts  polling registry state as signals; measures the round rate
+  keeper.service.ts  the four calls as UI state
 src/app/components/  network bar, stat tiles, registry table, keeper board, register form, activity log
 scripts/
   dev.ts             poke rounds / seed hour- and day-cadence upkeeps on LocalNet

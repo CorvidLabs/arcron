@@ -52,6 +52,8 @@ contract class, the `Upkeep` struct, and its constants.
 
 | Method | Parameters | Returns | Description |
 |--------|-----------|---------|-------------|
+| `update` | — | — | `UpdateApplication` only. Creator only, and refused once `frozen` is 1. Replaces the programs. |
+| `freeze` | — | — | Creator only, one way. Sets `frozen` to 1, after which `update` can never succeed again. |
 | `register` | `mbr_payment: pay, funding_payment: pay, target_app: application, call_args: byte[][], interval_rounds: uint64, fee_per_execution: uint64, policy: uint64, fee_cap: uint64, fee_asset: uint64, asset_fee: uint64` | `uint64` | Registers an upkeep, escrowing `funding_payment` and creating its box; returns the upkeep id. `call_args` is every app arg of the call, in order. `policy` is `CATCH_UP` or `SKIP_AHEAD`; `fee_cap` is the most one execution may ever pay in ALGO, or `0` for no escalation. `fee_asset` and `asset_fee` add an ASA bonus, or `0` for ALGO only. |
 | `top_up` | `upkeep_id: uint64, funding_payment: pay` | `uint64` | Adds ALGO to an upkeep's escrow; returns the new balance. |
 | `cancel` | `upkeep_id: uint64` | `uint64` | Creator-only; deletes the box and refunds the remaining escrow together with the box MBR the deletion releases; returns the refunded amount. |
@@ -90,9 +92,9 @@ contract class, the `Upkeep` struct, and its constants.
 
 ### Scenario: Cancel with remaining escrow
 
-- **Given** an upkeep with 12,000 µALGO escrowed and a 4-byte selector as call data (41,300 µALGO of box MBR)
+- **Given** an upkeep with 12,000 µALGO escrowed and a bare 4-byte selector as its call data, whose 10-byte encoded argument list costs 62,100 µALGO of box MBR
 - **When** its creator calls `cancel`
-- **Then** the box is deleted and 53,300 µALGO (escrow plus the released box MBR) is returned to the creator via inner payment
+- **Then** the box is deleted and 74,100 µALGO (escrow plus the released box MBR) is returned to the creator via inner payment
 
 ### Scenario: A missed week, under each policy
 

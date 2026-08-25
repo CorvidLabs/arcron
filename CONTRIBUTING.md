@@ -23,6 +23,13 @@ You will also want [AlgoKit](https://github.com/algorandfoundation/algokit-cli)
 and Docker for anything touching a chain, and [Bun](https://bun.sh) for the
 console.
 
+## Deploying, if you want your own
+
+[`docs/deploying.md`](docs/deploying.md) covers LocalNet, TestNet and MainNet,
+plus updating and freezing a deployment. You do not need any of it to
+contribute: LocalNet costs nothing and `fledge lanes run local` runs the whole
+suite against it.
+
 ## The gate
 
 ```bash
@@ -60,7 +67,7 @@ and console will silently misread the registry:
 
 1. `smart_contracts/keeper/contract.py`
 2. `scripts/keeper_bot.py::_decode_upkeep`
-3. `web/src/app/core/upkeep.ts`
+3. `js/src/upkeep.ts`
 4. the pinned box vector in `tests/test_keeper_bot.py`
 5. `specs/keeper/`
 

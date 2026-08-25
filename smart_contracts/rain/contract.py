@@ -10,7 +10,7 @@ Everything that needs a resource happens in a transaction somebody sends for
 themselves:
 
 * `resolve` inner-calls the randomness beacon, so its caller attaches the
-  beacon reference — a scheduled call could not, because an Arcron inner call
+  beacon reference, which a scheduled call could not do, because an Arcron inner call
   reaches only what the keeper's transaction makes available (measured in
   `docs/arcron.md`).
 * `claim` pays the winner, who is the sender, and is therefore always
@@ -42,8 +42,8 @@ from algopy import (
 from algopy.arc4 import abimethod
 
 # Rounds between opening a draw and the beacon value being readable. The
-# beacon answers for a past round only, so the winner cannot be known — by
-# anyone, including whoever opened the draw — at the moment it opens.
+# beacon answers for a past round only, so at the moment a draw opens the
+# winner cannot be known by anyone, including whoever opened it.
 BEACON_DELAY = 8
 # How long after `commit_round` the beacon still answers. The Algorand
 # Foundation beacon retains roughly 1,512 rounds, so a draw nobody resolves
@@ -65,7 +65,7 @@ ASSET_OPT_IN_MBR = 100_000
 
 
 class Drawn(arc4.Struct):
-    """Emitted when a draw opens — before anyone can know the outcome."""
+    """Emitted when a draw opens, before anyone can know the outcome."""
 
     draw_id: arc4.UInt64
     commit_round: arc4.UInt64
@@ -133,15 +133,31 @@ class Rain(ARC4Contract):
         self.prize_asset.value = prize_asset
 
     @abimethod()
-    def opt_in_prize_asset(self, mbr_payment: gtxn.PaymentTransaction) -> UInt64:
+    def opt_in_prize_asset(self, prize: Asset, mbr_payment: gtxn.PaymentTransaction) -> UInt64:
         """Let the app hold the prize asset. Anyone may pay for it, once.
 
         An account must opt in before it can receive an asset, and holding one
         costs 100,000 microAlgos of minimum balance permanently. That is not
         the app's to find, so whoever wants the draw running provides it.
+
+        This is also where the asset is checked, because it is the first call
+        that has the asset as an available resource and so the first that can
+        read its parameters. A prize whose issuer kept clawback can be emptied
+        out of the app account at any time while `pot` goes on claiming the
+        tokens are there; one whose issuer kept freeze can be made unclaimable
+        forever. Either strands the pot on a contract that cannot be updated,
+        so a draw that has not been checked cannot be funded: `deposit_asset`
+        requires the opt-in, and the opt-in requires this.
         """
         asset = self.prize_asset.value
         assert asset > 0, "Prize is ALGO"
+        assert prize.id == asset, "Wrong asset"
+        assert prize.clawback == Global.zero_address, "Prize asset has a clawback address"
+        assert prize.freeze == Global.zero_address, "Prize asset has a freeze address"
+        # Manager too: a manager can set clawback and freeze back again, so
+        # checking only the other two would be checking a promise rather than
+        # a property.
+        assert prize.manager == Global.zero_address, "Prize asset has a manager address"
         assert not Global.current_application_address.is_opted_in(
             Asset(asset)
         ), "Already opted in"
@@ -222,7 +238,7 @@ class Rain(ARC4Contract):
 
     @abimethod()
     def draw(self) -> UInt64:
-        """Open a draw. Zero arguments — this is what Arcron calls.
+        """Open a draw. Zero arguments, which is what Arcron calls.
 
         A no-op returning 0 when there is nothing to draw for, because a
         scheduled call that fails would trip keeper backoff and stop the whole

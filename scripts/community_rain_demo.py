@@ -153,6 +153,7 @@ def main(argv: list[str] | None = None) -> None:
     fund(stranger, 1_000_000)
     rain.send.opt_in_prize_asset(
         args=OptInPrizeAssetArgs(
+            prize=prize_asset,
             mbr_payment=algorand.create_transaction.payment(
                 algokit_utils.PaymentParams(
                     sender=stranger.address,
@@ -168,6 +169,52 @@ def main(argv: list[str] | None = None) -> None:
         ),
     )
     logger.info("   A passer-by paid the 100,000 µALGO opt-in, not the creator.")
+
+    # And a prize the issuer could take back is refused outright. An asset with
+    # a clawback address can be emptied out of the app account whenever its
+    # issuer likes, while `pot` goes on claiming the tokens are there.
+    rugable = algorand.send.asset_create(
+        algokit_utils.AssetCreateParams(
+            sender=treasury.address, total=1_000, decimals=0,
+            asset_name="Rug Points", unit_name="RUG",
+            clawback=treasury.address,
+        )
+    ).asset_id
+    rug_rain, _ = algorand.client.get_typed_app_factory(
+        RainFactory, default_sender=founder.address
+    ).send.create.bare()
+    algorand.send.payment(
+        algokit_utils.PaymentParams(
+            sender=founder.address, receiver=rug_rain.app_address,
+            amount=algokit_utils.AlgoAmount(micro_algo=300_000),
+        )
+    )
+    rug_rain.send.configure(
+        args=ConfigureArgs(
+            beacon_app=beacon.app_id, gate_creator=ZERO_ADDRESS, prize_asset=rugable
+        )
+    )
+    refused = False
+    with _quiet():
+        try:
+            rug_rain.send.opt_in_prize_asset(
+                args=OptInPrizeAssetArgs(
+                    prize=rugable,
+                    mbr_payment=algorand.create_transaction.payment(
+                        algokit_utils.PaymentParams(
+                            sender=founder.address, receiver=rug_rain.app_address,
+                            amount=algokit_utils.AlgoAmount(micro_algo=ASSET_OPT_IN_MBR),
+                        )
+                    ),
+                ),
+                params=algokit_utils.CommonAppCallParams(
+                    extra_fee=algokit_utils.AlgoAmount(micro_algo=1_000)
+                ),
+            )
+        except Exception:
+            refused = True
+    _assert("a clawback-able prize is refused", refused, True)
+    logger.info("   So the pot can never be funded in an asset its issuer can take back.")
 
     # ------------------------------------------------------------------
     logger.info("── 4. Anyone can fill the pot ──")
@@ -356,6 +403,7 @@ def main(argv: list[str] | None = None) -> None:
     )
     solo_rain.send.opt_in_prize_asset(
         args=OptInPrizeAssetArgs(
+            prize=prize_asset,
             mbr_payment=algorand.create_transaction.payment(
                 algokit_utils.PaymentParams(
                     sender=founder.address, receiver=solo_rain.app_address,
