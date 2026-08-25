@@ -53,6 +53,9 @@ smoke-watchdog = "poetry run python -m scripts.watchdog_demo --network localnet"
 smoke-treasury = "poetry run python -m scripts.treasury_demo --network localnet"
 smoke-subscription = "poetry run python -m scripts.subscription_demo --network localnet"
 soak = "poetry run python -m scripts.keeper_soak --network localnet --minutes 3"
+# A populated registry with competing keepers, asserting what has to be true
+# of the whole system rather than of one upkeep. Deterministic per seed.
+scenario = "poetry run python -m scripts.scenario --network localnet"
 
 [lanes.ci]
 description = "Full CI pipeline: contracts + console, unit tests, spec drift check"
@@ -64,4 +67,4 @@ steps = ["build", "test", "spec", "js-install", "js-test", "web-test", "web-buil
 
 [lanes.endurance]
 description = "The local lane plus a soak: many consecutive executions, no drift"
-steps = ["build", "test", "spec", "smoke-keeper", "soak"]
+steps = ["build", "test", "spec", "smoke-keeper", "soak", "scenario"]
