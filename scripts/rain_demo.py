@@ -33,6 +33,9 @@ from smart_contracts.rain.contract import ALLOCATION_MBR, BEACON_DELAY, TICKET_M
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
+# algosdk's encoding of the all-zero address, which means 'no gate'.
+ZERO_ADDRESS = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAY5HFKQ"
+
 DRAW_SIGNATURE = "draw()uint64"
 INTERVAL_ROUNDS = 10
 FEE = 4_000
@@ -75,7 +78,11 @@ def main(argv: list[str] | None = None) -> None:
             amount=algokit_utils.AlgoAmount(micro_algo=200_000),
         )
     )
-    rain.send.configure(args=ConfigureArgs(beacon_app=beacon.app_id))
+    # Open entry, ALGO prize: the original shape. scripts/community_rain_demo.py
+    # runs the gated, asset-paying one.
+    rain.send.configure(
+        args=ConfigureArgs(beacon_app=beacon.app_id, gate_creator=ZERO_ADDRESS, prize_asset=0)
+    )
     logger.info(f"  Rain app {rain.app_id}, beacon stub {beacon.app_id}")
 
     players = []
@@ -102,7 +109,9 @@ def main(argv: list[str] | None = None) -> None:
                         receiver=rain.app_address,
                         amount=algokit_utils.AlgoAmount(micro_algo=TICKET_MBR),
                     )
-                )
+                ),
+                # Ungated, so nothing is checked and asset 0 stands for none.
+                gate_asset=0,
             )
         ).abi_return
         players.append((player, client))

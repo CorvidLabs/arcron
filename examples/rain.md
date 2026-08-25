@@ -7,6 +7,10 @@ stall the draw, or walk off with the money.
 real applications work on Arcron's v1 call shape, so it is worth reading even
 if you never want a prize draw.
 
+Running one for a project rather than reading about the technique? The same
+contract gates entry to an NFT collection and pays in your own token:
+[a draw for your holders](community-rain.md).
+
 ## The shape
 
 ```

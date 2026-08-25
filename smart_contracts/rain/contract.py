@@ -25,6 +25,7 @@ from algopy import (
     ARC4Contract,
     Account,
     Application,
+    Asset,
     Box,
     Bytes,
     Global,
@@ -53,6 +54,8 @@ ALLOCATION_PREFIX = b"a"
 TICKET_MBR = 2_500 + 400 * 41
 # Allocation: 33-byte name, 8-byte value.
 ALLOCATION_MBR = 2_500 + 400 * 41
+# What holding one asset costs an account, permanently.
+ASSET_OPT_IN_MBR = 100_000
 
 
 class Drawn(arc4.Struct):
@@ -87,21 +90,62 @@ class Rain(ARC4Contract):
         self.tickets_snapshot = GlobalState(UInt64(0))
         self.draws_resolved = GlobalState(UInt64(0))
         self.last_winner = GlobalState(Account())
+        # Zero address: anyone may enter. Set: only holders of an asset this
+        # account created, which is how an NFT collection gates a draw. A
+        # collection on Algorand is many assets rather than one, so the check
+        # has to be on who minted them.
+        self.gate_creator = GlobalState(Account())
+        # Zero: the pot and the prize are ALGO. Set: both are this asset.
+        self.prize_asset = GlobalState(UInt64(0))
 
     @abimethod()
-    def configure(self, beacon_app: UInt64) -> None:
-        """Point at the randomness beacon. Creator only, once.
+    def configure(
+        self, beacon_app: UInt64, gate_creator: arc4.Address, prize_asset: UInt64
+    ) -> None:
+        """Point at the beacon, and decide who may enter and what they win.
 
-        The beacon differs per network — and LocalNet has none, so tests point
-        this at a stub implementing the same interface.
+        Creator only, once. The beacon differs per network, and LocalNet has
+        none, so tests point this at a stub implementing the same interface.
+
+        `gate_creator` zero leaves entry open to anyone. Set to a collection's
+        minting account, only holders of something it created may enter.
+
+        `prize_asset` zero keeps the pot and the prize in ALGO. Set, both are
+        that asset, and the app must opt in before it can be funded.
         """
         assert Txn.sender == Global.creator_address, "Only the creator can configure"
         assert self.beacon_app.value == 0, "Already configured"
         assert beacon_app > 0, "Beacon app id required"
         self.beacon_app.value = beacon_app
+        self.gate_creator.value = gate_creator.native
+        self.prize_asset.value = prize_asset
 
     @abimethod()
-    def enter(self, mbr_payment: gtxn.PaymentTransaction) -> UInt64:
+    def opt_in_prize_asset(self, mbr_payment: gtxn.PaymentTransaction) -> UInt64:
+        """Let the app hold the prize asset. Anyone may pay for it, once.
+
+        An account must opt in before it can receive an asset, and holding one
+        costs 100,000 microAlgos of minimum balance permanently. That is not
+        the app's to find, so whoever wants the draw running provides it.
+        """
+        asset = self.prize_asset.value
+        assert asset > 0, "Prize is ALGO"
+        assert not Global.current_application_address.is_opted_in(
+            Asset(asset)
+        ), "Already opted in"
+        assert (
+            mbr_payment.receiver == Global.current_application_address
+        ), "MBR payment must fund the app account"
+        assert mbr_payment.amount >= ASSET_OPT_IN_MBR, "MBR payment too small"
+        itxn.AssetTransfer(
+            xfer_asset=Asset(asset),
+            asset_receiver=Global.current_application_address,
+            asset_amount=0,
+        ).submit()
+        return asset
+
+    @abimethod()
+    def enter(self, mbr_payment: gtxn.PaymentTransaction, gate_asset: Asset) -> UInt64:
         """Buy one ticket for the sender. Returns its index.
 
         Tickets persist across draws: buying once enters every future draw.
@@ -114,6 +158,16 @@ class Rain(ARC4Contract):
         ), "MBR payment must fund the app account"
         assert mbr_payment.amount >= TICKET_MBR, "MBR payment too small"
 
+        # The entrant supplies the asset they are claiming membership with,
+        # and sends this transaction, so the reference is available. A
+        # scheduled call could not do this, which is why the gate lives here
+        # and not in `draw`.
+        gate = self.gate_creator.value
+        if gate != Global.zero_address:
+            assert Txn.sender.is_opted_in(gate_asset), "Hold a token from the collection"
+            assert gate_asset.balance(Txn.sender) > 0, "Hold a token from the collection"
+            assert gate_asset.creator == gate, "That asset is not from the collection"
+
         index = self.tickets.value
         Box(Account, key=op.concat(TICKET_PREFIX, op.itob(index))).value = Txn.sender
         self.tickets.value = index + 1
@@ -121,12 +175,31 @@ class Rain(ARC4Contract):
 
     @abimethod()
     def deposit(self, payment: gtxn.PaymentTransaction) -> UInt64:
-        """Add to the pot. Anyone, any amount. Returns the new pot."""
+        """Add ALGO to the pot. Anyone, any amount. Returns the new pot."""
+        assert self.prize_asset.value == 0, "This draw pays an asset; use deposit_asset"
         assert (
             payment.receiver == Global.current_application_address
         ), "Deposit must go to the app account"
         assert payment.amount > 0, "Amount must be positive"
         self.pot.value += payment.amount
+        return self.pot.value
+
+    @abimethod()
+    def deposit_asset(self, transfer: gtxn.AssetTransferTransaction) -> UInt64:
+        """Add the prize asset to the pot. Anyone, any amount.
+
+        Refilling is deliberately open. A draw that only its creator can fund
+        stops the day they lose interest, and the whole point is a schedule
+        that does not depend on anyone in particular.
+        """
+        asset = self.prize_asset.value
+        assert asset > 0, "This draw pays ALGO; use deposit"
+        assert (
+            transfer.asset_receiver == Global.current_application_address
+        ), "Deposit must go to the app account"
+        assert transfer.xfer_asset.id == asset, "Wrong asset"
+        assert transfer.asset_amount > 0, "Amount must be positive"
+        self.pot.value += transfer.asset_amount
         return self.pot.value
 
     @abimethod()
@@ -137,17 +210,24 @@ class Rain(ARC4Contract):
         scheduled call that fails would trip keeper backoff and stop the whole
         demo. Being called on a quiet week must be uneventful, not an error.
         """
+        # An asset pot is counted in token units, so the ALGO the allocation
+        # box costs cannot be taken out of it. Only an ALGO pot can pay for
+        # its own bookkeeping.
+        reserve: UInt64 = (
+            UInt64(ALLOCATION_MBR) if self.prize_asset.value == 0 else UInt64(0)
+        )
         if (
             self.draw_open.value == 1
             or self.tickets.value == 0
-            or self.pot.value <= ALLOCATION_MBR
+            or self.pot.value <= reserve
         ):
             return UInt64(0)
 
-        # Reserve the winner's allocation box out of the pot, so resolving can
-        # never fail for want of minimum balance. It returns to the pot when
-        # the prize is claimed.
-        prize: UInt64 = self.pot.value - ALLOCATION_MBR
+        # Reserve the winner's allocation box, so resolving can never fail for
+        # want of minimum balance. For an ALGO pot that comes out of the pot
+        # and returns to it when the prize is claimed. For an asset pot it
+        # comes from the app account, which is also where it goes back to.
+        prize: UInt64 = self.pot.value - reserve
         self.pot.value = UInt64(0)
         self.prize.value = prize
         self.tickets_snapshot.value = self.tickets.value
@@ -212,10 +292,23 @@ class Rain(ARC4Contract):
         assert allocation, "Nothing allocated to you"
         amount = allocation.value
         del allocation.value
-        # Deleting the box releases its minimum balance back to the pot, where
-        # it pays for the next winner's allocation.
-        self.pot.value += ALLOCATION_MBR
-        itxn.Payment(receiver=Txn.sender, amount=amount).submit()
+        asset = self.prize_asset.value
+        if asset == 0:
+            # Deleting the box releases its minimum balance back to the pot,
+            # where it pays for the next winner's allocation.
+            self.pot.value += ALLOCATION_MBR
+            itxn.Payment(receiver=Txn.sender, amount=amount).submit()
+        else:
+            # The freed minimum balance is ALGO and the pot is not, so it
+            # cannot be recycled into it. It stays in the app account, which is
+            # where the next allocation box's minimum balance comes from
+            # anyway, so nothing is stranded.
+            assert Txn.sender.is_opted_in(Asset(asset)), "Opt in to the prize asset first"
+            itxn.AssetTransfer(
+                xfer_asset=Asset(asset),
+                asset_receiver=Txn.sender,
+                asset_amount=amount,
+            ).submit()
         return amount
 
     @abimethod(readonly=True)
