@@ -154,17 +154,26 @@ export async function cancel(
   appId: number,
   signing: Signing,
   upkeepId: bigint,
+  feeAsset = 0n,
 ): Promise<CallResult> {
+  // An upkeep holding an ASA bonus makes `cancel` read that asset's holding
+  // and freeze flags before deciding whether to send it, so the asset has to
+  // be an available resource even on the paths where nothing is transferred.
+  // Without it the call fails with `unavailable Asset N`. The Python side
+  // never noticed: algokit-utils simulates and fills resources in, and this
+  // client builds its transactions by hand.
+  const usesAsset = feeAsset > 0n;
   const composer = new algosdk.AtomicTransactionComposer();
   composer.addMethodCall({
     appID: appId,
     method: keeperMethod('cancel'),
     sender: signing.sender,
     signer: signing.signer,
-    // Covers the refund payment the contract sends back.
-    suggestedParams: await flatFee(algod, 2_000),
+    // Covers the refund payment, and the bonus transfer when there is one.
+    suggestedParams: await flatFee(algod, usesAsset ? 3_000 : 2_000),
     methodArgs: [upkeepId],
     boxes: [{ appIndex: 0, name: upkeepBoxName(upkeepId) }],
+    ...(usesAsset ? { appForeignAssets: [Number(feeAsset)] } : {}),
   });
   return run(algod, composer);
 }
@@ -173,20 +182,25 @@ export async function execute(
   algod: algosdk.Algodv2,
   appId: number,
   signing: Signing,
-  upkeep: Pick<Upkeep, 'id' | 'targetApp'>,
+  upkeep: Pick<Upkeep, 'id' | 'targetApp' | 'feeAsset'>,
 ): Promise<CallResult> {
+  // Same reason as `cancel`: with a fee asset set, `execute` reads that
+  // asset's holding and freeze flags whether or not a bonus ends up moving,
+  // so it has to be available. The extra 1,000 covers the bonus transfer,
+  // which is a third inner transaction on top of the registered call and the
+  // keeper's own payment.
+  const usesAsset = (upkeep.feeAsset ?? 0n) > 0n;
   const composer = new algosdk.AtomicTransactionComposer();
   composer.addMethodCall({
     appID: appId,
     method: keeperMethod('execute'),
     sender: signing.sender,
     signer: signing.signer,
-    // The outer fee pools for both inner transactions: the registered app
-    // call and the keeper's payment.
-    suggestedParams: await flatFee(algod, EXECUTE_FEE),
+    suggestedParams: await flatFee(algod, usesAsset ? EXECUTE_FEE + 1_000 : EXECUTE_FEE),
     methodArgs: [upkeep.id],
     boxes: [{ appIndex: 0, name: upkeepBoxName(upkeep.id) }],
     appForeignApps: [Number(upkeep.targetApp)],
+    ...(usesAsset ? { appForeignAssets: [Number(upkeep.feeAsset)] } : {}),
   });
   return run(algod, composer);
 }

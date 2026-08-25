@@ -70,7 +70,7 @@ export class KeeperService {
 
   async cancel(upkeep: Upkeep): Promise<void> {
     await this.send('cancel', upkeep.id, async (algod, appId, signing) => {
-      const result = await txns.cancel(algod, appId, signing, upkeep.id);
+      const result = await txns.cancel(algod, appId, signing, upkeep.id, upkeep.feeAsset);
       return {
         result,
         message: `Refunded ${algos(result.returnValue ?? 0n)} (escrow plus box MBR)`,
