@@ -246,8 +246,26 @@ opt_in_asset(mbr_payment, upkeep_id, asset)   # 0.1 ALGO, permanent
 top_up_asset(upkeep_id, asset_funding)
 ```
 
-Two things to know:
+**Can you pay keepers *only* in your token?** In effect, yes — set the ALGO
+fee at the 0.004 ALGO floor and it stops being a reward and becomes a cost
+reimbursement. An execution costs a keeper 0.003 ALGO in transaction fees, or
+0.004 when a bonus is paid, so at the floor an asset upkeep hands the keeper
+back exactly what it spent and your token is the entire pay. Measured, not
+estimated.
 
+What you cannot do is remove the ALGO altogether, and that is Algorand's
+constraint rather than Arcron's: every transaction costs ALGO, so a keeper
+paid purely in your token is out of pocket in ALGO until it sells some. A
+contract cannot check that your token is worth more than the keeper's burn
+without a price feed, so guaranteeing that anyone is ever willing to run your
+upkeep would mean trusting an oracle. Reimbursing the ALGO instead keeps the
+guarantee on-chain and costs about 1.5 ALGO a year for a daily upkeep.
+
+Three things to know:
+
+- **An asset upkeep at the minimum ALGO fee only attracts keepers who want
+  your asset.** They break exactly even in ALGO, so the token has to be worth
+  their while. If you want generic keepers to take it too, pay more ALGO.
 - **The app must opt in before it can hold the asset**, which costs 0.1 ALGO
   of minimum balance permanently. There is no opt-out, so the deposit does not
   come back.

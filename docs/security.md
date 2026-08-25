@@ -191,6 +191,19 @@ round. Box MBR is refundable, so a spammer's only real cost is transaction
 fees and locked capital. Nothing on chain prevents it; a keeper that cared
 would cache boxes and re-read on change.
 
+### An asset upkeep at the minimum fee only attracts keepers who want the asset
+
+An execution costs a keeper 3,000 µALGO in fees, or 4,000 when an ASA bonus is
+paid — the bonus is a third inner transaction. At `MIN_UPKEEP_FEE` a plain
+upkeep clears 1,000 µALGO and an asset upkeep clears **exactly nothing**
+(measured). That is the intended shape: the ALGO covers the keeper's costs and
+the asset is the pay.
+
+The consequence is a liveness one, not a safety one. An asset upkeep at the
+floor is worth running only to a keeper that values the asset, so if none do,
+it goes unserviced — funded, due, and ignored. A creator who wants generic
+keepers to take it as well should set an ALGO fee above the floor.
+
 ### Post-quantum keepers are covered only while bytes are free
 
 A Falcon-1024-signed `execute` is about 13× the size of an ed25519 one

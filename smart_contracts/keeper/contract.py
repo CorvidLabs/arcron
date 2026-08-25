@@ -22,8 +22,13 @@ MIN_INTERVAL_ROUNDS = 10
 # forbids nothing anyone wants. It exists to make the escalation multiply
 # provably safe without appealing to how old the chain is: see MAX_UPKEEP_FEE.
 MAX_INTERVAL_ROUNDS = 1_000_000_000
-# Minimum ALGO reward per execution (µALGO). A keeper pays ~3,000 µALGO in
-# transaction fees per execution, so this floor keeps executions profitable.
+# Minimum ALGO reward per execution (µALGO). An execution costs the keeper
+# 3,000 µALGO in transaction fees — 4,000 when an ASA bonus is paid, because
+# that is a third inner transaction — so at this floor a plain upkeep clears
+# 1,000 and an asset upkeep exactly breaks even. That is deliberate: it makes
+# the ALGO component a cost reimbursement and lets the asset be the actual
+# pay, which is the point of paying in one. A creator who wants keepers who do
+# not care about their token should set a fee above this floor.
 MIN_UPKEEP_FEE = 4_000
 # Ceiling on both the base fee and the escalation cap (µALGO). Nothing needs a
 # thousand ALGO per execution.
