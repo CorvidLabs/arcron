@@ -25,6 +25,7 @@ web-serve = "cd web && bun run ng serve"
 smoke-keeper = "poetry run python -m scripts.keeper_e2e --network localnet"
 smoke-embargo = "poetry run python -m scripts.embargo_demo --network localnet"
 smoke-rain = "poetry run python -m scripts.rain_demo --network localnet"
+smoke-community-rain = "poetry run python -m scripts.community_rain_demo --network localnet"
 smoke-deadman = "poetry run python -m scripts.deadman_demo --network localnet"
 smoke-watchdog = "poetry run python -m scripts.watchdog_demo --network localnet"
 smoke-treasury = "poetry run python -m scripts.treasury_demo --network localnet"
@@ -37,7 +38,7 @@ steps = ["build", "test", "spec", "js-install", "js-test", "web-test", "web-buil
 
 [lanes.local]
 description = "CI plus the LocalNet end-to-end test (needs algokit localnet start)"
-steps = ["build", "test", "spec", "js-install", "js-test", "web-test", "web-build", "smoke-keeper", "smoke-embargo", "smoke-rain", "smoke-deadman", "smoke-watchdog", "smoke-treasury", "smoke-subscription"]
+steps = ["build", "test", "spec", "js-install", "js-test", "web-test", "web-build", "smoke-keeper", "smoke-embargo", "smoke-rain", "smoke-community-rain", "smoke-deadman", "smoke-watchdog", "smoke-treasury", "smoke-subscription"]
 
 [lanes.endurance]
 description = "The local lane plus a soak: many consecutive executions, no drift"

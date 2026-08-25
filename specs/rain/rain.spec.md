@@ -37,11 +37,13 @@ everyone.
 
 | Constant | Value | Description |
 |----------|-------|-------------|
+| `BEACON_WINDOW` | `1_000` | How long after `commit_round` the beacon still answers. The Foundation beacon retains roughly 1,512 rounds, so a draw nobody resolved inside it can never be resolved. Held short of the real retention so `abandon` cannot race a `resolve` that would still have worked. |
 | `BEACON_DELAY` | `8` | Rounds between opening a draw and the beacon value becoming readable, so the outcome is unknowable when the draw opens. |
 | `TICKET_PREFIX` | `b"t"` | Box prefix: `b"t" + itob(index)` → the holder's address. |
 | `ALLOCATION_PREFIX` | `b"a"` | Box prefix: `b"a" + address` → unclaimed µALGO. |
 | `TICKET_MBR` | `2_500 + 400 * 41` (`18_900`) | What one ticket box costs; paid by its buyer. |
-| `ALLOCATION_MBR` | `2_500 + 400 * 41` (`18_900`) | What one allocation box costs; reserved from the pot at draw time and returned on claim. |
+| `ALLOCATION_MBR` | `2_500 + 400 * 41` (`18_900`) | What one allocation box costs. Reserved from the pot at draw time and returned on claim when the prize is ALGO; taken from the app account when it is an asset. |
+| `ASSET_OPT_IN_MBR` | `100_000` | What holding one asset costs an account, permanently. Paid by whoever calls `opt_in_prize_asset`, who need not be the creator. |
 
 ### Exported Types
 
@@ -55,12 +57,15 @@ everyone.
 
 | Method | Parameters | Returns | Description |
 |--------|-----------|---------|-------------|
-| `configure` | `beacon_app: uint64` | `void` | Creator-only, once. Points at the randomness beacon for this network. |
-| `enter` | `mbr_payment: pay` | `uint64` | Buys one ticket for the sender; returns its index. Tickets persist across draws. |
-| `deposit` | `payment: pay` | `uint64` | Adds to the pot, from anyone; returns the new pot. |
+| `configure` | `beacon_app: uint64, gate_creator: address, prize_asset: uint64` | `void` | Creator-only, once. Points at the beacon, decides who may enter, and decides what they win. A zero `gate_creator` leaves entry open; a zero `prize_asset` keeps the pot in ALGO. |
+| `opt_in_prize_asset` | `mbr_payment: pay` | `uint64` | Opts the app into the prize asset so it can be funded. Anyone may pay for it, once. |
+| `enter` | `mbr_payment: pay, gate_asset: asset` | `uint64` | Buys one ticket for the sender; returns its index. Tickets persist across draws. When gated, `gate_asset` is an asset the sender holds, and the contract checks the collection minted it. Ignored when entry is open. |
+| `deposit` | `payment: pay` | `uint64` | Adds ALGO to the pot, from anyone; returns the new pot. Rejected when the prize is an asset. |
+| `deposit_asset` | `transfer: axfer` | `uint64` | Adds the prize asset to the pot, from anyone; returns the new pot. Rejected when the prize is ALGO. |
 | `draw` | — | `uint64` | Zero-argument, the shape Arcron calls. Opens a draw and returns its id, or `0` when there is nothing to draw for. |
 | `resolve` | — | `address` | Permissionless. Reads the beacon for the committed round, picks the winning ticket, credits the allocation. |
 | `claim` | — | `uint64` | The winner pulls their prize; returns the amount. |
+| `abandon` | — | `uint64` | Reopens a draw whose beacon window has closed, returning the prize and the unused reservation to the pot. Permissionless, and only available once the outcome is unknowable to everyone. |
 | `allocation_of` | `who: address` | `uint64` | Readonly. What `who` can claim right now. |
 
 ## Invariants
@@ -71,8 +76,14 @@ everyone.
 4. `resolve` succeeds only after `commit_round` has passed, and only once per draw.
 5. The winning ticket is `beacon_value[0:8] mod tickets_snapshot`, taken over the ticket count as it was when the draw opened.
 6. Every prize is allocated before it is paid; funds leave only to the account claiming their own allocation.
-7. Each draw reserves exactly one `ALLOCATION_MBR` from the pot, and that reservation returns to the pot when the prize is claimed, or immediately if the winner already had an unclaimed allocation.
-8. Deposits arriving after a draw opens belong to the next draw.
+7. An ALGO draw reserves exactly one `ALLOCATION_MBR` from the pot, and that reservation returns to the pot when the prize is claimed, or immediately if the winner already had an unclaimed allocation. An asset draw reserves nothing from the pot, because the pot is counted in token units and the box is paid for in ALGO: the app account covers it, and the freed minimum balance stays there rather than being recycled into a pot it cannot be added to.
+8. The pot is denominated one way or the other and never both. A draw paying an asset refuses ALGO deposits, and a draw paying ALGO refuses asset deposits.
+9. Gating checks the asset's creator, not its id. A collection on Algorand is many assets sharing a minter, so holding any one of them is what qualifies, and holding an asset from a different creator does not.
+10. A draw can always be reopened. If the beacon window closes before anyone resolves, `abandon` returns the prize and the reservation `draw` took for a box that was never created, so a single unresolved draw cannot lock the pot on a contract that has no update or delete path.
+11. `configure` is refused once the pot holds anything or anyone has entered, so the denomination cannot change under people who have already staked on it, and `enter` and `deposit` require configuration first.
+12. An asset draw refuses to open unless the app account can cover one allocation box in ALGO, because that draw reserves nothing from the pot and `resolve` would otherwise fail on minimum balance with the draw open.
+13. The prize asset can never buy a ticket, even when the same account minted both it and the collection, which is the natural thing for a project to do.
+14. Deposits arriving after a draw opens belong to the next draw.
 
 ## Behavioral Examples
 
@@ -106,6 +117,11 @@ everyone.
 | `resolve` at or before the committed round | Fails with "Beacon round has not passed" |
 | `resolve` without the beacon app referenced by the caller | Fails: the inner call cannot reach an unavailable app |
 | `claim` by an account with no allocation | Fails with "Nothing allocated to you" |
+| `claim` of an asset prize without opting in | Fails with "Opt in to the prize asset first" |
+| `enter` on a gated draw without holding the asset | Fails with "Hold a token from the collection" |
+| `enter` on a gated draw with another creator's asset | Fails with "That asset is not from the collection" |
+| `deposit_asset` with the wrong asset | Fails with "Wrong asset" |
+| `opt_in_prize_asset` twice, or on an ALGO draw | Fails with "Already opted in" / "Prize is ALGO" |
 
 ## Dependencies
 
