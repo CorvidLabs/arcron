@@ -28,6 +28,8 @@ smoke-multisig = "poetry run python -m scripts.multisig_e2e --network localnet"
 # A real clawback, on a real chain: the mock runs no inner transactions, so
 # it cannot show that a failed asset transfer would take the ALGO with it.
 smoke-clawback = "poetry run python -m scripts.clawback_e2e --network localnet"
+# Publish the integrator docs to the site. --check reports drift without writing.
+site-docs = "poetry run python -m scripts.sync_site_docs"
 # Record the live deployment as JSON, for pages that must build without a network.
 snapshot = "poetry run python -m scripts.testnet_snapshot --network testnet --app-id 769823086"
 # One install for the whole Bun workspace (js + web). Installing per-package

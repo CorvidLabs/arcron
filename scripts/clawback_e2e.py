@@ -123,15 +123,28 @@ def main(argv: list[str] | None = None) -> None:
     held = algod.account_asset_info(keeper.app_address, asset)["asset-holding"]["amount"]
     _assert("and actually held", held, BONUS * 2)
 
-    logger.info("── 3. The issuer takes it back ──")
+    logger.info("── 3. The issuer takes it back, then destroys the asset ──")
+    # Two variants matter here and only one is reachable. A clawback cannot
+    # also close the target's opt-in: the protocol rejects that outright with
+    # "cannot close asset by clawback", so the app's holding can be emptied
+    # but not removed. Destroying the asset afterwards is allowed, and leaves
+    # the app opted in to something that no longer exists.
     algorand.send.asset_transfer(
         algokit_utils.AssetTransferParams(
             sender=issuer.address, receiver=issuer.address,
             clawback_target=keeper.app_address, asset_id=asset, amount=BONUS * 2,
         )
     )
-    held = algod.account_asset_info(keeper.app_address, asset)["asset-holding"]["amount"]
-    _assert("the app now holds none of it", held, 0)
+    algorand.send.asset_destroy(
+        algokit_utils.AssetDestroyParams(sender=issuer.address, asset_id=asset)
+    )
+    logger.info("   Asset destroyed while the app is still opted in to it.")
+    gone = False
+    try:
+        algod.asset_info(asset)
+    except Exception:
+        gone = True
+    _assert("the asset no longer exists", gone, True)
     upkeep, _ = _read_upkeep(algorand, keeper.app_id, upkeep_id)
     _assert("but the book still says it does", upkeep.asset_balance, BONUS * 2)
 
@@ -150,6 +163,81 @@ def main(argv: list[str] | None = None) -> None:
     after = algod.account_info(creator.address)["amount"]
     _assert("the escrow and box MBR came back", refund > 0, True)
     _assert("and actually reached the creator", after > before, True)
+
+    logger.info("── 5. And a frozen creator can still cancel ──")
+    # The other way an issuer can make a transfer fail. A frozen holding still
+    # reports a balance, so checking the amount is not enough, and the creator
+    # cannot escape by opting out: a frozen account cannot close a holding.
+    frozen_issuer = algorand.account.random()
+    algorand.send.payment(
+        algokit_utils.PaymentParams(
+            sender=creator.address, receiver=frozen_issuer.address,
+            amount=algokit_utils.AlgoAmount(micro_algo=2_000_000),
+        )
+    )
+    frozen_asset = algorand.send.asset_create(
+        algokit_utils.AssetCreateParams(
+            sender=frozen_issuer.address, total=1_000_000, decimals=0,
+            asset_name="Freeze Points", unit_name="FZP",
+            freeze=frozen_issuer.address, manager=frozen_issuer.address,
+        )
+    ).asset_id
+    second = keeper.send.register(
+        args=RegisterArgs(
+            mbr_payment=payment(_box_mbr([call_data])),
+            funding_payment=payment(FEE * 4),
+            target_app=pulse.app_id,
+            call_args=[call_data],
+            interval_rounds=INTERVAL,
+            fee_per_execution=FEE,
+            policy=CATCH_UP,
+            fee_cap=0,
+            fee_asset=frozen_asset,
+            asset_fee=BONUS,
+        )
+    ).abi_return
+    keeper.send.opt_in_asset(
+        args=OptInAssetArgs(
+            mbr_payment=payment(ASSET_OPT_IN_MBR), upkeep_id=second, asset=frozen_asset
+        ),
+        params=algokit_utils.CommonAppCallParams(
+            extra_fee=algokit_utils.AlgoAmount(micro_algo=1_000)
+        ),
+    )
+    algorand.send.asset_opt_in(
+        algokit_utils.AssetOptInParams(sender=creator.address, asset_id=frozen_asset)
+    )
+    algorand.send.asset_transfer(
+        algokit_utils.AssetTransferParams(
+            sender=frozen_issuer.address, receiver=creator.address,
+            asset_id=frozen_asset, amount=BONUS * 2,
+        )
+    )
+    keeper.send.top_up_asset(
+        args=TopUpAssetArgs(
+            upkeep_id=second,
+            asset_funding=algorand.create_transaction.asset_transfer(
+                algokit_utils.AssetTransferParams(
+                    sender=creator.address, receiver=keeper.app_address,
+                    asset_id=frozen_asset, amount=BONUS * 2,
+                )
+            ),
+        )
+    )
+    algorand.send.asset_freeze(
+        algokit_utils.AssetFreezeParams(
+            sender=frozen_issuer.address, asset_id=frozen_asset,
+            account=creator.address, frozen=True,
+        )
+    )
+    logger.info("   The issuer froze the creator, who cannot opt out.")
+    refund_two = keeper.send.cancel(
+        args=CancelArgs(upkeep_id=second),
+        params=algokit_utils.CommonAppCallParams(
+            extra_fee=algokit_utils.AlgoAmount(micro_algo=2_000)
+        ),
+    ).abi_return
+    _assert("cancel still returns the ALGO", refund_two > 0, True)
 
     logger.info("")
     logger.info("Clawback e2e passed.")
