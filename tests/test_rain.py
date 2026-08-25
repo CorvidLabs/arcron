@@ -6,7 +6,7 @@ path has to be a clean no-op rather than a failure that would trip keeper
 backoff. Most of what follows is about that, and about the money adding up.
 
 Resolution needs an inner call to a beacon, which mocks record without
-executing — that half lives in scripts/rain_demo.py on LocalNet.
+executing. That half lives in scripts/rain_demo.py on LocalNet.
 """
 
 from collections.abc import Iterator
