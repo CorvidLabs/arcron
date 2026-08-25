@@ -32,6 +32,7 @@ from scripts.rain_demo import _expected_ticket
 from smart_contracts.artifacts.beacon_stub.beacon_stub_client import BeaconStubFactory
 from smart_contracts.artifacts.keeper.keeper_client import RegisterArgs
 from smart_contracts.artifacts.rain.rain_client import (
+    AllocationOfArgs,
     ConfigureArgs,
     DepositAssetArgs,
     EnterArgs,
@@ -49,6 +50,9 @@ from smart_contracts.rain.contract import (
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
+
+# algosdk's encoding of the all-zero address, which means 'no gate'.
+ZERO_ADDRESS = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAY5HFKQ"
 
 DRAW_SIGNATURE = "draw()uint64"
 INTERVAL_ROUNDS = 10
@@ -104,9 +108,14 @@ def main(argv: list[str] | None = None) -> None:
         )
     ).asset_id
 
+    # Minted by the treasury rather than the collection's account. A project
+    # would naturally use one account for both, which is why `enter` also
+    # refuses the prize asset outright: see stage 5.
+    treasury = algorand.account.random()
+    fund(treasury, 2_000_000)
     prize_asset = algorand.send.asset_create(
         algokit_utils.AssetCreateParams(
-            sender=artist.address, total=PRIZE_SUPPLY, decimals=0,
+            sender=treasury.address, total=PRIZE_SUPPLY, decimals=0,
             asset_name="Corvid Points", unit_name="CPT",
         )
     ).asset_id
@@ -167,7 +176,7 @@ def main(argv: list[str] | None = None) -> None:
     )
     algorand.send.asset_transfer(
         algokit_utils.AssetTransferParams(
-            sender=artist.address, receiver=stranger.address,
+            sender=treasury.address, receiver=stranger.address,
             asset_id=prize_asset, amount=POT,
         )
     )
@@ -320,6 +329,100 @@ def main(argv: list[str] | None = None) -> None:
     held = algod.account_asset_info(winner.address, prize_asset)["asset-holding"]["amount"]
     _assert("the whole pot was won", claimed, POT)
     _assert("the winner holds them", held, claimed)
+
+    # ------------------------------------------------------------------
+    logger.info("── 9. The same holder wins twice without claiming ──")
+    # The path unit tests cannot reach: the mock records the beacon inner call
+    # rather than executing it, so `resolve` never runs there. `resolve` used
+    # to credit ALLOCATION_MBR to the pot unconditionally, which on an asset
+    # pot invents tokens the app does not hold, compounding on every repeat
+    # win. deposit_asset is open to anyone, so later refills would have
+    # belonged to whoever sat on the stale allocation.
+    #
+    # One entrant makes the winner deterministic.
+    solo_rain, _ = algorand.client.get_typed_app_factory(
+        RainFactory, default_sender=founder.address
+    ).send.create.bare()
+    algorand.send.payment(
+        algokit_utils.PaymentParams(
+            sender=founder.address, receiver=solo_rain.app_address,
+            amount=algokit_utils.AlgoAmount(micro_algo=500_000),
+        )
+    )
+    solo_rain.send.configure(
+        args=ConfigureArgs(
+            beacon_app=beacon.app_id, gate_creator=ZERO_ADDRESS, prize_asset=prize_asset
+        )
+    )
+    solo_rain.send.opt_in_prize_asset(
+        args=OptInPrizeAssetArgs(
+            mbr_payment=algorand.create_transaction.payment(
+                algokit_utils.PaymentParams(
+                    sender=founder.address, receiver=solo_rain.app_address,
+                    amount=algokit_utils.AlgoAmount(micro_algo=ASSET_OPT_IN_MBR),
+                )
+            )
+        ),
+        params=algokit_utils.CommonAppCallParams(
+            extra_fee=algokit_utils.AlgoAmount(micro_algo=1_000)
+        ),
+    )
+
+    solo = algorand.account.random()
+    fund(solo, 1_000_000)
+    solo_client = RainClient(
+        algorand=algorand, app_id=solo_rain.app_id,
+        default_sender=solo.address, default_signer=solo.signer,
+    )
+    solo_client.send.enter(
+        args=EnterArgs(
+            mbr_payment=algorand.create_transaction.payment(
+                algokit_utils.PaymentParams(
+                    sender=solo.address, receiver=solo_rain.app_address,
+                    amount=algokit_utils.AlgoAmount(micro_algo=TICKET_MBR),
+                )
+            ),
+            gate_asset=0,
+        )
+    )
+
+    def deposit_and_draw(amount: int) -> None:
+        """Fund the solo pot from the treasury, then open a draw."""
+        RainClient(
+            algorand=algorand, app_id=solo_rain.app_id,
+            default_sender=treasury.address, default_signer=treasury.signer,
+        ).send.deposit_asset(
+            args=DepositAssetArgs(
+                transfer=algorand.create_transaction.asset_transfer(
+                    algokit_utils.AssetTransferParams(
+                        sender=treasury.address, receiver=solo_rain.app_address,
+                        asset_id=prize_asset, amount=amount,
+                    )
+                )
+            )
+        )
+        solo_rain.send.draw()
+
+    for cycle in (1, 2):
+        deposit_and_draw(1_000)
+        state = solo_rain.state.global_state
+        net.wait_for_round(algorand, state.commit_round + BEACON_DELAY, poker=founder)
+        solo_client.send.resolve(
+            params=algokit_utils.CommonAppCallParams(
+                extra_fee=algokit_utils.AlgoAmount(micro_algo=2_000)
+            )
+        )
+        # The whole point. Before the fix the second pass read 18,900: the
+        # winner already had an unclaimed allocation, so resolve took the
+        # repeat branch and credited an ALGO constant to a token pot.
+        _assert(f"pot after resolve {cycle}", solo_rain.state.global_state.pot, 0)
+
+    owed = solo_client.send.allocation_of(
+        args=AllocationOfArgs(who=solo.address)
+    ).abi_return
+    held = algod.account_asset_info(solo_rain.app_address, prize_asset)["asset-holding"]["amount"]
+    _assert("the app can actually pay what it owes", held >= owed, True)
+    logger.info(f"   Allocated {owed} tokens, app holds {held}. Nothing invented.")
 
     logger.info("")
     logger.info("Community rain demo passed.")

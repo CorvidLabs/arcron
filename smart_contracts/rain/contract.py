@@ -45,6 +45,12 @@ from algopy.arc4 import abimethod
 # beacon answers for a past round only, so the winner cannot be known — by
 # anyone, including whoever opened the draw — at the moment it opens.
 BEACON_DELAY = 8
+# How long after `commit_round` the beacon still answers. The Algorand
+# Foundation beacon retains roughly 1,512 rounds, so a draw nobody resolves
+# inside that window can never be resolved: `must_get` panics outside it. Held
+# short of the real retention so `abandon` cannot race a `resolve` that would
+# still have worked.
+BEACON_WINDOW = 1_000
 # One box per ticket: b"t" + itob(index) -> the holder's 32-byte address.
 TICKET_PREFIX = b"t"
 # One box per unclaimed prize: b"a" + address -> uint64 µALGO.
@@ -116,6 +122,12 @@ class Rain(ARC4Contract):
         assert Txn.sender == Global.creator_address, "Only the creator can configure"
         assert self.beacon_app.value == 0, "Already configured"
         assert beacon_app > 0, "Beacon app id required"
+        # Nothing may have been staked on the old denomination. Without this,
+        # a pot filled with ALGO could be re-pointed at a worthless asset and
+        # the ALGO would have no payout path on a contract that cannot be
+        # updated or deleted.
+        assert self.pot.value == 0, "Configure before the pot is funded"
+        assert self.tickets.value == 0, "Configure before anyone enters"
         self.beacon_app.value = beacon_app
         self.gate_creator.value = gate_creator.native
         self.prize_asset.value = prize_asset
@@ -141,6 +153,7 @@ class Rain(ARC4Contract):
             xfer_asset=Asset(asset),
             asset_receiver=Global.current_application_address,
             asset_amount=0,
+            fee=0,
         ).submit()
         return asset
 
@@ -153,6 +166,7 @@ class Rain(ARC4Contract):
         is the honest version of "one entry per person" on a chain where
         identity is free.
         """
+        assert self.beacon_app.value > 0, "Not configured"
         assert (
             mbr_payment.receiver == Global.current_application_address
         ), "MBR payment must fund the app account"
@@ -167,6 +181,9 @@ class Rain(ARC4Contract):
             assert Txn.sender.is_opted_in(gate_asset), "Hold a token from the collection"
             assert gate_asset.balance(Txn.sender) > 0, "Hold a token from the collection"
             assert gate_asset.creator == gate, "That asset is not from the collection"
+            # A project usually mints its prize token from the same account as
+            # its collection, which would make holding the prize a ticket.
+            assert gate_asset.id != self.prize_asset.value, "The prize is not a ticket"
 
         index = self.tickets.value
         Box(Account, key=op.concat(TICKET_PREFIX, op.itob(index))).value = Txn.sender
@@ -176,6 +193,7 @@ class Rain(ARC4Contract):
     @abimethod()
     def deposit(self, payment: gtxn.PaymentTransaction) -> UInt64:
         """Add ALGO to the pot. Anyone, any amount. Returns the new pot."""
+        assert self.beacon_app.value > 0, "Not configured"
         assert self.prize_asset.value == 0, "This draw pays an asset; use deposit_asset"
         assert (
             payment.receiver == Global.current_application_address
@@ -223,6 +241,20 @@ class Rain(ARC4Contract):
         ):
             return UInt64(0)
 
+        # An asset draw reserves nothing from the pot, so the ALGO for the
+        # winner's allocation box has to already be in the app account. If it
+        # is not, `resolve` would fail on minimum balance with the draw open,
+        # and a draw that cannot be resolved can never be reopened. Decline to
+        # open one instead: returning 0 is the no-op path a keeper expects,
+        # and the pot stays where it is until somebody funds the account.
+        if self.prize_asset.value != 0:
+            available = (
+                Global.current_application_address.balance
+                - Global.current_application_address.min_balance
+            )
+            if available < ALLOCATION_MBR:
+                return UInt64(0)
+
         # Reserve the winner's allocation box, so resolving can never fail for
         # want of minimum balance. For an ALGO pot that comes out of the pot
         # and returns to it when the prize is claimed. For an asset pot it
@@ -255,6 +287,9 @@ class Rain(ARC4Contract):
         """
         assert self.draw_open.value == 1, "No draw is open"
         assert Global.round > self.commit_round.value, "Beacon round has not passed"
+        assert (
+            Global.round <= self.commit_round.value + BEACON_WINDOW
+        ), "Beacon window has closed; abandon the draw"
 
         randomness = self._beacon_value(self.commit_round.value)
         winning_ticket = op.extract_uint64(randomness, 0) % self.tickets_snapshot.value
@@ -264,10 +299,15 @@ class Rain(ARC4Contract):
 
         allocation = Box(UInt64, key=op.concat(ALLOCATION_PREFIX, winner.bytes))
         if allocation:
-            # This winner already has an unclaimed prize, so the reservation
-            # made at draw time is not needed; hand it back to the pot.
             allocation.value += self.prize.value
-            self.pot.value += ALLOCATION_MBR
+            # This winner already has an unclaimed prize, so the reservation
+            # made at draw time is not needed. Hand it back only if there was
+            # one: an asset draw reserves nothing from the pot, and crediting
+            # an ALGO constant to a pot counted in token units would invent
+            # tokens the contract does not hold. The same conditional as
+            # `draw` and `claim`, and the one place it was missed.
+            if self.prize_asset.value == 0:
+                self.pot.value += ALLOCATION_MBR
         else:
             allocation.value = self.prize.value
 
@@ -297,7 +337,7 @@ class Rain(ARC4Contract):
             # Deleting the box releases its minimum balance back to the pot,
             # where it pays for the next winner's allocation.
             self.pot.value += ALLOCATION_MBR
-            itxn.Payment(receiver=Txn.sender, amount=amount).submit()
+            itxn.Payment(receiver=Txn.sender, amount=amount, fee=0).submit()
         else:
             # The freed minimum balance is ALGO and the pot is not, so it
             # cannot be recycled into it. It stays in the app account, which is
@@ -308,8 +348,38 @@ class Rain(ARC4Contract):
                 xfer_asset=Asset(asset),
                 asset_receiver=Txn.sender,
                 asset_amount=amount,
+                fee=0,
             ).submit()
         return amount
+
+    @abimethod()
+    def abandon(self) -> UInt64:
+        """Reopen a draw whose beacon window closed. Permissionless.
+
+        Without this a single unresolved draw is fatal. `draw` refuses to open
+        another while one is open, `resolve` cannot answer once the beacon has
+        forgotten the round, and the contract cannot be updated or deleted, so
+        the whole pot would sit locked in `prize` forever.
+
+        Nobody can profit by calling it. The prize returns to the pot intact
+        and the next draw commits to a fresh round, so abandoning is only ever
+        available once the outcome has become unknowable to everyone.
+        """
+        assert self.draw_open.value == 1, "No draw is open"
+        assert (
+            Global.round > self.commit_round.value + BEACON_WINDOW
+        ), "The beacon can still answer; resolve it"
+        # `draw` took a reservation out of an ALGO pot for a winner's
+        # allocation box. No box was created, so it comes back with the prize;
+        # otherwise every abandoned draw would strand one box's worth.
+        reserve: UInt64 = (
+            UInt64(ALLOCATION_MBR) if self.prize_asset.value == 0 else UInt64(0)
+        )
+        returned: UInt64 = self.prize.value + reserve
+        self.pot.value += returned
+        self.prize.value = UInt64(0)
+        self.draw_open.value = UInt64(0)
+        return returned
 
     @abimethod(readonly=True)
     def allocation_of(self, who: arc4.Address) -> UInt64:
@@ -321,6 +391,7 @@ class Rain(ARC4Contract):
     def _beacon_value(self, round_number: UInt64) -> Bytes:
         """The VRF output for a past round, straight from the beacon."""
         result = itxn.ApplicationCall(
+            fee=0,
             app_id=Application(self.beacon_app.value),
             app_args=(
                 arc4.arc4_signature("must_get(uint64,byte[])byte[]"),
