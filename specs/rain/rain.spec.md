@@ -58,7 +58,7 @@ everyone.
 | Method | Parameters | Returns | Description |
 |--------|-----------|---------|-------------|
 | `configure` | `beacon_app: uint64, gate_creator: address, prize_asset: uint64` | `void` | Creator-only, once. Points at the beacon, decides who may enter, and decides what they win. A zero `gate_creator` leaves entry open; a zero `prize_asset` keeps the pot in ALGO. |
-| `opt_in_prize_asset` | `prize: asset, mbr_payment: pay` | `uint64` | Opts the app into the prize asset so it can be funded. Anyone may pay for it, once. Refuses an asset with a clawback, freeze or manager address, which is why `prize` is passed: this is the first call that has the asset available and so the first that can read its parameters. |
+| `opt_in_prize_asset` | `prize: asset, mbr_payment: pay` | `uint64` | Opts the app into the prize asset so it can be funded. Anyone may pay for it, once. Refuses an asset with a clawback, freeze or manager address, or one that is frozen by default, which is why `prize` is passed: this is the first call that has the asset available and so the first that can read its parameters. |
 | `enter` | `mbr_payment: pay, gate_asset: asset` | `uint64` | Buys one ticket for the sender; returns its index. Tickets persist across draws. When gated, `gate_asset` is an asset the sender holds, and the contract checks the collection minted it. Ignored when entry is open. |
 | `deposit` | `payment: pay` | `uint64` | Adds ALGO to the pot, from anyone; returns the new pot. Rejected when the prize is an asset. |
 | `deposit_asset` | `transfer: axfer` | `uint64` | Adds the prize asset to the pot, from anyone; returns the new pot. Rejected when the prize is ALGO. |
@@ -130,6 +130,7 @@ everyone.
 | `opt_in_prize_asset` twice, or on an ALGO draw | Fails with "Already opted in" / "Prize is ALGO" |
 | `opt_in_prize_asset` naming an asset other than the prize | Fails with "Wrong asset" |
 | `opt_in_prize_asset` with a clawback, freeze or manager address set | Fails with "Prize asset has a clawback/freeze/manager address" |
+| `opt_in_prize_asset` with an asset created `default_frozen` | Fails with "Prize asset is frozen by default". A frozen holding can receive but never send, and `default_frozen` is fixed at creation, so an asset that starts frozen with its freeze address already renounced would pass every other check here and still trap the prize forever. |
 
 ## Dependencies
 

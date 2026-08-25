@@ -958,6 +958,39 @@ def test_cancel_returns_algo_even_when_the_bonus_cannot_be_paid(
     assert refund > 0, "the ALGO came back regardless of the asset"
 
 
+def test_cancel_forfeits_a_funded_bonus_rather_than_holding_the_algo_hostage(
+    context: AlgopyTestContext, keeper: Keeper, pulse: Pulse
+) -> None:
+    """A creator who never opted in still gets every microalgo back.
+
+    This is the path the spec once described as a hard failure, and the one
+    the code deliberately moved away from: reading a balance or a freeze flag
+    for an account that never opted in fails rather than answering, so a
+    creator who cannot receive the asset would have had their ALGO refund
+    fail with the bonus transfer and lose escrow and box minimum balance both.
+    Forfeiting the bonus is the lesser loss, and it is silent, so the ordering
+    of the opt-in check ahead of any balance read is what makes it work.
+    """
+    asset = context.any.asset()
+    upkeep_id = _register(
+        context, keeper, pulse, _selector("tick()uint64"),
+        fee_asset=int(asset.id), asset_fee=500,
+    )
+    app_address = context.ledger.get_app(keeper).address
+    keeper.top_up_asset(
+        upkeep_id,
+        context.any.txn.asset_transfer(
+            asset_receiver=app_address, xfer_asset=asset, asset_amount=5_000
+        ),
+    )
+    upkeep = _read_upkeep(context, keeper, int(upkeep_id))
+    assert upkeep.asset_balance == 5_000, "the bonus is genuinely funded"
+
+    # The creator never opted in, so the asset cannot be sent to them.
+    refund = int(keeper.cancel(upkeep_id))
+    assert refund > 0, "the escrow and box MBR came back in full"
+
+
 def test_an_execution_is_not_blocked_by_a_bonus_the_app_cannot_send(
     context: AlgopyTestContext, keeper: Keeper, pulse: Pulse
 ) -> None:

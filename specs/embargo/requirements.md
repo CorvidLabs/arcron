@@ -11,7 +11,7 @@ spec: embargo.spec.md
 ## Acceptance Criteria
 
 ### REQ-embargo-001
-Anyone SHALL be able to schedule content against a future round exactly once per app instance, paying the box MBR that content costs.
+The creator SHALL be able to schedule content against a future round exactly once per app instance, paying the box MBR that content costs. No other account SHALL be able to schedule: creation and scheduling are separate transactions, so an open `schedule` would let a stranger front-run the author's own first call and take authorship of the instance.
 
 ### REQ-embargo-002
 The contract SHALL reject `publish` before the release round, and SHALL accept it from any caller at or after that round.

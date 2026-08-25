@@ -47,6 +47,26 @@ def _schedule(
     return embargo.schedule(payment, arc4.DynamicBytes(content), UInt64(release_round))
 
 
+
+def test_only_the_creator_can_schedule(context: AlgopyTestContext) -> None:
+    """A stranger must not be able to take authorship of a fresh instance.
+
+    Creating the app and scheduling into it are separate transactions in every
+    path there is, so an open `schedule` leaves a window where anyone watching
+    the mempool can commit their own content first. `schedule` runs once, so
+    winning that race is permanent: the real author loses the instance and the
+    box MBR they were about to spend, and the hijacker can pick a release
+    round that never arrives.
+    """
+    contract = Embargo()
+    stranger = context.any.account()
+    payment = context.any.txn.payment(
+        receiver=context.ledger.get_app(contract).address, amount=BOX_MBR_FIXED + 4_000
+    )
+    with context.txn.create_group(active_txn_overrides={"sender": stranger}):
+        with pytest.raises(Exception, match="Only the creator can schedule"):
+            contract.schedule(payment, arc4.DynamicBytes(b"theirs"), UInt64(RELEASE_ROUND))
+
 def test_schedule_stores_the_content_and_the_round(
     context: AlgopyTestContext, embargo: Embargo
 ) -> None:

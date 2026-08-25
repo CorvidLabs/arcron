@@ -154,7 +154,7 @@ contract class, the `Upkeep` struct, and its constants.
 | `fee_asset` set with `asset_fee` of zero | Fails with "Asset fee must be positive" |
 | `top_up_asset` with an asset the upkeep does not use | Fails with "Wrong asset for this upkeep" |
 | `opt_in_asset` naming an upkeep that does not use the asset | Fails with "That upkeep does not use this asset" |
-| `cancel` with an unspent bonus, by a creator not opted in | Fails with "Opt in to the fee asset before cancelling" |
+| `cancel` with an unspent bonus, by a creator not opted in | Succeeds. The ALGO refund is paid in full and the bonus is forfeited, because failing here would let an asset the creator cannot receive hold their ALGO hostage. The bonus is unrecoverable once the box is deleted, so opt in before cancelling if you want it. |
 | MBR payment below computed box MBR | Fails with "MBR payment too small" |
 | Funding below one execution at the effective worst case (`fee_cap` when set, else `fee_per_execution`) | Fails with "Funding must cover at least one execution" |
 | `execute` before the due round | Fails with "Not due" |

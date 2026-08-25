@@ -459,6 +459,28 @@ def test_a_rugable_prize_asset_is_refused(context: AlgopyTestContext) -> None:
             contract.opt_in_prize_asset(asset, payment)
 
 
+def test_a_prize_asset_frozen_by_default_is_refused(context: AlgopyTestContext) -> None:
+    """A frozen holding can receive tokens but can never send them.
+
+    `default_frozen` is fixed when the asset is created and no address can
+    change it afterwards, so an asset that starts frozen with its freeze
+    address already renounced passes every other check here and still traps
+    the prize: the pot opts in, accepts the tokens, and can never pay a
+    winner. That combination looks like the safest possible asset from the
+    outside, having renounced clawback, freeze and manager, which is exactly
+    what makes it worth refusing on its own.
+    """
+    context.ledger.patch_global_fields(round=UInt64(START_ROUND))
+    asset = context.any.asset(default_frozen=True)
+    contract = Rain()
+    contract.configure(UInt64(BEACON_APP), arc4.Address(), asset.id)
+    payment = context.any.txn.payment(
+        receiver=context.ledger.get_app(contract).address, amount=ASSET_OPT_IN_MBR
+    )
+    with pytest.raises(Exception, match="frozen by default"):
+        contract.opt_in_prize_asset(asset, payment)
+
+
 def test_a_clean_prize_asset_is_accepted(context: AlgopyTestContext) -> None:
     """The check must not reject an ordinary immutable token."""
     context.ledger.patch_global_fields(round=UInt64(START_ROUND))

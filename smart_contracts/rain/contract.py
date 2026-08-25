@@ -158,6 +158,11 @@ class Rain(ARC4Contract):
         # checking only the other two would be checking a promise rather than
         # a property.
         assert prize.manager == Global.zero_address, "Prize asset has a manager address"
+        # default_frozen is fixed at creation and no address can ever change
+        # it, so an asset that starts frozen with no freeze address to thaw it
+        # can be received but never sent. The pot would take a prize in and
+        # hold it forever, which is the exact failure these checks exist for.
+        assert not prize.default_frozen, "Prize asset is frozen by default"
         assert not Global.current_application_address.is_opted_in(
             Asset(asset)
         ), "Already opted in"

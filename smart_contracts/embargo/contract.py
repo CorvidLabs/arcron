@@ -74,6 +74,12 @@ class Embargo(ARC4Contract):
         Callable once. After this there is no way back: no method changes the
         content, moves the round, or cancels — which is the entire point.
         """
+        # The author is the creator, fixed when the app was made. Creation and
+        # scheduling are separate transactions in every path there is, so
+        # leaving this open lets a stranger front-run the author's own first
+        # call, take authorship of the instance, and bury it behind a round
+        # that never arrives. Scheduling runs once, so there is no second try.
+        assert Txn.sender == Global.creator_address, "Only the creator can schedule"
         assert self.release_round.value == 0, "Already scheduled"
         assert release_round > Global.round, "Release round is in the past"
         size = content.native.length
