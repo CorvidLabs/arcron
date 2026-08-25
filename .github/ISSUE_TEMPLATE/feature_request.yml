@@ -1,0 +1,35 @@
+name: Proposal
+description: A change to what Arcron does
+labels: [proposal]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What is currently hard, impossible, or misleading? Concrete beats general.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you propose
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Does this change the contract?
+      description: >
+        Changes to the keeper contract cannot be deployed to an existing app — it has
+        no update path — so they mean a new deployment and a migration.
+      options:
+        - "No — scripts, console or docs only"
+        - "Yes — the keeper contract's behaviour or surface"
+        - "Not sure"
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you considered instead
+      description: Including doing nothing.

@@ -1,0 +1,36 @@
+name: Bug report
+description: Something behaves differently from what is documented
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For anything with security impact, do not open an issue — see
+        [SECURITY.md](../blob/main/SECURITY.md).
+  - type: input
+    id: where
+    attributes:
+      label: Where
+      description: Contract, script, or the console — and which network.
+      placeholder: scripts/keeper_bot.py on TestNet, app 769823086
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected, and what happened
+      description: Quote the output. A transaction id or round number is worth a paragraph of description.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: Ideally a command from this repo. `fledge lanes run local` output is welcome.
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: Output of `poetry run python --version` and, for the console, `bun --version`.
