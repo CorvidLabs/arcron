@@ -32,10 +32,13 @@ because these are easy to get wrong from memory:
   are batched into **one** release and the surface is then frozen.
 - **#9 is an ASA fee *capability*, not a commitment.** CORVID is not wired in;
   escrow and fees stay ALGO by default. "No token required" remains true.
-- **#15 (staking) and #22 (keeper-supplied data) are out of 1.0** and must not
-  be implemented without review. The line between #8 and #22 matters: declaring
-  which *resources* a call may touch is safe because the creator still fixes
-  what is called; letting a keeper supply *data* is a different thing.
+- **#15 (staking) and #22 (keeper-supplied data) are closed**, not merely
+  deferred — reasoning in [`docs/design/out-of-scope.md`](docs/design/out-of-scope.md).
+  Staking has nothing to slash; keeper-supplied data inverts the one guarantee
+  Arcron makes — and the line between #8 and #22 is the reason: declaring which
+  *resources* a call may touch is safe because the creator still fixes what is
+  called, while letting a keeper supply *data* is a different product. Do not
+  reopen either without reading that first.
 - **Dogfood** is a recurring treasury distribution on TestNet, serviced by a
   keeper we run and watched by the notifier.
 - **MainNet gate** is self-review plus sustained TestNet time — no paid audit.
