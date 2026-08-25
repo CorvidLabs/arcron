@@ -30,12 +30,36 @@ import pathlib
 
 from algosdk import encoding, mnemonic, transaction
 
+try:  # pragma: no cover - exercised by the tests below, absent only on odd builds
+    from nacl.bindings import crypto_core_ed25519_is_valid_point as _on_curve
+except ImportError:  # pragma: no cover
+    _on_curve = None
+
 logger = logging.getLogger(__name__)
 
 THRESHOLD_VAR = "ARCRON_MULTISIG_THRESHOLD"
 ADDRESSES_VAR = "ARCRON_MULTISIG_ADDRESSES"
 # Version 1 is the only multisig version Algorand defines.
 MULTISIG_VERSION = 1
+
+
+def _can_sign(address: str) -> bool:
+    """Whether this address could ever produce an ed25519 signature.
+
+    A multisig subsignature is a 32-byte ed25519 public key and a 64-byte
+    ed25519 signature over the transaction. Producing one needs the private
+    key for that public key, which only exists when the address is a point on
+    the curve. A post-quantum Falcon account's address is a hash instead, so
+    it is a perfectly good Algorand account that can never be a multisig
+    member.
+
+    Checking membership matters more than it sounds: about half of all 32-byte
+    values happen to be valid points, so a weaker check passes some Falcon
+    addresses and rejects others, which is worse than not checking at all.
+    """
+    if _on_curve is None:
+        return True
+    return bool(_on_curve(encoding.decode_address(address)))
 
 
 def configured() -> bool:
@@ -72,6 +96,16 @@ def multisig() -> transaction.Multisig:
             raise RuntimeError(
                 f"{candidate!r} in {ADDRESSES_VAR} is not an Algorand address. "
                 "Expected 58 characters; check for a stray space or a truncated paste."
+            )
+        if not _can_sign(candidate):
+            raise RuntimeError(
+                f"{candidate} cannot take part in a multisig: its address is not "
+                "a point on the ed25519 curve, so no ed25519 private key "
+                "corresponds to it and it can never produce a subsignature. A "
+                "post-quantum (Falcon) account looks exactly like this. Nothing "
+                "would have complained: the address derives normally, and the "
+                "result would read as a threshold of N while behaving as a "
+                "threshold of N out of one fewer signer."
             )
     return transaction.Multisig(MULTISIG_VERSION, need, addresses)
 

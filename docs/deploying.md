@@ -185,6 +185,20 @@ alone cannot update, and a *different* pair can.
 quietly deploying from the single-key `DEPLOYER` and leaving a contract whose
 creator is not the multisig anyone was told to expect.
 
+**Not every Algorand account can be a member.** A multisig subsignature is an
+ed25519 public key and an ed25519 signature, so a member has to be an account
+an ed25519 key can sign for. A post-quantum Falcon account's address is a hash
+rather than a point on the curve, so no such key exists and it can never
+produce a subsignature.
+
+Nothing complains on its own. The address derives normally and the result
+reads as a threshold of N while behaving as a threshold of N out of one fewer
+signer, which silently changes who can act alone. `scripts/multisig.py`
+refuses such a member rather than letting it through, and the check is a real
+curve-membership test: about half of all 32-byte values happen to be valid
+points, so a weaker check would pass some Falcon addresses and reject others,
+which is worse than not checking.
+
 **Which holders, and how many.** Three keys with a threshold of two is the
 usual shape: any one can be lost without losing control, and any one can be
 compromised without losing the contract. Keep them on different devices held by
