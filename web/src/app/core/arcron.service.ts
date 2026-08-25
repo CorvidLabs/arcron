@@ -10,7 +10,9 @@
 import { computed, effect, Injectable, signal } from '@angular/core';
 import algosdk from 'algosdk';
 
-import { DEFAULT_NETWORK, isNetworkKey, NETWORKS, type NetworkKey } from '@corvidlabs/arcron/networks';
+import { NETWORKS, type NetworkKey } from '@corvidlabs/arcron/networks';
+
+import { type Entry, entryFrom, entryLink, rememberedAppId } from './entry';
 import { decodeUpkeep, type Upkeep, upkeepIdFromBoxName } from '@corvidlabs/arcron/upkeep';
 
 const POLL_INTERVAL_MS = 2_500;
@@ -35,8 +37,10 @@ export type ConnectionStatus = 'connecting' | 'ready' | 'error';
 export class ArcronService {
   private timer: ReturnType<typeof setInterval> | null = null;
 
-  readonly network = signal<NetworkKey>(readNetwork());
-  readonly appId = signal<number | null>(readAppId(readNetwork()));
+  /** Resolved once, before the signals below read it — field order matters. */
+  private readonly entry = readEntry();
+  readonly network = signal<NetworkKey>(this.entry.network);
+  readonly appId = signal<number | null>(this.entry.appId);
 
   readonly status = signal<ConnectionStatus>('connecting');
   readonly error = signal<string | null>(null);
@@ -110,6 +114,13 @@ export class ArcronService {
       const key = APP_ID_STORAGE_KEY(this.network());
       if (appId === null) localStorage.removeItem(key);
       else localStorage.setItem(key, String(appId));
+    });
+    // Keep the address bar describing what is on screen, so the URL is always
+    // the shareable link — no copy button to find, and a reload comes back to
+    // the same registry rather than to whatever was last remembered.
+    effect(() => {
+      const link = entryLink(location.pathname, this.network(), this.appId());
+      history.replaceState(history.state, '', link);
     });
     this.start();
   }
@@ -219,15 +230,18 @@ export class ArcronService {
   }
 }
 
-function readNetwork(): NetworkKey {
-  const stored = localStorage.getItem(NETWORK_STORAGE_KEY);
-  return isNetworkKey(stored) ? stored : DEFAULT_NETWORK;
+/** Where the console opens: the entry link first, then what it remembers. */
+function readEntry(): Entry {
+  return entryFrom(
+    location.search,
+    localStorage.getItem(NETWORK_STORAGE_KEY),
+    (network) => localStorage.getItem(APP_ID_STORAGE_KEY(network)),
+  );
 }
 
+/** The app id for a network the *user* switched to — memory only, never the link. */
 function readAppId(network: NetworkKey): number | null {
-  const stored = localStorage.getItem(APP_ID_STORAGE_KEY(network));
-  if (stored !== null && /^\d+$/.test(stored)) return Number(stored);
-  return NETWORKS[network].defaultAppId ?? null;
+  return rememberedAppId(network, localStorage.getItem(APP_ID_STORAGE_KEY(network)));
 }
 
 export function describe(cause: unknown): string {
