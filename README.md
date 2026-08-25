@@ -10,22 +10,27 @@ The job matters; whoever runs it does not, and nobody owns it.*
 
 | Contract | What it is | Status |
 |----------|-----------|--------|
-| [`smart_contracts/keeper`](smart_contracts/keeper/contract.py) | The Arcron network: upkeep scheduling with ALGO escrow and keeper rewards | Runs on LocalNet; **not yet deployed** at this version |
-| [`smart_contracts/pulse`](smart_contracts/pulse/contract.py) | Demo upkeep target: a heartbeat counter, with and without arguments | Runs on LocalNet |
+| [`smart_contracts/keeper`](smart_contracts/keeper/contract.py) | The Arcron network: upkeep scheduling with ALGO escrow and keeper rewards | **Live on TestNet** — app [`769823086`](https://testnet.explorer.perawallet.app/application/769823086) |
+| [`smart_contracts/pulse`](smart_contracts/pulse/contract.py) | Demo upkeep target: a heartbeat counter, with and without arguments | Live on TestNet — app [`769823097`](https://testnet.explorer.perawallet.app/application/769823097) |
 | [`web`](web/) | The console: registry dashboard + keeper controls | Runs against LocalNet and TestNet |
 
 > [!WARNING]
-> **Unaudited, and nothing here is deployed at this version.** The TestNet apps
-> [`769802474`](https://testnet.explorer.perawallet.app/application/769802474)
-> and [`769772891`](https://testnet.explorer.perawallet.app/application/769772891)
-> both predate the current contract and should not be used; their registries are
-> empty and their escrow has been reclaimed. The contract has **no upgrade
-> path**, so read [`docs/security.md`](docs/security.md) — the threat model,
-> the accepted risks and what happens if a bug is found — before escrowing
-> anything anywhere.
+> **Unaudited, and TestNet only.** No third party has reviewed this contract,
+> and it has **no upgrade path** — a bug cannot be patched in place. Read
+> [`docs/security.md`](docs/security.md) — the threat model, the accepted risks
+> and what happens if a bug is found — before escrowing anything.
 >
-> You can check what any deployment is actually running:
-> `poetry run python -m scripts.verify_build --network testnet --app-id <id>`
+> Apps [`769802474`](https://testnet.explorer.perawallet.app/application/769802474)
+> and [`769772891`](https://testnet.explorer.perawallet.app/application/769772891)
+> are **superseded** and should not be used: both predate the 1.0 contract, and
+> their box encoding is a different shape that current tooling refuses to
+> decode rather than misread. Their registries are empty.
+>
+> Check what any deployment is actually running — it compares compiled
+> bytecode, not source text:
+> ```
+> poetry run python -m scripts.verify_build --network testnet --app-id 769823086
+> ```
 
 **Building on it?** [`docs/integrating.md`](docs/integrating.md) is the whole
 integration story in one pass — the hook shape, authorization, the failure
