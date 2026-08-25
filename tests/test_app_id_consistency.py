@@ -43,6 +43,7 @@ LIVE_KEEPER_POINTERS = [
     (".github/workflows/keeper-bot.yml", r'default: "(\d+)"'),
     ("docs/integrating.md", r"get_application_address\((\d+)\)"),
     ("docs/arcron.md", r'"app_id": (\d+)'),
+    ("fledge.toml", r"testnet_snapshot --network testnet --app-id (\d+)"),
 ]
 
 
