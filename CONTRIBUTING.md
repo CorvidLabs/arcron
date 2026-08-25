@@ -23,6 +23,13 @@ You will also want [AlgoKit](https://github.com/algorandfoundation/algokit-cli)
 and Docker for anything touching a chain, and [Bun](https://bun.sh) for the
 console.
 
+## Deploying, if you want your own
+
+[`docs/deploying.md`](docs/deploying.md) covers LocalNet, TestNet and MainNet,
+plus updating and freezing a deployment. You do not need any of it to
+contribute: LocalNet costs nothing and `fledge lanes run local` runs the whole
+suite against it.
+
 ## The gate
 
 ```bash

@@ -4,7 +4,7 @@ from collections.abc import Iterator
 from algosdk import abi
 
 import pytest
-from algopy import UInt64, arc4
+from algopy import OnCompleteAction, UInt64, arc4
 from algopy_testing import AlgopyTestContext, algopy_testing_context
 
 from scripts.keeper_bot import _decode_upkeep
@@ -875,3 +875,56 @@ def test_opt_in_asset_must_name_an_upkeep_that_uses_it(
     with pytest.raises(AssertionError, match="does not use this asset"):
         keeper.opt_in_asset(mbr, other, asset)
     assert keeper.opt_in_asset(mbr, upkeep_id, asset) == 100_000
+
+
+# --- governance: upgradeable until frozen ------------------------------
+
+
+def test_only_the_creator_can_update_or_freeze(
+    context: AlgopyTestContext, keeper: Keeper
+) -> None:
+    stranger = context.any.account()
+    # Separate groups: update runs on UpdateApplication and freeze on NoOp, and
+    # one group carries one OnCompletion.
+    with context.txn.create_group(
+        active_txn_overrides={"sender": stranger, "on_completion": OnCompleteAction.UpdateApplication}
+    ):
+        with pytest.raises(Exception, match="Only the creator can update"):
+            keeper.update()
+    with context.txn.create_group(active_txn_overrides={"sender": stranger}):
+        with pytest.raises(Exception, match="Only the creator can freeze"):
+            keeper.freeze()
+
+
+def test_freezing_is_one_way(context: AlgopyTestContext, keeper: Keeper) -> None:
+    """Nothing sets frozen back to 0, and after this no call could add one."""
+    assert keeper.frozen.value == 0
+    keeper.freeze()
+    assert keeper.frozen.value == 1
+    with pytest.raises(Exception, match="Already frozen"):
+        keeper.freeze()
+
+
+def test_update_is_refused_once_frozen(
+    context: AlgopyTestContext, keeper: Keeper
+) -> None:
+    """The whole promise. Before freeze it works; after, it never does again."""
+    with context.txn.create_group(
+        active_txn_overrides={"on_completion": OnCompleteAction.UpdateApplication}
+    ):
+        keeper.update()  # allowed while unfrozen
+    keeper.freeze()
+    with context.txn.create_group(
+        active_txn_overrides={"on_completion": OnCompleteAction.UpdateApplication}
+    ):
+        with pytest.raises(Exception, match="Frozen: the programs cannot be replaced"):
+            keeper.update()
+
+
+def test_frozen_is_readable_before_anyone_escrows(
+    context: AlgopyTestContext, keeper: Keeper
+) -> None:
+    """A promise nobody can check is not worth escrowing against."""
+    assert keeper.frozen.value == 0
+    keeper.freeze()
+    assert keeper.frozen.value == 1

@@ -19,13 +19,15 @@ logger = logging.getLogger(__name__)
 
 LOCALNET = "localnet"
 TESTNET = "testnet"
-NETWORKS = (LOCALNET, TESTNET)
+MAINNET = "mainnet"
+NETWORKS = (LOCALNET, TESTNET, MAINNET)
 
 # Genesis ids a node may report for each network. AlgoKit LocalNet reports
 # "dockernet-v1"; the older sandbox reported "sandnet-v1".
 _GENESIS_IDS = {
     LOCALNET: ("dockernet-v1", "sandnet-v1", "devnet-v1"),
     TESTNET: ("testnet-v1.0",),
+    MAINNET: ("mainnet-v1.0",),
 }
 
 
@@ -53,6 +55,14 @@ def load_network(network: str) -> str:
     """
     if network not in NETWORKS:
         raise ValueError(f"Unknown network {network!r}; expected one of {NETWORKS}")
+    if network == MAINNET and os.environ.get("ARCRON_ALLOW_MAINNET") != "1":
+        # A typo in --network should not reach real money. Nothing in this repo
+        # sets this, so choosing MainNet has to be a separate, deliberate act.
+        raise RuntimeError(
+            "Refusing to talk to MainNet unless ARCRON_ALLOW_MAINNET=1 is set. "
+            "See docs/releases.md: MainNet is gated behind the rc clock, and "
+            "nothing here should reach it by accident."
+        )
     env_file = f".env.{network}"
     loaded = load_dotenv(env_file)
     if not loaded and network != LOCALNET and not os.environ.get("ALGOD_SERVER"):

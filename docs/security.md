@@ -11,7 +11,9 @@ If you escrow ALGO in this contract you are relying on that analysis. Read
 ## The shape of the thing
 
 Arcron holds escrow for other people and pays it out to whoever does the work.
-There is no owner, no admin key, no rake and **no upgrade path**. That last
+There is no owner, no rake, and no admin key over anyone's escrow. The
+upgrade path is temporary and readable on-chain, and is given up before the
+network asks anyone to rely on it. That last
 one is the load-bearing design decision: it means nobody can change the rules
 after you have escrowed funds, and that a bug cannot be patched in place.
 
@@ -125,45 +127,52 @@ down, never up.
 The AVM panics on overflow rather than wrapping, so the failure mode
 everywhere else in the contract is a rejected transaction, not a wrong number.
 
-## Immutability: there is no upgrade path
+## Immutability: upgradeable until frozen
 
 **Algorand applications can be upgradeable.** An `UpdateApplication` call
 replaces an app's approval and clear programs in place, and plenty of
-contracts allow it, gated on an admin key or a governance vote. This one does
-not, and that is a choice rather than a platform limit.
+contracts allow it behind an admin key. What this contract does is a choice,
+and it is a two-stage one.
 
-The choice is enforced in the program itself. The approval program asserts
-`OnCompletion == NoOp` before it does anything else, so `UpdateApplication`
-and `DeleteApplication` are both rejected. Nothing can change that later,
-because the only thing that could is an update.
+A deployment starts **unfrozen**. Its creator, and only its creator, can
+replace the programs. `freeze` gives that up permanently: nothing sets
+`frozen` back to 0, and no later call can restore an update path, because the
+only call that could is an update.
 
-You can check it rather than believe it:
+`frozen` is global state, so the promise can be checked rather than believed:
 
 ```bash
-poetry run python -m scripts.verify_build --network testnet --app-id 769823086
+poetry run python -m scripts.govern status --network testnet --app-id <id>
+poetry run python -m scripts.verify_build --network testnet --app-id <id>
 ```
 
-That compares the deployed bytecode against a clean build of this source, so
-the guard you read here is the guard that is running.
+The first says whether the creator can still change the rules. The second says
+whether the deployed bytecode is the source it claims to be. Together they are
+the whole trust question.
 
-The reason is that an upgradeable keeper contract is one where somebody can
-change the rules after you have escrowed funds. Whoever holds the update key
-could redirect payouts, raise fees, or drain escrow, and no amount of good
-intent removes the fact that they *could*. Being unable to fix a bug is the
-price of that guarantee, and it is why an escrow held by nobody is worth
-trusting.
+**While a deployment is unfrozen, its creator can change the rules after you
+have escrowed funds.** They could redirect payouts, raise fees, or drain
+escrow. No statement of intent removes that, which is why the state is
+readable and why freezing happens before anybody is asked to rely on it. Treat
+an unfrozen deployment as one you are trusting a person with, and a frozen one
+as one you are trusting only the bytecode with.
 
-Three consequences worth stating plainly:
+The reason the window exists at all is that being unable to fix a bug is
+expensive while nobody depends on the deployment yet. Two earlier deployments
+were abandoned rather than repaired, stranding 243,000 µALGO of box minimum
+balance and making every creator cancel and re-register by hand.
+[`releases.md`](releases.md) sets out when freezing happens: it is the rc gate.
+
+Consequences worth stating plainly, all of which apply from `freeze` onward:
 
 1. **A bug cannot be fixed.** The response to a serious bug is to tell
    creators to `cancel`, not to patch.
 2. **A struct change is a new application** at a new app id, with an empty
    registry, and every creator must cancel and re-register by hand. Nobody can
-   do it for them, because `cancel` is creator-only. This has happened once
-   already and stranded 243,000 µALGO of box MBR in the old app.
-3. **`OnCompletion` is pinned to NoOp** on both the outer call and the inner
-   one, so there is no update or delete path to reach even by accident, and
-   none to be added later.
+   do it for them, because `cancel` is creator-only.
+3. **`DeleteApplication` is refused always**, frozen or not. Deleting an app
+   with escrow in it would strand every µALGO, so there has never been a path
+   to it and freezing does not add one.
 
 ## Known and accepted risks
 

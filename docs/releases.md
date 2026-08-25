@@ -39,10 +39,17 @@ an upkeep against it should expect to cancel and re-register.
 
 **Entry:** the e2e passes on a real chain.
 
-**Exit, and the reason this stage has real work in it:** beta is the freeze,
-so feedback that could change the struct has to arrive *before* it. Inviting
-people to use the network at beta gets their reports one stage too late, when
-acting on one means every creator cancelling and re-registering by hand.
+**Exit, and the reason this stage has real work in it:** beta is where the
+`Upkeep` struct stops being changeable for free, so feedback that could change
+it has to arrive *before* then. Inviting people to use the network at beta
+gets their reports one stage too late, when acting on one means every creator
+cancelling and re-registering by hand.
+
+Note that this is a different thing from the on-chain `freeze` call, which
+happens at rc and gives up the ability to replace the programs. A struct
+change is expensive from beta because it means a new app id whether or not the
+old one could be updated: an update replaces code, not the shape of boxes that
+already exist.
 
 Getting outside upkeeps registered is therefore alpha work, not beta work.
 While we are here a redeploy costs nothing but our own time, which is exactly
@@ -63,6 +70,9 @@ and re-registering by hand.
 - [ ] Both decoders pinned to the same recorded box, byte for byte
 - [ ] `docs/security.md` current, with every accepted risk listed
 - [ ] `verify_build` matches the deployment against a clean tree
+- [ ] `govern status` published, so anyone can see the deployment is still
+      updatable and by whom. beta does not require freezing: a struct change
+      is still a new app, but a fixable bug should be fixed
 - [ ] **30 days** of continuous TestNet uptime with a funded heartbeat, and the notifier running
 - [ ] A keeper running somewhere that is not a laptop
 - [ ] Documentation an integrator can follow without asking us anything
@@ -86,6 +96,9 @@ rewrite of it; this.
 **Gate:**
 
 - [ ] The bytecode is unchanged from the beta that earned it
+- [ ] **`freeze` called, and `govern status` shows `frozen 1`.** This is the
+      moment the update path is given up. Before it, rc means little: the
+      programs being reviewed are ones the creator could still replace
 - [ ] **#12 complete**: threat model, escrow isolation proven on chain, arithmetic reviewed, immutability posture stated, incident playbook written
 - [ ] At least one **independent adversarial review** beyond our own
 - [ ] Outside upkeeps still registered and being serviced, unchanged since beta

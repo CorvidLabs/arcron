@@ -17,6 +17,12 @@ export const KEEPER_METHOD_SIGNATURES = {
   execute: 'execute(uint64)uint64',
   optInAsset: 'opt_in_asset(pay,uint64,uint64)uint64',
   topUpAsset: 'top_up_asset(uint64,axfer)uint64',
+  // Governance. `update` runs on UpdateApplication rather than NoOp, so it
+  // cannot be sent like the others; it is here because the ABI mirror has to
+  // cover every method the contract exposes, and a console that shows whether
+  // a deployment is still mutable needs to name it.
+  update: 'update()void',
+  freeze: 'freeze()void',
 } as const;
 
 export type KeeperMethodName = keyof typeof KEEPER_METHOD_SIGNATURES;

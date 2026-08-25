@@ -242,7 +242,23 @@ cp .env.testnet.template .env.testnet   # or: algokit generate env-file -a targe
 poetry run python -m scripts.keeper_e2e --network testnet
 ```
 
-### Running a keeper
+### Deploying your own
+
+Everything from a checkout to a running deployment, on any network, is in
+[`docs/deploying.md`](docs/deploying.md):
+
+```bash
+algokit localnet start
+fledge lanes run local          # everything, against a chain
+fledge run deploy-localnet      # a keeper of your own
+```
+
+A new deployment starts **unfrozen**: its creator can still replace the
+programs, and gives that up permanently with `fledge run govern -- freeze`
+before anyone is asked to rely on it. `govern status` reads which state any
+deployment is in, and anyone can check it.
+
+## Running a keeper
 
 Anyone can. It is a plain process that watches rounds and calls `execute`,
 and it earns the fees it collects. [`docs/hosting.md`](docs/hosting.md)
