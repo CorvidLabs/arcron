@@ -108,7 +108,42 @@ def main(argv: list[str] | None = None) -> None:
             refused = True
     _assert("the creator's update is now refused", refused, True)
 
-    logger.info("── 6. The registry still works, frozen ──")
+    logger.info("── 6. Delete is refused, frozen or not ──")
+    # Deleting an app holding escrow would strand every microAlgo in it, so
+    # there has never been a path to it. Worth proving against a real node
+    # rather than reading the router: the mock does not run the generated
+    # OnCompletion routing at all, so no unit test can see this.
+    refused = False
+    with _quiet():
+        try:
+            signed = transaction.ApplicationDeleteTxn(
+                sender=deployer.address, sp=algod.suggested_params(), index=app_id
+            ).sign(deployer.private_key)
+            transaction.wait_for_confirmation(algod, algod.send_transaction(signed), 6)
+        except Exception:
+            refused = True
+    _assert("DeleteApplication is refused", refused, True)
+
+    logger.info("── 7. Ordinary methods cannot be reached with another OnCompletion ──")
+    # Adding UpdateApplication routing for `update` must not have opened the
+    # other methods to anything but NoOp.
+    for name, oc in (
+        ("OptIn", transaction.OnComplete.OptInOC),
+        ("CloseOut", transaction.OnComplete.CloseOutOC),
+    ):
+        refused = False
+        with _quiet():
+            try:
+                signed = transaction.ApplicationCallTxn(
+                    sender=deployer.address, sp=algod.suggested_params(), index=app_id,
+                    on_complete=oc, app_args=[_selector("execute(uint64)uint64"), (0).to_bytes(8, "big")],
+                ).sign(deployer.private_key)
+                transaction.wait_for_confirmation(algod, algod.send_transaction(signed), 6)
+            except Exception:
+                refused = True
+        _assert(f"execute via {name} is refused", refused, True)
+
+    logger.info("── 8. The registry still works, frozen ──")
     _assert("frozen app still readable", _frozen(algod, app_id), 1)
     logger.info("   Freezing removes the update path and nothing else.")
 
