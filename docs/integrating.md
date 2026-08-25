@@ -156,17 +156,40 @@ billing hook that advances a period on every call can be fast-forwarded by
 anybody willing to spend two minimum fees per call, and whoever benefits from
 the count has an incentive to do it.
 
-If your hook counts, meters, or accrues, enforce the interval yourself:
+If your hook counts, meters, or accrues, enforce the interval yourself. Note
+what this does and does not do:
 
 ```python
-assert Global.round >= self.last_run.value + self.min_rounds.value, "Too soon"
+if Global.round < self.last_run.value + self.min_rounds.value:
+    return self.count.value      # too soon: nothing to do, and no rejection
+self.count.value += 1
 self.last_run.value = Global.round
 ```
 
-An honest keeper never trips this, so the hook keeps the never-fail property
-that matters. `smart_contracts/subscription/` is the worked example, and it
-had exactly this bug: it recorded `last_charged_round` on every call and never
-read it.
+**Return, do not assert.** An earlier version of this guide said to assert,
+and it was wrong in a way worth explaining, because the mistake is easy to
+repeat.
+
+Under `CATCH_UP`, an upkeep that fell behind stays due, so a keeper draining a
+backlog calls again in the same round. An assert rejects that call, which
+fails the whole `execute`, which the keeper bot records as a failure and backs
+the upkeep off. Keep failing and the schedule stops entirely: exactly the
+outcome the never-fail rule exists to prevent, arrived at through the code
+that was supposed to protect you.
+
+Returning refuses the work without refusing the call. The griefer still pays
+the fee and still moves nothing, which is the whole point, and an honest
+replay is a no-op rather than a fatal error.
+
+One consequence to price in: under `CATCH_UP` those no-op replays are still
+paid executions, so an outage costs one fee per missed interval while billing
+advances once. If that matters, register `SKIP_AHEAD`, which does not replay a
+backlog at all. `CATCH_UP` is the default because most hooks want every period,
+and a metering hook usually does not.
+
+`smart_contracts/subscription/` is the worked example. It had both bugs in
+turn: it recorded `last_charged_round` on every call and never read it, and
+then it asserted.
 
 ## The pull pattern
 
