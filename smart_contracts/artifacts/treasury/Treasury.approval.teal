@@ -3,7 +3,7 @@
 
 // algopy.arc4.ARC4Contract.approval_program() -> uint64:
 main:
-    intcblock 0 1 48 2
+    intcblock 0 1 48 2 10000
     bytecblock 0x726563697069656e7473 "balance" "allocated_total" 0x151f7c75 "configured" "distributions"
     txn ApplicationID
     bnz main_after_if_else@2
@@ -117,27 +117,28 @@ configure_bool_merge@5:
     //     mbr_payment.receiver == Global.current_application_address
     // ), "MBR payment must fund the app account"
     assert // MBR payment must fund the app account
-    // smart_contracts/treasury/contract.py:82
-    // total: UInt64 = UInt64(0)
-    intc_0 // 0
-    cover 2
     // smart_contracts/treasury/contract.py:83
     // index = UInt64(0)
     intc_0 // 0
+    // smart_contracts/treasury/contract.py:82
+    // total: UInt64 = UInt64(0)
+    dup
 
 configure_while_top@6:
     // smart_contracts/treasury/contract.py:84
     // while index < count:
-    dup
-    dig 3
+    dig 1
+    dig 4
     <
-    bz configure_after_while@8
+    bz configure_after_while@11
     // smart_contracts/treasury/contract.py:85-86
     // recipient = recipients[index].copy()
     // assert recipient.share_bps.as_uint64() > 0, "A share must be positive"
-    dig 1
+    dig 2
     extract 2 0
-    dig 1
+    dup
+    cover 5
+    dig 2
     intc_2 // 48
     *
     intc_2 // 48
@@ -153,34 +154,87 @@ configure_while_top@6:
     // assert recipient.share_bps.as_uint64() > 0, "A share must be positive"
     extract_uint64
     dup
+    cover 6
     assert // A share must be positive
     // smart_contracts/treasury/contract.py:87
     // assert recipient.owed.as_uint64() == 0, "Owed must start at zero"
-    swap
+    dup
     pushint 40
     extract_uint64
     !
     assert // Owed must start at zero
-    // smart_contracts/treasury/contract.py:88
+    // smart_contracts/treasury/contract.py:88-92
+    // # An address nobody can send from can never claim its allocation,
+    // # and `claim` stops at the first entry matching the sender, so a
+    // # duplicate's share can never be pulled either. Both strand money
+    // # permanently on a contract configured once and never updated.
+    // assert recipient.who.native != Global.zero_address, "A recipient is required"
+    extract 0 32
+    dup
+    cover 5
+    global ZeroAddress
+    !=
+    assert // A recipient is required
+    // smart_contracts/treasury/contract.py:93
+    // duplicate = UInt64(0)
+    intc_0 // 0
+
+configure_while_top@8:
+    // smart_contracts/treasury/contract.py:94
+    // while duplicate < index:
+    dup
+    dig 3
+    <
+    bz configure_after_while@10
+    // smart_contracts/treasury/contract.py:96
+    // recipients[duplicate].who != recipient.who
+    dup
+    intc_2 // 48
+    *
+    dig 8
+    swap
+    intc_2 // 48
+    extract3 // on error: index access is out of bounds
+    extract 0 32
+    dig 6
+    !=
+    // smart_contracts/treasury/contract.py:95-97
+    // assert (
+    //     recipients[duplicate].who != recipient.who
+    // ), "A recipient appears twice"
+    assert // A recipient appears twice
+    // smart_contracts/treasury/contract.py:98
+    // duplicate += UInt64(1)
+    intc_1 // 1
+    +
+    b configure_while_top@8
+
+configure_after_while@10:
+    pop
+    uncover 4
+    pop
+    uncover 5
+    pop
+    // smart_contracts/treasury/contract.py:99
     // total += recipient.share_bps.as_uint64()
     uncover 4
     +
-    cover 3
-    // smart_contracts/treasury/contract.py:89
+    // smart_contracts/treasury/contract.py:100
     // index += 1
+    swap
     intc_1 // 1
     +
+    swap
     b configure_while_top@6
 
-configure_after_while@8:
-    pop
-    // smart_contracts/treasury/contract.py:90
+configure_after_while@11:
+    bury 1
+    // smart_contracts/treasury/contract.py:101
     // assert total == TOTAL_SHARE_BPS, "Shares must total 10,000 basis points"
-    uncover 2
-    pushint 10000
+    intc 4 // 10000
     ==
     assert // Shares must total 10,000 basis points
-    // smart_contracts/treasury/contract.py:92
+    // smart_contracts/treasury/contract.py:103
     // Box(arc4.DynamicArray[Recipient], key=RECIPIENTS_KEY).value = recipients.copy()
     bytec_0 // 0x726563697069656e7473
     box_del
@@ -188,7 +242,7 @@ configure_after_while@8:
     bytec_0 // 0x726563697069656e7473
     swap
     box_put
-    // smart_contracts/treasury/contract.py:93
+    // smart_contracts/treasury/contract.py:104
     // self.configured.value = UInt64(1)
     bytec 4 // "configured"
     intc_1 // 1
@@ -210,7 +264,7 @@ configure_bool_false@4:
 
 // smart_contracts.treasury.contract.Treasury.deposit[routing]() -> void:
 deposit:
-    // smart_contracts/treasury/contract.py:96
+    // smart_contracts/treasury/contract.py:107
     // @abimethod()
     txn GroupIndex
     intc_1 // 1
@@ -220,23 +274,23 @@ deposit:
     intc_1 // pay
     ==
     assert // transaction type is pay
-    // smart_contracts/treasury/contract.py:100
+    // smart_contracts/treasury/contract.py:111
     // payment.receiver == Global.current_application_address
     dup
     gtxns Receiver
     global CurrentApplicationAddress
     ==
-    // smart_contracts/treasury/contract.py:99-101
+    // smart_contracts/treasury/contract.py:110-112
     // assert (
     //     payment.receiver == Global.current_application_address
     // ), "Deposit must go to the app account"
     assert // Deposit must go to the app account
-    // smart_contracts/treasury/contract.py:102
+    // smart_contracts/treasury/contract.py:113
     // assert payment.amount > 0, "Amount must be positive"
     gtxns Amount
     dup
     assert // Amount must be positive
-    // smart_contracts/treasury/contract.py:103
+    // smart_contracts/treasury/contract.py:114
     // self.balance.value += payment.amount
     intc_0 // 0
     bytec_1 // "balance"
@@ -246,7 +300,7 @@ deposit:
     bytec_1 // "balance"
     dig 1
     app_global_put
-    // smart_contracts/treasury/contract.py:96
+    // smart_contracts/treasury/contract.py:107
     // @abimethod()
     itob
     bytec_3 // 0x151f7c75
@@ -259,7 +313,7 @@ deposit:
 
 // smart_contracts.treasury.contract.Treasury.distribute[routing]() -> void:
 distribute:
-    // smart_contracts/treasury/contract.py:114
+    // smart_contracts/treasury/contract.py:125
     // if self.configured.value == 0 or self.balance.value == 0:
     intc_0 // 0
     bytec 4 // "configured"
@@ -273,12 +327,12 @@ distribute:
     bnz distribute_after_if_else@4
 
 distribute_if_body@3:
-    // smart_contracts/treasury/contract.py:115
+    // smart_contracts/treasury/contract.py:126
     // return UInt64(0)
     intc_0 // 0
 
 distribute_after_inlined_smart_contracts.treasury.contract.Treasury.distribute@8:
-    // smart_contracts/treasury/contract.py:106
+    // smart_contracts/treasury/contract.py:117
     // @abimethod()
     itob
     bytec_3 // 0x151f7c75
@@ -289,14 +343,14 @@ distribute_after_inlined_smart_contracts.treasury.contract.Treasury.distribute@8
     return
 
 distribute_after_if_else@4:
-    // smart_contracts/treasury/contract.py:117
+    // smart_contracts/treasury/contract.py:128
     // box = Box(arc4.DynamicArray[Recipient], key=RECIPIENTS_KEY)
     bytec_0 // 0x726563697069656e7473
-    // smart_contracts/treasury/contract.py:118
+    // smart_contracts/treasury/contract.py:129
     // recipients = box.value.copy()
     box_get
     assert // check Box exists
-    // smart_contracts/treasury/contract.py:119
+    // smart_contracts/treasury/contract.py:130
     // snapshot: UInt64 = self.balance.value
     intc_0 // 0
     bytec_1 // "balance"
@@ -304,15 +358,15 @@ distribute_after_if_else@4:
     swap
     cover 2
     assert // check self.balance exists
-    // smart_contracts/treasury/contract.py:120
+    // smart_contracts/treasury/contract.py:131
     // allocated: UInt64 = UInt64(0)
     intc_0 // 0
-    // smart_contracts/treasury/contract.py:122
+    // smart_contracts/treasury/contract.py:133
     // index = UInt64(0)
     dup
 
 distribute_while_top@5:
-    // smart_contracts/treasury/contract.py:123
+    // smart_contracts/treasury/contract.py:134
     // while index < recipients.length:
     dig 2
     intc_0 // 0
@@ -320,10 +374,17 @@ distribute_while_top@5:
     dig 1
     >
     bz distribute_after_while@7
-    // smart_contracts/treasury/contract.py:125-127
+    // smart_contracts/treasury/contract.py:136-145
+    // # Divide before multiplying, then add back the remainder's share.
+    // # `snapshot * share_bps` overflows uint64 once the pot passes
+    // # about 1.84 million ALGO, and the AVM panics rather than
+    // # saturating. That panic would fail `distribute` forever, and
+    // # since `claim` only pays what is already owed, everything still
+    // # in `balance` would be stranded on a contract with no delete path.
+    // #
     // # Integer division: the remainder stays in the treasury for the
     // # next distribution rather than being stranded or over-allocated.
-    // amount: UInt64 = snapshot * recipient.share_bps.as_uint64() // TOTAL_SHARE_BPS
+    // share: UInt64 = recipient.share_bps.as_uint64()
     uncover 2
     dup
     extract 2 0
@@ -339,17 +400,35 @@ distribute_while_top@5:
     dig 1
     pushint 32
     extract_uint64
+    // smart_contracts/treasury/contract.py:147
+    // snapshot // TOTAL_SHARE_BPS * share
     dig 7
-    *
-    pushint 10000
+    dup
+    cover 2
+    intc 4 // 10000
     /
-    // smart_contracts/treasury/contract.py:128-130
+    dig 1
+    *
+    // smart_contracts/treasury/contract.py:148
+    // + snapshot % TOTAL_SHARE_BPS * share // TOTAL_SHARE_BPS
+    uncover 2
+    intc 4 // 10000
+    %
+    uncover 2
+    *
+    intc 4 // 10000
+    /
+    // smart_contracts/treasury/contract.py:147-148
+    // snapshot // TOTAL_SHARE_BPS * share
+    // + snapshot % TOTAL_SHARE_BPS * share // TOTAL_SHARE_BPS
+    +
+    // smart_contracts/treasury/contract.py:150-152
     // recipients[index] = recipient._replace(
     //     owed=arc4.UInt64(recipient.owed.as_uint64() + amount)
     // ).copy()
     dig 2
     extract 0 32
-    // smart_contracts/treasury/contract.py:129
+    // smart_contracts/treasury/contract.py:151
     // owed=arc4.UInt64(recipient.owed.as_uint64() + amount)
     uncover 3
     pushint 40
@@ -357,7 +436,7 @@ distribute_while_top@5:
     dig 2
     +
     itob
-    // smart_contracts/treasury/contract.py:128-130
+    // smart_contracts/treasury/contract.py:150-152
     // recipients[index] = recipient._replace(
     //     owed=arc4.UInt64(recipient.owed.as_uint64() + amount)
     // ).copy()
@@ -374,12 +453,12 @@ distribute_while_top@5:
     uncover 2
     replace3 // on error: index access is out of bounds
     cover 3
-    // smart_contracts/treasury/contract.py:131
+    // smart_contracts/treasury/contract.py:153
     // allocated += amount
     uncover 2
     +
     swap
-    // smart_contracts/treasury/contract.py:132
+    // smart_contracts/treasury/contract.py:154
     // index += 1
     intc_1 // 1
     +
@@ -387,7 +466,7 @@ distribute_while_top@5:
 
 distribute_after_while@7:
     pop
-    // smart_contracts/treasury/contract.py:134
+    // smart_contracts/treasury/contract.py:156
     // assert allocated <= snapshot, "Allocated more than the snapshot"
     dup
     uncover 3
@@ -395,21 +474,21 @@ distribute_after_while@7:
     cover 2
     <=
     assert // Allocated more than the snapshot
-    // smart_contracts/treasury/contract.py:117
+    // smart_contracts/treasury/contract.py:128
     // box = Box(arc4.DynamicArray[Recipient], key=RECIPIENTS_KEY)
     bytec_0 // 0x726563697069656e7473
-    // smart_contracts/treasury/contract.py:135
+    // smart_contracts/treasury/contract.py:157
     // box.value = recipients.copy()
     box_del
     pop
-    // smart_contracts/treasury/contract.py:117
+    // smart_contracts/treasury/contract.py:128
     // box = Box(arc4.DynamicArray[Recipient], key=RECIPIENTS_KEY)
     bytec_0 // 0x726563697069656e7473
-    // smart_contracts/treasury/contract.py:135
+    // smart_contracts/treasury/contract.py:157
     // box.value = recipients.copy()
     uncover 3
     box_put
-    // smart_contracts/treasury/contract.py:136
+    // smart_contracts/treasury/contract.py:158
     // self.balance.value = snapshot - allocated
     dup
     dig 2
@@ -417,7 +496,7 @@ distribute_after_while@7:
     bytec_1 // "balance"
     swap
     app_global_put
-    // smart_contracts/treasury/contract.py:137
+    // smart_contracts/treasury/contract.py:159
     // self.allocated_total.value += allocated
     intc_0 // 0
     bytec_2 // "allocated_total"
@@ -428,7 +507,7 @@ distribute_after_while@7:
     bytec_2 // "allocated_total"
     swap
     app_global_put
-    // smart_contracts/treasury/contract.py:138
+    // smart_contracts/treasury/contract.py:160
     // self.distributions.value += 1
     intc_0 // 0
     bytec 5 // "distributions"
@@ -439,22 +518,22 @@ distribute_after_while@7:
     bytec 5 // "distributions"
     dig 1
     app_global_put
-    // smart_contracts/treasury/contract.py:142
+    // smart_contracts/treasury/contract.py:164
     // distribution=arc4.UInt64(self.distributions.value),
     itob
-    // smart_contracts/treasury/contract.py:143
+    // smart_contracts/treasury/contract.py:165
     // round_number=arc4.UInt64(Global.round),
     global Round
     itob
-    // smart_contracts/treasury/contract.py:144
+    // smart_contracts/treasury/contract.py:166
     // snapshot=arc4.UInt64(snapshot),
     uncover 2
     itob
-    // smart_contracts/treasury/contract.py:145
+    // smart_contracts/treasury/contract.py:167
     // allocated=arc4.UInt64(allocated),
     dig 3
     itob
-    // smart_contracts/treasury/contract.py:141-146
+    // smart_contracts/treasury/contract.py:163-168
     // Distributed(
     //     distribution=arc4.UInt64(self.distributions.value),
     //     round_number=arc4.UInt64(Global.round),
@@ -468,7 +547,7 @@ distribute_after_while@7:
     concat
     swap
     concat
-    // smart_contracts/treasury/contract.py:140-147
+    // smart_contracts/treasury/contract.py:162-169
     // arc4.emit(
     //     Distributed(
     //         distribution=arc4.UInt64(self.distributions.value),
@@ -481,22 +560,22 @@ distribute_after_while@7:
     swap
     concat
     log
-    // smart_contracts/treasury/contract.py:106
+    // smart_contracts/treasury/contract.py:117
     // @abimethod()
     b distribute_after_inlined_smart_contracts.treasury.contract.Treasury.distribute@8
 
 
 // smart_contracts.treasury.contract.Treasury.claim[routing]() -> void:
 claim:
-    // smart_contracts/treasury/contract.py:156
+    // smart_contracts/treasury/contract.py:178
     // index = UInt64(0)
     intc_0 // 0
 
 claim_while_top@2:
-    // smart_contracts/treasury/contract.py:153
+    // smart_contracts/treasury/contract.py:175
     // box = Box(arc4.DynamicArray[Recipient], key=RECIPIENTS_KEY)
     bytec_0 // 0x726563697069656e7473
-    // smart_contracts/treasury/contract.py:157
+    // smart_contracts/treasury/contract.py:179
     // while index < recipients.length:
     intc_0 // 0
     intc_3 // 2
@@ -507,7 +586,7 @@ claim_while_top@2:
     uncover 2
     <
     assert // Not a recipient
-    // smart_contracts/treasury/contract.py:158-159
+    // smart_contracts/treasury/contract.py:180-181
     // recipient = recipients[index].copy()
     // if recipient.who.native == Txn.sender:
     intc_2 // 48
@@ -516,10 +595,10 @@ claim_while_top@2:
     +
     dup
     cover 2
-    // smart_contracts/treasury/contract.py:153
+    // smart_contracts/treasury/contract.py:175
     // box = Box(arc4.DynamicArray[Recipient], key=RECIPIENTS_KEY)
     bytec_0 // 0x726563697069656e7473
-    // smart_contracts/treasury/contract.py:158-159
+    // smart_contracts/treasury/contract.py:180-181
     // recipient = recipients[index].copy()
     // if recipient.who.native == Txn.sender:
     swap
@@ -527,16 +606,16 @@ claim_while_top@2:
     box_extract // on error: index out of bounds
     extract 0 32
     dup
-    // smart_contracts/treasury/contract.py:159
+    // smart_contracts/treasury/contract.py:181
     // if recipient.who.native == Txn.sender:
     txn Sender
     ==
     bz claim_after_if_else@6
     bury 1
-    // smart_contracts/treasury/contract.py:153
+    // smart_contracts/treasury/contract.py:175
     // box = Box(arc4.DynamicArray[Recipient], key=RECIPIENTS_KEY)
     bytec_0 // 0x726563697069656e7473
-    // smart_contracts/treasury/contract.py:160
+    // smart_contracts/treasury/contract.py:182
     // amount: UInt64 = recipient.owed.as_uint64()
     uncover 2
     dup
@@ -548,11 +627,11 @@ claim_while_top@2:
     dig 1
     pushint 40
     extract_uint64
-    // smart_contracts/treasury/contract.py:161
+    // smart_contracts/treasury/contract.py:183
     // assert amount > 0, "Nothing owed to you"
     dup
     assert // Nothing owed to you
-    // smart_contracts/treasury/contract.py:162
+    // smart_contracts/treasury/contract.py:184
     // recipients[index] = recipient._replace(owed=arc4.UInt64(0)).copy()
     uncover 2
     extract 32 8
@@ -563,16 +642,16 @@ claim_while_top@2:
     concat
     swap
     concat
-    // smart_contracts/treasury/contract.py:153
+    // smart_contracts/treasury/contract.py:175
     // box = Box(arc4.DynamicArray[Recipient], key=RECIPIENTS_KEY)
     bytec_0 // 0x726563697069656e7473
-    // smart_contracts/treasury/contract.py:162-163
+    // smart_contracts/treasury/contract.py:184-185
     // recipients[index] = recipient._replace(owed=arc4.UInt64(0)).copy()
     // box.value = recipients.copy()
     uncover 4
     uncover 2
     box_replace // on error: index out of bounds
-    // smart_contracts/treasury/contract.py:164
+    // smart_contracts/treasury/contract.py:186
     // self.allocated_total.value -= amount
     intc_0 // 0
     bytec_2 // "allocated_total"
@@ -583,7 +662,7 @@ claim_while_top@2:
     bytec_2 // "allocated_total"
     swap
     app_global_put
-    // smart_contracts/treasury/contract.py:165
+    // smart_contracts/treasury/contract.py:187
     // itxn.Payment(receiver=Txn.sender, amount=amount).submit()
     itxn_begin
     txn Sender
@@ -594,7 +673,7 @@ claim_while_top@2:
     intc_0 // 0
     itxn_field Fee
     itxn_submit
-    // smart_contracts/treasury/contract.py:150
+    // smart_contracts/treasury/contract.py:172
     // @abimethod()
     bytec_3 // 0x151f7c75
     swap
@@ -606,7 +685,7 @@ claim_while_top@2:
 claim_after_if_else@6:
     pop
     bury 1
-    // smart_contracts/treasury/contract.py:167
+    // smart_contracts/treasury/contract.py:189
     // index += 1
     intc_1 // 1
     +
@@ -615,7 +694,7 @@ claim_after_if_else@6:
 
 // smart_contracts.treasury.contract.Treasury.owed_to[routing]() -> void:
 owed_to:
-    // smart_contracts/treasury/contract.py:172
+    // smart_contracts/treasury/contract.py:194
     // @abimethod(readonly=True)
     txna ApplicationArgs 1
     dup
@@ -623,15 +702,15 @@ owed_to:
     pushint 32
     ==
     assert // invalid number of bytes for arc4.static_array<arc4.uint8, 32>
-    // smart_contracts/treasury/contract.py:176
+    // smart_contracts/treasury/contract.py:198
     // index = UInt64(0)
     intc_0 // 0
 
 owed_to_while_top@2:
-    // smart_contracts/treasury/contract.py:175
+    // smart_contracts/treasury/contract.py:197
     // recipients = Box(arc4.DynamicArray[Recipient], key=RECIPIENTS_KEY).value.copy()
     bytec_0 // 0x726563697069656e7473
-    // smart_contracts/treasury/contract.py:177
+    // smart_contracts/treasury/contract.py:199
     // while index < recipients.length:
     intc_0 // 0
     intc_3 // 2
@@ -640,7 +719,7 @@ owed_to_while_top@2:
     dig 1
     >
     bz owed_to_after_while@6
-    // smart_contracts/treasury/contract.py:178-179
+    // smart_contracts/treasury/contract.py:200-201
     // recipient = recipients[index].copy()
     // if recipient.who.native == who.native:
     dup
@@ -649,27 +728,27 @@ owed_to_while_top@2:
     intc_3 // 2
     +
     dup
-    // smart_contracts/treasury/contract.py:175
+    // smart_contracts/treasury/contract.py:197
     // recipients = Box(arc4.DynamicArray[Recipient], key=RECIPIENTS_KEY).value.copy()
     bytec_0 // 0x726563697069656e7473
-    // smart_contracts/treasury/contract.py:178-179
+    // smart_contracts/treasury/contract.py:200-201
     // recipient = recipients[index].copy()
     // if recipient.who.native == who.native:
     swap
     intc_2 // 48
     box_extract // on error: index out of bounds
     extract 0 32
-    // smart_contracts/treasury/contract.py:179
+    // smart_contracts/treasury/contract.py:201
     // if recipient.who.native == who.native:
     dig 3
     ==
     bz owed_to_after_if_else@5
     bury 1
     bury 1
-    // smart_contracts/treasury/contract.py:175
+    // smart_contracts/treasury/contract.py:197
     // recipients = Box(arc4.DynamicArray[Recipient], key=RECIPIENTS_KEY).value.copy()
     bytec_0 // 0x726563697069656e7473
-    // smart_contracts/treasury/contract.py:180
+    // smart_contracts/treasury/contract.py:202
     // return recipient.owed.as_uint64()
     swap
     intc_2 // 48
@@ -678,7 +757,7 @@ owed_to_while_top@2:
     extract_uint64
 
 owed_to_after_inlined_smart_contracts.treasury.contract.Treasury.owed_to@7:
-    // smart_contracts/treasury/contract.py:172
+    // smart_contracts/treasury/contract.py:194
     // @abimethod(readonly=True)
     itob
     bytec_3 // 0x151f7c75
@@ -690,7 +769,7 @@ owed_to_after_inlined_smart_contracts.treasury.contract.Treasury.owed_to@7:
 
 owed_to_after_if_else@5:
     pop
-    // smart_contracts/treasury/contract.py:181
+    // smart_contracts/treasury/contract.py:203
     // index += 1
     intc_1 // 1
     +
@@ -698,9 +777,9 @@ owed_to_after_if_else@5:
 
 owed_to_after_while@6:
     popn 2
-    // smart_contracts/treasury/contract.py:182
+    // smart_contracts/treasury/contract.py:204
     // return UInt64(0)
     intc_0 // 0
-    // smart_contracts/treasury/contract.py:172
+    // smart_contracts/treasury/contract.py:194
     // @abimethod(readonly=True)
     b owed_to_after_inlined_smart_contracts.treasury.contract.Treasury.owed_to@7

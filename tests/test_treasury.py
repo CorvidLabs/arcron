@@ -189,3 +189,56 @@ def test_an_unclaimed_allocation_never_blocks_a_distribution(
     _deposit(context, treasury, 1_000_000)
     assert treasury.distribute() == 1_000_000
     assert treasury.owed_to(arc4.Address(parties[0])) == 1_000_000
+
+
+def test_a_very_large_pot_still_distributes(
+    context: AlgopyTestContext, treasury: Treasury, parties
+) -> None:
+    """`snapshot * share_bps` overflowed above about 1.84 million ALGO.
+
+    The AVM panics rather than saturating, so `distribute` would have failed
+    forever from that point. `claim` only pays what is already owed, so
+    everything still in `balance` would have been stranded on a contract with
+    no delete path.
+    """
+    huge = 2**64 // TOTAL_SHARE_BPS + 1  # the smallest pot that used to overflow
+    treasury.balance.value = UInt64(huge)
+    treasury.configured.value = UInt64(1)
+
+    allocated = int(treasury.distribute())
+    assert allocated > 0
+    # 50/30/20 of the pot, with the division remainder left behind.
+    assert int(treasury.owed_to(arc4.Address(parties[0]))) == huge // 2
+    assert allocated <= huge, "never allocate more than was snapshotted"
+
+
+def test_the_split_is_unchanged_for_ordinary_amounts(
+    context: AlgopyTestContext, treasury: Treasury, parties
+) -> None:
+    """Reordering the arithmetic must not change any answer that already worked."""
+    treasury.balance.value = UInt64(1_000_000)
+    treasury.configured.value = UInt64(1)
+    treasury.distribute()
+    assert int(treasury.owed_to(arc4.Address(parties[0]))) == 500_000
+    assert int(treasury.owed_to(arc4.Address(parties[1]))) == 300_000
+    assert int(treasury.owed_to(arc4.Address(parties[2]))) == 200_000
+
+
+def test_configure_refuses_a_recipient_nobody_can_claim_as(
+    context: AlgopyTestContext, parties
+) -> None:
+    """An address nobody can send from can never pull its allocation."""
+    from algopy import Account
+
+    treasury = Treasury()
+    with pytest.raises(Exception, match="A recipient is required"):
+        _configure(context, treasury, [(parties[0], 5_000), (Account(), 5_000)])
+
+
+def test_configure_refuses_the_same_recipient_twice(
+    context: AlgopyTestContext, parties
+) -> None:
+    """`claim` stops at the first match, so a duplicate's share is unreachable."""
+    treasury = Treasury()
+    with pytest.raises(Exception, match="appears twice"):
+        _configure(context, treasury, [(parties[0], 5_000), (parties[0], 5_000)])

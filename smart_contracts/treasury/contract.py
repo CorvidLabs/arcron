@@ -85,6 +85,17 @@ class Treasury(ARC4Contract):
             recipient = recipients[index].copy()
             assert recipient.share_bps.as_uint64() > 0, "A share must be positive"
             assert recipient.owed.as_uint64() == 0, "Owed must start at zero"
+            # An address nobody can send from can never claim its allocation,
+            # and `claim` stops at the first entry matching the sender, so a
+            # duplicate's share can never be pulled either. Both strand money
+            # permanently on a contract configured once and never updated.
+            assert recipient.who.native != Global.zero_address, "A recipient is required"
+            duplicate = UInt64(0)
+            while duplicate < index:
+                assert (
+                    recipients[duplicate].who != recipient.who
+                ), "A recipient appears twice"
+                duplicate += UInt64(1)
             total += recipient.share_bps.as_uint64()
             index += 1
         assert total == TOTAL_SHARE_BPS, "Shares must total 10,000 basis points"
@@ -122,9 +133,20 @@ class Treasury(ARC4Contract):
         index = UInt64(0)
         while index < recipients.length:
             recipient = recipients[index].copy()
+            # Divide before multiplying, then add back the remainder's share.
+            # `snapshot * share_bps` overflows uint64 once the pot passes
+            # about 1.84 million ALGO, and the AVM panics rather than
+            # saturating. That panic would fail `distribute` forever, and
+            # since `claim` only pays what is already owed, everything still
+            # in `balance` would be stranded on a contract with no delete path.
+            #
             # Integer division: the remainder stays in the treasury for the
             # next distribution rather than being stranded or over-allocated.
-            amount: UInt64 = snapshot * recipient.share_bps.as_uint64() // TOTAL_SHARE_BPS
+            share: UInt64 = recipient.share_bps.as_uint64()
+            amount: UInt64 = (
+                snapshot // TOTAL_SHARE_BPS * share
+                + snapshot % TOTAL_SHARE_BPS * share // TOTAL_SHARE_BPS
+            )
             recipients[index] = recipient._replace(
                 owed=arc4.UInt64(recipient.owed.as_uint64() + amount)
             ).copy()

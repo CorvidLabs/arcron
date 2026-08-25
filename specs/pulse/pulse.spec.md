@@ -21,6 +21,12 @@ now. Permissionless by design; it is a demo, not a gate.
 
 ## Public API
 
+### Exported Constants
+
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `MAX_BEATS_PER_TICK` | `1_000_000` | The most one `tick_with` may add. Unbounded, a single call could set the counter near the uint64 ceiling, after which every `tick` overflows and panics, the inner call fails, and a keeper can never service this app again. |
+
 ### Exported Types
 
 | Type | Description |

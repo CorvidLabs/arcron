@@ -7,24 +7,24 @@ main:
     bytecblock "beats" "last_beat_round" "last_note" 0x151f7c75
     txn ApplicationID
     bnz main_after_if_else@2
-    // smart_contracts/pulse/contract.py:16
+    // smart_contracts/pulse/contract.py:21
     // self.beats = GlobalState(UInt64(0))
     bytec_0 // "beats"
     intc_0 // 0
     app_global_put
-    // smart_contracts/pulse/contract.py:17
+    // smart_contracts/pulse/contract.py:22
     // self.last_beat_round = GlobalState(UInt64(0))
     bytec_1 // "last_beat_round"
     intc_0 // 0
     app_global_put
-    // smart_contracts/pulse/contract.py:18
+    // smart_contracts/pulse/contract.py:23
     // self.last_note = GlobalState(String(""))
     bytec_2 // "last_note"
     pushbytes ""
     app_global_put
 
 main_after_if_else@2:
-    // smart_contracts/pulse/contract.py:6
+    // smart_contracts/pulse/contract.py:11
     // class Pulse(ARC4Contract):
     txn NumAppArgs
     bz main___algopy_default_create@11
@@ -49,7 +49,7 @@ main___algopy_default_create@11:
 
 // smart_contracts.pulse.contract.Pulse.tick[routing]() -> void:
 tick:
-    // smart_contracts/pulse/contract.py:22
+    // smart_contracts/pulse/contract.py:27
     // self.beats.value += 1
     intc_0 // 0
     bytec_0 // "beats"
@@ -60,18 +60,18 @@ tick:
     bytec_0 // "beats"
     swap
     app_global_put
-    // smart_contracts/pulse/contract.py:23
+    // smart_contracts/pulse/contract.py:28
     // self.last_beat_round.value = Global.round
     bytec_1 // "last_beat_round"
     global Round
     app_global_put
-    // smart_contracts/pulse/contract.py:24
+    // smart_contracts/pulse/contract.py:29
     // return self.beats.value
     intc_0 // 0
     bytec_0 // "beats"
     app_global_get_ex
     assert // check self.beats exists
-    // smart_contracts/pulse/contract.py:20
+    // smart_contracts/pulse/contract.py:25
     // @abimethod()
     itob
     bytec_3 // 0x151f7c75
@@ -84,7 +84,7 @@ tick:
 
 // smart_contracts.pulse.contract.Pulse.tick_with[routing]() -> void:
 tick_with:
-    // smart_contracts/pulse/contract.py:26
+    // smart_contracts/pulse/contract.py:31
     // @abimethod()
     txna ApplicationArgs 1
     dup
@@ -103,7 +103,20 @@ tick_with:
     len
     ==
     assert // invalid number of bytes for arc4.dynamic_array<arc4.uint8>
-    // smart_contracts/pulse/contract.py:34
+    // smart_contracts/pulse/contract.py:39-46
+    // # Bound the increment. Unbounded, one call could set the counter near
+    // # the uint64 ceiling, after which every `tick` overflows and panics.
+    // # The AVM panics rather than saturating, so the panic fails the inner
+    // # call, which fails the whole execution, which means a keeper can never
+    // # service this app again. That is a permanent wedge of the demo target
+    // # for the price of one transaction, and on a contract with no update
+    // # path there is no way back.
+    // assert beats <= MAX_BEATS_PER_TICK, "Too many beats for one tick"
+    dig 1
+    pushint 1000000
+    <=
+    assert // Too many beats for one tick
+    // smart_contracts/pulse/contract.py:47
     // self.beats.value += beats
     intc_0 // 0
     bytec_0 // "beats"
@@ -114,24 +127,24 @@ tick_with:
     bytec_0 // "beats"
     swap
     app_global_put
-    // smart_contracts/pulse/contract.py:35
+    // smart_contracts/pulse/contract.py:48
     // self.last_beat_round.value = Global.round
     bytec_1 // "last_beat_round"
     global Round
     app_global_put
-    // smart_contracts/pulse/contract.py:36
+    // smart_contracts/pulse/contract.py:49
     // self.last_note.value = note.native
     extract 2 0
     bytec_2 // "last_note"
     swap
     app_global_put
-    // smart_contracts/pulse/contract.py:37
+    // smart_contracts/pulse/contract.py:50
     // return self.beats.value
     intc_0 // 0
     bytec_0 // "beats"
     app_global_get_ex
     assert // check self.beats exists
-    // smart_contracts/pulse/contract.py:26
+    // smart_contracts/pulse/contract.py:31
     // @abimethod()
     itob
     bytec_3 // 0x151f7c75

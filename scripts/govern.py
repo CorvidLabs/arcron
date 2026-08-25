@@ -226,9 +226,27 @@ def main(argv: list[str] | None = None) -> int:
                     "It is read from the environment and never written anywhere."
                 )
                 return 1
+            # Show it before signing, always, and refuse if it is not the
+            # app the signer was told about. Signing base64 nobody reads is
+            # how a multisig becomes one person who clicked several times,
+            # and this is the last point at which that can be caught.
+            in_file = ms.app_id(args.file)
+            if in_file and in_file != args.app_id:
+                logger.error(
+                    f"This file acts on app {in_file}, not {args.app_id}. "
+                    "Refusing. Check where the file came from."
+                )
+                return 1
+            logger.info("About to sign:")
+            for line in ms.describe_transaction(args.file):
+                logger.info(f"  {line}")
             have = ms.sign(args.file, secret)
-            logger.info(f"Signed. {have} of {ms.threshold()} signatures collected.")
+            logger.info(f"Signed. {have} of {ms.blob_threshold(args.file)} collected.")
             return 0
+        in_file = ms.app_id(args.file)
+        if in_file and in_file != args.app_id:
+            logger.error(f"This file acts on app {in_file}, not {args.app_id}. Refusing.")
+            return 1
         txid = ms.submit(algorand.client.algod, args.file)
         logger.info(f"Submitted {txid}")
         return 0
