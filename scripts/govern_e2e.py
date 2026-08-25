@@ -18,7 +18,7 @@ from algosdk.abi import Method
 from scripts import network as net
 from scripts.govern import _deployed, _frozen
 from scripts.keeper_e2e import _assert, _quiet
-from smart_contracts.keeper.deploy_config import deploy as deploy_keeper
+from smart_contracts.artifacts.keeper.keeper_client import KeeperFactory
 from scripts.verify_build import _digest, _programs, _spec
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -51,7 +51,12 @@ def main(argv: list[str] | None = None) -> None:
     algorand = net.connect(args.network)
     algod = algorand.client.algod
     deployer = algorand.account.from_environment("DEPLOYER")
-    keeper = deploy_keeper()
+    # A fresh app every run. The shared deploy config finds an existing
+    # deployment and reuses it, and this test freezes what it is given, so
+    # reusing would mean the second run starts frozen and fails at stage 1.
+    keeper, _ = algorand.client.get_typed_app_factory(
+        KeeperFactory, default_sender=deployer.address
+    ).send.create.bare()
     app_id = keeper.app_id
     approval, clear = _programs(_spec("keeper"))
 

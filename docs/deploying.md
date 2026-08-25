@@ -53,6 +53,13 @@ nowhere in this repository, so a mistyped `--network` cannot reach real money.
 MainNet is also gated behind the rc clock; deploying there before that is a
 decision, not a command.
 
+**The contract now needs two program pages.** It compiles to just over 2,048
+bytes, so a deployment allocates an extra page, and each page costs the
+*creator* 100,000 microAlgos of minimum balance permanently. Budget 0.2 ALGO
+locked rather than 0.1, for as long as the app exists. This is create-only:
+extra pages cannot be added by an update, so a contract that outgrows its
+pages needs a new deployment.
+
 Funding the base minimum balance matters more than it sounds. An app account
 below 100,000 µALGO cannot hold a box or escrow anything, and the failure
 reads as a minimum balance error somewhere unrelated. It is the most common

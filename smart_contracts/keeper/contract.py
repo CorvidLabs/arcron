@@ -267,11 +267,25 @@ class Keeper(ARC4Contract):
         # if they hold the asset. Checked before anything is refunded, so a
         # creator who cannot take the ASA does not lose the ALGO as well.
         bonus_asset: UInt64 = upkeep.fee_asset.as_uint64()
+        # Pay out no more of the bonus than the app actually holds. The book
+        # value can exceed the real holding: an ASA with a clawback address
+        # can be taken back out of this account by its issuer, and a frozen
+        # one cannot be sent at all. Trusting the book value would make the
+        # asset transfer fail, and because it shares a transaction with the
+        # ALGO refund, the refund would fail with it. The creator would lose
+        # their escrow and their box minimum balance to somebody else's asset
+        # settings, permanently, on a contract with no delete path.
+        #
+        # So the ASA is best effort and the ALGO is not.
         bonus: UInt64 = upkeep.asset_balance.as_uint64()
         if bonus > 0:
-            assert Txn.sender.is_opted_in(
-                Asset(bonus_asset)
-            ), "Opt in to the fee asset before cancelling"
+            held: UInt64 = Asset(bonus_asset).balance(Global.current_application_address)
+            if held < bonus:
+                bonus = held
+        if bonus > 0 and not Txn.sender.is_opted_in(Asset(bonus_asset)):
+            # Cancelling still returns the ALGO. Forcing an opt-in first would
+            # let an asset the creator cannot hold block their own refund.
+            bonus = UInt64(0)
 
         # The box MBR is released by the delete below, so it is refundable.
         refund: UInt64 = (
@@ -356,9 +370,17 @@ class Keeper(ARC4Contract):
         bonus_asset: UInt64 = upkeep.fee_asset.as_uint64()
         bonus: UInt64 = upkeep.asset_fee.as_uint64()
         asset_balance: UInt64 = upkeep.asset_balance.as_uint64()
+        # As in `cancel`: the book value can exceed what the app actually
+        # holds, because an ASA with a clawback address can be taken back and
+        # a frozen one cannot be sent. The bonus shares a transaction with the
+        # keeper's ALGO fee and with the inner call to the target, so a failed
+        # asset transfer would revert the execution itself. An upkeep whose
+        # bonus asset has been clawed back would stop being serviced at all,
+        # and its ALGO escrow would strand.
         pays_bonus = (
             bonus_asset > 0
             and asset_balance >= bonus
+            and Asset(bonus_asset).balance(Global.current_application_address) >= bonus
             and Txn.sender.is_opted_in(Asset(bonus_asset))
         )
         if pays_bonus:

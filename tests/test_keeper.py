@@ -928,3 +928,53 @@ def test_frozen_is_readable_before_anyone_escrows(
     assert keeper.frozen.value == 0
     keeper.freeze()
     assert keeper.frozen.value == 1
+
+
+# --- an ASA bonus must never strand the ALGO ---------------------------
+
+
+def test_cancel_returns_algo_even_when_the_bonus_cannot_be_paid(
+    context: AlgopyTestContext, keeper: Keeper, pulse: Pulse
+) -> None:
+    """The book value can exceed what the app actually holds.
+
+    An ASA with a clawback address can be taken back out of the app by its
+    issuer, and a frozen one cannot be sent at all. The bonus transfer shares
+    a transaction with the ALGO refund, so trusting the book value would make
+    the refund fail with it: the creator would lose their escrow and their box
+    minimum balance to somebody else's asset settings, permanently, on a
+    contract with no delete path.
+    """
+    asset = context.any.asset()
+    upkeep_id = _register(
+        context, keeper, pulse, _selector("tick()uint64"),
+        fee_asset=int(asset.id), asset_fee=500,
+    )
+    # Book value says there is a bonus; the app holds none of it.
+    upkeep = _read_upkeep(context, keeper, int(upkeep_id))
+    assert upkeep.asset_balance == 0
+
+    refund = int(keeper.cancel(upkeep_id))
+    assert refund > 0, "the ALGO came back regardless of the asset"
+
+
+def test_an_execution_is_not_blocked_by_a_bonus_the_app_cannot_send(
+    context: AlgopyTestContext, keeper: Keeper, pulse: Pulse
+) -> None:
+    """An upkeep whose bonus asset was clawed back must still be serviced.
+
+    Otherwise it stops being executed at all and its ALGO escrow strands.
+    """
+    asset = context.any.asset()
+    start = 1_000
+    context.ledger.patch_global_fields(round=UInt64(start))
+    upkeep_id = _register(
+        context, keeper, pulse, _selector("tick()uint64"),
+        fee_asset=int(asset.id), asset_fee=500,
+    )
+    context.ledger.patch_global_fields(round=UInt64(start + MIN_INTERVAL_ROUNDS))
+    keeper.execute(upkeep_id)
+
+    upkeep = _read_upkeep(context, keeper, int(upkeep_id))
+    assert upkeep.times_executed == 1, "the execution still happened"
+    assert _fee_paid(context, keeper) == MIN_UPKEEP_FEE, "and the ALGO fee was paid"

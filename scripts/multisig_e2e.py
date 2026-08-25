@@ -25,6 +25,9 @@ from scripts.verify_build import _digest, _programs, _spec
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
+# An Algorand program page.
+PROGRAM_PAGE = 2_048
+
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -52,12 +55,20 @@ def main(argv: list[str] | None = None) -> None:
     logger.info("── 2. It creates the app, so it is the creator ──")
     approval, clear = _programs(_spec("keeper"))
     params = algod.suggested_params()
+    # Programs live in 2,048 byte pages and a create must ask for any it needs
+    # beyond the first. AlgoKit's factory works this out; a hand-built create
+    # does not, and the failure reads as "approval program too long" rather
+    # than as a missing field. Each page costs the creator 100,000 microAlgos
+    # of minimum balance permanently.
+    extra_pages = (len(approval) + len(clear) - 1) // PROGRAM_PAGE
     create = transaction.ApplicationCreateTxn(
         sender=creator, sp=params, on_complete=transaction.OnComplete.NoOpOC,
         approval_program=approval, clear_program=clear,
         global_schema=transaction.StateSchema(2, 0),
         local_schema=transaction.StateSchema(0, 0),
+        extra_pages=extra_pages,
     )
+    logger.info(f"   {len(approval)} bytes of approval needs {extra_pages} extra page(s)")
     work = pathlib.Path(tempfile.mkdtemp()) / "create.json"
     ms.export_unsigned(create, work)
 
