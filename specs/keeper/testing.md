@@ -14,15 +14,15 @@ spec: keeper.spec.md
 Fixtures: `context` (fresh mock context), `keeper`, `pulse` (contract instances); rounds controlled via `patch_global_fields`.
 
 Mocks record inner transactions but never execute them, and they do not enforce
-minimum balances — anything that depends on the AVM actually running the inner
+minimum balances. Anything that depends on the AVM actually running the inner
 call, or on the app account's spendable balance, belongs in `keeper_e2e.py`.
 
 ## Manual Testing
 
-- [ ] `fledge lanes run local` — CI plus the LocalNet e2e (needs `algokit localnet start`)
-- [ ] `poetry run python -m scripts.keeper_e2e --network localnet` — the e2e on its own
-- [ ] `poetry run python -m scripts.keeper_e2e --network testnet` — same flow against TestNet
-- [ ] `poetry run python -m scripts.keeper_bot --once --network localnet --app-id <id>` — one bot scan
+- [ ] `fledge lanes run local` (CI plus the LocalNet e2e; needs `algokit localnet start`)
+- [ ] `poetry run python -m scripts.keeper_e2e --network localnet` (the e2e on its own)
+- [ ] `poetry run python -m scripts.keeper_e2e --network testnet` (same flow against TestNet)
+- [ ] `poetry run python -m scripts.keeper_bot --once --network localnet --app-id <id>` (one bot scan)
 
 ## Edge Cases & Boundary Conditions
 

@@ -1,7 +1,7 @@
 # Timed release: publish on a round nobody controls
 
 The scenario: you have something that must become public at a specific moment
-— an embargoed statement, a disclosure, a result — and you want it to happen
+(an embargoed statement, a disclosure, a result) and you want it to happen
 even if you are asleep, unavailable, or have since changed your mind.
 
 `smart_contracts/embargo/` is a contract that does exactly that, and it is the
@@ -10,8 +10,8 @@ clearest demonstration of what Arcron is for.
 ## What it guarantees
 
 - **It cannot go out early.** `publish()` fails before the release round.
-- **It cannot be stopped.** Once scheduled there is no method — for anyone,
-  the author included — that changes the content, moves the round, or cancels.
+- **It cannot be stopped.** Once scheduled there is no method, for anyone
+  including the author, that changes the content, moves the round, or cancels.
 - **It does not need you.** Publication is permissionless and paid, so a
   keeper anywhere fires it and collects the fee.
 
@@ -19,7 +19,7 @@ clearest demonstration of what Arcron is for.
 
 **Secrecy before release.** Box contents are readable by anyone the moment
 they are written; that is how a public chain works. This schedules an
-unstoppable, timestamped publication *event* — not a sealed envelope.
+unstoppable, timestamped publication *event*, not a sealed envelope.
 
 If the content must be unreadable until it opens, store a hash commitment here
 and keep the payload off-chain. Be clear-eyed about the cost: revealing it
@@ -35,8 +35,8 @@ poetry run python -m scripts.embargo_demo --network localnet
 
 The script deploys a fresh embargo app (one release per instance, by design),
 schedules content 25 rounds out, and points an Arcron upkeep at `publish()`
-with a 10-round interval — deliberately, so the keeper comes due *before* the
-embargo lifts:
+with a deliberately short 10-round interval, so the keeper comes due *before*
+the embargo lifts:
 
 ```
 ── 3. A keeper arrives early and is refused ──
@@ -55,11 +55,11 @@ embargo lifts:
 
 Two details worth noticing.
 
-The early attempt **cost the keeper nothing**. Algorand rejects a failing
+The early attempt cost the keeper nothing. Algorand rejects a failing
 transaction before it reaches a block, so a keeper that fires too early is out
-no ALGO at all — it simply tries again next interval.
+no ALGO at all. It simply tries again next interval.
 
-The publisher was **not the author**. Nothing in the contract checks who calls
+The publisher was not the author. Nothing in the contract checks who calls
 `publish()`; the author has no privileged position and no veto.
 
 ## Building your own
@@ -76,14 +76,14 @@ embargo.send.schedule(
 ```
 
 Then register an upkeep against `publish()` exactly as you would any other
-target — `examples/register_upkeep.py` is the template. Two things to get
+target; `examples/register_upkeep.py` is the template. Two things to get
 right:
 
 - **Fund for more than one attempt.** If the upkeep comes due before the
   release round, that execution fails harmlessly; the escrow is untouched, but
   the upkeep needs to still be scheduled when the round arrives. Funding a few
   executions costs 4,000 µALGO each and removes the question.
-- **Rounds are not a clock.** "A day" is ~30,857 rounds, and drifts — see the
-  liveness notes in [`docs/arcron.md`](../docs/arcron.md). If the exact moment
+- **Rounds are not a clock.** "A day" is ~30,857 rounds, and drifts (see the
+  liveness notes in [`docs/arcron.md`](../docs/arcron.md)). If the exact moment
   matters more than the guarantee, pick a round you are happy to be early
   against, not the one that maps to a wall-clock time today.

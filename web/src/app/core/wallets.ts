@@ -3,7 +3,7 @@
  *
  * Follows the CorvidLabs house pattern (see algorune's client/wallet.ts): list
  * every wallet that needs no configuration, and only add the generic
- * WalletConnect entry when a project id happens to be configured — Pera,
+ * WalletConnect entry when a project id happens to be configured. Pera,
  * Defly, Lute, Exodus and Kibisis each bring their own connection and need no
  * project id at all.
  *
@@ -35,7 +35,7 @@ function walletConnectProjectId(): string {
   return window.__ARCRON__?.walletConnectProjectId?.trim() ?? '';
 }
 
-/** Wallets that hold real accounts — the ones that matter off LocalNet. */
+/** Wallets that hold real accounts, the ones that matter off LocalNet. */
 export function publicWallets(): WalletAdapterConfig[] {
   const wallets: WalletAdapterConfig[] = [pera(), defly(), lute(), exodus(), kibisis()];
   const projectId = walletConnectProjectId();

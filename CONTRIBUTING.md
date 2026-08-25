@@ -1,6 +1,6 @@
 # Contributing to Arcron
 
-The most useful contribution is not code: **run a keeper**. The network only
+The most useful contribution is not code. Run a keeper. The network only
 works if somebody executes due upkeeps, and that is deliberately open to
 anyone. See [Operating a bot](docs/arcron.md#operating-a-bot).
 
@@ -31,16 +31,16 @@ fledge lanes run local   # the above plus LocalNet end-to-end (needs algokit loc
 ```
 
 `fledge lanes run ci` must be green before you open a pull request. CI runs
-exactly these tasks — every step shells out to `fledge.toml`, so the two cannot
+exactly these tasks. Every step shells out to `fledge.toml`, so the two cannot
 drift.
 
 ## Spec-sync will fail you on something you did not know existed
 
 Every contract has a spec under `specs/<name>/`, and `specsync check --strict`
-runs in CI. **If you change a contract's public surface — a method, a
-parameter, a return type, an exported constant — you must update its spec in
-the same commit**, including the Public API tables and the Change Log. Strict
-mode treats an undocumented export as an error.
+runs in CI. **If you change a contract's public surface (a method, a parameter,
+a return type, an exported constant) you must update its spec in the same
+commit**, including the Public API tables and the Change Log. Strict mode
+treats an undocumented export as an error.
 
 This catches real drift, but it is an unpleasant surprise if nobody warned
 you. Now you are warned. Run `specsync check --strict` locally before pushing.
@@ -51,7 +51,7 @@ you. Now you are warned. Run `specsync check --strict` locally before pushing.
 poetry run python -m smart_contracts build
 ```
 
-Artifacts are committed, and CI fails if they differ from a fresh build — a
+Artifacts are committed, and CI fails if they differ from a fresh build. A
 contract change with stale artifacts means the bot and console are compiled
 against source that no longer exists.
 
@@ -66,12 +66,12 @@ and console will silently misread the registry:
 
 ## What tests can and cannot tell you
 
-Unit tests use `algorand-python-testing` mocks, which **record inner
-transactions without executing them** and **do not enforce minimum balances**.
-An upkeep that fails when actually invoked, or an app that cannot pay out what
-it owes, passes its unit tests happily.
+Unit tests use `algorand-python-testing` mocks, which record inner
+transactions without executing them and do not enforce minimum balances. An
+upkeep that fails when actually invoked, or an app that cannot pay out what it
+owes, passes its unit tests happily.
 
-Anything depending on either belongs in a LocalNet end-to-end test —
+Anything depending on either belongs in a LocalNet end-to-end test.
 `scripts/keeper_e2e.py` is the reference, and each demo script is a smaller
 worked example. That is not a style preference: the box-MBR bug that forced a
 TestNet redeploy was invisible to unit tests and obvious on LocalNet.
@@ -83,13 +83,13 @@ cd web && bun install && bun run ng serve
 bun test
 ```
 
-Styling comes **only** from the CorvidLabs design system vendored in
+Styling comes only from the CorvidLabs design system vendored in
 `web/public/brand/`. No hardcoded colours, no hand-rolled theme toggle. Amounts
 display in ALGO; cadences display as time as well as rounds. Accessibility is
 checked with axe-core and must stay at zero violations.
 
-Note the brand files are trademarked and not covered by the Apache licence —
-see [NOTICE](NOTICE). If you fork Arcron as your own project, replace them.
+Note the brand files are trademarked and not covered by the Apache licence
+(see [NOTICE](NOTICE)). If you fork Arcron as your own project, replace them.
 
 ## Pull requests
 
@@ -103,4 +103,4 @@ reshaped that way, and the result was better each time.
 
 ## Security
 
-Do not open a public issue for a vulnerability — see [SECURITY.md](SECURITY.md).
+Do not open a public issue for a vulnerability. See [SECURITY.md](SECURITY.md).

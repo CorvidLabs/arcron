@@ -12,7 +12,7 @@ spec: embargo.spec.md
 ## Manual Testing
 
 - [ ] `poetry run python -m scripts.embargo_demo --network localnet`
-- [ ] `fledge lanes run local` — includes the demo as `smoke-embargo`
+- [ ] `fledge lanes run local` (includes the demo as `smoke-embargo`)
 
 ## Edge Cases & Boundary Conditions
 
@@ -22,4 +22,4 @@ spec: embargo.spec.md
 | Nobody publishes for a long time | Still publishable; the release is late, never lost |
 | An upkeep comes due before the release round | The execution fails harmlessly and costs the keeper nothing; the next due round succeeds |
 | Content of exactly `MAX_CONTENT` bytes | Allowed; one byte more is rejected |
-| The author is also the keeper | Allowed and unremarkable — publishing is permissionless, so the author has no special power either way |
+| The author is also the keeper | Allowed and unremarkable, since publishing is permissionless and the author has no special power either way |

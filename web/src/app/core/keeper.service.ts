@@ -1,9 +1,9 @@
 /**
  * The write half of the console: the four keeper calls, as UI state.
  *
- * Each call reports what it did — the round it landed in and what the method
- * returned — because on a keeper network the return values *are* the
- * feedback: the next due round, the new balance, the refund.
+ * Each call reports the round it landed in and what the method returned,
+ * because on a keeper network the return values *are* the feedback: the next
+ * due round, the new balance, the refund.
  */
 
 import { computed, Injectable, inject, signal } from '@angular/core';
@@ -73,7 +73,7 @@ export class KeeperService {
       const result = await txns.cancel(algod, appId, signing, upkeep.id);
       return {
         result,
-        message: `Refunded ${algos(result.returnValue ?? 0n)} — escrow plus box MBR`,
+        message: `Refunded ${algos(result.returnValue ?? 0n)} (escrow plus box MBR)`,
       };
     });
   }

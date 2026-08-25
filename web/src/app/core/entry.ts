@@ -7,7 +7,7 @@
  * same URL, whatever they happened to look at last.
  *
  * So on open the precedence is **link, then memory, then default**, and
- * following a link updates the memory — a shared link and a bookmark behave
+ * following a link updates the memory, so a shared link and a bookmark behave
  * the same afterwards.
  *
  * Switching network from the picker is deliberately *not* covered here. The

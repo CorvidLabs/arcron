@@ -50,7 +50,7 @@ interface Row {
         <div>
           <h2>Upkeep registry</h2>
           <p class="subtitle">
-            One box per upkeep, read straight from algod — no wallet, no indexer, no permission.
+            One box per upkeep, read straight from algod. No wallet or indexer needed.
           </p>
         </div>
         <p class="eyebrow">{{ summary() }}</p>
@@ -164,7 +164,7 @@ interface Row {
                           Fund upkeep {{ row.id }}
                         </button>
                         <p class="hint">
-                          Anyone can top up an upkeep — funding is not creator-only. Registered by
+                          Anyone can top up an upkeep, not only its creator. Registered by
                           {{ row.creator }}. If a run is missed it {{ row.policy }}; last ran
                           {{ row.lastRan }}.
                           @if (row.ceiling) {
@@ -172,7 +172,7 @@ interface Row {
                             to stay executable.
                             @if (row.feeNow) {
                               This upkeep is already late, so the next run will be charged
-                              {{ row.feeNow }} — topping it up does not reset that.
+                              {{ row.feeNow }}. Topping it up does not reset that.
                             }
                           }
                         </p>

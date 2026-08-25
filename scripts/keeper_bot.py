@@ -64,7 +64,7 @@ SKIP_AHEAD = 1
 
 
 class UnrecoverableError(RuntimeError):
-    """A condition no amount of retrying fixes — exit non-zero and be noticed."""
+    """A condition no amount of retrying fixes; exit non-zero and be noticed."""
 
 
 class Emitter:
@@ -135,10 +135,10 @@ def effective_fee(upkeep: Upkeep, current_round: int) -> int:
     The twin of the escalation arithmetic in
     `smart_contracts/keeper/contract.py::execute`. The fee rises linearly from
     the base to the cap over one missed interval and then holds, and lateness
-    is measured from the last service rather than from the schedule — so a
+    is measured from the last service rather than from the schedule, so a
     keeper draining a backlog is paid the ceiling once, not once per replay.
     A zero cap means the fee never moves, and an upkeep never bids more than
-    it holds — an escrow below the escalated fee drops back to the base fee
+    it holds: an escrow below the escalated fee drops back to the base fee
     rather than freezing the upkeep at a price it can never pay. A replay of a
     backlog never escalates at all: `next_execution_round <= last_serviced_round`
     means the upkeep was already behind when it last ran.
@@ -163,7 +163,7 @@ def select_due(
     Ordered by what each upkeep pays *now* rather than by registry order:
     escalation exists to change which work a keeper reaches for, and registry
     order would mean a neglected upkeep stays neglected however far its fee
-    has risen. Anything `is_blocked` names is left out entirely — its target
+    has risen. Anything `is_blocked` names is left out entirely, because its target
     is the thing that is broken, and a rising fee does not fix it.
     """
     return sorted(
@@ -192,12 +192,12 @@ def _decode_upkeep(upkeep_id: int, raw: bytes) -> Upkeep:
     ABI head/tail layout (see smart_contracts/keeper/contract.py): a 32-byte
     creator, then the static fields inline, with the dynamic argument list in
     the tail (the offset at bytes [40:42] points to it; the bot doesn't need
-    it — the contract stores and sends it itself). The head is 130 bytes; its
+    it, since the contract stores and sends it itself). The head is 130 bytes; its
     TypeScript twin is `web/src/app/core/upkeep.ts`.
 
     Rejects anything that is not this struct rather than decoding it. A box
     from an older deployment is shorter, and reading past its end silently
-    yields zeros and garbage — a keeper would then compute a fee from numbers
+    yields zeros and garbage, and a keeper would then compute a fee from numbers
     that were never in the box. The tail offset is the cheapest possible
     fingerprint: the contract always writes 130 there.
     """
@@ -208,7 +208,7 @@ def _decode_upkeep(upkeep_id: int, raw: bytes) -> Upkeep:
     tail_offset = int.from_bytes(raw[40:42], "big")
     if tail_offset != HEAD_BYTES:
         raise ValueError(
-            f"upkeep {upkeep_id}: tail offset is {tail_offset}, not {HEAD_BYTES} — "
+            f"upkeep {upkeep_id}: tail offset is {tail_offset}, not {HEAD_BYTES}; "
             f"this box was written by a different version of the contract"
         )
     return Upkeep(
@@ -267,7 +267,7 @@ def resolve_app_id(parser: argparse.ArgumentParser, app_id: int | None, network:
 def check_registry(algod, app_id: int) -> int:
     """Report how healthy a registry looks. Returns a process exit code.
 
-    Reads public box state only — no account, no signing — so this works as an
+    Reads public box state only, with no account and no signing, so this works as an
     external probe against a keeper you do not control. An upkeep overdue by
     more than a couple of its own intervals means nobody is servicing it.
     """
@@ -300,7 +300,7 @@ def check_registry(algod, app_id: int) -> int:
         emit(
             "starved",
             f"  upkeep {upkeep.upkeep_id}: escrow {upkeep.balance} µALGO is below its "
-            f"{current_fee} µALGO{escalated} fee — needs a top-up, not a keeper",
+            f"{current_fee} µALGO{escalated} fee. It needs a top-up, not a keeper",
             upkeep_id=upkeep.upkeep_id,
             balance=upkeep.balance,
             fee_per_execution=upkeep.fee_per_execution,
@@ -310,7 +310,7 @@ def check_registry(algod, app_id: int) -> int:
         emit(
             "stalled",
             f"  upkeep {upkeep.upkeep_id}: overdue by {overdue} rounds "
-            f"({overdue / max(upkeep.interval_rounds, 1):.1f} intervals) — "
+            f"({overdue / max(upkeep.interval_rounds, 1):.1f} intervals); "
             f"nobody is servicing it",
             level=logging.WARNING,
             upkeep_id=upkeep.upkeep_id,
@@ -324,7 +324,7 @@ def guard_balance(algod, address: str, warn_below: int) -> int:
     """Refuse to run below what it takes to broadcast; warn while it is low.
 
     A keeper earns its fees into the same account it spends from, so it is
-    normally self-sustaining — right until it is empty, at which point it
+    normally self-sustaining, right until it is empty, at which point it
     cannot earn its way back out. That is the failure this catches.
     """
     balance = algod.account_info(address)["amount"]
@@ -535,7 +535,7 @@ def main(argv: list[str] | None = None) -> None:
                     )
                     if entry is None:
                         # Another keeper got there first, or it was cancelled
-                        # mid-flight. Nothing was spent and nothing is wrong —
+                        # mid-flight. Nothing was spent and nothing is wrong, and
                         # backing off here would only reduce our coverage.
                         emit(
                             "race_lost",

@@ -16,13 +16,14 @@ depends_on: []
 Stands in for Algorand's randomness beacon on LocalNet, which has none.
 
 It implements the same `must_get(uint64,byte[])byte[]` interface as the real
-beacon — verified against the deployed programs on TestNet (`600011887`) and
-MainNet (`1615566206`) by searching them for the ARC-21 method selector.
+beacon. That was verified against the deployed programs on TestNet
+(`600011887`) and MainNet (`1615566206`) by searching them for the ARC-21
+method selector.
 
 **It is not random.** The value is `sha256(itob(round) || user_data)`, so it is
 deterministic and anyone can compute it in advance. That is precisely what
-makes it useful in a test — `scripts/rain_demo.py` predicts the winner
-independently and asserts the contract agrees — and precisely why it must never
+makes it useful in a test, where `scripts/rain_demo.py` predicts the winner
+independently and asserts the contract agrees, and precisely why it must never
 be pointed at by a real deployment.
 
 ## Public API
@@ -43,7 +44,7 @@ be pointed at by a real deployment.
 
 1. `must_get` fails for a round that has not passed, which is the property a commit-then-resolve scheme depends on.
 2. The same round and user data always produce the same value, so tests can predict it.
-3. No state, no funds, no authority — it answers questions and nothing else.
+3. No state, no funds, no authority. It answers questions and nothing else.
 
 ## Behavioral Examples
 

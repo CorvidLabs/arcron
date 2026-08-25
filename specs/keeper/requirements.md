@@ -23,13 +23,13 @@ A creator SHALL choose at registration whether a missed schedule is replayed (`C
 A creator SHALL be able to set a fee ceiling. While an upkeep is late the effective fee SHALL rise linearly from the base fee to that ceiling across one missed interval and then hold, and SHALL never exceed the ceiling. A zero ceiling SHALL mean the fee never changes.
 
 ### REQ-keeper-009
-Lateness SHALL be measured from the round the upkeep was last serviced, never from the round it was scheduled for. A call that is draining a backlog — `next_execution_round <= last_serviced_round` — SHALL NOT escalate at all, so that no keeper can profit by servicing a neglected upkeep slowly rather than promptly.
+Lateness SHALL be measured from the round the upkeep was last serviced, never from the round it was scheduled for. A call that is draining a backlog (`next_execution_round <= last_serviced_round`) SHALL NOT escalate at all, so that no keeper can profit by servicing a neglected upkeep slowly rather than promptly.
 
 ### REQ-keeper-011
 The effective fee SHALL never exceed the escrow. An upkeep whose balance cannot cover the escalated fee SHALL be charged the base fee and remain executable, so that escalation can never lock an upkeep out of its own escrow.
 
 ### REQ-keeper-010
-The contract SHALL record the round each execution ran in, so that off-chain readers do not have to derive it from the schedule — the two differ by the whole backlog whenever an upkeep is catching up.
+The contract SHALL record the round each execution ran in, so that off-chain readers do not have to derive it from the schedule; the two differ by the whole backlog whenever an upkeep is catching up.
 
 ### REQ-keeper-003
 The contract SHALL reject executions before the due round and executions whose escrow cannot cover the effective fee, leaving all state unchanged.
@@ -46,7 +46,7 @@ The MBR charged at registration SHALL equal the box's true minimum balance, so t
 ## Constraints
 
 - Escrow is plain ALGO in v1 (universal, faucet-friendly); ASA-denominated fees are a possible extension.
-- Creators and keepers may be post-quantum (Falcon-1024) accounts: their addresses are ordinary 32-byte addresses and the contract compares nothing else. `MIN_UPKEEP_FEE` covers a post-quantum keeper only while Algorand's per-byte fee is zero — a Falcon-signed `execute` is about 13× the size of an ed25519 one, and the floor is permanent (measured in `scripts/spike_quantum.py`).
+- Creators and keepers may be post-quantum (Falcon-1024) accounts: their addresses are ordinary 32-byte addresses and the contract compares nothing else. `MIN_UPKEEP_FEE` covers a post-quantum keeper only while Algorand's per-byte fee is zero. A Falcon-signed `execute` is about 13× the size of an ed25519 one, and the floor is permanent (measured in `scripts/spike_quantum.py`).
 - Escalation raises the balance an upkeep needs to stay executable, so an upkeep with a ceiling can go dormant at a balance that covers several runs at its base fee. Every reader of the registry prices runway at the ceiling for that reason.
 - Registered calls are NoOp app calls with exactly one app arg (the stored call data, typically a method selector) and no foreign arrays; targets must accept that shape.
 - Keepers are expected to simulate off-chain before executing, but a mistake is cheap: a failing target call fails the whole group, and Algorand rejects the transaction before it reaches a block, so the keeper pays no fee at all (measured in `scripts/keeper_e2e.py` stage 14).

@@ -1,7 +1,7 @@
 /**
  * Display helpers.
  *
- * ALGO leads everywhere a person reads a value — µALGO is what the contract
+ * ALGO leads everywhere a person reads a value. µALGO is what the contract
  * counts in, but nobody thinks in millionths. Durations are derived from the
  * chain's observed round rate, so "every 1,286 rounds" also reads as "~1 hour".
  */
@@ -9,7 +9,7 @@
 const MICRO_ALGO_IN_ALGO = 1_000_000n;
 const MAX_DECIMALS = 6;
 
-/** "1.5 ALGO", "0.004 ALGO", "0 ALGO" — trailing zeros trimmed. */
+/** "1.5 ALGO", "0.004 ALGO", "0 ALGO", with trailing zeros trimmed. */
 export function algos(microAlgo: bigint, options: { sign?: boolean } = {}): string {
   const negative = microAlgo < 0n;
   const magnitude = negative ? -microAlgo : microAlgo;
@@ -38,7 +38,7 @@ const DAY = 24 * HOUR;
 
 /**
  * A duration a person can hold in their head: seconds up to a minute, then
- * minutes, hours, days — one unit of precision, plus a second when it earns
+ * minutes, hours, days. One unit of precision, plus a second when it earns
  * its place ("1 d 6 h", not "1 d 6 h 13 min 2 s").
  */
 export function duration(seconds: number): string {
@@ -73,7 +73,7 @@ export function roundsAsTime(count: bigint, secondsPerRound: number | null): str
   return duration(Number(magnitude) * secondsPerRound);
 }
 
-/** "every 10 rounds · ~28 s" — the round count leads, time explains it. */
+/** "every 10 rounds · ~28 s": the round count leads, time explains it. */
 export function intervalLabel(intervalRounds: bigint, secondsPerRound: number | null): string {
   const time = roundsAsTime(intervalRounds, secondsPerRound);
   return time === null ? rounds(intervalRounds) : `${rounds(intervalRounds)} · ~${time}`;

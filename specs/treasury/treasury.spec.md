@@ -56,7 +56,7 @@ execution and stall the schedule for everyone else.
 ## Invariants
 
 1. `distribute` never fails: unconfigured or with an empty balance it returns `0` and changes nothing. A failing hook trips keeper backoff and would end the schedule.
-2. Allocated never exceeds the snapshot. The remainder from integer division stays in the treasury for the next distribution — never stranded, never over-allocated.
+2. Allocated never exceeds the snapshot. The remainder from integer division stays in the treasury for the next distribution, never stranded and never over-allocated.
 3. Shares total exactly `TOTAL_SHARE_BPS` and every share is positive.
 4. Recipients and shares are immutable after configuration. There is no method to add, remove, redirect or reweight.
 5. Funds leave only to a recipient claiming their own allocation.
@@ -66,7 +66,7 @@ execution and stall the schedule for everyone else.
 ## Why the recipient set is immutable
 
 A mutable set needs somebody with authority to redirect the money, which is
-exactly the position this design exists to eliminate — and it would quietly
+exactly the position this design exists to eliminate. It would also quietly
 undo the governance property, since an owner who can change recipients before a
 distribution can do everything a discretionary treasurer can. To change a
 split, deploy another treasury and point deposits at it; the old one's history
@@ -107,19 +107,19 @@ stays intact and auditable.
 ## Deferred: the buy step
 
 The issue this came from also describes swapping accumulated ALGO for an ASA on
-a DEX and distributing the proceeds. That half is **not** built here, and the
+a DEX and distributing the proceeds. That half is not built here, and the
 reason has changed since the issue was written.
 
 It was assumed to need multi-argument calls and foreign arrays. The
 resource-availability spike (issue #24, results in `docs/arcron.md`) measured
-otherwise: an Arcron-triggered inner call **can** reach an unreferenced app,
-account or asset **when the keeper attaches the reference to its own
-transaction**. So the DEX interaction is reachable today in principle.
+otherwise: an Arcron-triggered inner call *can* reach an unreferenced app,
+account or asset, provided the keeper attaches the reference to its own
+transaction. So the DEX interaction is reachable today in principle.
 
 What is missing is *discovery*: nothing on-chain tells a keeper which
 references an upkeep needs, so no keeper would know to attach a DEX's app id.
 That is the reframed issue #8. Until it exists, a scheduled swap would depend
-on a keeper who happens to know — which is not a property to build a treasury
+on a keeper who happens to know, and that is not a property to build a treasury
 on.
 
 ## Dependencies

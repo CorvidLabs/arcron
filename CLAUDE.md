@@ -1,18 +1,18 @@
 # CLAUDE.md
 
 Guidance for Claude Code in this repo. See `AGENTS.md` and `README.md` for the
-full picture — keep all three consistent when conventions change.
+full picture. Keep all three consistent when conventions change.
 
 ## What this is
 
-Arcron — Algorand smart contracts (Algorand Python / Puya + AlgoKit). Main
-project: `smart_contracts/keeper/` — a permissionless keeper network, live on
+Arcron: Algorand smart contracts (Algorand Python / Puya + AlgoKit). The main
+project is `smart_contracts/keeper/`, a permissionless keeper network, live on
 TestNet (app 769823086; 769802474 and 769772891 are superseded, predating the
 1.0 contract). `pulse/` is its demo target (app 769823097).
 
 ## Commands
 
-- Everything: `fledge lanes run ci` (build + unit tests + spec check — must stay green)
+- Everything: `fledge lanes run ci` (build + unit tests + spec check; must stay green)
 - On a real chain: `fledge lanes run local` (ci + the keeper e2e; needs `algokit localnet start`)
 - Endurance: `fledge lanes run endurance` (adds `scripts/keeper_soak.py`, ~3 min)
 - Console: `cd web && bun run ng serve`; `bun test` for its unit tests
@@ -22,33 +22,33 @@ TestNet (app 769823086; 769802474 and 769772891 are superseded, predating the
 - End-to-end: `poetry run python -m scripts.keeper_e2e --network localnet|testnet`
 - Keeper bot: `poetry run python -m scripts.keeper_bot [--once] [--network N] [--app-id N]`
 
-## 1.0 scope — decided 2026-08-24
+## 1.0 scope (decided 2026-08-24)
 
 Full reasoning in [`docs/design/1.0.md`](docs/design/1.0.md). The short version,
 because these are easy to get wrong from memory:
 
 - **The contract cannot be upgraded.** A struct change means a new app id and
   every creator cancelling and re-registering by hand. So #7, #14, #8 and #9
-  are batched into **one** release and the surface is then frozen.
+  are batched into one release and the surface is then frozen.
 - **#9 is an ASA fee *capability*, not a commitment.** CORVID is not wired in;
   escrow and fees stay ALGO by default. "No token required" remains true.
 - **#15 (staking) and #22 (keeper-supplied data) are closed**, not merely
-  deferred — reasoning in [`docs/design/out-of-scope.md`](docs/design/out-of-scope.md).
+  deferred. Reasoning in [`docs/design/out-of-scope.md`](docs/design/out-of-scope.md).
   Staking has nothing to slash; keeper-supplied data inverts the one guarantee
-  Arcron makes — and the line between #8 and #22 is the reason: declaring which
+  Arcron makes. The line between #8 and #22 is the reason: declaring which
   *resources* a call may touch is safe because the creator still fixes what is
   called, while letting a keeper supply *data* is a different product. Do not
   reopen either without reading that first.
 - **Dogfood** is a recurring treasury distribution on TestNet, serviced by a
   keeper we run and watched by the notifier.
-- **MainNet gate** is self-review plus sustained TestNet time — no paid audit.
+- **MainNet gate** is self-review plus sustained TestNet time. No paid audit.
   Any struct change restarts that clock.
 - **Public release** waits until the deployment is one we are not about to
   replace; the licence and docs (#50) land before visibility does.
 
 ## Rules
 
-- Poetry venv, Python 3.13 — never 3.14 (coincurve has no wheels).
+- Poetry venv, Python 3.13, never 3.14 (coincurve has no wheels).
 - puyapy stays pinned `>=5.0,<5.10` to match algorand-python 3.5.x.
 - Every contract has a strict spec-sync spec in `specs/<name>/`; update the
   spec's Public API tables, requirements, testing.md and Change Log whenever
@@ -58,14 +58,14 @@ because these are easy to get wrong from memory:
   `scripts/keeper_e2e.py` on LocalNet); `UInt64()` takes plain `int` only.
 - Scripts choose their network with `--network` / `ARCRON_NETWORK`
   (`scripts/network.py`); it loads `.env.<network>` and verifies the node's
-  genesis id. LocalNet is dev mode — rounds only advance when you send
+  genesis id. LocalNet is dev mode: rounds only advance when you send
   transactions (`network.wait_for_round`).
 - On TestNet: disable the suggested-params cache
   (`set_suggested_params_cache_timeout(0)`) and fund the app account's base
   MBR (0.1 ALGO) before it can escrow or hold boxes.
 - Upkeep box values are ARC-4 head/tail encoded; `scripts/keeper_bot.py` has
   the reference decoder (`_decode_upkeep`), and `web/src/app/core/upkeep.ts`
-  is its TypeScript twin — both pinned to the same recorded box.
+  is its TypeScript twin; both are pinned to the same recorded box.
 - `web/` is styled only with the CorvidLabs design system vendored in
   `web/public/brand/`: no hardcoded colours, no hand-rolled theme toggle.
 - Wallets come from `@txnlab/use-wallet` (see `web/src/app/core/wallets.ts`),
@@ -74,4 +74,4 @@ because these are easy to get wrong from memory:
   it is added only when one is set.
   Amounts display in ALGO; cadences display as time as well as rounds.
 - `.env.*` files are gitignored and must stay that way. Never commit mnemonics;
-  the TestNet deployer is a throwaway — never reuse it on mainnet.
+  the TestNet deployer is a throwaway and must never be reused on mainnet.

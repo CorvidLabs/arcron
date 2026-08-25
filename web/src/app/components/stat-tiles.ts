@@ -76,10 +76,10 @@ export class StatTiles {
 
   protected readonly spendable = computed(() => {
     const account = this.arcron.appAccount();
-    return account === null ? '—' : algos(account.spendable);
+    return account === null ? '-' : algos(account.spendable);
   });
 
-  /** The tightest cadence on the app, as time — "a heartbeat every ~28 s". */
+  /** The tightest cadence on the app, expressed as time ("a heartbeat every ~28 s"). */
   protected readonly scheduleHint = computed(() => {
     const upkeeps = this.arcron.upkeeps();
     if (upkeeps.length === 0) return 'nothing scheduled';

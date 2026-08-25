@@ -1,7 +1,7 @@
 # arcron
 
-**Arcron** is a permissionless keeper network for Algorand — anyone registers
-a scheduled contract call, any keeper executes it for the fee. By
+**Arcron** is a permissionless keeper network for Algorand. Anyone registers
+a scheduled contract call, and any keeper executes it for the fee. By
 [CorvidLabs](https://github.com/CorvidLabs), built with Algorand Python
 (Puya) and AlgoKit.
 
@@ -10,15 +10,15 @@ The job matters; whoever runs it does not, and nobody owns it.*
 
 | Contract | What it is | Status |
 |----------|-----------|--------|
-| [`smart_contracts/keeper`](smart_contracts/keeper/contract.py) | The Arcron network: upkeep scheduling with ALGO escrow and keeper rewards | **Live on TestNet** — app [`769823086`](https://testnet.explorer.perawallet.app/application/769823086) |
-| [`smart_contracts/pulse`](smart_contracts/pulse/contract.py) | Demo upkeep target: a heartbeat counter, with and without arguments | Live on TestNet — app [`769823097`](https://testnet.explorer.perawallet.app/application/769823097) |
+| [`smart_contracts/keeper`](smart_contracts/keeper/contract.py) | The Arcron network: upkeep scheduling with ALGO escrow and keeper rewards | **Live on TestNet**, app [`769823086`](https://testnet.explorer.perawallet.app/application/769823086) |
+| [`smart_contracts/pulse`](smart_contracts/pulse/contract.py) | Demo upkeep target: a heartbeat counter, with and without arguments | Live on TestNet, app [`769823097`](https://testnet.explorer.perawallet.app/application/769823097) |
 | [`web`](web/) | The console: registry dashboard + keeper controls | Runs against LocalNet and TestNet |
 
 > [!WARNING]
 > **Unaudited, and TestNet only.** No third party has reviewed this contract,
-> and it has **no upgrade path** — a bug cannot be patched in place. Read
-> [`docs/security.md`](docs/security.md) — the threat model, the accepted risks
-> and what happens if a bug is found — before escrowing anything.
+> and it has **no upgrade path**, so a bug cannot be patched in place. Read
+> [`docs/security.md`](docs/security.md) before escrowing anything: the threat
+> model, the accepted risks, and what happens if a bug is found.
 >
 > Apps [`769802474`](https://testnet.explorer.perawallet.app/application/769802474)
 > and [`769772891`](https://testnet.explorer.perawallet.app/application/769772891)
@@ -26,62 +26,65 @@ The job matters; whoever runs it does not, and nobody owns it.*
 > their box encoding is a different shape that current tooling refuses to
 > decode rather than misread. Their registries are empty.
 >
-> Check what any deployment is actually running — it compares compiled
+> Check what any deployment is actually running. It compares compiled
 > bytecode, not source text:
 > ```
 > poetry run python -m scripts.verify_build --network testnet --app-id 769823086
 > ```
 
 **Building on it?** [`docs/integrating.md`](docs/integrating.md) is the whole
-integration story in one pass — the hook shape, authorization, the failure
+integration story in one pass: the hook shape, authorization, the failure
 modes that stop your upkeep being serviced, and the pull pattern everything
 here is built on. Integration is one zero-argument method.
 
 ## The keeper network
 
-Smart contracts can't wake themselves. Everything time-based on Algorand —
-vesting unlocks, subscription charges, prize settlements, limit orders,
-"execute this after the vote" — needs *someone* to poke the chain. EVM chains
+Smart contracts can't wake themselves. Everything time-based on Algorand
+(vesting unlocks, subscription charges, prize settlements, limit orders,
+"execute this after the vote") needs *someone* to poke the chain. EVM chains
 have Chainlink Automation and Gelato; Algorand had nothing productized. This
 is that missing piece.
 
 **How it works:**
 
-1. **Register** — anyone calls `register` with a target app, call data
+1. **Register.** Anyone calls `register` with a target app, call data
    (typically a method selector), a round interval, and a per-execution fee,
    escrowing ALGO in the contract (one box per upkeep).
-2. **Execute** — once the due round passes, *any* account can call `execute`.
-   The contract performs the registered call as an **inner app call** and pays
-   the keeper from the escrow — atomically, so the fee is only paid if the
-   upkeep actually ran.
-3. **Top up / cancel** — anyone can add funding; only the creator can cancel,
+2. **Execute.** Once the due round passes, *any* account can call `execute`.
+   The contract performs the registered call as an inner app call and pays
+   the keeper from the escrow. Both happen atomically, so the fee is only
+   paid if the upkeep actually ran.
+3. **Top up / cancel.** Anyone can add funding; only the creator can cancel,
    reclaiming the remaining escrow plus the box MBR the deletion releases.
 
-Ownerless, no protocol rake, no token required — plain ALGO escrow so any
+Ownerless, no protocol rake, no token required. Escrow is plain ALGO, so any
 group can use it. Upkeep records are `arc4.Struct`s in boxes, so reading the
 registry is a free algod query.
 
-**Constraints (v1):** registered calls are NoOp app calls with exactly one app
-arg and no foreign arrays — the standard "tick/settle/harvest" hook shape.
+**Constraints (v1):** registered calls are NoOp app calls carrying up to three
+app args, counting the selector, which is enough for an ARC-4 method of arity
+two. The zero-argument "tick/settle/harvest" hook is still the common shape.
+An upkeep declares no foreign arrays, and does not need to: a keeper's
+simulation discovers what the inner call touches and attaches the references.
 Fees ≥ 4000 µALGO (keepers pay ~3000 µALGO in group fees per execution).
 Interval ≥ 10 rounds.
 
 ### Who actually runs it?
 
-Nobody, and that is the point. There is no on-chain timer — a smart contract
+Nobody, and that is the point. There is no on-chain timer. A smart contract
 cannot wake itself, so every execution is a transaction somebody sent. What
 Arcron adds is that "somebody" can be *anyone*, and that they are paid
 atomically for it: the fee moves only alongside a real execution, so keepers
 need no trust and creators need no relationship with them.
 
 The practical consequence: **an upkeep runs only while at least one keeper is
-watching the registry.** Reliability here is economic rather than technical —
-a due upkeep is claimable revenue, so keepers compete for it. Today that means
+watching the registry.** Reliability here is economic rather than technical.
+A due upkeep is claimable revenue, so keepers compete for it. Today that means
 running `scripts/keeper_bot.py` yourself, or relying on someone who does.
 
 Funding depth and keeper liveness are separate concerns. 100 ALGO at the
 4,000 µALGO minimum is ~25,000 executions, so escrow is rarely the binding
-constraint — and a well-funded upkeep with nobody watching still does not run.
+constraint. A well-funded upkeep with nobody watching still does not run.
 
 Missed executions are not lost. Scheduling advances from the *scheduled* round,
 so an upkeep left unattended stays due and catches up one interval per
@@ -95,26 +98,26 @@ calendar.
 
 Arcron is the clock, not the eyes.
 
-**It cannot** fetch anything off-chain — no APIs, no RSS, no web pages, no
+**It cannot** fetch anything off-chain: no APIs, no RSS, no web pages, no
 price feeds. Smart contracts have no network access, and `execute` fires an
 inner app call to another app on the same chain. Arcron can wake your contract
 up; it cannot tell it what is happening in the world. `call_args` is frozen at
-registration, so keepers have no discretion over what gets called — which is
+registration, so keepers have no discretion over what gets called, which is
 exactly why they need no trust.
 
 **It can** call any Algorand app on a schedule, permissionlessly and without a
-server: deadlines, unlocks, settlements, expiries, accrual, draws — any
-on-chain state machine that has to advance on time.
+server: deadlines, unlocks, settlements, expiries, accrual, draws, or any
+other on-chain state machine that has to advance on time.
 
 **Paired with an oracle** it does the half that is otherwise hard. A reporter
 pushes data into an oracle contract, Arcron triggers `settle()` on a cadence,
-and settlement reads the stored value. Arcron's contribution is not the data;
-it is that settlement cannot be stalled, delayed or selectively timed by an
-interested party.
+and settlement reads the stored value. Arcron does not supply the data. It
+supplies the guarantee that settlement cannot be stalled, delayed or
+selectively timed by an interested party.
 
 **Proven end-to-end on TestNet**: upkeeps registered against `Pulse.tick`
 (both by the e2e script and the `examples/` flow) have been executed by
-permissionless callers at their due rounds — `Pulse.beats` incremented by
+permissionless callers at their due rounds, with `Pulse.beats` incremented by
 every execution (rounds 66610411, 66611741, 66625540+, all verifiable on the
 explorer). Full reference: [`docs/arcron.md`](docs/arcron.md).
 
@@ -132,7 +135,7 @@ fledge lanes run endurance  # local + a soak: many consecutive executions, no dr
 ```
 
 `fledge lanes run local` needs LocalNet up (`algokit localnet start`) and no
-secrets — LocalNet accounts come from KMD, funded by its dispenser.
+secrets. LocalNet accounts come from KMD, funded by its dispenser.
 
 Individual tasks (also in `fledge.toml`):
 
@@ -149,8 +152,8 @@ poetry run python -m scripts.keeper_e2e --network localnet   # full e2e
 cd web && bun install && bun run ng serve      # http://localhost:4200
 ```
 
-A dashboard of the upkeep registry — read straight from algod, so it needs no
-wallet and no indexer — plus the keeper controls: register, top up, execute a
+A dashboard of the upkeep registry (read straight from algod, so it needs no
+wallet and no indexer) plus the keeper controls: register, top up, execute a
 due upkeep, cancel your own. Signing goes through
 [use-wallet](https://github.com/TxnLab/use-wallet): Pera, Defly, Lute, Exodus
 and Kibisis, plus KMD on LocalNet so a browser can sign with nothing
@@ -163,8 +166,8 @@ see [`web/README.md`](web/README.md).
 
 The unit tests run against `algorand-python-testing` mocks, which record inner
 transactions without executing them and don't enforce minimum balances.
-`scripts/keeper_e2e.py` covers what only a real AVM can show — and is the same
-script that runs against TestNet with `--network testnet`:
+`scripts/keeper_e2e.py` covers what only a real AVM can show, and it is the
+same script that runs against TestNet with `--network testnet`:
 
 1. deploy Keeper and Pulse, register an upkeep against `Pulse.tick`
 2. reject an execution before the due round
@@ -178,8 +181,8 @@ script that runs against TestNet with `--network testnet`:
 7. prove a freshly created app holding only its 0.1 ALGO base MBR can still
    pay out its last execution (regression: `register` used to undercharge box
    MBR by 800 µALGO, which made exactly that fail)
-8. register at every cadence a real user would pick — 30 seconds, 5 minutes,
-   1 hour, 1 day — and check the schedule, the funded-runs maths and the
+8. register at every cadence a real user would pick (30 seconds, 5 minutes,
+   1 hour, 1 day) and check the schedule, the funded-runs maths and the
    not-due rejection at each
 9. leave an upkeep unattended for three whole intervals and confirm it catches
    up one interval per execution instead of skipping its history
@@ -198,7 +201,7 @@ does ~170 consecutive executions.
 
 Every script picks its chain with `--network localnet|testnet` (or
 `ARCRON_NETWORK`), loads the matching `.env.<network>`, and then verifies the
-node's genesis id — so a stale `ALGOD_SERVER` can't quietly point a "localnet"
+node's genesis id, so a stale `ALGOD_SERVER` can't quietly point a "localnet"
 run at TestNet.
 
 ## Layout
@@ -209,7 +212,7 @@ smart_contracts/
   pulse/             # demo target
   artifacts/         # compiled TEAL, ARC-56 specs, typed clients (generated)
 tests/               # unit tests (algorand-python-testing mocks + bot decoder vectors)
-specs/               # spec-sync specs (keeper, pulse) — strict mode
+specs/               # spec-sync specs (keeper, pulse), strict mode
 web/                 # the console (Angular + Bun + algosdk, CorvidLabs design system)
 docs/
   arcron.md          # hand-off reference: API, box encoding, economics, operations
@@ -235,7 +238,7 @@ with ~2 TestNet ALGO from [Lora](https://lora.algokit.io/testnet/fund) or the
 
 ```bash
 cp .env.testnet.template .env.testnet   # or: algokit generate env-file -a target_network testnet
-# add DEPLOYER_MNEMONIC for a TestNet account (throwaway — never reuse on mainnet)
+# add DEPLOYER_MNEMONIC for a TestNet account (throwaway; never reuse on mainnet)
 poetry run python -m scripts.keeper_e2e --network testnet
 ```
 
@@ -261,7 +264,7 @@ any reason. Nothing here is a promise yet.
 
 | Stage | What is frozen | At stake |
 |---|---|---|
-| **alpha** | nothing | nothing — we run every part |
+| **alpha** | nothing | nothing; we run every part |
 | beta | the ABI surface and the `Upkeep` struct | other people's test upkeeps |
 | rc | the exact bytecode intended for MainNet | our credibility |
 | mainnet | everything, forever | real money |
@@ -276,7 +279,7 @@ clock can be argued down is not a gate.
 
 The bot services the live keeper app: it scans the upkeep boxes every round
 and calls `execute` on anything due and funded, collecting the fees. It signs
-as `KEEPER_MNEMONIC` if set, else `DEPLOYER_MNEMONIC` — that's the account
+as `KEEPER_MNEMONIC` if set, else `DEPLOYER_MNEMONIC`. That is the account
 fees are paid to, and it pays the ~1,000 µALGO outer txn fee per execution.
 
 ```bash
@@ -288,8 +291,8 @@ poetry run python -m scripts.keeper_bot --once --network localnet --app-id $APP
 `--app-id` (or `KEEPER_APP_ID`) is required: there is no canonical Arcron
 deployment to default to. An upkeep that fails to execute backs off exponentially,
 and that state survives restarts, so a cron-driven `--once` bot does not
-re-attempt a doomed upkeep on every run. Failing costs nothing — Algorand
-rejects it before it reaches a block — so the schedule is gentle, capped at
+re-attempt a doomed upkeep on every run. Failing costs nothing (Algorand
+rejects it before it reaches a block), so the schedule is gentle, capped at
 about an hour, and losing a race to another keeper never backs off at all.
 `--retry-now <id>` clears one upkeep's backoff once you have fixed its target.
 
@@ -300,7 +303,7 @@ interval.
 ### Hard-won TestNet notes (already handled in code)
 
 - **App account MBR**: the keeper app account escrows ALGO and holds box MBR,
-  so it must be funded the base 0.1 ALGO account MBR first — `deploy_config`
+  so it must be funded the base 0.1 ALGO account MBR first. `deploy_config`
   does this idempotently.
 - **Suggested-params cache**: public TestNet endpoints are slow enough that
   algokit-utils' cached suggested params can expire before simulate/broadcast.
@@ -313,13 +316,13 @@ The bot is meant to run continuously, and `deploy/` has three ways to do it:
 
 | | For |
 |---|---|
-| `com.corvidlabs.arcron-keeper.plist` | macOS — a launchd agent, since systemd is not an option on a Mac host |
-| `keeper-bot.service` | Linux — a systemd unit |
+| `com.corvidlabs.arcron-keeper.plist` | macOS: a launchd agent, since systemd is not an option on a Mac host |
+| `keeper-bot.service` | Linux: a systemd unit |
 | `Dockerfile` + `compose.yaml` | a container, anywhere |
 
 All three read the same environment: `KEEPER_MNEMONIC`, `KEEPER_APP_ID` and an
 algod endpoint. Keep the mnemonic in a `chmod 600` file the unit points at
-rather than inline — a launchd plist under `LaunchAgents` is world-readable.
+rather than inline. A launchd plist under `LaunchAgents` is world-readable.
 
 A keeper is close to self-sustaining: it spends 0.003 ALGO of transaction fees
 per execution and collects at least 0.004, so it needs a starting balance
@@ -329,27 +332,27 @@ rather than a budget. It refuses to start below 0.103 ALGO and warns below 0.4.
 
 This repo is managed with [spec-sync](https://github.com/CorvidLabs/spec-sync)
 (strict) and [fledge](https://github.com/CorvidLabs/fledge) lanes. Every
-contract has a spec under `specs/` — requirements, module contract, invariants,
-error cases, testing. `specsync check --strict` runs in the `ci` lane and
-fails if code drifts from the documented public API.
+contract has a spec under `specs/` covering requirements, module contract,
+invariants, error cases and testing. `specsync check --strict` runs in the
+`ci` lane and fails if code drifts from the documented public API.
 
 ## Roadmap
 
-- [x] Off-chain keeper bot (watches rounds, executes due upkeeps) — `scripts/keeper_bot.py`
-- [x] ASA-denominated upkeep fees — a capability, not a commitment: escrow and fees stay ALGO by default, and CORVID (mainnet ASA [`3225439167`](https://explorer.perawallet.app/asset/3225439167)) is not wired in
-- [x] End-to-end verification on LocalNet (`fledge lanes run local`) — found and fixed an 800 µALGO box-MBR undercharge
-- [x] Redeploy TestNet with the box-MBR fix — app [`769802474`](https://testnet.explorer.perawallet.app/application/769802474), e2e-verified on-chain
-- [x] Redeploy for the 1.0 contract — **alpha-1**, app [`769823086`](https://testnet.explorer.perawallet.app/application/769823086), all 20 e2e stages green on-chain
-- [x] Web front end: registry dashboard + keeper console — `web/`
+- [x] Off-chain keeper bot in `scripts/keeper_bot.py` (watches rounds, executes due upkeeps)
+- [x] ASA-denominated upkeep fees, a capability rather than a commitment: escrow and fees stay ALGO by default, and CORVID (mainnet ASA [`3225439167`](https://explorer.perawallet.app/asset/3225439167)) is not wired in
+- [x] End-to-end verification on LocalNet (`fledge lanes run local`), which found and fixed an 800 µALGO box-MBR undercharge
+- [x] Redeploy TestNet with the box-MBR fix: app [`769802474`](https://testnet.explorer.perawallet.app/application/769802474), e2e-verified on-chain
+- [x] Redeploy for the 1.0 contract, **alpha-1** on app [`769823086`](https://testnet.explorer.perawallet.app/application/769823086), all 20 e2e stages green on-chain
+- [x] Web front end: registry dashboard + keeper console in `web/`
 - [x] Wallet signing (Pera, Defly, Lute, Exodus, Kibisis; KMD on LocalNet)
-- [x] Multi-arg call shapes — up to three ARC-4 arguments per upkeep
-- [x] Release stages, with the gate that ends each one — [`docs/releases.md`](docs/releases.md)
+- [x] Multi-arg call shapes, up to three ARC-4 arguments per upkeep
+- [x] Release stages, with the gate that ends each one ([`docs/releases.md`](docs/releases.md))
 
 ## Contributing
 
 The most useful contribution is not code: **run a keeper**. The network only
 works because third parties execute due upkeeps, and that is deliberately open
-to anyone — no allowlist, no stake, no registration. See
+to anyone, with no allowlist, no stake and no registration. See
 [Operating a bot](docs/arcron.md#operating-a-bot).
 
 For code, [CONTRIBUTING.md](CONTRIBUTING.md) covers what will otherwise bite
@@ -362,8 +365,8 @@ as a public issue.
 
 ## Licence
 
-[Apache-2.0](LICENSE) for the code, which carries an express patent grant —
-worth having for protocol code other people are asked to build on.
+[Apache-2.0](LICENSE) for the code, which carries an express patent grant.
+That is worth having for protocol code other people are asked to build on.
 
 **The brand assets in `web/public/brand/` are excluded**: they are CorvidLabs
 trademarks, not licensed code. Fork Arcron freely, and replace those files with

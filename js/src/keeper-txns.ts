@@ -64,7 +64,7 @@ async function run(
   };
 }
 
-/** The id `register` will assign next — also the box it must reference. */
+/** The id `register` will assign next, which is also the box it must reference. */
 export async function nextUpkeepId(algod: algosdk.Algodv2, appId: number): Promise<bigint> {
   const application = await algod.getApplicationByID(appId).do();
   const counter = application.params?.globalState?.find(
@@ -195,7 +195,7 @@ export async function execute(
  * Let the app account hold an asset, so an upkeep can escrow a bonus in it.
  *
  * Permissionless but tied to an upkeep that names the asset, and the 0.1 ALGO
- * it costs is not refundable — there is no opt-out.
+ * it costs is not refundable, because there is no opt-out.
  */
 export async function optInAsset(
   algod: algosdk.Algodv2,

@@ -2,7 +2,7 @@
 
 **Status: proposed, not implemented.** Issues [#7](https://github.com/CorvidLabs/arcron/issues/7)
 and [#14](https://github.com/CorvidLabs/arcron/issues/14) must be designed
-together — this is that design, for review before any code is written.
+together. This is that design, for review before any code is written.
 
 Both change the `Upkeep` struct, and that has a consequence worth stating
 before anything else.
@@ -14,7 +14,7 @@ is one where somebody can change the rules after you have escrowed funds.
 
 So a struct change is **not a migration.** It is a new application, at a new
 app id, with an empty registry. Every existing upkeep must be cancelled by its
-creator and re-registered against the new app — and nobody can do that on their
+creator and re-registered against the new app, and nobody can do that on their
 behalf, because `cancel` is creator-only. That has happened once already
 ([#3](https://github.com/CorvidLabs/arcron/issues/3)) and stranded 243,000
 µALGO of box MBR in the old app.
@@ -29,13 +29,13 @@ end is to hold the deployment until #8 and #9 are decided too.
 ## Why they cannot be designed apart
 
 Under catch-up semantics, an upkeep neglected for N intervals fires N times in
-a row. Under escalation, a late upkeep pays more. Combined naively — escalation
-measured from the schedule, as #14 proposes — **every replayed execution pays
-the escalated fee**, because clearing one slot barely reduces how overdue the
-upkeep is.
+a row. Under escalation, a late upkeep pays more. Combine them naively, with
+escalation measured from the schedule as #14 proposes, and **every replayed
+execution pays the escalated fee**, because clearing one slot barely reduces
+how overdue the upkeep is.
 
 Simulated with a 100-round interval, a 4,000 µALGO base, a 12,000 µALGO cap,
-and an upkeep funded with 400,000 µALGO — what its creator would reasonably
+and an upkeep funded with 400,000 µALGO, which its creator would reasonably
 call "a hundred runs":
 
 | | Executions | Escrow spent | Share of escrow |
@@ -54,9 +54,9 @@ protocol constant. Three shipped demos, three different right answers:
 
 | Demo | Missed a week. What should happen? |
 |------|-----------------------------------|
-| [`rain`](../../smart_contracts/rain/) — daily draw | **Skip.** Replaying seven draws in one burst is absurd; only the latest matters. |
-| [`treasury`](../../smart_contracts/treasury/) — scheduled distribution | **Catch up.** Every period's deposits must be distributed; skipping silently loses a week of allocations. |
-| [`deadman`](../../smart_contracts/deadman/) — dead man's switch | **Skip.** It fires once and goes inert; replays are pure waste. |
+| [`rain`](../../smart_contracts/rain/) (daily draw) | **Skip.** Replaying seven draws in one burst is absurd; only the latest matters. |
+| [`treasury`](../../smart_contracts/treasury/) (scheduled distribution) | **Catch up.** Every period's deposits must be distributed; skipping silently loses a week of allocations. |
+| [`deadman`](../../smart_contracts/deadman/) (dead man's switch) | **Skip.** It fires once and goes inert; replays are pure waste. |
 
 A protocol-wide constant would be wrong for two of the three whichever way it
 was set.
@@ -70,11 +70,11 @@ CATCH_UP   = 0   next_due += interval                       (today's behaviour, 
 SKIP_AHEAD = 1   next_due += (missed + 1) * interval        where missed = (round - next_due) / interval
 ```
 
-`SKIP_AHEAD` snaps forward to the next slot **strictly in the future while
-preserving the schedule's phase** — a daily upkeep stays aligned to its
-original time-of-day rather than drifting to whenever the keeper happened to
-arrive. Zero is today's behaviour, so nothing registered under the current
-contract changes meaning.
+`SKIP_AHEAD` snaps forward to the next slot strictly in the future while
+preserving the schedule's phase. A daily upkeep stays aligned to its original
+time-of-day rather than drifting to whenever the keeper happened to arrive.
+Zero is today's behaviour, so nothing registered under the current contract
+changes meaning.
 
 ### 2. Escalation expressed as a ceiling, not a rate
 
@@ -82,8 +82,8 @@ contract changes meaning.
 about, one of which (`escalation_rate`, µALGO per round) nobody has intuition
 for.
 
-Instead, the creator sets **the fee they expect to pay and the most they will
-ever pay**, and the contract fills in the curve:
+Instead, the creator sets the fee they expect to pay and the most they will
+ever pay, and the contract fills in the curve:
 
 ```
 lateness  = Global.round - last_serviced_round
@@ -103,7 +103,7 @@ division they can do in their head: `balance / fee_cap` runs, always.
 This is the rule that defuses the interaction, and it follows from what
 escalation is *for*. Escalation exists to clear a market: an upkeep nobody
 wants becomes worth doing. Once a keeper has arrived, **the market has
-cleared** — the rest of the backlog is the same keeper draining the same queue,
+cleared.** The rest of the backlog is the same keeper draining the same queue,
 and there is no market-clearing argument for paying triple for it.
 
 So the contract records `last_serviced_round` and measures lateness from it.
@@ -119,8 +119,8 @@ Same scenario as above:
 | **Proposed (escalation from last service)** | 20 | **88,000 µALGO** | **22%** |
 
 One execution at the 12,000 µALGO ceiling, nineteen at the 4,000 µALGO base.
-The escalation still does its job — it is what got a keeper to show up — and
-the burst costs what the creator budgeted.
+The escalation still does its job, since it is what got a keeper to show up,
+and the burst costs what the creator budgeted.
 
 ### 4. `last_serviced_round` fixes something already broken
 
@@ -133,13 +133,13 @@ catching up.
 That has already caused one real bug: the notifier
 ([#27](https://github.com/CorvidLabs/arcron/issues/27)) attributed executions
 to the wrong block for any lagging upkeep, because it looked in the scheduled
-round. It now searches the elapsed range instead — a workaround for a fact the
+round. It now searches the elapsed range instead, a workaround for a fact the
 contract should simply record.
 
 ## Cost
 
-Three new `uint64` fields — policy, `fee_cap`, `last_serviced_round` — is 24
-bytes per box, so box MBR rises from **41,300 to 50,900 µALGO** for a 4-byte
+Three new `uint64` fields (policy, `fee_cap`, `last_serviced_round`) add 24
+bytes per box, so box MBR rises from 41,300 to 50,900 µALGO for a 4-byte
 selector. That is paid by the registrant and refunded on cancel, so it is a
 deposit rather than a cost, but it raises the entry price of an upkeep by
 about 23%.
@@ -152,11 +152,11 @@ above removes the need for it, which is most of why it is worth preferring.
 Per [#31](https://github.com/CorvidLabs/arcron/issues/31), a struct change is
 a five-file lockstep or the bot and console silently misread the registry:
 
-1. `smart_contracts/keeper/contract.py` — struct, `register`, `execute`
-2. `scripts/keeper_bot.py::_decode_upkeep` — offsets shift
-3. `web/src/app/core/upkeep.ts` — its TypeScript twin
-4. `tests/test_keeper_bot.py` — the pinned box vector, plus its twin in `web/src/app/core/upkeep.test.ts`
-5. `specs/keeper/` — Public API, requirements, testing, Change Log
+1. `smart_contracts/keeper/contract.py`: struct, `register`, `execute`
+2. `scripts/keeper_bot.py::_decode_upkeep`, where offsets shift
+3. `web/src/app/core/upkeep.ts`, its TypeScript twin
+4. `tests/test_keeper_bot.py`: the pinned box vector, plus its twin in `web/src/app/core/upkeep.test.ts`
+5. `specs/keeper/`: Public API, requirements, testing, Change Log
 
 Beyond the struct:
 
@@ -164,7 +164,7 @@ Beyond the struct:
   upkeep id. Today it takes them in registry order, which is exactly the
   behaviour escalation exists to change.
 - **The console** shows base fee, current effective fee and cap, and the
-  dormancy threshold — because `balance >= effective_fee` means an upkeep can
+  dormancy threshold, because `balance >= effective_fee` means an upkeep can
   go dormant at a higher balance than its creator expected. The board's
   "reward" column should rank on effective fee.
 - **`scripts/keeper_e2e.py`** gains a case per policy: neglect an upkeep for
@@ -173,7 +173,7 @@ Beyond the struct:
 ## Open questions for review
 
 1. **Should `SKIP_AHEAD` be the default?** Two of three demos want it, and
-   accrual-shaped work is arguably the rarer case. Against: it changes the
+   accrual-shaped work is probably the rarer case. Against: it changes the
    meaning of every upkeep registered so far, and a silent semantic change on
    redeployment is worse than a default nobody loves. Recommendation: keep
    `CATCH_UP` as zero, and have the console default the *form* to
@@ -182,7 +182,7 @@ Beyond the struct:
 2. **Cap as an absolute fee or a multiple of base?** Absolute is proposed:
    it is what the creator's escrow arithmetic is denominated in. A multiple
    would be one field either way.
-3. **Should escalation also raise the dormancy threshold?** As specified, yes —
+3. **Should escalation also raise the dormancy threshold?** As specified, yes:
    `balance >= effective_fee`. An upkeep with 5,000 µALGO left and a 12,000
    µALGO effective fee cannot be executed by anyone and shows as *starved*.
    The alternative is to let a final execution happen at the base fee, which is
@@ -194,7 +194,7 @@ Beyond the struct:
 ## Recommendation
 
 Land #7 and #14 together, in one deployment, and **hold that deployment until
-#8 and #9 are decided** — every struct change costs a redeployment and asks
+#8 and #9 are decided.** Every struct change costs a redeployment and asks
 every creator to move their upkeeps by hand.
 
 Implementation order once the design is agreed: contract and spec first, then

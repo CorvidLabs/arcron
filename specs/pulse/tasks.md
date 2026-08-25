@@ -4,7 +4,7 @@ spec: pulse.spec.md
 
 ## Tasks
 
-- [ ] None — demo complete once TestNet-verified
+- [ ] None. Demo complete once TestNet-verified
 
 ## Gaps
 

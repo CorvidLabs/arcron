@@ -1,4 +1,4 @@
-# Arcron — keeper network technical reference
+# Arcron keeper network technical reference
 
 Hand-off document for Arcron, the permissionless keeper network. For the
 quick overview see `../README.md`; for runnable flows see `../examples/`.
@@ -11,8 +11,8 @@ quick overview see `../README.md`; for runnable flows see `../examples/`.
 | Pulse demo target | [`769823097`](https://testnet.explorer.perawallet.app/application/769823097) |
 | Reference bot | `scripts/keeper_bot.py` |
 | Proof | All 20 stages of `scripts/keeper_e2e.py` pass against it on-chain, including the box-MBR regression, the losing-keeper measurement, and the escalation-lockout and patient-keeper regressions. |
-| Stage | **alpha-1** — see [release stages](releases.md) |
-| Superseded | [`769802474`](https://testnet.explorer.perawallet.app/application/769802474) (predates the 1.0 struct) and [`769772891`](https://testnet.explorer.perawallet.app/application/769772891) — see [migration](#migrating-off-the-deprecated-app) |
+| Stage | **alpha-1**, see [release stages](releases.md) |
+| Superseded | [`769802474`](https://testnet.explorer.perawallet.app/application/769802474) (predates the 1.0 struct) and [`769772891`](https://testnet.explorer.perawallet.app/application/769772891); see [migration](#migrating-off-the-deprecated-app) |
 
 ### Migrating off the deprecated app
 
@@ -25,7 +25,7 @@ of 2026-08-24 and carries both defects that fix addressed:
    account with no method able to sweep it.
 
 **If you registered an upkeep against it**, call `cancel` and you will get the
-remaining escrow back. You will *not* get the box MBR back — the old contract
+remaining escrow back. You will *not* get the box MBR back. The old contract
 has no path to return it, and it cannot be upgraded. Note the old ABI is
 `cancel(uint64)void`, a different selector from the current
 `cancel(uint64)uint64`, so a client generated from this repo cannot call it;
@@ -34,7 +34,7 @@ build the call from the old signature directly.
 Its registry is already empty: the upkeeps registered during development were
 cancelled on 2026-08-24 and 40,000 µALGO of escrow reclaimed. What remains is
 243,000 µALGO of stranded box MBR, permanently. That number is the clearest
-argument for why the fix mattered — on the current app, registering and
+argument for why the fix mattered. On the current app, registering and
 cancelling is balance-neutral, and stage 11 of the e2e asserts the app account
 returns to exactly its base MBR.
 
@@ -51,8 +51,8 @@ creator                keeper app (769823086)               target app
 ```
 
 - One box per upkeep, name `b"u" + itob(upkeep_id)` (9 bytes).
-- The registry is fully on-chain and readable with free algod box queries —
-  no indexer required (the bot only uses algod).
+- The registry is fully on-chain and readable with free algod box queries. No
+  indexer is required (the bot only uses algod).
 - `execute` is atomic: the target call and the keeper payment are inner
   transactions of the same call, so a fee is only ever paid alongside a real
   execution.
@@ -78,8 +78,8 @@ Constraints (asserted on-chain):
 - `policy` is `CATCH_UP` or `SKIP_AHEAD`; `fee_cap` is either 0 or between
   `fee_per_execution` and 1,000,000,000 µALGO.
 - Executions are NoOp inner app calls carrying every stored app arg, up to
-  three counting the selector — enough for an ARC-4 method of arity two, and
-  for any arity at all if the target declares its arguments as one struct.
+  three counting the selector. That is enough for an ARC-4 method of arity two,
+  and for any arity at all if the target declares its arguments as one struct.
   Foreign arrays are not stored: a keeper supplies resource references on its
   own transaction, and they reach the target (measured in #24).
 - An upkeep may carry an ASA bonus paid **on top of** the ALGO fee, never
@@ -126,7 +126,7 @@ fee_asset: uint64 | asset_fee: uint64 | asset_balance: uint64
 | `[106:114]` | fee_asset |
 | `[114:122]` | asset_fee |
 | `[122:130]` | asset_balance |
-| `[130:]` | tail: ARC-4 `byte[][]` — a count, an offset per argument, then each argument's length and bytes |
+| `[130:]` | tail: ARC-4 `byte[][]` (a count, an offset per argument, then each argument's length and bytes) |
 
 Reference decoder: `scripts/keeper_bot.py::_decode_upkeep`; its TypeScript twin
 is `web/src/app/core/upkeep.ts`. Both are pinned to the *same* recorded box, in
@@ -141,19 +141,19 @@ cannot drift apart.
   end.
 - **Post-quantum accounts work, with one thing to watch.** Algorand 5 derives a
   Falcon-1024 account's address as a 32-byte hash chosen not to be an ed25519
-  curve point, so it is an ordinary address and the contract — which only ever
-  compares addresses and pays `Txn.sender` — cannot tell the difference. A
+  curve point, so it is an ordinary address, and the contract, which only ever
+  compares addresses and pays `Txn.sender`, cannot tell the difference. A
   creator or a keeper may be post-quantum today (`scripts/spike_quantum.py`
   confirms algod runs a real Falcon verification). But a Falcon-signed
-  `execute` is **4,384 bytes against ed25519's 340 — 12.9×**, and Algorand
+  `execute` is **4,384 bytes against ed25519's 340, or 12.9×**, and Algorand
   charges `max(min_fee, size × fee_per_byte)`. That per-byte rate is zero
   today, which is the only reason `MIN_UPKEEP_FEE` still covers a
   post-quantum keeper. The floor is permanent and cannot be raised, so a chain
   that ever prices bytes would leave post-quantum keepers under-paid.
 - Keeper costs, per execution: 1,000 µALGO outer fee + 2,000 µALGO
   `extra_fee` covering the two inner transactions (fee pooling). Paid fee is
-  the effective fee (≥ 4,000), so net ≥ 1,000 µALGO per execution — more when
-  the upkeep is late and its creator set a ceiling.
+  the effective fee (≥ 4,000), so net ≥ 1,000 µALGO per execution, and more
+  when the upkeep is late and its creator set a ceiling.
 - An upkeep is executable while `balance ≥ effective fee`; it goes dormant
   when underfunded and resumes after a `top_up`. A ceiling raises that
   threshold, so budget runway against `fee_cap` rather than the base fee.
@@ -161,7 +161,7 @@ cannot drift apart.
 ## Liveness
 
 Arcron does not execute itself. There is no on-chain timer on Algorand, so
-every execution is a transaction some account sent and paid for — `execute` is
+every execution is a transaction some account sent and paid for. `execute` is
 an external entry point that anyone may call once an upkeep is due.
 `README.md` covers why that is the design; this is what it means to operate.
 
@@ -170,9 +170,9 @@ an external entry point that anyone may call once an upkeep is due.
 | | |
 |---|---|
 | Keeper app | `769823086` (TestNet) |
-| Upkeeps registered | none — the e2e cancels everything it creates |
+| Upkeeps registered | none; the e2e cancels everything it creates |
 | Always-on keeper | **none running** |
-| Last executions | rounds 66629036–66629138, from the deployment verification |
+| Last executions | rounds 66629036 to 66629138, from the deployment verification |
 
 Stated plainly because it would otherwise be inferred wrongly: an upkeep
 registered against this app today would sit due until somebody started a
@@ -190,7 +190,7 @@ Escrow is rarely what stops an upkeep. At the 4,000 µALGO minimum fee:
 
 A well-funded upkeep with no keeper watching does not run, and no amount of
 additional escrow changes that. Conversely a keeper cannot execute an upkeep
-whose escrow has fallen below one fee — `--check` calls that *starved* and
+whose escrow has fallen below one fee. `--check` calls that *starved* and
 does not blame keepers for it.
 
 ### What an outage looks like afterwards
@@ -200,12 +200,12 @@ happened, so nothing is skipped: an upkeep unattended for N intervals is still
 due N times and catches up **one interval per call**.
 
 Operationally that means a keeper restarted after a day-long outage will fire
-a backlog — a 100-round upkeep down for a day is ~300 executions owed, and the
+a backlog: a 100-round upkeep down for a day is ~300 executions owed, and the
 bot will work through them as fast as it can scan, paying ~3,000 µALGO of fees
 each and collecting the fee each time. The creator pays for executions that
 happened late rather than at the intended moments. Whether that is right
-depends on the upkeep — a missed distribution should probably catch up, a
-missed prize draw probably should not — which is the argument in
+depends on the upkeep. A missed distribution should probably catch up; a
+missed prize draw probably should not. That is the argument in
 [issue #7](https://github.com/CorvidLabs/arcron/issues/7).
 
 ### Rounds are not a clock
@@ -220,7 +220,7 @@ compounds:
 | daily | 30,857 | 24.0 h | 22.8 h | ~1.2 h |
 | weekly | 216,000 | 168.0 h | 159.7 h | ~8.3 h |
 
-A "daily" upkeep therefore slides about **35 hours** — a day and a half —
+A "daily" upkeep therefore slides about **35 hours** (a day and a half)
 against the calendar over thirty cycles, and which way it slides depends on
 how busy the network is.
 
@@ -238,11 +238,11 @@ poetry run python -m scripts.keeper_bot --app-id N # other keeper instance
 ```
 
 - Signs as `KEEPER_MNEMONIC`, else `DEPLOYER_MNEMONIC`; fees are paid to that
-  account, and it pays the outer fees — keep it funded.
+  account, and it pays the outer fees, so keep it funded.
 - Multiple competing bots are safe: the contract re-checks due-ness
   atomically, so exactly one keeper is paid per due round. **The loser pays
   nothing.** Algorand rejects a failing transaction at validation rather than
-  committing it, so it never enters a block and no fee is charged — unlike an
+  committing it, so it never enters a block and no fee is charged, unlike an
   EVM revert, which still burns gas.
 
   Measured, not inferred: `scripts/keeper_e2e.py` stage 14 broadcasts a losing
@@ -255,7 +255,7 @@ poetry run python -m scripts.keeper_bot --app-id N # other keeper instance
   So the barrier to running a keeper is lower than it looks: a bot that loses
   every race it enters is out nothing but local compute and a round-trip.
 - A failing upkeep (e.g. a target that rejects the call) **backs off
-  exponentially**, and that state survives restarts — so a `--once` cron
+  exponentially**, and that state survives restarts, so a `--once` cron
   invocation does not re-attempt a doomed upkeep on every run, which the old
   skip-for-the-rest-of-this-run behaviour did.
 
@@ -291,7 +291,7 @@ docker compose -f deploy/compose.yaml logs -f
 `restart: unless-stopped` covers reboots and crashes; the bot backs off
 internally (5s doubling to 60s) so a node outage does not become a hot loop.
 `docker compose down` sends SIGTERM, which finishes the scan in flight and
-exits — a redeploy never abandons a half-signed execution. A second signal
+exits, so a redeploy never abandons a half-signed execution. A second signal
 exits immediately.
 
 **systemd**, for a host that already runs Python: `deploy/keeper-bot.service`,
@@ -320,15 +320,15 @@ and the mnemonic lives in repository secrets.
 ```
 
 `executed` is the line that answers "did upkeep N fire, and when?" months
-later — it carries the round, the fee collected, what escrow was left and the
+later. It carries the round, the fee collected, what escrow was left and the
 transaction id, so any claim can be checked against the chain. Use
 `--log-format text` for a human at a terminal.
 
 ### Announcing what happened
 
 A network whose work is invisible looks dead even when it is running fine.
-`scripts/notifier.py` watches the registry and says what changed — to a
-Discord channel, or to the terminal when no webhook is set:
+`scripts/notifier.py` watches the registry and says what changed, either to a
+Discord channel or to the terminal when no webhook is set:
 
 ```bash
 poetry run python -m scripts.notifier --network testnet          # prints here
@@ -337,11 +337,11 @@ docker compose -f deploy/compose.yaml up -d notifier              # alongside th
 ```
 
 ```
-**Upkeep 9 executed** — 0.004 ALGO paid, next due at round 2976
+**Upkeep 9 executed**, 0.004 ALGO paid, next due at round 2976
 ↳ keeper `FIYLSRRX…XO4LGA`
-⚠️ **Upkeep 4 has run dry** — escrow 0.001 ALGO is below its 0.004 ALGO fee,
+⚠️ **Upkeep 4 has run dry**: escrow 0.001 ALGO is below its 0.004 ALGO fee,
    so no keeper can run it. Anyone can top it up.
-⚠️ **Upkeep 7 is going unserviced** — funded and due, but 812 rounds late.
+⚠️ **Upkeep 7 is going unserviced**. Funded and due, but 812 rounds late.
 ```
 
 Three properties worth knowing:
@@ -351,7 +351,7 @@ Three properties worth knowing:
   in a comment: `tests/test_notifier.py` fails if anything key-shaped appears
   in the module.
 - **It needs no indexer, even for "which keeper".** Box state records that an
-  upkeep ran, never who ran it — but the notifier knows the rounds between its
+  upkeep ran, never who ran it, but the notifier knows the rounds between its
   last scan and this one, so it reads those few blocks directly. Attribution
   is derived from the *execution* round rather than the upkeep's scheduled
   round, which differ whenever an upkeep is catching up after an outage.
@@ -360,7 +360,7 @@ Three properties worth knowing:
   currently *broken* and stays silent about what is merely healthy.
 
 It surfaces failures deliberately. An upkeep out of funds, or funded and due
-with nobody servicing it, is the network not working — and saying so builds
+with nobody servicing it, is the network not working, and saying so builds
 more trust than a feed of good news.
 
 ### Knowing it is still alive
@@ -375,14 +375,14 @@ Every twenty scans (and on every `--once` run) the bot emits a heartbeat:
  "executed_session": 12, "skipped": 0, "balance": 4192000}
 ```
 
-Alert on its absence, not its content — a heartbeat that stops is the signal.
+Alert on its absence, not its content. A heartbeat that stops is the signal.
 
 **It runs out of ALGO.** This one is nastier, because a keeper earns fees into
 the same account it spends from: it is self-sustaining while the registry is
 busy, and stuck the moment it is empty, with no way to earn its way back out.
 So the balance is checked before the first scan and at every heartbeat:
 
-- Below `100,000 + 3,000` µALGO — its account minimum plus one execution — the
+- Below `100,000 + 3,000` µALGO (its account minimum plus one execution) the
   bot **refuses to start**, says why, and exits `2` so a supervisor notices:
 
   ```
@@ -397,7 +397,7 @@ So the balance is checked before the first scan and at every heartbeat:
 ### Checking a keeper you do not run
 
 `--check` reads the registry and exits without signing anything, so it works
-as an external probe — you do not need the keeper's account, or its
+as an external probe. You do not need the keeper's account, or its
 cooperation:
 
 ```bash
@@ -406,8 +406,8 @@ poetry run python -m scripts.keeper_bot --check --network testnet
 
 ```
 Round 3303: 3 upkeeps on app 1180, 1 stalled, 1 starved
-  upkeep 35: escrow 0 µALGO is below its 4000 µALGO fee — needs a top-up, not a keeper
-  upkeep 9: overdue by 1609 rounds (15.0 intervals) — nobody is servicing it
+  upkeep 35: escrow 0 µALGO is below its 4000 µALGO fee. It needs a top-up, not a keeper
+  upkeep 9: overdue by 1609 rounds (15.0 intervals); nobody is servicing it
 ```
 
 Exit `1` if any upkeep is stalled, `0` otherwise, so it drops straight into
@@ -419,8 +419,8 @@ keepers for starved upkeeps would make the signal useless.
 ### Giving it something to do
 
 A bot with an empty registry is correct and useless. Register an upkeep
-against the app it services — `examples/register_upkeep.py` is a working
-starting point — and watch the `scan` line's `due` count move.
+against the app it services (`examples/register_upkeep.py` is a working
+starting point) and watch the `scan` line's `due` count move.
 
 ## Testing and CI
 
@@ -430,7 +430,7 @@ fledge lanes run local    # ci + LocalNet e2e smoke
 ```
 
 - Unit tests (`tests/`) use `algorand-python-testing` mocks. Note the mocks
-  record but do not *execute* inner app calls — the Pulse counter increment
+  record but do not *execute* inner app calls; the Pulse counter increment
   was proven with the TestNet e2e (`scripts/keeper_testnet_demo.py`).
 - Specs (`specs/keeper/`, `specs/pulse/`) are enforced by
   `specsync check --strict`; update them with any contract surface change.
@@ -449,8 +449,8 @@ observe the world.
 **Oracle pairing** is the supported answer for data-driven automation: a
 reporter pushes values into an oracle contract, an Arcron upkeep triggers
 `settle()` on a cadence, and settlement reads the stored value. Arcron supplies
-the timing guarantee — that settlement cannot be stalled, delayed or
-selectively timed by an interested party — not the data.
+the timing guarantee: settlement cannot be stalled, delayed or selectively
+timed by an interested party. It does not supply the data.
 
 One case needs no oracle trust at all: a **staleness check** that compares the
 feed's last-updated round against the current round and flags the feed if it
@@ -463,13 +463,13 @@ is the point:
 
 | Concern | Who supplies it | Can they lie? |
 |---------|-----------------|---------------|
-| The value | the reporter | yes — this is oracle trust, and Arcron does not reduce it |
+| The value | the reporter | yes; this is oracle trust, and Arcron does not reduce it |
 | That a value arrived | the chain | no |
-| That nobody has noticed the silence | **Arcron** | no — it only compares rounds |
+| That nobody has noticed the silence | **Arcron** | no, it only compares rounds |
 
 The watchdog never inspects the reported value, so it cannot be fed a wrong
-price. It answers one question — has an update landed within the threshold? —
-and the answer is arithmetic on round numbers.
+price. It answers one question: has an update landed within the threshold? The
+answer is arithmetic on round numbers.
 
 Why a keeper rather than the consumer: a provider that goes down has no
 incentive to announce it and usually no ability to, so detection has to come
@@ -479,14 +479,15 @@ is exactly what a permissionless, paid execution is.
 Two design choices worth copying:
 
 - **The flag clears on the next update, and every episode is counted.** One-way
-  flagging needs an authority to clear it — either the reporter, whose outage
+  flagging needs an authority to clear it: either the reporter, whose outage
   caused it, or an admin, which reintroduces the operator the design removes.
   Recording `stale_episodes` and `last_recovery_round` lets a cautious consumer
   impose its own cool-down without anyone's permission.
 - **The threshold is in rounds and cannot be tighter than 30.** Arcron's own
   cadence minimum is 10 rounds, so a tighter threshold would flag ordinary
-  keeper lateness as a provider outage. Rounds are also not wall-clock time —
-  a "one hour" threshold drifts (see [Liveness](#liveness)), so leave margin.
+  keeper lateness as a provider outage. Rounds are also not wall-clock time,
+  and a "one hour" threshold drifts (see [Liveness](#liveness)), so leave
+  margin.
 
 The flag is only as current as the last sweep: between checks a feed can go
 quiet unflagged. A consumer that can do the arithmetic itself should. What the
@@ -498,22 +499,22 @@ and an event a monitor can alert on.
 `execute` submits its inner app call with no foreign arrays, which was recorded
 as a limitation without anyone establishing what it forbids. Measured on
 LocalNet (algod 5.0.0 stable, `dockernet-v1`) with a probe app that reaches for
-an account, an asset and a third app that no argument names —
-`smart_contracts/resource_probe/` and `scripts/spike_resources.py`, so the
+an account, an asset and a third app that no argument names, using
+`smart_contracts/resource_probe/` and `scripts/spike_resources.py` so the
 answer stays reproducible:
 
 | Resource pattern | Bare `execute` | Keeper supplies references |
 |------------------|----------------|----------------------------|
-| Inner payment to an unreferenced account | fails — `unavailable Account …` | **works** |
-| Inner asset transfer to an unreferenced account | fails — `unavailable Account …` | **works** |
-| Read an unreferenced account's ALGO balance | fails — `unavailable Account …` | **works** |
-| Read an unreferenced account's asset holding | fails — `unavailable Account …` | **works** |
-| Inner call to an unreferenced app | fails — `unavailable App …` | **works** |
+| Inner payment to an unreferenced account | fails: `unavailable Account …` | **works** |
+| Inner asset transfer to an unreferenced account | fails: `unavailable Account …` | **works** |
+| Read an unreferenced account's ALGO balance | fails: `unavailable Account …` | **works** |
+| Read an unreferenced account's asset holding | fails: `unavailable Account …` | **works** |
+| Inner call to an unreferenced app | fails: `unavailable App …` | **works** |
 
 **Availability flows down from the keeper's transaction.** Resource references
 attached to the keeper's own `execute` call reach Arcron's inner call *and* the
 target's own inner transactions, two levels down. So a keeper can supply
-*availability* without supplying *data* — and the trust model does not move,
+*availability* without supplying *data*, and the trust model does not move,
 because `call_args` is still fixed at registration and the keeper still cannot
 change what is called.
 
@@ -521,8 +522,8 @@ That makes far more buildable today than "no foreign arrays" suggests: a target
 can pay an arbitrary address, move an ASA, read a balance or call another app,
 provided some keeper attaches the reference.
 
-**The budget is 8 references per transaction.** Arcron spends two of them — the
-upkeep's box and the target app — leaving **six** for the keeper to fill with
+**The budget is 8 references per transaction.** Arcron spends two of them (the
+upkeep's box and the target app), leaving **six** for the keeper to fill with
 accounts, assets or apps in any mix. (Six accounts were accepted at this
 protocol version, so the old four-account cap no longer binds separately.)
 
@@ -530,18 +531,18 @@ protocol version, so the old four-account cap no longer binds separately.)
 a keeper which resources an upkeep needs; the reference list is not part of the
 `Upkeep` struct, so a keeper would have to know out of band. Any design that
 wants keeper-supplied resources needs somewhere for the creator to declare
-them — which is a smaller and different problem than changing the call shape.
+them, which is a smaller and different problem than changing the call shape.
 See [issue #8](https://github.com/CorvidLabs/arcron/issues/8).
 
-**Pull the resource, not just the payment.** The pull-payment pattern above
+**Pull the resource as well as the payment.** The pull-payment pattern above
 extends past money: any step needing a resource the keeper cannot supply
 belongs in a transaction the interested party sends for themselves. The
 scheduled call does accounting only, and someone with skin in the game
 provides the references.
 
 `smart_contracts/rain/` is the worked example. A scheduled `draw()` locks a
-prize and fixes a future randomness-beacon round — no inner calls, nothing
-unreachable. A participant then calls `resolve()`, attaching the beacon
+prize and fixes a future randomness-beacon round, with no inner calls and
+nothing unreachable. A participant then calls `resolve()`, attaching the beacon
 reference a keeper could not, and the winner calls `claim()`. The beacon is
 never in the path of a scheduled execution, so a beacon outage cannot stall
 the schedule for everyone.
@@ -555,13 +556,13 @@ programs for the ARC-21 selector rather than trusting documentation:
 | TestNet | `600011887` | same program size; the current beacon |
 | MainNet | `947957720` | an older, smaller program; also `must_get` |
 | TestNet | `110096026` | older |
-| LocalNet | — | **no beacon exists**; `smart_contracts/beacon_stub/` stands in |
+| LocalNet | n/a | **no beacon exists**; `smart_contracts/beacon_stub/` stands in |
 
 None of them implement `get(uint64,byte[])(bool,byte[])`, so there is no
 non-throwing variant to fall back on.
 
-**When references are not enough** — more than six resources, or a set that is
-not knowable at registration — use the pull pattern instead: have the upkeep
+**When references are not enough** (more than six resources, or a set that is
+not knowable at registration), use the pull pattern instead: have the upkeep
 record what is owed in the target's own state, and let each counterparty claim
 it in a transaction they send themselves, supplying their own resources. That
 also sidesteps the failure mode where one unreachable account breaks the whole
@@ -575,7 +576,7 @@ with just its selector. Two properties matter when writing one:
 - **It is called on every cadence**, whether or not there is work to do. The
   no-op path must be cheap.
 - **A hook that fails trips keeper backoff** and stops being serviced. Fail
-  soft — record the condition in state rather than throwing.
+  soft: record the condition in state rather than throwing.
 
 **The pull-payment pattern.** Scheduled calls should do accounting only and let
 counterparties claim in transactions they send themselves:
@@ -585,8 +586,8 @@ scheduled_call()  # zero-arg, Arcron calls this. Records allocations, moves noth
 claim()           # the recipient calls this and pulls their funds.
 ```
 
-This sidesteps resource availability — `Txn.sender` is always available to a
-contract, whereas an arbitrary payout address may not be — and it isolates
+This sidesteps resource availability (`Txn.sender` is always available to a
+contract, whereas an arbitrary payout address may not be) and it isolates
 failure: a payout to a closed or hostile account fails that claim alone instead
 of failing the whole execution and disrupting the schedule. Most applications
 that look like they need multi-arg calls do not, once payouts are pull-based.
@@ -618,9 +619,9 @@ out, the dogfood plan and the mainnet gate are in
   [docs/design/scheduling-and-fees.md](design/scheduling-and-fees.md), which
   also explains why the two features had to be designed together.
 - A creator may also set a fee ceiling, and a late upkeep's fee climbs towards
-  it — which means an upkeep with a ceiling can go dormant at a balance that
+  it, which means an upkeep with a ceiling can go dormant at a balance that
   would have covered several runs at its base fee.
-- Unaudited. TestNet throwaway deployer — redeploy fresh for mainnet.
+- Unaudited. TestNet throwaway deployer; redeploy fresh for mainnet.
 
 ## CI
 
@@ -647,7 +648,7 @@ of the open-source readiness work rather than leaving it implicit.
 
 Repository **Settings → Actions → Runners → New self-hosted runner**, then give
 it the labels `self-hosted` and `macOS` (the defaults on a macOS runner). It
-needs `poetry`, `bun`, `fledge` and — for the end-to-end job — `algokit` and a
+needs `poetry`, `bun`, `fledge` and, for the end-to-end job, `algokit` and a
 running Docker on its `PATH`. The workflow's first step checks for them and
 fails with a readable message rather than a mysterious "command not found".
 

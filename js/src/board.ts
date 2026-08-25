@@ -1,11 +1,11 @@
 /**
  * The registry as a keeper sees it: what is worth doing, and what it pays.
  *
- * All of this is derived from box state, which any algod will serve for free —
- * the console needs no backend and no indexer, and that property is worth
+ * All of this is derived from box state, which any algod will serve for free.
+ * The console needs no backend and no indexer, and that property is worth
  * protecting. Even "how much has been paid to keepers" falls out of
- * `times_executed × fee_per_execution` — a floor, once escalation can pay
- * more than the base fee for a late run.
+ * `times_executed × fee_per_execution`, a floor once escalation can pay more
+ * than the base fee for a late run.
  *
  * The one thing that does *not*: which keeper earned it. Per-keeper
  * attribution is not stored on-chain, which is why the leaderboard is a
@@ -25,7 +25,7 @@ export interface BoardEntry {
   readonly overdueRounds: bigint;
   /** What a keeper clears after the 3,000 µALGO it spends executing. */
   readonly netReward: bigint;
-  /** What this upkeep pays right now — the base fee, or more if it is late. */
+  /** What this upkeep pays right now: the base fee, or more if it is late. */
   readonly currentFee: bigint;
   /** True when `currentFee` has risen above what the creator wrote down. */
   readonly escalated: boolean;
@@ -39,7 +39,7 @@ export interface BoardStats {
   readonly due: number;
   readonly dormant: number;
   readonly totalExecutions: bigint;
-  /** Σ times_executed × base fee — a floor on what keepers have earned. */
+  /** Σ times_executed × base fee, a floor on what keepers have earned. */
   readonly paidToKeepers: bigint;
   readonly escrowed: bigint;
   /** Median rounds overdue across upkeeps that are due; 0n when none are. */
@@ -49,7 +49,7 @@ export interface BoardStats {
 export function classify(upkeep: Upkeep, currentRound: bigint): Availability {
   // Dormant first: an upkeep that cannot pay its fee is nobody's work, however
   // overdue it looks. Measured against the escalated fee, because that is what
-  // a keeper would actually be owed — an upkeep can starve at a balance its
+  // a keeper would actually be owed. An upkeep can starve at a balance its
   // creator thought was several runs.
   if (upkeep.balance < effectiveFee(upkeep, currentRound)) return 'dormant';
   return currentRound >= upkeep.nextExecutionRound ? 'due' : 'scheduled';

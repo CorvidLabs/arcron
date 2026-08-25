@@ -3,7 +3,7 @@
  *
  * use-wallet keeps its own store; this mirrors it into signals so the rest of
  * the app can stay signal-based, and exposes the same `{ sender, signer }`
- * pair the keeper calls take — so the transaction layer never learns which
+ * pair the keeper calls take, so the transaction layer never learns which
  * wallet it is talking to.
  *
  * One active wallet at a time: connecting a second disconnects the first,
@@ -65,7 +65,7 @@ export class WalletService {
   async connect(walletId: string): Promise<void> {
     const manager = this.manager();
     // Starting a second wallet abandons the first attempt rather than queueing
-    // behind it — a QR waiting to be scanned must never lock the picker.
+    // behind it, because a QR waiting to be scanned must never lock the picker.
     this.connecting.set(walletId);
     this.error.set(null);
     try {

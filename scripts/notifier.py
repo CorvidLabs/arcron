@@ -1,17 +1,17 @@
 """A read-only watcher that says what the keeper network is doing.
 
 A network whose work is invisible looks dead even when it is running fine.
-This watches the registry and announces what changed — executions and who
-earned them, upkeeps registered and cancelled, and the failures: upkeeps gone
-dormant for lack of funds, or overdue by an unusual margin. Surfacing those
-builds more trust than hiding them.
+This watches the registry and announces what changed. It reports executions
+and who earned them, upkeeps registered and cancelled, and the failures:
+upkeeps gone dormant for lack of funds, or overdue by an unusual margin.
+Surfacing those builds more trust than hiding them.
 
 **It holds no keys and cannot sign anything.** That boundary is deliberate and
 enforced by a test: a notifier that could sign would be a liability with no
 upside. It reads algod and posts to a webhook, and that is all it can do.
 
 No indexer is needed. Box state gives everything except *which* keeper earned
-an execution — and for that the watcher already knows the exact round to look
+an execution, and for that the watcher already knows the exact round to look
 at, so it fetches that one block.
 
 Run:  poetry run python -m scripts.notifier [--once] [--network N] [--app-id N]
@@ -142,7 +142,7 @@ def diff(previous: Snapshot, current: Snapshot) -> list[Event]:
                     Event(
                         "registered",
                         upkeep_id,
-                        f"**Upkeep {upkeep_id} registered** — target app "
+                        f"**Upkeep {upkeep_id} registered** targeting app "
                         f"{now['target_app']}, every {now['interval_rounds']} rounds, "
                         f"paying {_algos(now['fee_per_execution'])} per run",
                     )
@@ -157,7 +157,7 @@ def diff(previous: Snapshot, current: Snapshot) -> list[Event]:
                     upkeep_id,
                     f"**Upkeep {upkeep_id} executed**"
                     + (f" ×{runs}" if runs > 1 else "")
-                    + f" — {_algos(_burst_cost(before, now, runs))} paid, "
+                    + f", {_algos(_burst_cost(before, now, runs))} paid, "
                     f"next due at round {now['next_execution_round']}",
                 )
             )
@@ -174,7 +174,7 @@ def diff(previous: Snapshot, current: Snapshot) -> list[Event]:
                 Event(
                     "dormant",
                     upkeep_id,
-                    f"⚠️ **Upkeep {upkeep_id} has run dry** — escrow "
+                    f"⚠️ **Upkeep {upkeep_id} has run dry**: escrow "
                     f"{_algos(state['balance'])} is below its "
                     f"{_algos(_fee_now(state, current.last_round))} fee, so no keeper "
                     f"can run it. Anyone can top it up.",
@@ -191,7 +191,7 @@ def diff(previous: Snapshot, current: Snapshot) -> list[Event]:
             Event(
                 "stalled",
                 upkeep_id,
-                f"⚠️ **Upkeep {upkeep_id} is going unserviced** — funded and due, "
+                f"⚠️ **Upkeep {upkeep_id} is going unserviced**. Funded and due, "
                 f"but {overdue} rounds late. Nobody is keeping it.",
             )
         )
@@ -228,7 +228,7 @@ def _burst_cost(before: dict, now: dict, runs: int) -> int:
     """What a run of `runs` executions took out of the escrow.
 
     The exact answer is the balance delta, and it is sitting in the two
-    snapshots — no model of the fee curve can beat it, and a model would be
+    snapshots. No model of the fee curve can beat it, and a model would be
     wrong for a burst whose runs were not all priced the same. Falls back to
     the curve only when a top-up landed in the same window and made the delta
     meaningless.
@@ -263,7 +263,7 @@ def attribute(algod, app_id: int, since_round: int, until_round: int) -> str | N
 
     Deliberately not derived from the upkeep's schedule. An upkeep catching up
     after an outage runs in a round far ahead of the one it was *scheduled*
-    for, and using the schedule would attribute it to the wrong block — or to
+    for, and using the schedule would attribute it to the wrong block, or to
     a block that has since been pruned.
     """
     newest = max(until_round, 0)
@@ -285,7 +285,7 @@ def attribute(algod, app_id: int, since_round: int, until_round: int) -> str | N
 def summarise(snapshot: Snapshot, executions: int, paid: int) -> str:
     dormant = len(snapshot.dormant)
     return (
-        f"📊 **Registry** — {len(snapshot.upkeeps)} upkeeps, {executions} executions "
+        f"📊 **Registry**: {len(snapshot.upkeeps)} upkeeps, {executions} executions "
         f"since the last summary, {_algos(paid)} paid to keepers"
         + (f", {dormant} out of funds" if dormant else "")
     )

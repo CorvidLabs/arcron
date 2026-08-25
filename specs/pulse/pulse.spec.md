@@ -32,7 +32,7 @@ now. Permissionless by design; it is a demo, not a gate.
 | Method | Parameters | Returns | Description |
 |--------|-----------|---------|-------------|
 | `tick` | — | `uint64` | Increments `beats`, records the current round, returns the new count. |
-| `tick_with` | `beats: uint64, note: string` | `uint64` | Advances `beats` by the argument rather than by one and records the note. A hook with arguments of its own — unreachable through an upkeep before #8, because an ARC-4 method needs its selector and each argument in an app arg of its own. |
+| `tick_with` | `beats: uint64, note: string` | `uint64` | Advances `beats` by the argument rather than by one and records the note. A hook with arguments of its own, unreachable through an upkeep before #8, because an ARC-4 method needs its selector and each argument in an app arg of its own. |
 
 ## Invariants
 
@@ -52,7 +52,7 @@ now. Permissionless by design; it is a demo, not a gate.
 
 - **Given** a Keeper upkeep registered with `tick_with`'s selector, `7` and `"arcron"`
 - **When** the upkeep is executed
-- **Then** `beats` advances by 7 and `last_note` holds the string — every app arg arrived
+- **Then** `beats` advances by 7 and `last_note` holds the string, so every app arg arrived
 
 ## Error Cases
 
