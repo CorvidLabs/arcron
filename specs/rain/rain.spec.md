@@ -58,7 +58,7 @@ everyone.
 | Method | Parameters | Returns | Description |
 |--------|-----------|---------|-------------|
 | `configure` | `beacon_app: uint64, gate_creator: address, prize_asset: uint64` | `void` | Creator-only, once. Points at the beacon, decides who may enter, and decides what they win. A zero `gate_creator` leaves entry open; a zero `prize_asset` keeps the pot in ALGO. |
-| `opt_in_prize_asset` | `mbr_payment: pay` | `uint64` | Opts the app into the prize asset so it can be funded. Anyone may pay for it, once. |
+| `opt_in_prize_asset` | `prize: asset, mbr_payment: pay` | `uint64` | Opts the app into the prize asset so it can be funded. Anyone may pay for it, once. Refuses an asset with a clawback, freeze or manager address, which is why `prize` is passed: this is the first call that has the asset available and so the first that can read its parameters. |
 | `enter` | `mbr_payment: pay, gate_asset: asset` | `uint64` | Buys one ticket for the sender; returns its index. Tickets persist across draws. When gated, `gate_asset` is an asset the sender holds, and the contract checks the collection minted it. Ignored when entry is open. |
 | `deposit` | `payment: pay` | `uint64` | Adds ALGO to the pot, from anyone; returns the new pot. Rejected when the prize is an asset. |
 | `deposit_asset` | `transfer: axfer` | `uint64` | Adds the prize asset to the pot, from anyone; returns the new pot. Rejected when the prize is ALGO. |
@@ -82,8 +82,14 @@ everyone.
 10. A draw can always be reopened. If the beacon window closes before anyone resolves, `abandon` returns the prize and the reservation `draw` took for a box that was never created, so a single unresolved draw cannot lock the pot on a contract that has no update or delete path.
 11. `configure` is refused once the pot holds anything or anyone has entered, so the denomination cannot change under people who have already staked on it, and `enter` and `deposit` require configuration first.
 12. An asset draw refuses to open unless the app account can cover one allocation box in ALGO, because that draw reserves nothing from the pot and `resolve` would otherwise fail on minimum balance with the draw open.
-13. The prize asset can never buy a ticket, even when the same account minted both it and the collection, which is the natural thing for a project to do.
-14. Deposits arriving after a draw opens belong to the next draw.
+13. The prize asset cannot be one its issuer can take back or immobilise. An
+    asset with a clawback address can be emptied out of the app account at any
+    time while `pot` still claims the tokens are there; one with a freeze
+    address can be made permanently unclaimable; a manager can set either back.
+    All three are refused at `opt_in_prize_asset`, and `deposit_asset` requires
+    the opt-in, so an unchecked draw cannot be funded.
+14. The prize asset can never buy a ticket, even when the same account minted both it and the collection, which is the natural thing for a project to do.
+15. Deposits arriving after a draw opens belong to the next draw.
 
 ## Behavioral Examples
 
@@ -122,6 +128,8 @@ everyone.
 | `enter` on a gated draw with another creator's asset | Fails with "That asset is not from the collection" |
 | `deposit_asset` with the wrong asset | Fails with "Wrong asset" |
 | `opt_in_prize_asset` twice, or on an ALGO draw | Fails with "Already opted in" / "Prize is ALGO" |
+| `opt_in_prize_asset` naming an asset other than the prize | Fails with "Wrong asset" |
+| `opt_in_prize_asset` with a clawback, freeze or manager address set | Fails with "Prize asset has a clawback/freeze/manager address" |
 
 ## Dependencies
 

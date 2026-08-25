@@ -16,6 +16,7 @@ from algopy import Asset, UInt64, arc4
 from algopy_testing import AlgopyTestContext, algopy_testing_context
 
 from smart_contracts.rain.contract import (
+    ASSET_OPT_IN_MBR,
     BEACON_WINDOW,
     ALLOCATION_MBR,
     BEACON_DELAY,
@@ -416,3 +417,58 @@ def test_a_draw_past_the_beacon_window_can_be_abandoned(
     assert rain.pot.value == 100_000
     # And the pot can be drawn again rather than being locked forever.
     assert rain.draw() > 0
+
+
+def test_a_rugable_prize_asset_is_refused(context: AlgopyTestContext) -> None:
+    """An issuer who kept clawback can empty the pot whenever they like.
+
+    `pot` would go on claiming the tokens are there, every claim would fail on
+    insufficient balance, and none of it is fixable on a contract with no
+    update path. Freeze is the same story with the pot stranded rather than
+    stolen, and a manager can set either back, so all three are refused.
+    """
+    context.ledger.patch_global_fields(round=UInt64(START_ROUND))
+
+    def app_for(asset) -> Rain:
+        contract = Rain()
+        contract.configure(UInt64(BEACON_APP), arc4.Address(), asset.id)
+        return contract
+
+    for field, message in (
+        ("clawback", "clawback address"),
+        ("freeze", "freeze address"),
+        ("manager", "manager address"),
+    ):
+        rugger = context.any.account()
+        asset = context.any.asset(**{field: rugger})
+        contract = app_for(asset)
+        payment = context.any.txn.payment(
+            receiver=context.ledger.get_app(contract).address, amount=ASSET_OPT_IN_MBR
+        )
+        with pytest.raises(Exception, match=message):
+            contract.opt_in_prize_asset(asset, payment)
+
+
+def test_a_clean_prize_asset_is_accepted(context: AlgopyTestContext) -> None:
+    """The check must not reject an ordinary immutable token."""
+    context.ledger.patch_global_fields(round=UInt64(START_ROUND))
+    clean = context.any.asset()
+    contract = Rain()
+    contract.configure(UInt64(BEACON_APP), arc4.Address(), clean.id)
+    payment = context.any.txn.payment(
+        receiver=context.ledger.get_app(contract).address, amount=ASSET_OPT_IN_MBR
+    )
+    assert int(contract.opt_in_prize_asset(clean, payment)) == clean.id
+
+
+def test_the_opt_in_refuses_a_different_asset(context: AlgopyTestContext) -> None:
+    """Otherwise a clean asset could be shown to pass the check for a dirty one."""
+    context.ledger.patch_global_fields(round=UInt64(START_ROUND))
+    prize, decoy = context.any.asset(), context.any.asset()
+    contract = Rain()
+    contract.configure(UInt64(BEACON_APP), arc4.Address(), prize.id)
+    payment = context.any.txn.payment(
+        receiver=context.ledger.get_app(contract).address, amount=ASSET_OPT_IN_MBR
+    )
+    with pytest.raises(Exception, match="Wrong asset"):
+        contract.opt_in_prize_asset(decoy, payment)
