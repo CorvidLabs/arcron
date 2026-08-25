@@ -161,9 +161,15 @@ The reason the window exists at all is that being unable to fix a bug is
 expensive while nobody depends on the deployment yet. Two earlier deployments
 were abandoned rather than repaired, stranding 243,000 µALGO of box minimum
 balance and making every creator cancel and re-register by hand.
-[`releases.md`](releases.md) sets out when freezing happens: it is the rc gate.
+Whether to freeze at all is a choice rather than a rule, and both answers
+are ordinary on Algorand. Checked on MainNet: the Foundation's randomness
+beacon, the Reti staking validator and Folks Finance pools accept `NoOp` only
+and can never be updated; Tinyman AMM v2, Pact and AlgoFi all handle
+`UpdateApplication`. [`releases.md`](releases.md) asks only that the decision
+be recorded, not that it go a particular way.
 
-Consequences worth stating plainly, all of which apply from `freeze` onward:
+Consequences worth stating plainly, all of which apply from `freeze` onward,
+and none of which apply to a deployment that never calls it:
 
 1. **A bug cannot be fixed.** The response to a serious bug is to tell
    creators to `cancel`, not to patch.

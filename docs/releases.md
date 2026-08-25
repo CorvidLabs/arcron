@@ -96,9 +96,12 @@ rewrite of it; this.
 **Gate:**
 
 - [ ] The bytecode is unchanged from the beta that earned it
-- [ ] **`freeze` called, and `govern status` shows `frozen 1`.** This is the
-      moment the update path is given up. Before it, rc means little: the
-      programs being reviewed are ones the creator could still replace
+- [ ] **A decision recorded about `freeze`, either way.** Freezing is
+      optional and both answers are normal on Algorand: the Foundation's
+      randomness beacon, Reti and Folks Finance are immutable, while Tinyman,
+      Pact and AlgoFi keep an update path. What is not acceptable is drifting
+      into one by accident, so rc requires the choice to be written down in
+      the release row below, not that it go a particular way
 - [ ] **#12 complete**: threat model, escrow isolation proven on chain, arithmetic reviewed, immutability posture stated, incident playbook written
 - [ ] At least one **independent adversarial review** beyond our own
 - [ ] Outside upkeeps still registered and being serviced, unchanged since beta

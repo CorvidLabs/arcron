@@ -87,9 +87,17 @@ will be stuck with and makes you type the app id back. There is no undo, and
 nothing can add an update path afterwards, because the only call that could is
 an update.
 
-**When to freeze** is in [`releases.md`](releases.md): it is the rc gate. Early
-freezing buys nothing and costs the ability to fix a bug cheaply; late freezing
-means asking people to rely on a deployment whose rules you can still change.
+**Whether to freeze at all is a choice**, and both answers are ordinary on
+Algorand. Checked on MainNet: the Foundation's randomness beacon, the Reti
+staking validator and Folks Finance pools accept `NoOp` only and can never be
+updated. Tinyman AMM v2, Pact and AlgoFi all handle `UpdateApplication` and
+can be. There is no single convention to follow, so the useful thing is to
+pick deliberately and say which you picked.
+
+A deployment that never calls `freeze` behaves exactly like Tinyman or Pact:
+its admin can update it whenever it needs to. One that calls `freeze` behaves
+exactly like the beacon. `govern status` tells anyone which they are dealing
+with, which is the part that actually matters.
 
 ## Why unfrozen at all
 
