@@ -423,7 +423,21 @@ def main(argv: list[str] | None = None) -> None:
     try:
         keeper = algorand.account.from_environment("KEEPER")
     except Exception:
-        keeper = algorand.account.from_environment("DEPLOYER")
+        try:
+            keeper = algorand.account.from_environment("DEPLOYER")
+        except Exception as cause:
+            # DEPLOYER is the fallback for a developer running this from a
+            # checkout. An operator who configured KEEPER_MNEMONIC and got it
+            # slightly wrong would otherwise be told that DEPLOYER_MNEMONIC is
+            # missing, and go looking for a variable their config never
+            # mentions.
+            raise UnrecoverableError(
+                "No keeper account. Set KEEPER_MNEMONIC to the 25-word mnemonic of the "
+                "account that should sign executions and collect the fees "
+                "(deploy/keeper.env.example shows the file this belongs in). "
+                "DEPLOYER_MNEMONIC is accepted as a fallback when running from a "
+                "checkout, and is also unset."
+            ) from cause
     state_file = (
         None
         if args.no_state

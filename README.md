@@ -239,7 +239,22 @@ cp .env.testnet.template .env.testnet   # or: algokit generate env-file -a targe
 poetry run python -m scripts.keeper_e2e --network testnet
 ```
 
-### Release stages
+### Running a keeper
+
+Anyone can. It is a plain process that watches rounds and calls `execute`,
+and it earns the fees it collects. [`docs/hosting.md`](docs/hosting.md)
+compares the options with real costs; the short version is that if you
+already run a server, put it there:
+
+```bash
+./deploy/vps/package.sh
+scp /tmp/arcron-keeper.tar.gz <user>@<host>:/tmp/
+ssh <user>@<host> 'sudo mkdir -p /tmp/arcron-install \
+    && sudo tar -xzf /tmp/arcron-keeper.tar.gz -C /tmp/arcron-install \
+    && sudo bash /tmp/arcron-install/deploy/vps/install.sh'
+```
+
+## Release stages
 
 Arcron is at **alpha-1**: running on TestNet, and redeployable at any time for
 any reason. Nothing here is a promise yet.
