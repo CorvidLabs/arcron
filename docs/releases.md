@@ -39,6 +39,17 @@ an upkeep against it should expect to cancel and re-register.
 
 **Entry:** the e2e passes on a real chain.
 
+**Exit, and the reason this stage has real work in it:** beta is the freeze,
+so feedback that could change the struct has to arrive *before* it. Inviting
+people to use the network at beta gets their reports one stage too late, when
+acting on one means every creator cancelling and re-registering by hand.
+
+Getting outside upkeeps registered is therefore alpha work, not beta work.
+While we are here a redeploy costs nothing but our own time, which is exactly
+the condition under which you want to find out that a field is missing or a
+policy is wrong. The console has to be reachable for that to happen at all, so
+publishing it comes first.
+
 ## beta — other people may rely on it
 
 **The step that matters**, because it is where a struct change stops being
@@ -55,6 +66,10 @@ and re-registering by hand.
 - [ ] **30 days** of continuous TestNet uptime with a funded heartbeat, and the notifier running
 - [ ] A keeper running somewhere that is not a laptop
 - [ ] Documentation an integrator can follow without asking us anything
+- [ ] **At least one upkeep registered by somebody who is not us, which survived a redeploy.**
+      Not "an outside upkeep exists": one that was cancelled and re-registered when we
+      replaced the app, because that is the thing beta promises not to make people do again,
+      and it is worth knowing somebody has done it once before we promise it
 
 **What we promise at beta:** we will not redeploy without a stated reason, and
 if we do, we will say so before the old app is abandoned.
@@ -73,7 +88,7 @@ rewrite of it; this.
 - [ ] The bytecode is unchanged from the beta that earned it
 - [ ] **#12 complete** — threat model, escrow isolation proven on chain, arithmetic reviewed, immutability posture stated, incident playbook written
 - [ ] At least one **independent adversarial review** beyond our own
-- [ ] At least one upkeep registered by **somebody who is not us**
+- [ ] Outside upkeeps still registered and being serviced, unchanged since beta
 - [ ] **60 days** at rc with no contract change
 
 **The rule that gives the stage its meaning:** *any* change to the contract
