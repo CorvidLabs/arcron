@@ -190,8 +190,14 @@ def create(algorand, expect_creator: str, assume_yes: bool, allow_dirty: bool,
         return 1
 
     if not allow_dirty:
+        # cwd matters: run from anywhere else and this reports on a different
+        # repository, or none, and a dirty tree looks clean. `verify_build`
+        # already passes it; this did not.
         dirty = subprocess.run(
-            ["git", "status", "--porcelain"], capture_output=True, text=True
+            ["git", "status", "--porcelain"],
+            cwd=pathlib.Path(__file__).resolve().parent.parent,
+            capture_output=True,
+            text=True,
         ).stdout.strip()
         if dirty:
             logger.error(

@@ -174,3 +174,13 @@ describe('box MBR', () => {
     expect(2_500 + 400 * (9 + recorded.length)).toBe(boxMbr(decodeUpkeep(0n, recorded).callArgs));
   });
 });
+
+test('a box whose tail offset is not the head size is refused', () => {
+    // The Python bot refused this and the TypeScript decoder did not, so the
+    // two disagreed about what an upkeep is. A patched offset decoded here as
+    // a plausible upkeep with no call args, which kept the console's
+    // "does not decode" count at zero and its warning silent.
+    const raw = fromHex(LIVE_BOX_HEX);
+    new DataView(raw.buffer, raw.byteOffset, raw.byteLength).setUint16(40, 82);
+    expect(() => decodeUpkeep(1n, raw)).toThrow('not this contract');
+});

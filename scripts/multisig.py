@@ -186,12 +186,13 @@ def describe_transaction(path: pathlib.Path) -> list[str]:
         # create`, which the coordinator runs. The holders who authorise the
         # one transaction that cannot be undone read this.
         is_create = int(getattr(txn, "index", 0) or 0) == 0 and bool(approval)
+        pages = int(getattr(txn, "extra_pages", 0) or 0)
+        gs = getattr(txn, "global_schema", None)
+        ls = getattr(txn, "local_schema", None)
         if is_create:
             lines.append("CREATES A NEW APPLICATION. Every field below is permanent:")
             lines.append("  the creator is this sender and can never be changed")
-            lines.append(f"  extra pages   {int(getattr(txn, 'extra_pages', 0) or 0)}")
-            gs = getattr(txn, "global_schema", None)
-            ls = getattr(txn, "local_schema", None)
+            lines.append(f"  extra pages   {pages}")
             lines.append(
                 f"  global state  {getattr(gs, 'num_uints', 0)} uints, "
                 f"{getattr(gs, 'num_byte_slices', 0)} byte slices"
@@ -200,7 +201,23 @@ def describe_transaction(path: pathlib.Path) -> list[str]:
                 f"  local state   {getattr(ls, 'num_uints', 0)} uints, "
                 f"{getattr(ls, 'num_byte_slices', 0)} byte slices"
             )
-            lines.append("  Extra pages and schema cannot be changed by `update`, ever.")
+            lines.append("  The creator and the local schema cannot be changed afterwards.")
+        elif pages or gs is not None:
+            # Printed for updates too, because they can carry these. An earlier
+            # version showed them only for creates, on the stated reasoning
+            # that an update cannot change them. `ApplicationUpdateTxn` takes
+            # both, and on a protocol that honours them a non-zero value
+            # replaces the app's outright while an omitted one goes to zero.
+            # So a hostile file with honest bytecode, whose combined digest
+            # matches, could resize the app under holders who had been told
+            # that was impossible.
+            lines.append("!! THIS UPDATE ALSO RESIZES THE APPLICATION:")
+            lines.append(f"     extra pages   {pages}")
+            lines.append(
+                f"     global state  {getattr(gs, 'num_uints', 0)} uints, "
+                f"{getattr(gs, 'num_byte_slices', 0)} byte slices"
+            )
+            lines.append("     An honest `govern update` sets neither. Do not sign this.")
         if is_create or label == "UpdateApplication":
             verb = "CARRIES PROGRAMS of" if is_create else "REPLACES THE PROGRAMS with"
             lines.append(f"{verb} {len(approval)} + {len(clear)} bytes")
@@ -372,6 +389,22 @@ def refusals(
             "ARCRON_MULTISIG_THRESHOLD to the group you believe you are part of, then "
             "read the members this file actually names."
         )
+    if is_app_call and in_file != 0:
+        # An honest `govern update` omits both, which keeps the app's current
+        # sizes. A file that sets either is asking to resize the app, and a
+        # matching program digest says nothing about that.
+        if int(getattr(txn, "extra_pages", 0) or 0):
+            reasons.append(
+                "This update also sets extra program pages, which resizes the application "
+                "and changes what its creator has locked up. An honest update sets none. "
+                "Pass --i-mean-to-resize only if you know why this is here."
+            )
+        if getattr(txn, "global_schema", None) is not None:
+            reasons.append(
+                "This update also sets a global state schema, which replaces the app's "
+                "outright. Shrinking it bricks the app and growing it costs the creator "
+                "minimum balance permanently. An honest update sets none."
+            )
     if expected_digest is not None:
         carried = carried_programs(path)
         if carried is not None and combined_digest(*carried) != expected_digest:

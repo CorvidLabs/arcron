@@ -107,6 +107,19 @@ export function decodeUpkeep(id: bigint, raw: Uint8Array): Upkeep {
   }
   const view = new DataView(raw.buffer, raw.byteOffset, raw.byteLength);
   const tailOffset = view.getUint16(40);
+  // The Python bot refuses a tail offset that is not exactly the head size,
+  // and this did not, which made the two decoders disagree about what counts
+  // as an upkeep. A box whose offset has been patched decodes here as a
+  // plausible upkeep with no call args, so a hostile app's boxes read as
+  // ordinary and the console's "does not decode" warning never fires. Reading
+  // a foreign struct as one of ours is how a reader invents fees that are not
+  // there.
+  if (tailOffset !== HEAD_BYTES) {
+    throw new Error(
+      `Upkeep box ${id} has a tail offset of ${tailOffset}, not ${HEAD_BYTES}. ` +
+        `This is not this contract's Upkeep struct.`,
+    );
+  }
   const argCount = view.getUint16(tailOffset);
   const callArgs: Uint8Array[] = [];
   for (let index = 0; index < argCount; index += 1) {

@@ -6,6 +6,29 @@ logger = logging.getLogger(__name__)
 
 
 # define deployment behaviour based on supplied app spec
+def _refuse_unguarded_mainnet(algorand: "algokit_utils.AlgorandClient") -> None:
+    """Refuse to create a keeper on MainNet from a single key.
+
+    Asks the node which chain it speaks for rather than trusting an argument,
+    because this function takes none. A keeper created here would have the
+    single-key DEPLOYER as its creator, permanently, which is the admin-key
+    problem the multisig exists to avoid.
+    """
+    from scripts import network as net
+
+    genesis = algorand.client.algod.suggested_params().gen
+    if genesis not in net.genesis_ids(net.MAINNET):
+        return
+    from scripts import multisig as ms
+
+    raise RuntimeError(
+        f"Refusing to create a keeper on MainNet ({genesis}) from this path. It signs "
+        "in process with a single key, and an app's creator cannot be changed "
+        "afterwards. Use `poetry run python -m scripts.govern create`, which requires "
+        f"the {ms.describe() if ms.configured() else '3-of-5'} multisig."
+    )
+
+
 def deploy() -> "KeeperClient":
     from smart_contracts.artifacts.keeper.keeper_client import (
         KeeperClient,
@@ -13,6 +36,12 @@ def deploy() -> "KeeperClient":
     )
 
     algorand = algokit_utils.AlgorandClient.from_environment()
+    # The MainNet gate lives in `scripts.network.load_network`, and this
+    # factory is reachable without it: anyone pointing ALGOD_SERVER at MainNet
+    # and calling this creates a keeper from the single-key DEPLOYER, whose
+    # creator can never be changed. `fledge run deploy-mainnet` is not that
+    # path, but nothing stopped somebody taking this one.
+    _refuse_unguarded_mainnet(algorand)
     # Public TestNet endpoints are slow; never let transactions be built from
     # stale cached suggested params (they expire before simulate/broadcast).
     algorand.set_suggested_params_cache_timeout(0)
