@@ -135,7 +135,16 @@ explorer). Full reference: [`docs/arcron.md`](docs/arcron.md).
 ## Development
 
 Pre-requisites: Python 3.13, [AlgoKit](https://github.com/algorandfoundation/algokit-cli),
-Poetry, Docker (LocalNet only).
+Poetry, Docker (LocalNet only), and
+[fledge](https://github.com/CorvidLabs/fledge) for the lanes and the deploy
+tasks below. Installing exactly the first four leaves you unable to run any
+`fledge run` or `fledge lanes` command on this page.
+
+**LocalNet is dev mode: rounds advance only when a transaction is sent.** An
+upkeep with a 10-round interval will never come due on an idle LocalNet, and a
+keeper bot polling it will correctly report nothing to do. Send transactions to
+move the chain (`scripts/network.py` has `wait_for_round`, which pokes it for
+you). This surprises everyone once.
 
 ```bash
 poetry install

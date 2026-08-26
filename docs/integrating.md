@@ -8,8 +8,12 @@ pass, so you do not have to assemble it from five places.
 - [Making it durable](#making-it-durable) (the part people get wrong)
 - [The pull pattern](#the-pull-pattern) (the most useful technique here)
 - [Funding and operations](#funding-and-operations)
+- [Reaching resources your hook cannot name](#reaching-resources-your-hook-cannot-name)
+- [Calls with arguments](#calls-with-arguments)
+- [An ASA bonus](#an-asa-bonus)
 - [Four things that will cost you an hour](#four-things-that-will-cost-you-an-hour)
 - [Testing it](#testing-it)
+- [Getting a keeper to test against](#getting-a-keeper-to-test-against)
 
 `examples/minimal_target.py` is a complete, compiling version of everything
 below. Copy it and start editing; a test in this repo compiles it on every
@@ -32,7 +36,7 @@ all built that way.
 
 A method taking arguments works too. The creator fixes the whole argument list
 at `register`, so the selector goes first and each ARC-4 encoded argument
-follows it, up to `MAX_CALL_ARGS` entries. What a keeper cannot do is choose
+follows it, up to `MAX_CALL_ARGS` entries (three, counting the method selector). What a keeper cannot do is choose
 or alter any of them, which is the guarantee the whole design rests on: a
 keeper decides *when* your call happens, never *what* it says. See
 [Calls with arguments](#calls-with-arguments) below.
@@ -478,3 +482,25 @@ fledge lanes run local          # the whole suite, including seven worked demos
 
 Then register against the live TestNet keeper app `769891898` with
 `examples/register_upkeep.py`.
+
+## Getting a keeper to test against
+
+Everything above assumes an Arcron deployment exists. On TestNet one does, and
+its app id is `769891898`. On LocalNet you have to make one, and nothing else
+on this page tells you how:
+
+```bash
+algokit localnet start
+fledge run deploy-localnet      # deploys the keeper and the pulse demo target
+```
+
+That prints the app id to register against. It is idempotent, so running it
+against a LocalNet you have used before **reuses the existing app**, complete
+with whatever upkeeps are already in its registry. Do not be surprised when a
+keeper bot reports more upkeeps than you created, or executes somebody else's.
+`algokit localnet reset` gives you an empty chain.
+
+The exact ARC-4 signatures, the addresses the two `register` payments go to,
+and the box reference the `register` group must carry are in
+[`arcron.md`](arcron.md#public-api). You cannot build a `register` group
+without all three, and none of them is derivable from this page.
