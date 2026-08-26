@@ -181,6 +181,10 @@ cython_debug/
 # NPM
 node_modules
 
+# Angular's build cache. `dist/` above already covers the output; this is the
+# incremental cache beside it, and CI now runs two builds rather than one.
+.angular/
+
 # AlgoKit
 debug_traces/
 .algokit/static-analysis/ # Replace with .algokit/static-analysis/tealer/ to enable snapshot checks in CI

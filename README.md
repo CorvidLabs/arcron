@@ -12,7 +12,7 @@ The job matters; whoever runs it does not, and nobody owns it.*
 |----------|-----------|--------|
 | [`smart_contracts/keeper`](smart_contracts/keeper/contract.py) | The Arcron network: upkeep scheduling with ALGO escrow and keeper rewards | **Live on TestNet**, app [`769891898`](https://testnet.explorer.perawallet.app/application/769891898) |
 | [`smart_contracts/pulse`](smart_contracts/pulse/contract.py) | Demo upkeep target: a heartbeat counter, with and without arguments | Live on TestNet, app [`769891902`](https://testnet.explorer.perawallet.app/application/769891902) |
-| [`web`](web/) | The console: registry dashboard + keeper controls | Runs against LocalNet and TestNet |
+| [`web`](web/) | The console: registry dashboard + keeper controls | [`corvidlabs.xyz/arcron/console/`](https://corvidlabs.xyz/arcron/console/), first publish pending |
 
 > [!WARNING]
 > **Unaudited, and TestNet only.** No third party has reviewed this contract.
@@ -168,6 +168,14 @@ poetry run python -m scripts.keeper_e2e --network localnet   # full e2e
 
 ### The console
 
+The console's address is **https://corvidlabs.xyz/arcron/console/**. That is
+the canonical one: Arcron's contract is permissionless, so anyone can build a
+front end for it, and the only thing distinguishing ours is where it is
+served from. Check a link against that address before connecting a wallet to
+whatever it opens.
+
+To run it locally instead:
+
 ```bash
 cd web && bun install && bun run ng serve      # http://localhost:4200
 ```
@@ -181,6 +189,31 @@ installed. Amounts read in ALGO and cadences read as time
 ("every 1,286 rounds · ~1 h"). Built on the
 [CorvidLabs design system](https://github.com/CorvidLabs/design-system);
 see [`web/README.md`](web/README.md).
+
+### Publishing the console
+
+The public site is a separate repository, `CorvidLabs/site`, which is an Astro
+build deployed to an nginx VPS: everything under its `public/` directory is
+copied verbatim into the build, and pushing `main` is what deploys. So
+publishing the console means staging the bundle there and pushing it, exactly
+as [`scripts/sync_site_docs.py`](scripts/sync_site_docs.py) already does for
+the integrator docs.
+
+```bash
+fledge run web-build-hosted     # build with --base-href /arcron/console/
+fledge run web-verify-hosted    # serve it at that subpath and load every file
+fledge run site-console -- --site ../../site          # stage into the checkout
+fledge run site-console -- --site ../../site --check  # report drift, write nothing
+```
+
+Neither script commits or pushes. They stage; a human in the site repository
+publishes.
+
+The base href is the whole difference between a working page and one that
+404s its own JavaScript, and nothing about that is visible in a build log, so
+`web-verify-hosted` is in the `ci` lane: it serves the build under
+`/arcron/console/` and fetches every file in it, refusing a bundle built for
+the domain root.
 
 ### End-to-end on LocalNet
 

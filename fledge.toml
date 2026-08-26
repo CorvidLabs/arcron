@@ -29,7 +29,10 @@ smoke-multisig = "poetry run python -m scripts.multisig_e2e --network localnet"
 # it cannot show that a failed asset transfer would take the ALGO with it.
 smoke-clawback = "poetry run python -m scripts.clawback_e2e --network localnet"
 # Publish the integrator docs to the site. --check reports drift without writing.
+# Both of these take --site <path to a CorvidLabs/site checkout>, and neither
+# pushes: they stage, and a human in the other repository publishes.
 site-docs = "poetry run python -m scripts.sync_site_docs"
+site-console = "poetry run python -m scripts.publish_console"
 # Record the live deployment as JSON, for pages that must build without a network.
 snapshot = "poetry run python -m scripts.testnet_snapshot --network testnet --app-id 769891898"
 # One install for the whole Bun workspace (js + web). Installing per-package
@@ -39,9 +42,15 @@ js-test = "cd js && bun test"
 web-install = "bun install"
 web-test = "cd web && bun test"
 web-build = "cd web && bun run ng build"
-# The console as hosted on corvidlabs.xyz. Every asset it references is
-# relative, so the base href is the only thing that has to know the path.
+# The console as hosted at https://corvidlabs.xyz/arcron/console/. Every asset
+# it references is relative, so the base href is the only thing that has to
+# know the path, and getting it wrong is invisible until the page is served
+# from somewhere other than the root.
 web-build-hosted = "cd web && bun run ng build --base-href /arcron/console/ --output-path dist/hosted"
+# So this serves that build at the subpath and fetches every file in it. A
+# hosted bundle that 404s its own JavaScript compiles perfectly, which is why
+# it belongs in the lane rather than in somebody's memory.
+web-verify-hosted = "poetry run python -m scripts.publish_console --verify"
 web-serve = "cd web && bun run ng serve"
 # Require LocalNet running (algokit localnet start):
 smoke-keeper = "poetry run python -m scripts.keeper_e2e --network localnet"
@@ -63,11 +72,11 @@ scenario = "poetry run python -m scripts.scenario --network localnet"
 
 [lanes.ci]
 description = "Full CI pipeline: contracts + console, unit tests, spec drift check"
-steps = ["build", "test", "spec", "js-install", "js-test", "web-test", "web-build"]
+steps = ["build", "test", "spec", "js-install", "js-test", "web-test", "web-build", "web-build-hosted", "web-verify-hosted"]
 
 [lanes.local]
 description = "CI plus the LocalNet end-to-end test (needs algokit localnet start)"
-steps = ["build", "test", "spec", "js-install", "js-test", "web-test", "web-build", "smoke-keeper", "smoke-rain", "smoke-community-rain", "smoke-subscription", "smoke-govern", "smoke-multisig", "smoke-clawback", "attacks", "smoke-reference-boundary"]
+steps = ["build", "test", "spec", "js-install", "js-test", "web-test", "web-build", "web-build-hosted", "web-verify-hosted", "smoke-keeper", "smoke-rain", "smoke-community-rain", "smoke-subscription", "smoke-govern", "smoke-multisig", "smoke-clawback", "attacks", "smoke-reference-boundary"]
 
 [lanes.endurance]
 description = "The local lane plus a soak: many consecutive executions, no drift"

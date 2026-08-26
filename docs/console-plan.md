@@ -205,12 +205,60 @@ routes and not five, in the AC files' favour.
    `/u/:id`, `/register`.
 3. Quarantine non-canonical app ids, and stop persisting them. Before publish,
    because publishing is what makes a poisoned link worth sending.
-4. Publish under `corvidlabs.xyz`, and name the URL in the docs.
+4. ~~Publish under `corvidlabs.xyz`, and name the URL in the docs.~~ The path
+   exists and is proven; the push is the owner's. See below.
 5. The register form's honesty: real cost, name what is being paid, read the
    balance, the signature field, the graded Test button, the attestation.
 6. Run now, and the keeper ping rate, which is the only part of the old item 4
    that is still missing.
 7. Search, filters with counts, mine.
+
+## The address, and how the console gets there (item 4)
+
+**The console's address is `https://corvidlabs.xyz/arcron/console/`.**
+
+The site is a separate repository, `CorvidLabs/site`: an Astro build deployed
+to an nginx VPS by `.github/workflows/deploy.yml`, which tars `dist/`, ships it
+over ssh, and rsyncs it into the web root with `--delete`. Astro copies
+everything under `public/` into that build verbatim, and `public/arcsite/studio`
+is already a compiled application published exactly this way. So a built bundle
+committed at `public/arcron/console/` is served at `/arcron/console/`, and
+pushing `main` is what deploys it. There is no second mechanism to build.
+
+Three commands, none of which publish anything:
+
+```bash
+fledge run web-build-hosted                           # --base-href /arcron/console/
+fledge run web-verify-hosted                          # prove it loads at that subpath
+fledge run site-console -- --site ../../site          # stage into the site checkout
+```
+
+`web-verify-hosted` is in the `ci` lane, and it exists because the hosted build
+differs from the ordinary one by a single attribute in `index.html`. Get that
+attribute wrong and `ng build` still succeeds, the tests still pass, and every
+script tag on the page resolves to the domain root and 404s. So the check
+serves the bundle at `/arcron/console/` on a throwaway server and fetches every
+file in it, including the ones no markup names: `network-bar.ts:152` injects
+`brand/theme.js` from a string at runtime, so crawling index.html alone would
+call a broken bundle healthy.
+
+Two things are still owed, neither of them buildable here:
+
+- **A 404 fallback, the moment item 2 lands.** The site's nginx serves
+  `try_files $uri $uri/index.html $uri/ =404`, so `/arcron/console/u/17` will
+  404 on reload the day routes exist. `CorvidLabs/site` needs
+  `location ^~ /arcron/console/ { try_files $uri $uri/index.html /arcron/console/index.html; }`
+  before or with the first routed publish. Shareable links are the growth
+  mechanic; a link that 404s is worse than no link.
+- **The default network.** `js/src/networks.ts:64` still reads
+  `DEFAULT_NETWORK = 'localnet'`, so the hosted build opens on LocalNet against
+  `http://localhost:4001`, which a browser blocks as mixed content over HTTPS.
+  Loading the hosted bundle in Chrome rewrote its own address to
+  `/arcron/console/?network=localnet&app=none`, which is item 1's bug arriving
+  at the front door: the subpath is carried correctly and the chain is not.
+  Build order item 1 is recorded above as done and, at `main` as of this
+  writing, is not. Publishing before it is genuinely done buys a page that
+  greets every stranger with an empty registry and an unreachable node.
 
 ## Where the console is today
 

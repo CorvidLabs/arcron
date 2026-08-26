@@ -26,6 +26,7 @@ already knew how it worked.
 | Programs | 2,104 bytes across two pages, sha256 `0afab368…` |
 | Governance | **not frozen**: the creator can still replace the programs |
 | Registry | five upkeeps, one firing about every 70 seconds |
+| Console | [corvidlabs.xyz/arcron/console/](https://corvidlabs.xyz/arcron/console/), first publish pending |
 
 `poetry run python -m scripts.verify_build --network testnet --app-id 769891898`
 proves the deployed programs are this source, byte for byte. Anyone can run it.
@@ -159,6 +160,13 @@ unknowns above:
 
 None of them ask you to break it. That has been done five times. What has
 never happened is somebody simply **using** it.
+
+Start at **https://corvidlabs.xyz/arcron/console/**. That address is also the
+answer to "is this the real thing": the contract is permissionless, so anyone
+can build a front end for Arcron, and where a console is served from is the
+only thing that separates ours from a copy asking you to sign something.
+Nothing else about a page proves anything, so check the address rather than
+the page.
 
 Everything is TestNet, so there is no real money anywhere in any of this.
 Get test ALGO from <https://bank.testnet.algorand.network/>.
