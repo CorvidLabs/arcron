@@ -141,7 +141,9 @@ including the ASA surcharge, classifies availability, and deliberately shows
 starved upkeeps rather than hiding the network's failures.
 
 The blind-signing case is fixed: a failed simulation now throws before the
-wallet opens rather than after. What is missing is any account of earnings
+wallet opens rather than after. This document recorded that as done before it
+was merged, and a reviewer reading `main` correctly found it false. It is true
+now. What is missing is any account of earnings
 over time, so a keeper cannot answer "was that worth it" from the console.
 
 ---
@@ -170,6 +172,48 @@ published one the console says nothing at all, so absence of a warning is
 carrying the entire weight of "this is the real Arcron".
 
 ---
+
+## Decisions taken
+
+Recorded here because each of them closes off work somebody would otherwise do,
+and because the reasoning is easier to argue with than the outcome.
+
+**J2 begins after the user has a contract.** The console does not ship a demo
+target and does not offer a rehearsal mode. It links out to the integration
+guide instead. This makes J2 smaller and the register form simpler, and it
+concedes that the first journey we build cannot be completed by somebody who
+has nothing to schedule. The consequence is that a stranger with no contract
+can watch Arcron work and cannot try it, so J1 and the documentation carry
+that weight rather than the console.
+
+**The console defaults to TestNet.** `scripts/network.py` already did, and
+`js/src/networks.ts` said it mirrored that file and did not. LocalNet is
+reachable with an explicit `?network=localnet`. The cost is a developer working
+locally typing a query parameter, which is the smaller of the two prices.
+
+**J2 ends on the upkeep's own page.** Not on a confirmation. That needs real
+routing, which the console has none of today, and it pulls the first slice of
+J3 forward. It is the only version where "see their upkeep and watch it execute
+without hunting for it" is unambiguously true, and `js/src/board.ts` already
+computes most of what that page shows.
+
+**The creator can run their own first execution, and a real keeper is coming.**
+The form defaults to a cadence of about twenty eight seconds and the only
+TestNet keeper is a half hourly cron, so a first time creator currently watches
+nothing happen for up to half an hour. A "run it now" control makes the journey
+complete today; a keeper running every round makes the control unnecessary.
+Both, in that order.
+
+## The scenarios
+
+Given/When/Then for all five journeys is in [`docs/ac/`](ac/), split as it was
+drafted: `j1-j5.md`, `j2.md`, `j3-j4.md`. Every scenario that cannot pass today
+carries a `# Today:` line naming what actually happens, with a file and a line.
+
+Those files also carry the decisions not yet taken, and the information
+architecture the journeys imply: one browsable surface, search over upkeep id,
+target app, creator address and selector, filters as chips with counts, and a
+page per upkeep.
 
 ## What these are not
 
