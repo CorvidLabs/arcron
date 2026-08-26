@@ -15,18 +15,41 @@ wish list.
 
 ## The shape, before the journeys
 
-One browsable surface, search first, where "mine" is a filter rather than a
-separate application. You search or browse, you land on any individual
-upkeep's page, you see what it is and who owns it, and the actions available
-to you appear there. You never pick a mode.
+Taken from NFDomains, which is the product the maintainer named as the model.
+An earlier version of this section described it as "one browsable surface where
+mine is a filter". That was wrong, and looking at the actual product corrected
+it.
 
-A keeper and a creator are looking at the same registry with different
-questions. They are not looking at two products. So the keeper board stops
-being a place and becomes a saved filter: due now, sorted by what it pays.
+**Persistent chrome, separate destinations.** A left sidebar carries the
+sections, a global search sits top centre and works from anywhere, the wallet
+sits top right, and below the sections the sidebar carries documentation and
+community links.
 
-Today the console has two tabs, no search of any kind, no page for an
-individual upkeep, no concept of "mine", and a register form permanently
-pinned below both tabs.
+| NFD | Arcron |
+|---|---|
+| Home | Dashboard: what this is, action cards, recent executions |
+| Mint | Register an upkeep |
+| Marketplace | The registry: search, filters, everything on the network |
+| Analytics | Network health: live round rate, keeper lateness, executions |
+| Manage | Your upkeeps |
+
+Browsing everyone's upkeeps and managing your own are different places that
+look and behave alike, rather than one page a filter reshapes. A keeper and a
+creator share the chrome and the search; what differs is where they spend
+their time.
+
+Filter chips live inside the registry, as NFD's marketplace does it: a search
+box, dropdowns carrying a count, active filters shown as removable chips.
+
+Two details worth copying on purpose. NFD's Mint page is one input and one
+button, against our nine fields on one screen, which argues for progressive
+disclosure. And it shows "wallet not connected" as a quiet inline warning
+rather than blocking anything, so the whole product is readable before you
+commit to it.
+
+Today the console has two tabs, no search of any kind, no sidebar, no page for
+an individual upkeep, no concept of "mine", a register form pinned below both
+tabs, and no router at all.
 
 ---
 
