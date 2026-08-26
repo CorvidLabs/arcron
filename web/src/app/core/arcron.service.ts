@@ -12,6 +12,7 @@ import algosdk from 'algosdk';
 
 import { NETWORKS, type NetworkKey } from '@corvidlabs/arcron/networks';
 
+import { devModeFrom } from './dev-mode';
 import { appIdStorageKey, type Entry, entryFrom, rememberedAppId, storeAppId } from './entry';
 import { canonicalAppId, isQuarantined, standingOf } from './quarantine';
 import { decodeUpkeep, type Upkeep, upkeepIdFromBoxName } from '@corvidlabs/arcron/upkeep';
@@ -440,12 +441,36 @@ export class ArcronService {
   }
 }
 
-/** Where the console opens: the entry link first, then what it remembers. */
+/**
+ * Whether the developer controls are on.
+ *
+ * Read once at module load rather than per call, so it cannot change under a
+ * page that has already decided which deployment it is showing.
+ */
+export const DEV_MODE = readDevMode();
+
+function readDevMode(): boolean {
+  try {
+    return devModeFrom(location.search, localStorage);
+  } catch {
+    // A browser blocking site data throws on access. Dev mode off is the safe
+    // answer: one deployment, nothing configurable.
+    return false;
+  }
+}
+
+/**
+ * Where the console opens.
+ *
+ * Outside dev mode this is the canonical deployment and nothing else, so the
+ * link and the memory are not consulted at all.
+ */
 function readEntry(): Entry {
   return entryFrom(
     location.search,
     localStorage.getItem(NETWORK_STORAGE_KEY),
     (network) => localStorage.getItem(appIdStorageKey(network)),
+    DEV_MODE,
   );
 }
 

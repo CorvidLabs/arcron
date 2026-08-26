@@ -1,14 +1,15 @@
 /**
  * Where the console points when it opens.
  *
- * The console remembers the last network and app id you looked at, which is
- * right for a tool you keep open while developing. It is wrong for a link: a
- * hosted console has to show the same registry to everyone who follows the
- * same URL, whatever they happened to look at last.
+ * **Outside dev mode there is only one answer**: the canonical deployment on
+ * the default network. No parameter changes it and nothing is remembered,
+ * because the published console serves one deployment and a stranger has
+ * nothing to configure. That is what makes a poisoned `?app=` link inert.
  *
- * So on open the precedence is **link, then memory, then default**, and
- * following a link updates the memory, so a shared link and a bookmark behave
- * the same afterwards.
+ * In dev mode the console remembers the last network and app id you looked
+ * at, which is right for a tool you keep open while working. The precedence is
+ * **link, then memory, then default**, and following a link updates the memory
+ * so a shared link and a bookmark behave the same afterwards.
  *
  * Switching network from the picker is deliberately *not* covered here. The
  * link describes where to open, not where to go next, and carrying a linked
@@ -59,8 +60,21 @@ export function entryFrom(
     search: string,
     storedNetwork: string | null,
     storedAppId: StoredAppId,
+    devMode = false,
 ): Entry {
     const parameters = new URLSearchParams(search);
+
+    // Outside dev mode the console opens on one deployment and there is no
+    // way to send it anywhere else. `?network=` and `?app=` are developer
+    // controls, so a link carrying a look-alike app id is inert for everyone
+    // who is not editing this code. See `dev-mode.ts` for why.
+    if (!devMode) {
+        return {
+            network: DEFAULT_NETWORK,
+            appId: NETWORKS[DEFAULT_NETWORK].defaultAppId ?? null,
+        };
+    }
+
     const linkedNetwork = parameters.get(NETWORK_PARAM);
     const linkedApp = parameters.get(APP_PARAM);
 
