@@ -49,6 +49,12 @@ export class ArcronService {
   readonly upkeeps = signal<readonly Upkeep[]>([]);
   readonly appAccount = signal<AppAccount | null>(null);
   readonly nextUpkeepId = signal<bigint | null>(null);
+  /**
+   * Whether this app's creator can still replace its programs. Null while it
+   * is unknown, which is not the same as safe: an app that does not carry the
+   * flag at all predates governance and is immutable, so it reads as frozen.
+   */
+  readonly frozen = signal<boolean | null>(null);
   readonly lastRefreshed = signal<number | null>(null);
   /** Recent (wall clock, round) pairs, oldest first. */
   private readonly rateSamples = signal<readonly { at: number; round: bigint }[]>([]);
@@ -166,6 +172,7 @@ export class ArcronService {
         this.upkeeps.set([]);
         this.appAccount.set(null);
         this.nextUpkeepId.set(null);
+        this.frozen.set(null);
       } else {
         await this.refreshApp(algod, appId);
       }
@@ -184,6 +191,15 @@ export class ArcronService {
       (entry) => new TextDecoder().decode(entry.key) === 'next_upkeep_id',
     );
     this.nextUpkeepId.set(counter ? BigInt(counter.value.uint ?? 0) : null);
+
+    // An app deployed before governance has no `frozen` key and cannot be
+    // updated at all, so a missing flag means frozen rather than unknown.
+    const frozen = application.params?.globalState?.find(
+      (entry) => new TextDecoder().decode(entry.key) === 'frozen',
+    );
+    // BigInt first: a strict compare between a number 0 and 0n is true, which
+    // would report an unfrozen app as frozen and hide the warning entirely.
+    this.frozen.set(frozen ? BigInt(frozen.value.uint ?? 0) !== 0n : true);
 
     const address = algosdk.getApplicationAddress(appId);
     const account = await algod.accountInformation(address).do();
@@ -225,6 +241,7 @@ export class ArcronService {
     this.upkeeps.set([]);
     this.appAccount.set(null);
     this.nextUpkeepId.set(null);
+    this.frozen.set(null);
     this.genesisId.set(null);
     this.rateSamples.set([]);
   }
