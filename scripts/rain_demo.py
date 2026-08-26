@@ -20,6 +20,7 @@ from smart_contracts.artifacts.beacon_stub.beacon_stub_client import BeaconStubF
 from smart_contracts.artifacts.keeper.keeper_client import CancelArgs, RegisterArgs
 from smart_contracts.artifacts.rain.rain_client import (
     AllocationOfArgs,
+    ClaimArgs,
     ConfigureArgs,
     DepositArgs,
     EnterArgs,
@@ -202,6 +203,9 @@ def main(argv: list[str] | None = None) -> None:
     )
     before = algod.account_info(winner)["amount"]
     claimed = winning_client.send.claim(
+        # Ungated draw: `gate_creator` is the zero address, so `claim` never
+        # reads this. Asset 0 is the conventional "no asset" reference.
+        args=ClaimArgs(gate_asset=0),
         params=algokit_utils.CommonAppCallParams(
             extra_fee=algokit_utils.AlgoAmount(micro_algo=1_000)
         )

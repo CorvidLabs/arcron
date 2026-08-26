@@ -33,6 +33,7 @@ from smart_contracts.artifacts.beacon_stub.beacon_stub_client import BeaconStubF
 from smart_contracts.artifacts.keeper.keeper_client import RegisterArgs
 from smart_contracts.artifacts.rain.rain_client import (
     AllocationOfArgs,
+    ClaimArgs,
     ConfigureArgs,
     DepositAssetArgs,
     EnterArgs,
@@ -369,6 +370,11 @@ def main(argv: list[str] | None = None) -> None:
         algokit_utils.AssetOptInParams(sender=winner.address, asset_id=prize_asset)
     )
     claimed = winner_client.send.claim(
+        # This draw is gated, so `claim` asks the gate again. The winner has
+        # to still hold a token from the collection, which is what makes the
+        # tickets bought by walking one token through several accounts
+        # worthless: only whoever holds it now can collect on any of them.
+        args=ClaimArgs(gate_asset=collection[expected]),
         params=algokit_utils.CommonAppCallParams(
             extra_fee=algokit_utils.AlgoAmount(micro_algo=1_000)
         )

@@ -88,6 +88,19 @@ comparing 5,000 tokens against 18,900 microAlgos and quietly declining to draw.
 
 No per-holder entry limit. Buying two tickets doubles your odds and costs two
 box minimum balances, which is the honest version of "one entry per person" on
-a chain where making another account is free. Gating on a collection narrows
-that to "one entry per NFT you hold", which is usually what a project wants
-anyway.
+a chain where making another account is free.
+
+Gating on a collection narrows that, but not to "one entry per NFT you hold",
+which is what this said before and what the contract never enforced. A ticket
+is a box that never expires, and the gate is only asked when the ticket is
+bought, so **one NFT walked through ten accounts buys ten permanent tickets**.
+
+What stops that being worth anything is that the gate is asked a second time
+at `claim`: the winner has to still hold a token from the collection. Whoever
+walked the NFT through ten accounts only holds it in the last one, so the
+other nine tickets cannot be collected on.
+
+The rule that follows is worth stating to your community up front, because it
+is a real one: **you must still hold a token from the collection when you
+collect.** Someone who wins and then sells before claiming forfeits, and the
+contract cannot tell that from someone who sold to dodge the gate.

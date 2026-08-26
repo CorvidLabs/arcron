@@ -64,7 +64,7 @@ everyone.
 | `deposit_asset` | `transfer: axfer` | `uint64` | Adds the prize asset to the pot, from anyone; returns the new pot. Rejected when the prize is ALGO. |
 | `draw` | — | `uint64` | Zero-argument, the shape Arcron calls. Opens a draw and returns its id, or `0` when there is nothing to draw for. |
 | `resolve` | — | `address` | Permissionless. Reads the beacon for the committed round, picks the winning ticket, credits the allocation. |
-| `claim` | — | `uint64` | The winner pulls their prize; returns the amount. |
+| `claim` | `gate_asset: asset` | `uint64` | The winner pulls their prize; returns the amount. On a gated draw the winner must still hold a token from the collection, checked exactly as `enter` checks it. Ignored when `gate_creator` is the zero address. |
 | `abandon` | — | `uint64` | Reopens a draw whose beacon window has closed, returning the prize and the unused reservation to the pot. Permissionless, and only available once the outcome is unknowable to everyone. |
 | `allocation_of` | `who: address` | `uint64` | Readonly. What `who` can claim right now. |
 
@@ -124,6 +124,7 @@ everyone.
 | `resolve` without the beacon app referenced by the caller | Fails: the inner call cannot reach an unavailable app |
 | `claim` by an account with no allocation | Fails with "Nothing allocated to you" |
 | `claim` of an asset prize without opting in | Fails with "Opt in to the prize asset first" |
+| `claim` on a gated draw by a winner who no longer holds a collection token | Fails with "Hold a token from the collection". The allocation stays in place, so it becomes collectable again if they reacquire one. This is what makes tickets bought by walking a single token through several accounts worthless: only the account holding it now can collect on any of them. It also means an honest winner who sells before claiming forfeits, which the contract cannot distinguish. |
 | `enter` on a gated draw without holding the asset | Fails with "Hold a token from the collection" |
 | `enter` on a gated draw with another creator's asset | Fails with "That asset is not from the collection" |
 | `deposit_asset` with the wrong asset | Fails with "Wrong asset" |

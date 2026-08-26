@@ -12,10 +12,11 @@ executing. That half lives in scripts/rain_demo.py on LocalNet.
 from collections.abc import Iterator
 
 import pytest
-from algopy import Asset, UInt64, arc4
+from algopy import Asset, UInt64, arc4, op
 from algopy_testing import AlgopyTestContext, algopy_testing_context
 
 from smart_contracts.rain.contract import (
+    ALLOCATION_PREFIX,
     ASSET_OPT_IN_MBR,
     BEACON_WINDOW,
     ALLOCATION_MBR,
@@ -177,7 +178,8 @@ def test_resolve_waits_for_the_beacon_round(context: AlgopyTestContext, rain: Ra
 
 def test_claiming_nothing_is_rejected(context: AlgopyTestContext, rain: Rain) -> None:
     with pytest.raises(AssertionError, match="Nothing allocated to you"):
-        rain.claim()
+        # Ungated draw, so the gate asset is not consulted.
+        rain.claim(context.any.asset())
 
 
 def test_allocation_of_an_unknown_account_is_zero(
@@ -229,6 +231,53 @@ def test_open_entry_ignores_whatever_asset_is_supplied(
     """An ungated draw must not start caring what you hold."""
     unrelated = context.any.asset()
     assert _enter(context, rain, gate_asset=unrelated) == 0
+
+
+def test_a_ticket_is_worthless_once_the_token_has_moved_on(
+    context: AlgopyTestContext, gated: Rain, collection
+) -> None:
+    """The whole point of asking the gate a second time.
+
+    A ticket is a box that never expires, and `enter` only ever asked whether
+    the buyer held a collection token at that moment. Walking one token
+    through ten accounts therefore bought ten permanent tickets, each of which
+    diluted every honest holder, and `examples/community-rain.md` promised one
+    entry per NFT held. Asking again at `claim` does not un-buy those tickets;
+    it makes them uncollectable by anyone who no longer holds the token, which
+    is nine of those ten accounts.
+    """
+    creator, assets = collection
+    # Entered while holding the token, then passed it on: opted in, zero held.
+    passed_through = context.any.account(opted_asset_balances={assets[0].id: UInt64(0)})
+    # A won-but-unclaimed allocation. `resolve` cannot produce one here,
+    # because the beacon call is recorded rather than executed under the
+    # mocks, so the state is written directly.
+    context.ledger.set_box(
+        gated, ALLOCATION_PREFIX + passed_through.bytes, op.itob(UInt64(1_000))
+    )
+
+    with context.txn.create_group(active_txn_overrides={"sender": passed_through}):
+        with pytest.raises(AssertionError, match="Hold a token from the collection"):
+            gated.claim(assets[0])
+
+
+def test_a_winner_still_holding_the_token_can_collect(
+    context: AlgopyTestContext, gated: Rain, collection
+) -> None:
+    """The other half: the check must not lock out an honest winner.
+
+    A gate that refuses everybody is not a gate, and this is the case that
+    proves the refusal above is about the token having moved rather than about
+    the check being unpassable.
+    """
+    creator, assets = collection
+    winner = context.any.account(opted_asset_balances={assets[0].id: UInt64(1)})
+    context.ledger.set_box(
+        gated, ALLOCATION_PREFIX + winner.bytes, op.itob(UInt64(1_000))
+    )
+
+    with context.txn.create_group(active_txn_overrides={"sender": winner}):
+        assert gated.claim(assets[0]) == 1_000
 
 
 def test_a_holder_of_the_collection_may_enter(

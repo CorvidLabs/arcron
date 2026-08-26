@@ -347,10 +347,35 @@ class Rain(ARC4Contract):
         return arc4.Address(winner)
 
     @abimethod()
-    def claim(self) -> UInt64:
-        """Pull your prize. Only the winner can, and only for themselves."""
+    def claim(self, gate_asset: Asset) -> UInt64:
+        """Pull your prize. Only the winner can, and only for themselves.
+
+        `gate_asset` is the token you are still claiming membership with. It
+        is ignored on an ungated draw, and it is checked the same way `enter`
+        checks it on a gated one, because the gate has to be asked twice.
+
+        A ticket is a box that never expires, and `enter` only ever asked
+        whether the buyer held a collection token at that moment. One token
+        walked through ten accounts therefore bought ten permanent tickets and
+        diluted every honest holder. Asking again here does not un-buy those
+        tickets, but only the account actually holding the token now can
+        collect on one, so the other nine stop being worth anything.
+
+        The cost is a real rule, and it should be stated as one rather than
+        discovered: **you must still hold a token from the collection when you
+        collect.** A winner who sells between the draw and the claim forfeits,
+        and that is the same answer whether they sold innocently or to a buyer
+        who was never entitled to the draw at all.
+        """
         allocation = Box(UInt64, key=op.concat(ALLOCATION_PREFIX, Txn.sender.bytes))
         assert allocation, "Nothing allocated to you"
+
+        gate = self.gate_creator.value
+        if gate != Global.zero_address:
+            assert Txn.sender.is_opted_in(gate_asset), "Hold a token from the collection"
+            assert gate_asset.balance(Txn.sender) > 0, "Hold a token from the collection"
+            assert gate_asset.creator == gate, "That asset is not from the collection"
+
         amount = allocation.value
         del allocation.value
         asset = self.prize_asset.value
