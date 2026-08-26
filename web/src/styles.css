@@ -82,8 +82,8 @@ button {
     color 0.15s ease;
 }
 
-/* A link that goes somewhere but reads as a primary action, so the theme
-   dance below is written once rather than per component. */
+/* A link that goes somewhere but reads as a primary action, written once here
+   rather than per component. */
 a.primary {
   display: inline-block;
   padding: 0.45rem 0.95rem;
@@ -94,30 +94,26 @@ a.primary {
   text-decoration: none;
 }
 
+/* The label is the page ground: --paper is off-white on light and near-black
+   on dark, and the accent it sits on flips the other way, so this one
+   declaration is right in both themes.
+
+   There used to be a pair of theme overrides here, painting the label #10201e
+   on dark and restoring var(--paper) under a light media query. They bought
+   nothing (#10201e and the dark --paper, #131619, are the same near-black to
+   any eye) and they cost a great deal. Both were written as
+   ":root[...] button.primary", which is more specific than
+   "button.primary:disabled" below, so they won the cascade on disabled
+   buttons too, and every switched-off Register and Execute drew its label in
+   the page ground, on the page ground: 1.02:1 on dark, 1.05:1 on light.
+   Invisible in both, on every money button in the console. The hardcoded
+   colour was against this repo's rules besides. See web/e2e/console.pw.ts,
+   which now measures this. */
 button.primary,
 a.primary {
   background: var(--sheen);
   border-color: var(--sheen);
   color: var(--paper);
-}
-
-/* Dark text, because in dark mode the primary fill is bright. `:not(:disabled)`
-   is load-bearing: without it this rule outranks `button.primary:disabled`
-   below, which removes the fill but could not remove this colour, leaving
-   #10201e text on the panel at a contrast ratio of 1.02:1. Every disabled
-   Register and Execute button in the console was invisible. */
-:root[data-theme='dark'] button.primary:not(:disabled),
-:root:not([data-theme='light']) button.primary:not(:disabled),
-:root[data-theme='dark'] a.primary,
-:root:not([data-theme='light']) a.primary {
-  color: #10201e;
-}
-
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme='dark']) button.primary:not(:disabled),
-  :root:not([data-theme='dark']) a.primary {
-    color: var(--paper);
-  }
 }
 
 button.primary:hover:not(:disabled),
@@ -158,7 +154,6 @@ button.primary:disabled {
   border-color: var(--hairline);
   color: var(--text-faint);
 }
-
 
 button.ghost:disabled {
   border-color: var(--hairline);

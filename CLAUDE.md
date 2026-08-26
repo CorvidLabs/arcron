@@ -16,6 +16,7 @@ TestNet (app 769891898; 769802474 and 769772891 are superseded, predating the
 - On a real chain: `fledge lanes run local` (ci + the keeper e2e; needs `algokit localnet start`)
 - Endurance: `fledge lanes run endurance` (adds `scripts/keeper_soak.py`, ~3 min)
 - Console: `cd web && bun run ng serve`; `bun test` for its unit tests
+- Console as a rendered page: `fledge run web-render` (needs `fledge run web-render-install` once)
 - Console for hosting: `fledge run web-build-hosted` then `fledge run web-verify-hosted`; stage with `fledge run site-console -- --site <site checkout>`
 - Build: `poetry run python -m smart_contracts build` (always rebuild after contract changes)
 - Test: `poetry run pytest tests/ -q`
@@ -73,6 +74,15 @@ because these are easy to get wrong from memory:
   is its TypeScript twin; both are pinned to the same recorded box.
 - `web/` is styled only with the CorvidLabs design system vendored in
   `web/public/brand/`: no hardcoded colours, no hand-rolled theme toggle.
+- A CSS change to `web/` is not reviewed until `fledge run web-render` has run.
+  Unit tests, four agent reviews and an axe-core pass at zero violations all
+  missed a disabled Register button rendering at 1.02:1, because none of them
+  ask a browser what colour anything ended up. That suite asserts properties of
+  the rendered page (overflow, contrast on computed style in every control
+  state, text size, touch targets, clipping, overlap) against a stubbed chain,
+  and writes screenshots to `web/e2e/__screenshots__/`. What is knowingly
+  unfixed lives in `web/e2e/baseline.json` with the reason; do not add to it to
+  make a run pass.
 - The console's canonical address is `https://corvidlabs.xyz/arcron/console/`,
   and it is a security property rather than a convenience: the contract is
   permissionless, so the address is the only thing separating our front end

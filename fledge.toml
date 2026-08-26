@@ -59,6 +59,28 @@ web-build-hosted = "cd web && bun run ng build --base-href /arcron/console/ --ou
 # it belongs in the lane rather than in somebody's memory.
 web-verify-hosted = "poetry run python -m scripts.publish_console --verify"
 web-serve = "cd web && bun run ng serve"
+# The console as a rendered page, which nothing checked until now.
+#
+# Builds it, serves it, and audits computed style and layout at 390, 768, 1280
+# and 1920, in both themes, across all three routes plus the Keeper board tab
+# and the quarantined state. The chain is stubbed at the HTTP boundary
+# (web/e2e/chain.ts), so this needs no LocalNet, no TestNet and no network: a
+# round number changing is not allowed to fail a rendering test.
+#
+# It asserts properties rather than diffing pixels (overflow, WCAG contrast on
+# computed style in every control state, text size, touch targets, clipping,
+# overlap) and writes screenshots and a ranked report to
+# web/e2e/__screenshots__/. What is already wrong is recorded in
+# web/e2e/baseline.json with the reason it stands.
+#
+# In `local` rather than `ci` on one ground: it needs a Chromium build that
+# `web-render-install` fetches once (~150 MB), and `ci` has to stay runnable
+# from a cold checkout with nothing but poetry and bun, because the fork job
+# runs it on GitHub's shared runners on every pull request. The run itself is
+# about fifteen seconds including the Angular build, so speed is not the reason.
+web-render = "cd web && bunx playwright test"
+# One-time, per machine. Safe to re-run; it no-ops when the browser is present.
+web-render-install = "cd web && bunx playwright install chromium"
 # Require LocalNet running (algokit localnet start):
 smoke-keeper = "poetry run python -m scripts.keeper_e2e --network localnet"
 # Every attack any review ever found, each asserted to be refused by its own
@@ -82,8 +104,8 @@ description = "Full CI pipeline: contracts + console, unit tests, spec drift che
 steps = ["build", "test", "spec", "js-install", "js-test", "web-test", "web-build", "web-build-hosted", "web-verify-hosted"]
 
 [lanes.local]
-description = "CI plus the LocalNet end-to-end test (needs algokit localnet start)"
-steps = ["build", "test", "spec", "js-install", "js-test", "web-test", "web-build", "web-build-hosted", "web-verify-hosted", "smoke-keeper", "smoke-rain", "smoke-community-rain", "smoke-subscription", "smoke-govern", "smoke-multisig", "smoke-clawback", "attacks", "smoke-reference-boundary"]
+description = "CI plus the LocalNet end-to-end test and the console rendering audit (needs algokit localnet start, and web-render-install once)"
+steps = ["build", "test", "spec", "js-install", "js-test", "web-test", "web-build", "web-build-hosted", "web-verify-hosted", "web-render", "smoke-keeper", "smoke-rain", "smoke-community-rain", "smoke-subscription", "smoke-govern", "smoke-multisig", "smoke-clawback", "attacks", "smoke-reference-boundary"]
 
 [lanes.endurance]
 description = "The local lane plus a soak: many consecutive executions, no drift"

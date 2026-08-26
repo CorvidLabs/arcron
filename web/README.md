@@ -19,6 +19,9 @@ tells one apart from a copy.
 bun install
 bun run ng serve      # http://localhost:4200
 bun test              # decoder, ABI and formatting tests
+
+bunx playwright install chromium   # once per machine
+bunx playwright test               # what the page actually renders
 ```
 
 It opens on **LocalNet** and needs `algokit localnet start` plus a deployed
@@ -198,10 +201,21 @@ src/app/core/
   quarantine.ts      whether a linked app is the published one, and what that permits
 src/app/pages/       one component per route: registry, upkeep, register
 src/app/components/  network bar, stat tiles, registry table, keeper board, register form, activity log, trust banner, quarantine panel
+e2e/
+  console.pw.ts      the rendering audit: 5 page states x 4 viewports x 2 themes
+  matrix.ts          which widths, which themes, which pages
+  chain.ts           a keeper network that never moves, stubbed at the HTTP boundary
+  collect.ts         what the browser is asked for: colours, boxes, line boxes
+  audit.ts           measurements in, ranked findings out
+  baseline.ts        what is already wrong, and what counts as worse
+  baseline.json      each accepted finding, its measurement and why it stands
+  report.ts          the consolidated report, and the stale-baseline check
 scripts/
   dev.ts             poke rounds / seed hour- and day-cadence upkeeps on LocalNet
   localnet-txns.ts   drive the transaction builders headlessly against LocalNet
   wallet-kmd-e2e.ts  drive a real transaction through use-wallet, headlessly
+  serve-static.ts    serve a built console with the single-page fallback
+  write-baseline.ts  re-record e2e/baseline.json from the last run
 ```
 
 ## Registering, and what the Test button will not claim
@@ -269,3 +283,52 @@ bun run ng serve
 Then in the browser console: `await axe.run(document)` after loading
 `/axe.min.js`. Check it with the registry populated and an account connected,
 not just the empty state.
+
+axe-core is necessary and nowhere near sufficient. It reported zero violations
+on a console whose disabled Register and Execute buttons were rendering at
+1.02:1, because it does not resolve a CSS custom property through a cascade
+and ask what colour a control ended up. That is what the suite below is for.
+
+## What the page actually renders
+
+`bunx playwright test` (or `fledge run web-render`) builds the console, serves
+it, and audits it in a real browser at 390, 768, 1280 and 1920, in both themes,
+across all three routes plus the Keeper board tab and the quarantined state.
+Forty page states, about fifteen seconds including the build.
+
+It needs nothing running. `e2e/chain.ts` answers algod at the HTTP boundary
+with a fixed registry (one upkeep due, one scheduled, one starved, one
+escalating, one with an ASA bonus), so the round number never moves and a
+TestNet outage cannot turn it red. Everything above that boundary is the real
+code: algosdk, the poll in `ArcronService`, the ARC-4 box decoder, the
+escalation arithmetic.
+
+It asserts **properties**, not pixels. Diffing screenshots produces a suite
+that fails on every legitimate change and teaches people to press "accept";
+these are measurements with a name and a number attached:
+
+| rule | what it measures |
+| --- | --- |
+| `overflow` | `scrollWidth` against `clientWidth`, plus every element reaching past the viewport outside a scroller |
+| `contrast` | the WCAG ratio from `getComputedStyle`, for every interactive control **in every state including disabled**, walking up for the real painted background |
+| `text-size` | every rendered text node below a 14px floor |
+| `touch-target` | controls under 44x44 CSS px at phone widths (WCAG 2.5.5) |
+| `clip` | content cut off by an ancestor that hides its overflow |
+| `overlap` | two controls that both take clicks in the same place |
+| `table-cell` | a `td` the table is not laying out as a cell |
+
+The ratio arithmetic is `src/app/core/contrast.ts`, unit-tested under
+`bun test`, so the browser suite and the unit tests share one implementation.
+
+Screenshots and a ranked `findings.md` land in `e2e/__screenshots__/` on every
+run, passing or failing, and are attached to failures. They are the part that
+catches what no rule thought to look for: the broken last column of the
+registry table was found by looking at one, and only then turned into the
+`table-cell` rule.
+
+**`e2e/baseline.json`** records what is wrong today and is not being fixed yet,
+which is the type scale and the touch targets, each with its measurement and
+the reason it stands. A new finding fails the run, a recorded one getting worse
+fails the run, and a recorded one that stopped happening fails the run too,
+because a licence nothing uses any more is a licence to regress. Regenerate it
+with `bun run scripts/write-baseline.ts`, and only after reading what changed.

@@ -171,7 +171,14 @@ interface Row {
       color: var(--text-faint);
       text-align: center;
     }
-    .scroll { overflow-x: auto; border: 1px solid var(--hairline); border-radius: 3px; }
+    /* The position is not decoration. Without it this box is not the
+       containing block for anything absolutely positioned inside it, and
+       .sr-only is absolutely positioned: the "Actions" column label and the
+       table caption escaped the scroller, landed in the viewport's coordinate
+       space at the far edge of a 1,031px table, and left the whole page
+       scrolling 600px sideways into blank paper at 390 wide. Scrolling the
+       table rather than the page is the entire point of this element. */
+    .scroll { position: relative; overflow-x: auto; border: 1px solid var(--hairline); border-radius: 3px; }
     table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
     th, td { padding: 0.65rem 0.8rem; text-align: left; border-bottom: 1px solid var(--hairline); vertical-align: top; }
     thead th {
@@ -204,7 +211,12 @@ interface Row {
     tr.due { background: color-mix(in srgb, var(--sheen) 8%, transparent); }
     tr.due th[scope='row'] { box-shadow: inset 2px 0 0 var(--sheen); }
     tr.starved td, tr.starved th { color: var(--text-faint); }
-    .actions { display: flex; gap: 0.6rem; align-items: center; justify-content: flex-end; }
+    /* Right-aligned, not a flex container. A td set to display:flex is not a
+       table cell any more: the table wraps it in an anonymous cell, this one
+       came out 11px shorter than its row, and the row's due highlight and
+       bottom border stopped at the column before it. There is one control in
+       here, so text-align does the whole job. */
+    .actions { text-align: right; white-space: nowrap; }
     .legend { margin: 0; color: var(--text-faint); font-size: 0.76rem; display: flex; flex-wrap: wrap; gap: 0.4rem 0.75rem; align-items: center; }
     .chip {
       font-family: var(--font-mono);
