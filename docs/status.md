@@ -80,11 +80,15 @@ Those three are what the alpha tasks below exist to answer.
 The stages and what each one freezes are in [releases.md](releases.md). In
 order:
 
-1. Run the dogfood upkeep unattended, with the notifier watching. This is the
+1. **Close every open review finding.** MainNet does not happen while any of
+   them is outstanding. Four independent reviews produced them, and carrying
+   a known-open one onto a chain with real money is the thing this stage
+   exists to avoid.
+2. Run the dogfood upkeep unattended, with the notifier watching. This is the
    only evidence that accrues while nobody is looking.
-2. Answer the three unknowns above through the alpha tasks.
-3. Close [#95](../../issues/95) and [#96](../../issues/96) so every contract ships.
-4. MainNet, deployed from a 3-of-5 multisig.
+3. Answer the three unknowns above through the alpha tasks.
+4. MainNet, deployed from the 3-of-5 multisig, with the app id unpublished
+   until it is frozen.
 
 The one rule held throughout: **do not freeze, and do not invite outside
 escrow until it has run unattended for a while.** Not for a calendar, but
