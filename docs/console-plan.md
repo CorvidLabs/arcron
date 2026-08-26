@@ -143,14 +143,68 @@ contract is permissionless, anyone can build a front end, and a cloned console
 at another domain is unaffected by anything in our UI. What protects people is
 the canonical URL and app id published where they already trust.
 
+## Decisions taken 2026-08-26, after driving it and after the spikes
+
+These five supersede what the AC files say where the two disagree. Both Grok
+and Kimi flagged that the plan silently re-decided things `docs/ac/` had already
+settled, so each of these names what it replaces.
+
+**The Test button grades; it never shows a flat PASS.** The simulate spike
+(`scripts/spike_simulate_test_button.py`) proved the honest recipe exists and
+proved the naive version causes the bug the button is for: a standalone simulate
+does not pay Arcron's two-slot resource tax, so a target needing seven
+references passes and is then permanently unexecutable. The button certifies
+"your method exists, accepts a call from the keeper app, and stays in budget"
+and grades resource use: none is safe, one to four works today, five to six is
+protocol-only, more than six never runs. Supersedes the plan's earlier
+"simulate it as Arcron" framing, which assumed a binary answer.
+
+**`keeper_bot.py` is fixed to match the protocol's six references.** The
+five-to-six grade above exists only because the bot sends through
+algokit-utils' populator, which caps at four accounts. The spike proved the
+hand-built path takes six. Fixing it deletes a grade from the button's
+vocabulary and makes the reference keeper as capable as the protocol, which
+matters because third-party keepers will be built by copying it.
+
+**The console is published under `corvidlabs.xyz`.** It has had no URL, which
+blocks #92, #93, #94 and the one beta gate item that needs other people. A
+domain we control is also what `docs/console-plan.md` already named as the
+protection against poisoned links, so Pages was the faster answer to the wrong
+question.
+
+**A link naming a non-canonical app is quarantined, not merely flagged.** The
+console knows the app id it ships pointing at. Any other id shows an unmissable
+"this is not the Arcron deployment" state, is never written to `localStorage`,
+and leaves every money button disabled until the visitor explicitly accepts.
+This closes Fable's first finding, which is that the plan makes shareable links
+the growth mechanic on a product whose only known attack is a shareable link.
+Supersedes "the banner warns", which gated nothing.
+
+**The NFD shape is deferred, not adopted.** Driving the console showed the page
+already reads as one continuous surface, and only Registry and Keeper board
+genuinely compete. Build the router and `/u/:id`, keep the two tabs, and leave
+the sidebar and the other three destinations unbudgeted until something needs a
+fourth reading. Supersedes the five-destination shape copied from screenshots,
+which Grok correctly called the plan's most expensive unvalidated assumption.
+Closes the contradiction with `docs/ac/j3-j4.md:451-467`, which specified three
+routes and not five, in the AC files' favour.
+
 ## Build order
 
-1. Default to TestNet. One line, unblocks arrival.
-2. Router and a page per upkeep. Registering ends there.
-3. The register form's honesty: real cost, name what is being paid, read the
-   balance, the three signature fields, the Test button, the attestation.
-4. Run now, and the two live rates.
-5. Search, filters with counts, mine.
+0. Fix `keeper_bot.py`'s reference cap, and pin the boundary on LocalNet.
+   Nothing above it in this list is honest until the bot matches the protocol.
+1. ~~Default to TestNet.~~ Done; `js/src/networks.ts` now mirrors
+   `scripts/network.py`.
+2. Router and a page per upkeep. Registering ends there. Three routes: `/`,
+   `/u/:id`, `/register`.
+3. Quarantine non-canonical app ids, and stop persisting them. Before publish,
+   because publishing is what makes a poisoned link worth sending.
+4. Publish under `corvidlabs.xyz`, and name the URL in the docs.
+5. The register form's honesty: real cost, name what is being paid, read the
+   balance, the signature field, the graded Test button, the attestation.
+6. Run now, and the keeper ping rate, which is the only part of the old item 4
+   that is still missing.
+7. Search, filters with counts, mine.
 
 ## Where the console is today
 

@@ -71,12 +71,27 @@ Proven, and not worth re-proving:
 
 Genuinely unknown, and only answerable by other people:
 
-1. **Can someone get an upkeep running from the docs alone?** Never tested.
-2. **Does it survive unattended time?** The longest continuous run is minutes.
+1. ~~**Can someone get an upkeep running from the docs alone?**~~ **Tested
+   2026-08-26, and the answer was no.** An agent given only `README.md`,
+   `docs/arcron.md` and `docs/integrating.md`, with no access to this
+   repository, did get an upkeep registered, executed by a stranger account and
+   cancelled on LocalNet. It needed twelve guesses and had to disassemble the
+   deployed approval program to recover the ARC-4 selectors, because no
+   document contained them. `next_upkeep_id` was undocumented, which makes
+   `register` a deadlock from raw algosdk. The box tail description was wrong in
+   a way that returns a plausible incorrect value rather than raising. Those are
+   fixed. What the exercise did not settle is whether the docs now work, since
+   they were repaired by reading that agent's report: **rerun it against a fresh
+   agent before treating this as answered.**
+2. **Does it survive unattended time?** The longest continuous run is minutes,
+   and the TestNet dogfood was found dark on 2026-08-26 after roughly a day: the
+   cron keeper was skipping for a missing secret and the local bot was pointed
+   at a superseded app. The clock starts from a keeper running somewhere that is
+   not a laptop.
 3. **Does keeping actually pay?** Nobody has run a keeper for a week and
    looked at whether it was worth the gas.
 
-Those three are what the alpha tasks below exist to answer.
+Those are what the alpha tasks below exist to answer.
 
 ## What happens next
 
