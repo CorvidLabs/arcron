@@ -64,16 +64,25 @@ describe('gradeReferences', () => {
     }
   });
 
-  test('one past that cap is protocol-legal and not serviced by the reference bot', () => {
-    const grade = gradeReferences(REFERENCE_KEEPER_REFERENCES + 1);
-    expect(grade.key).toBe('protocol-only');
-    // The distinction is the whole grade: allowed, and not run by the bot a
-    // third-party keeper is most likely to have copied.
-    expect(grade.detail).toContain(String(REFERENCE_KEEPER_REFERENCES));
+  test('the reference keeper now services everything the protocol allows', () => {
+    // The `protocol-only` grade existed because scripts/keeper_bot.py sent
+    // through algokit-utils' populator, which caps at four account references.
+    // It now attaches them directly, so there is no longer a band that the
+    // protocol permits and the reference keeper refuses. The grade is kept in
+    // the type because a third-party keeper built on a bare `send.execute`
+    // still has the cap, and the band returns the moment these two numbers
+    // differ again.
+    expect(REFERENCE_KEEPER_REFERENCES).toBe(REFERENCES_FOR_TARGET);
+    expect(gradeReferences(REFERENCES_FOR_TARGET).key).toBe('servable');
   });
 
-  test('the last reference the protocol allows is still protocol-only, not unexecutable', () => {
-    expect(gradeReferences(REFERENCES_FOR_TARGET).key).toBe('protocol-only');
+  test('the grade band reappears if the keeper ever falls behind the protocol', () => {
+    // Guards the collapse above: if someone lowers the keeper's cap without
+    // restoring the wording, this fails rather than silently grading a
+    // six-reference target as servable by a bot that will refuse it.
+    const grade = gradeReferences(REFERENCES_FOR_TARGET + 1);
+    expect(grade.key).toBe('unexecutable');
+    expect(grade.detail).toContain(String(REFERENCES_FOR_TARGET));
   });
 
   test('one past the protocol can never execute, and says so', () => {
@@ -123,20 +132,22 @@ describe('readSimulatedCall: what a passing simulation is graded on', () => {
     expect(outcome.counts?.accounts).toBe(1);
   });
 
-  test('four accounts is the last grade the reference keeper will service', () => {
+  test('four accounts is well inside what the reference keeper attaches', () => {
     const outcome = accepted(
       new algosdk.modelsv2.SimulateUnnamedResourcesAccessed({ accounts: ACCOUNTS.slice(0, 4) }),
     );
-    expect(outcome.grade?.count).toBe(REFERENCE_KEEPER_REFERENCES);
+    expect(outcome.grade?.count).toBe(4);
     expect(outcome.grade?.key).toBe('servable');
   });
 
-  test('six accounts fits the protocol and not the reference keeper', () => {
+  test('six accounts is the most a call can touch, and is serviced', () => {
+    // scripts/reference_boundary.py asserts this same boundary on a chain,
+    // through the real bot: six is executed, seven is refused by the AVM.
     const outcome = accepted(
       new algosdk.modelsv2.SimulateUnnamedResourcesAccessed({ accounts: ACCOUNTS.slice(0, 6) }),
     );
     expect(outcome.grade?.count).toBe(6);
-    expect(outcome.grade?.key).toBe('protocol-only');
+    expect(outcome.grade?.key).toBe('servable');
   });
 
   test('seven accounts is graded unexecutable rather than passed', () => {

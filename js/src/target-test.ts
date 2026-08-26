@@ -55,19 +55,22 @@ export const ARCRON_REFERENCES = 2;
 export const REFERENCES_FOR_TARGET = REFERENCE_BUDGET - ARCRON_REFERENCES;
 
 /**
- * What the reference keeper in this repository will actually attach.
+ * How many references the keeper bot in this repository attaches.
  *
- * `scripts/keeper_bot.py` sends through algokit-utils' typed client, whose
- * default resource populator caps at four direct account references per
- * transaction and refuses a fifth with "No more transactions below reference
- * limit". The AVM itself takes six. So five and six are protocol-legal and are
- * not serviced by the bot a third-party keeper is most likely to have copied.
+ * This was 4 until 2026-08-26, because `scripts/keeper_bot.py` sent through
+ * algokit-utils' typed client and its resource populator caps at four direct
+ * account references, refusing a fifth with "No more transactions below
+ * reference limit". The AVM takes six once Arcron's own box and target app are
+ * paid for, so five and six were protocol-legal and not serviced by the bot a
+ * third-party keeper was most likely to have copied.
  *
- * Raising the bot's cap is build-order item 0 in `docs/console-plan.md`. When
- * it lands, this constant is the one line to move, and `gradeReferences` loses
- * its middle grade on its own.
+ * `keeper_bot.py` now resolves and attaches its references directly and turns
+ * the populator off, so the reference keeper matches the protocol and the
+ * middle grade collapses on its own. `scripts/reference_boundary.py` asserts
+ * both halves on every run of the `local` lane: six is serviced, seven is
+ * refused by the AVM.
  */
-export const REFERENCE_KEEPER_REFERENCES = 4;
+export const REFERENCE_KEEPER_REFERENCES = 6;
 
 /** Where a creator is sent when a target cannot be serviced at all. */
 export const PULL_PATTERN_URL =
