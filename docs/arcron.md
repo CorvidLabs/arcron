@@ -233,14 +233,17 @@ an external entry point that anyone may call once an upkeep is due.
 
 | | |
 |---|---|
-| Keeper app | `769891898` (TestNet) |
-| Upkeeps registered | none; the e2e cancels everything it creates |
-| Always-on keeper | **none running** |
-| Last executions | rounds 66629036 to 66629138, from the deployment verification |
+| Keeper app | `769891898` (TestNet, alpha-3) |
+| Upkeeps registered | ten, including one registered from the console by a wallet |
+| Always-on keeper | **running**: `.github/workflows/keeper-bot.yml`, every thirty minutes |
+| Executions | 44 and counting, the most recent paid to a keeper for real |
 
-Stated plainly because it would otherwise be inferred wrongly: an upkeep
-registered against this app today would sit due until somebody started a
-keeper. `deploy/` makes that a `docker compose up -d`, but nobody has.
+This table said "none" and "none running" for a day after both stopped being
+true, which is worth more than the correction. Two independent bugs kept it
+accurate by accident: the cron keeper was green roughly forty-eight times a day
+while skipping for a missing secret, and the local keeper was servicing a
+superseded app. Nothing was watching either. `scripts/verify_release.py` now
+runs daily, and a `snapshot` task exists for exactly this table.
 
 ### Funding depth is not liveness
 
