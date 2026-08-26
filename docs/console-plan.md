@@ -324,3 +324,17 @@ Two changes follow, and neither is in the build order yet:
 
 18 is deliberately being left starved rather than topped up. It is the only
 live example of this on the network and it costs nothing to keep as evidence.
+
+### `ng serve` fixed
+
+`@corvidlabs/arcron` publishes raw TypeScript through its `exports` map
+(`js/package.json`), and Vite's dependency optimizer treated it as a
+prebundlable JS dependency, serving `js/src/networks.ts` untranspiled. The fix
+is one option on the dev-server target, not the build target:
+
+```json
+"serve": { "options": { "prebundle": { "exclude": ["@corvidlabs/arcron"] } } }
+```
+
+Excluded from prebundling, the workspace package is compiled as source like the
+rest of the app. `ng build` never needed this, which is why CI never saw it.
