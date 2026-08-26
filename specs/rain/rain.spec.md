@@ -160,6 +160,22 @@ everyone.
 | `scripts/rain_demo.py` | Drives draws with a real keeper on LocalNet |
 | `smart_contracts/beacon_stub/contract.py` | Stands in for the beacon where none exists |
 
+## Deployment requirement: fund the app account's base minimum balance
+
+This contract pays out by inner payment, and every Algorand account must hold
+the base account minimum balance (100,000 microalgo) before it can send
+anything. Nothing in the contract reserves it, so the deployer must send it
+once, before the first payout is owed.
+
+Skipping it does not fail at deploy or at deposit. It fails at the moment the
+last party tries to leave, after the contract has already booked what it owes
+them, and it fails as a reverted inner payment rather than as anything that
+names the cause.
+
+`deadman` reserves this out of its deposit instead, because it has exactly one
+depositor. A contract with many cannot do that without deciding which one pays
+for the app and never gets it back, so this one asks the deployer.
+
 ## Change Log
 
 | Date | Author | Change |

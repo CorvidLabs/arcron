@@ -300,7 +300,7 @@ def test_show_names_every_permanent_field_of_a_create(configured, tmp_path) -> N
     assert "global state  2 uints" in described
     assert "local state   0 uints" in described
     assert "combined sha256" in described
-    assert "cannot be changed by `update`" in described
+    assert "cannot be changed afterwards" in described
 
 
 def test_sign_refuses_programs_that_are_not_this_tree(configured, tmp_path) -> None:
@@ -381,3 +381,52 @@ def test_an_asset_close_is_refused_like_a_rekey(configured, tmp_path) -> None:
     ))
     reasons = _refusals(path, app_id=0, allow_account_txn=True)
     assert any("CLOSES an asset holding" in r for r in reasons), reasons
+
+
+def test_an_update_that_also_resizes_the_app_is_described_and_refused(
+    configured, tmp_path
+) -> None:
+    """The create swap, moved to update, where holders were told it was impossible.
+
+    `ApplicationUpdateTxn` accepts `extra_pages` and `global_schema`. A file
+    carrying honest bytecode still passes the digest check, so without this
+    the resize rides along silently under a matching hash.
+    """
+    from algosdk import transaction
+
+    configured(3, SIGNERS)
+    txn = transaction.ApplicationUpdateTxn(
+        sender=ms.address(), sp=_params(), index=769891898,
+        approval_program=b"\x0a\x81\x01", clear_program=b"\x0a\x81\x01",
+        extra_pages=2,
+    )
+    path = _write(tmp_path, txn)
+    described = "\n".join(ms.describe_transaction(path))
+    assert "ALSO RESIZES THE APPLICATION" in described
+    assert any("extra program pages" in r for r in _refusals(path)), _refusals(path)
+
+
+def test_an_honest_update_sets_neither_and_passes(configured, tmp_path) -> None:
+    from algosdk import transaction
+
+    configured(3, SIGNERS)
+    path = _write(tmp_path, transaction.ApplicationUpdateTxn(
+        sender=ms.address(), sp=_params(), index=769891898,
+        approval_program=b"\x0a\x81\x01", clear_program=b"\x0a\x81\x01",
+    ))
+    assert _refusals(path) == [], _refusals(path)
+
+
+def test_load_network_itself_enforces_the_mainnet_gate(monkeypatch) -> None:
+    """Pinned at the call site, not just on the helper.
+
+    The helper had a test and the call site did not, so deleting the one line
+    in `load_network` that invokes it would have kept the suite green.
+    """
+    from scripts import network as net
+
+    monkeypatch.setenv("ARCRON_ALLOW_MAINNET", "1")
+    monkeypatch.delenv(ms.ADDRESSES_VAR, raising=False)
+    monkeypatch.delenv(ms.THRESHOLD_VAR, raising=False)
+    with pytest.raises(RuntimeError, match="without a configured multisig"):
+        net.load_network(net.MAINNET)

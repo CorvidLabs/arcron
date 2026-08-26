@@ -45,6 +45,9 @@ web-build-hosted = "cd web && bun run ng build --base-href /arcron/console/ --ou
 web-serve = "cd web && bun run ng serve"
 # Require LocalNet running (algokit localnet start):
 smoke-keeper = "poetry run python -m scripts.keeper_e2e --network localnet"
+# Every attack any review ever found, each asserted to be refused by its own
+# guard rather than by anything incidental. See scripts/attacks.py.
+attacks = "poetry run python -m scripts.attacks --network localnet"
 smoke-embargo = "poetry run python -m scripts.embargo_demo --network localnet"
 smoke-rain = "poetry run python -m scripts.rain_demo --network localnet"
 smoke-community-rain = "poetry run python -m scripts.community_rain_demo --network localnet"
@@ -63,7 +66,7 @@ steps = ["build", "test", "spec", "js-install", "js-test", "web-test", "web-buil
 
 [lanes.local]
 description = "CI plus the LocalNet end-to-end test (needs algokit localnet start)"
-steps = ["build", "test", "spec", "js-install", "js-test", "web-test", "web-build", "smoke-keeper", "smoke-embargo", "smoke-rain", "smoke-community-rain", "smoke-deadman", "smoke-watchdog", "smoke-treasury", "smoke-subscription", "smoke-govern", "smoke-multisig", "smoke-clawback"]
+steps = ["build", "test", "spec", "js-install", "js-test", "web-test", "web-build", "smoke-keeper", "smoke-embargo", "smoke-rain", "smoke-community-rain", "smoke-deadman", "smoke-watchdog", "smoke-treasury", "smoke-subscription", "smoke-govern", "smoke-multisig", "smoke-clawback", "attacks"]
 
 [lanes.endurance]
 description = "The local lane plus a soak: many consecutive executions, no drift"
