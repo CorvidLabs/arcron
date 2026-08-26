@@ -150,6 +150,15 @@ class Subscription(ARC4Contract):
         one already in progress.
         """
         assert deposit.receiver == Global.current_application_address, "Pay this app"
+        # A rekey hands control of the sender's account to whoever the group
+        # names, and a close sweeps it empty to whoever the group names.
+        # Both harm only the sender, so the contract loses nothing by
+        # refusing them. The exposure is a front end putting either into a
+        # group a user signs without reading it closely.
+        assert deposit.rekey_to == Global.zero_address, "Deposit must not rekey"
+        assert (
+            deposit.close_remainder_to == Global.zero_address
+        ), "Deposit must not close"
         assert deposit.sender == Txn.sender, "Deposit must come from the caller"
 
         box = Box(Subscriber, key=op.concat(BOX_PREFIX, Txn.sender.bytes))

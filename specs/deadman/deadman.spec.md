@@ -63,6 +63,10 @@ sees only what the keeper's own transaction makes available. Firing therefore
 4. Only the owner can check in; only the beneficiary can claim; anyone at all can sweep.
 5. Escrow leaves only to the beneficiary, only after firing, and only into a transaction they sent themselves.
 6. The beneficiary cannot be the owner, and the interval cannot be shorter than `MIN_INTERVAL_ROUNDS`.
+7. `arm`'s deposit is checked for `rekey_to` and `close_remainder_to`, both of
+   which must be the zero address. Neither harms the contract, since a rekey
+   or a close only ever harms the sender; this protects an owner whose front
+   end slipped either into the group they signed.
 
 ## Behavioral Examples
 
@@ -91,6 +95,8 @@ sees only what the keeper's own transaction makes available. Firing therefore
 | `arm` by a non-owner, or twice | Fails with "Only the owner can arm it" / "Already armed" |
 | `arm` with an interval below the minimum | Fails with "Interval below minimum" |
 | `arm` with the owner as beneficiary | Fails with "Beneficiary must not be the owner" |
+| `arm`'s deposit carries a rekey | Fails with "Deposit must not rekey" |
+| `arm`'s deposit carries a close-remainder-to | Fails with "Deposit must not close" |
 | `arm` with a deposit that does not exceed the app minimum balance | Fails with "Deposit must cover the app minimum balance and leave something to release". `arm` reserves `APP_BASE_MBR` out of the deposit and escrows only the remainder, because `claim` pays the escrow out by inner payment and an account cannot send itself below its own floor. Booking the whole deposit would let the switch fire, promise the beneficiary the full amount, and then fail every claim forever, on a contract with no update or delete path. |
 | `check_in` by anyone but the owner | Fails with "Only the owner can check in" |
 | `check_in` after firing | Fails with "Already fired" |
@@ -137,4 +143,5 @@ inert, so every further sweep pays a keeper to do nothing.
 
 | Date | Author | Change |
 |------|--------|--------|
+| 2026-08-25 | CorvidLabs | #102: `arm` now asserts `rekey_to` and `close_remainder_to` are the zero address on its deposit. Not a struct change; a mechanical hygiene sweep across every contract that accepts a gtxn. |
 | 2026-08-24 | CorvidLabs | Initial dead man's switch (issue #20). Fires by allocation rather than payment, because a scheduled call cannot reach the beneficiary's account. |

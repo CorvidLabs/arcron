@@ -39,11 +39,14 @@ def _schedule(
     content: bytes = CONTENT,
     release_round: int = RELEASE_ROUND,
     mbr: int | None = None,
+    payment_fields: dict | None = None,
 ) -> int:
     app_address = context.ledger.get_app(embargo).address
     if mbr is None:
         mbr = BOX_MBR_FIXED + 400 * len(content)
-    payment = context.any.txn.payment(receiver=app_address, amount=mbr)
+    payment = context.any.txn.payment(
+        receiver=app_address, amount=mbr, **(payment_fields or {})
+    )
     return embargo.schedule(payment, arc4.DynamicBytes(content), UInt64(release_round))
 
 
@@ -198,3 +201,21 @@ def test_the_author_has_no_lever_at_all(context: AlgopyTestContext, embargo: Emb
     # the author can neither bring it forward nor prevent it.
     with pytest.raises(AssertionError, match="Embargo has not lifted"):
         embargo.publish()
+
+
+# --- #102: rekey and close must not reach an escrowing transaction ----
+#
+# Neither harms the contract; both harm only the sender who signed them. What
+# this guards against is a malicious front end slipping either into a group a
+# user signs without reading closely.
+
+def test_schedule_rejects_a_rekeyed_mbr_payment(context: AlgopyTestContext, embargo: Embargo) -> None:
+    with pytest.raises(AssertionError, match="MBR payment must not rekey"):
+        _schedule(context, embargo, payment_fields={"rekey_to": context.any.account()})
+
+
+def test_schedule_rejects_a_closing_mbr_payment(context: AlgopyTestContext, embargo: Embargo) -> None:
+    with pytest.raises(AssertionError, match="MBR payment must not close"):
+        _schedule(
+            context, embargo, payment_fields={"close_remainder_to": context.any.account()}
+        )

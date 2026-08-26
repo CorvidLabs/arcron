@@ -169,6 +169,15 @@ class Rain(ARC4Contract):
         assert (
             mbr_payment.receiver == Global.current_application_address
         ), "MBR payment must fund the app account"
+        # A rekey hands control of the sender's account to whoever the group
+        # names, and a close sweeps it empty to whoever the group names.
+        # Both harm only the sender, so the contract loses nothing by
+        # refusing them. The exposure is a front end putting either into a
+        # group a user signs without reading it closely.
+        assert mbr_payment.rekey_to == Global.zero_address, "MBR payment must not rekey"
+        assert (
+            mbr_payment.close_remainder_to == Global.zero_address
+        ), "MBR payment must not close"
         assert mbr_payment.amount >= ASSET_OPT_IN_MBR, "MBR payment too small"
         itxn.AssetTransfer(
             xfer_asset=Asset(asset),
@@ -191,6 +200,10 @@ class Rain(ARC4Contract):
         assert (
             mbr_payment.receiver == Global.current_application_address
         ), "MBR payment must fund the app account"
+        assert mbr_payment.rekey_to == Global.zero_address, "MBR payment must not rekey"
+        assert (
+            mbr_payment.close_remainder_to == Global.zero_address
+        ), "MBR payment must not close"
         assert mbr_payment.amount >= TICKET_MBR, "MBR payment too small"
 
         # The entrant supplies the asset they are claiming membership with,
@@ -219,6 +232,10 @@ class Rain(ARC4Contract):
         assert (
             payment.receiver == Global.current_application_address
         ), "Deposit must go to the app account"
+        assert payment.rekey_to == Global.zero_address, "Deposit must not rekey"
+        assert (
+            payment.close_remainder_to == Global.zero_address
+        ), "Deposit must not close"
         assert payment.amount > 0, "Amount must be positive"
         self.pot.value += payment.amount
         return self.pot.value
@@ -236,6 +253,10 @@ class Rain(ARC4Contract):
         assert (
             transfer.asset_receiver == Global.current_application_address
         ), "Deposit must go to the app account"
+        assert transfer.rekey_to == Global.zero_address, "Deposit must not rekey"
+        assert (
+            transfer.asset_close_to == Global.zero_address
+        ), "Deposit must not close the asset"
         assert transfer.xfer_asset.id == asset, "Wrong asset"
         assert transfer.asset_amount > 0, "Amount must be positive"
         self.pot.value += transfer.asset_amount

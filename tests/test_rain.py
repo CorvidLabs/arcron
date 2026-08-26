@@ -49,16 +49,23 @@ def _enter(
     rain: Rain,
     amount: int = TICKET_MBR,
     gate_asset=None,
+    payment_fields: dict | None = None,
 ) -> int:
     payment = context.any.txn.payment(
-        receiver=context.ledger.get_app(rain).address, amount=amount
+        receiver=context.ledger.get_app(rain).address,
+        amount=amount,
+        **(payment_fields or {}),
     )
     return rain.enter(payment, gate_asset if gate_asset is not None else Asset(0))
 
 
-def _deposit(context: AlgopyTestContext, rain: Rain, amount: int) -> int:
+def _deposit(
+    context: AlgopyTestContext, rain: Rain, amount: int, *, payment_fields: dict | None = None
+) -> int:
     payment = context.any.txn.payment(
-        receiver=context.ledger.get_app(rain).address, amount=amount
+        receiver=context.ledger.get_app(rain).address,
+        amount=amount,
+        **(payment_fields or {}),
     )
     return rain.deposit(payment)
 
@@ -622,3 +629,90 @@ def test_tick_with_refuses_an_increment_that_could_wedge_the_counter(
     assert int(pulse.tick_with(UInt64(MAX_BEATS_PER_TICK), arc4.String("ok"))) == MAX_BEATS_PER_TICK
     with pytest.raises(Exception, match="Too many beats"):
         pulse.tick_with(UInt64(MAX_BEATS_PER_TICK + 1), arc4.String("no"))
+
+
+# --- #102: rekey and close must not reach an escrowing transaction ----
+#
+# Neither harms the contract; both harm only the sender who signed them. What
+# this guards against is a malicious front end slipping either into a group a
+# user signs without reading closely.
+
+def test_enter_rejects_a_rekeyed_mbr_payment(context: AlgopyTestContext, rain: Rain) -> None:
+    with pytest.raises(AssertionError, match="MBR payment must not rekey"):
+        _enter(context, rain, payment_fields={"rekey_to": context.any.account()})
+
+
+def test_enter_rejects_a_closing_mbr_payment(context: AlgopyTestContext, rain: Rain) -> None:
+    with pytest.raises(AssertionError, match="MBR payment must not close"):
+        _enter(context, rain, payment_fields={"close_remainder_to": context.any.account()})
+
+
+def test_deposit_rejects_a_rekeyed_payment(context: AlgopyTestContext, rain: Rain) -> None:
+    with pytest.raises(AssertionError, match="Deposit must not rekey"):
+        _deposit(context, rain, 1_000, payment_fields={"rekey_to": context.any.account()})
+
+
+def test_deposit_rejects_a_closing_payment(context: AlgopyTestContext, rain: Rain) -> None:
+    with pytest.raises(AssertionError, match="Deposit must not close"):
+        _deposit(
+            context, rain, 1_000,
+            payment_fields={"close_remainder_to": context.any.account()},
+        )
+
+
+def test_deposit_asset_rejects_a_rekeyed_transfer(context: AlgopyTestContext) -> None:
+    asset = context.any.asset()
+    context.ledger.patch_global_fields(round=UInt64(START_ROUND))
+    contract = Rain()
+    contract.configure(UInt64(BEACON_APP), arc4.Address(), asset.id)
+    transfer = context.any.txn.asset_transfer(
+        xfer_asset=asset,
+        asset_receiver=context.ledger.get_app(contract).address,
+        asset_amount=250,
+        rekey_to=context.any.account(),
+    )
+    with pytest.raises(AssertionError, match="Deposit must not rekey"):
+        contract.deposit_asset(transfer)
+
+
+def test_deposit_asset_rejects_a_closing_transfer(context: AlgopyTestContext) -> None:
+    asset = context.any.asset()
+    context.ledger.patch_global_fields(round=UInt64(START_ROUND))
+    contract = Rain()
+    contract.configure(UInt64(BEACON_APP), arc4.Address(), asset.id)
+    transfer = context.any.txn.asset_transfer(
+        xfer_asset=asset,
+        asset_receiver=context.ledger.get_app(contract).address,
+        asset_amount=250,
+        asset_close_to=context.any.account(),
+    )
+    with pytest.raises(AssertionError, match="Deposit must not close the asset"):
+        contract.deposit_asset(transfer)
+
+
+def test_opt_in_prize_asset_rejects_a_rekeyed_mbr_payment(context: AlgopyTestContext) -> None:
+    context.ledger.patch_global_fields(round=UInt64(START_ROUND))
+    clean = context.any.asset()
+    contract = Rain()
+    contract.configure(UInt64(BEACON_APP), arc4.Address(), clean.id)
+    payment = context.any.txn.payment(
+        receiver=context.ledger.get_app(contract).address,
+        amount=ASSET_OPT_IN_MBR,
+        rekey_to=context.any.account(),
+    )
+    with pytest.raises(AssertionError, match="MBR payment must not rekey"):
+        contract.opt_in_prize_asset(clean, payment)
+
+
+def test_opt_in_prize_asset_rejects_a_closing_mbr_payment(context: AlgopyTestContext) -> None:
+    context.ledger.patch_global_fields(round=UInt64(START_ROUND))
+    clean = context.any.asset()
+    contract = Rain()
+    contract.configure(UInt64(BEACON_APP), arc4.Address(), clean.id)
+    payment = context.any.txn.payment(
+        receiver=context.ledger.get_app(contract).address,
+        amount=ASSET_OPT_IN_MBR,
+        close_remainder_to=context.any.account(),
+    )
+    with pytest.raises(AssertionError, match="MBR payment must not close"):
+        contract.opt_in_prize_asset(clean, payment)

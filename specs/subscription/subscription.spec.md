@@ -97,6 +97,10 @@ own box is available by construction.
    schedule by leaving while periods are owed.
 10. Box MBR is charged to the subscriber's first deposit and returned on
    withdrawal, so the app account never subsidises a subscription.
+11. `subscribe`'s deposit is checked for `rekey_to` and `close_remainder_to`,
+   both of which must be the zero address. Neither harms the contract, since
+   a rekey or a close only ever harms the sender; this protects a subscriber
+   whose front end slipped either into the group they signed.
 
 ## Why billing is split from charging
 
@@ -155,6 +159,8 @@ subject, so the provider can run it for anybody.
 | `withdraw` without a subscription | Fails with "Not subscribed" |
 | `claim` by anyone but the provider | Fails with "Only the provider may claim" |
 | `claim` with nothing accrued | Fails with "Nothing accrued" |
+| `subscribe`'s deposit carries a rekey | Fails with "Deposit must not rekey" |
+| `subscribe`'s deposit carries a close-remainder-to | Fails with "Deposit must not close" |
 
 ## Dependencies
 
@@ -183,3 +189,4 @@ lapsed, and the provider's claim. `fledge run smoke-subscription`.
 | Version | Change |
 |---------|--------|
 | 1 | Initial contract, demo and spec. |
+| 1 | #102: `subscribe` now asserts `rekey_to` and `close_remainder_to` are the zero address on its deposit. Not a struct change; a mechanical hygiene sweep across every contract that accepts a gtxn. |

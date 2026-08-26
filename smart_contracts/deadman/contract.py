@@ -84,6 +84,15 @@ class DeadMan(ARC4Contract):
         assert (
             deposit.receiver == Global.current_application_address
         ), "Deposit must go to the app account"
+        # A rekey hands control of the sender's account to whoever the group
+        # names, and a close sweeps it empty to whoever the group names.
+        # Both harm only the sender, so the contract loses nothing by
+        # refusing them. The exposure is a front end putting either into a
+        # group a user signs without reading it closely.
+        assert deposit.rekey_to == Global.zero_address, "Deposit must not rekey"
+        assert (
+            deposit.close_remainder_to == Global.zero_address
+        ), "Deposit must not close"
         assert (
             deposit.amount > APP_BASE_MBR
         ), "Deposit must cover the app minimum balance and leave something to release"

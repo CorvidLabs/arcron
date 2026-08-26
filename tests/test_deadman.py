@@ -48,9 +48,12 @@ def _arm(
     *,
     amount: int = DEPOSIT,
     interval: int = INTERVAL,
+    payment_fields: dict | None = None,
 ) -> int:
     payment = context.any.txn.payment(
-        receiver=context.ledger.get_app(switch).address, amount=amount
+        receiver=context.ledger.get_app(switch).address,
+        amount=amount,
+        **(payment_fields or {}),
     )
     return switch.arm(payment, arc4.Address(beneficiary), UInt64(interval))
 
@@ -236,3 +239,25 @@ def test_rounds_remaining_counts_down_then_reads_zero(context, switch, beneficia
     assert switch.rounds_remaining() == 0
     switch.sweep()
     assert switch.rounds_remaining() == 0
+
+
+# --- #102: rekey and close must not reach an escrowing transaction ----
+#
+# Neither harms the contract; both harm only the sender who signed them. What
+# this guards against is a malicious front end slipping either into a group a
+# user signs without reading closely.
+
+def test_arm_rejects_a_rekeyed_deposit(context, switch, beneficiary) -> None:
+    with pytest.raises(AssertionError, match="Deposit must not rekey"):
+        _arm(
+            context, switch, beneficiary,
+            payment_fields={"rekey_to": context.any.account()},
+        )
+
+
+def test_arm_rejects_a_closing_deposit(context, switch, beneficiary) -> None:
+    with pytest.raises(AssertionError, match="Deposit must not close"):
+        _arm(
+            context, switch, beneficiary,
+            payment_fields={"close_remainder_to": context.any.account()},
+        )

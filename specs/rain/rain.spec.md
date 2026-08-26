@@ -90,6 +90,12 @@ everyone.
     the opt-in, so an unchecked draw cannot be funded.
 14. The prize asset can never buy a ticket, even when the same account minted both it and the collection, which is the natural thing for a project to do.
 15. Deposits arriving after a draw opens belong to the next draw.
+16. Every payment and asset transfer the contract accepts (`opt_in_prize_asset`,
+    `enter`, `deposit`, `deposit_asset`) is checked for `rekey_to`,
+    `close_remainder_to` and `asset_close_to`, all of which must be the zero
+    address. Neither harms the contract, since a rekey or a close only ever
+    harms the sender; this protects an entrant or depositor whose front end
+    slipped either into the group they signed.
 
 ## Behavioral Examples
 
@@ -119,6 +125,10 @@ everyone.
 | `enter` with an MBR payment below the ticket box cost | Fails with "MBR payment too small" |
 | `enter` or `deposit` paying anyone but the app account | Fails with "must fund the app account" / "must go to the app account" |
 | `deposit` of zero | Fails with "Amount must be positive" |
+| Any accepted payment carries a rekey | Fails with "... must not rekey" |
+| Any accepted payment carries a close-remainder-to | Fails with "... must not close" |
+| `deposit_asset` carries a rekey | Fails with "Deposit must not rekey" |
+| `deposit_asset` carries an asset-close-to | Fails with "Deposit must not close the asset" |
 | `resolve` with no draw open | Fails with "No draw is open" |
 | `resolve` at or before the committed round | Fails with "Beacon round has not passed" |
 | `resolve` without the beacon app referenced by the caller | Fails: the inner call cannot reach an unavailable app |
@@ -154,4 +164,5 @@ everyone.
 
 | Date | Author | Change |
 |------|--------|--------|
+| 2026-08-25 | CorvidLabs | #102: `opt_in_prize_asset`, `enter`, `deposit` and `deposit_asset` now assert `rekey_to`, `close_remainder_to` and `asset_close_to` are the zero address on every payment or asset transfer they accept. Not a struct change; a mechanical hygiene sweep across every contract that accepts a gtxn. |
 | 2026-08-24 | CorvidLabs | Initial scheduled draw (issue #25). Two-phase by necessity: `draw` is accounting-only because an Arcron inner call cannot reach the beacon, so `resolve` is sent by a participant who can. |
