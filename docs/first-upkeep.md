@@ -194,3 +194,35 @@ uptime clock.
 - **An execution fails.** Losing a race to another keeper costs nothing, and the
   chain rejects a failing transaction at validation rather than including it.
   That is ordinary and not an error.
+
+## It has been done once, on 2026-08-26
+
+Upkeep **72** on app `769891898`, registered from the console by a wallet
+connected through Pera, creator
+`3NQY7ZHZO6TDNGQODM4MTLGEJSQ3DBO7ZGJUXFXRUDN7H4J6FH2ODTUVT4`. Target
+`769891902`, `tick()uint64`, SKIP_AHEAD, 215 rounds, five runs funded.
+
+The first write to the Arcron contract from the console in the project's
+history. What it settled:
+
+**The cost shown is the cost charged.** The tile quoted 0.0851 ALGO and said the
+account would have 10.0103 spendable afterwards. The wallet was asked to approve
+five payments summing to exactly 0.0851, and the account's spendable balance on
+chain afterwards was 10.010300. Both halves correct to the microalgo. This
+figure was wrong the same morning, quoting 0.0741 against a real 0.0771 debit,
+so it is not a formality.
+
+**The group is the shape the documentation claims.** Five charges: 0.0621 box
+MBR, 0.02 escrow, and three transaction fees of 0.001. That is
+`[mbr_payment, funding_payment, app call]`, each carrying its own fee. The three
+preconditions of `register` added to `arcron.md` the same day, that both
+payments go to the keeper application's own account, that group order, and the
+box reference for `b"u" + itob(next_upkeep_id)`, are now observed rather than
+asserted.
+
+**The balance read works against a real wallet.** `payer.service.ts` had never
+seen one. It read the spendable balance correctly and computed the remainder
+correctly.
+
+What this does not settle: `execute`, `cancel` and `top_up` from the console
+remain unexercised by a wallet.
