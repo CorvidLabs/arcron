@@ -44,6 +44,22 @@ export type ConnectionStatus = 'connecting' | 'ready' | 'error';
  * which has no update path at all, so absent reads as frozen rather than
  * unknown.
  */
+/**
+ * Whether it is safe to put money on screen: the read succeeded, the node is
+ * the chain it claims to be, and there is an app to talk to.
+ *
+ * Exported so its test binds to the predicate the console actually runs. A
+ * test that redeclares this passes with the guard deleted, which is how the
+ * unguarded state got shipped the first time.
+ */
+export function canCommitMoney(state: {
+  status: string;
+  genesisMatches: boolean | null;
+  appId: number | null;
+}): boolean {
+  return state.status === 'ready' && state.genesisMatches !== false && state.appId !== null;
+}
+
 export function isFrozen(
   globalState: readonly { key: Uint8Array; value: { uint?: number | bigint } }[],
 ): boolean {
@@ -148,11 +164,12 @@ export class ArcronService {
    * what it takes to notice that a red page and a working button are not
    * contradictory to the code.
    */
-  readonly canWrite = computed(
-    () =>
-      this.status() === 'ready' &&
-      this.genesisMatches() !== false &&
-      this.appId() !== null,
+  readonly canWrite = computed(() =>
+    canCommitMoney({
+      status: this.status(),
+      genesisMatches: this.genesisMatches(),
+      appId: this.appId(),
+    }),
   );
   readonly totalEscrowed = computed(() =>
     this.upkeeps().reduce((total, upkeep) => total + upkeep.balance, 0n),

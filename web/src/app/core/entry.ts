@@ -20,7 +20,7 @@ import { DEFAULT_NETWORK, isNetworkKey, NETWORKS, type NetworkKey } from '@corvi
 
 /** Query parameter naming the chain: `?network=testnet`. */
 export const NETWORK_PARAM = 'network';
-/** Query parameter naming the keeper app: `?app=769823086`. */
+/** Query parameter naming the keeper app: `?app=769891898`. */
 export const APP_PARAM = 'app';
 
 /** Where the console opens: a chain, and a registry on it if there is one. */
