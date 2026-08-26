@@ -1137,3 +1137,30 @@ def test_an_execution_is_not_blocked_by_a_bonus_the_app_cannot_send(
     upkeep = _read_upkeep(context, keeper, int(upkeep_id))
     assert upkeep.times_executed == 1, "the execution still happened"
     assert _fee_paid(context, keeper) == MIN_UPKEEP_FEE, "and the ALGO fee was paid"
+
+
+def test_register_refuses_payments_from_anyone_but_the_caller(
+    context: AlgopyTestContext, keeper: Keeper, pulse: Pulse
+) -> None:
+    """The upkeep's creator is the app call's sender, and cancel pays them.
+
+    Found on a real chain by a reviewer, not by reading. A victim signs both
+    payments to the genuine app account of the genuine app id, an attacker
+    signs the app call, and the attacker owns the upkeep and cancels it for
+    the escrow plus the released box MBR. Receiver, amount and app id all
+    check out; the sender of the app call is the only thing that differs, and
+    it is the one field no wallet highlights and nothing here told anyone to
+    read.
+
+    This is the threat model Invariant 20 already adopted for rekey and close,
+    one step further and strictly easier: a wallet renders a rekey with a
+    dedicated warning, and renders a differently signed group member as an
+    ordinary line.
+    """
+    stranger = context.any.account()
+    for field in ("mbr_payment_fields", "funding_payment_fields"):
+        with pytest.raises(AssertionError, match="must come from the caller"):
+            _register(
+                context, keeper, pulse, _selector("tick()uint64"),
+                **{field: {"sender": stranger}},
+            )

@@ -198,6 +198,21 @@ class Keeper(ARC4Contract):
         # Both harm only the sender, so the contract loses nothing by
         # refusing them. The exposure is a front end putting either into a
         # group a user signs without reading it closely.
+        # The upkeep's creator is `Txn.sender`, and `cancel` pays the creator.
+        # Without this, those are two different accounts and nothing requires
+        # them to match: a victim signs both payments to the genuine app
+        # account of the genuine app id, an attacker signs the app call, and
+        # the attacker owns the upkeep and cancels it for the escrow plus the
+        # released box MBR. Every check anyone is taught to make passes,
+        # because the receiver and the app id really are the right ones. The
+        # sender of the app call is the only thing that differs, and it is the
+        # one thing no wallet highlights. `subscription.subscribe` has bound
+        # its payer since it was written; the contract holding the money did
+        # not.
+        assert mbr_payment.sender == Txn.sender, "MBR payment must come from the caller"
+        assert (
+            funding_payment.sender == Txn.sender
+        ), "Funding payment must come from the caller"
         assert mbr_payment.rekey_to == Global.zero_address, "MBR payment must not rekey"
         assert (
             mbr_payment.close_remainder_to == Global.zero_address

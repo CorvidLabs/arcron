@@ -327,7 +327,20 @@ def _refuse(args, verb: str) -> bool:
     # than merely described. Skipped when the file carries none, and when the
     # signer explicitly opted out of rebuilding.
     expected_digest = None
-    if ms.carried_programs(args.file) is not None and not args.no_rebuild:
+    carried = ms.carried_programs(args.file)
+    if carried is not None:
+        if args.no_rebuild:
+            # Skipping the comparison must announce itself. Silence here looks
+            # exactly like a comparison that passed, which is the reasoning
+            # already written down a few lines away for an unconfigured
+            # machine and not applied to the field it was written for.
+            logger.error(
+                "  REFUSING: --no-rebuild was passed and this file carries programs, so "
+                "nothing compared them against this tree. That is the only check standing "
+                "between a holder and hostile bytecode. Drop the flag, or check out the "
+                "commit this was built from and drop the flag."
+            )
+            return True
         rebuild()
         expected_digest = _digest(*_programs(_spec("keeper")))
 
@@ -362,7 +375,7 @@ def main(argv: list[str] | None = None) -> int:
         help="create: the multisig address you intend to be the creator, typed out in full",
     )
     parser.add_argument("--allow-dirty", action="store_true", help="create: allow an uncommitted tree")
-    parser.add_argument("--no-rebuild", action="store_true", help="update: trust the built artifacts")
+    parser.add_argument("--no-rebuild", action="store_true", help="update only: trust the built artifacts. Refused on sign of a file carrying programs")
     parser.add_argument("--yes", action="store_true", help="freeze: skip the confirmation")
     parser.add_argument(
         "--account-txn", action="store_true",

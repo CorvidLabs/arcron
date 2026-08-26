@@ -43,6 +43,49 @@ Follow-ups are separate files, so the three passes above stay what they were
 on the day. They are not independent reviews: each one re-reads a fix by the
 reviewer who found the thing it fixes, and knows what the fix was trying to do.
 
-- [`2026-08-26-fable-5-console.md`](2026-08-26-fable-5-console.md) — does the
+- [`2026-08-26-fable-5-console.md`](2026-08-26-fable-5-console.md) ,  does the
   trust banner close M1? **Partial.** It closes the plain case; a hostile app
   can still switch it off for the price of one box.
+
+---
+
+## The 2026-08-26 re-score
+
+Three fresh full-system passes after every finding above was closed. Each was
+asked for **two** numbers rather than one, because every earlier score anchored
+on `freeze` and freeze is a deliberate trade here rather than an unfinished
+step.
+
+| | Unfrozen, id unpublished | Frozen at deploy | Was | Would escrow their own money |
+|---|---|---|---|---|
+| Kimi 3 | **8** | 7 | 5 | yes, capped |
+| Grok 4.6 | **7** | 5 | 4 | yes, as operator |
+| Fable 5 | **5** | 3 | 3 | **no** |
+
+All three said the trade is right. Grok: "The trade is not wrong. Freezing at
+create would be." Fable, who scored lowest, agreed on the reasoning and
+disagreed on one of its premises: the app id cannot stay unpublished, because
+the multisig address is in six files and an app id is one indexer query from a
+creator address.
+
+**Every one of them scored the frozen case lower.** That is the opposite of
+what the same three said a day earlier, and the reason they gave is the same:
+this codebase has produced roughly one previously undiscovered bug per review
+round, and freezing converts the next one from a patch into a migration.
+
+## What the outlier found
+
+Fable's 5 is not a disagreement about the trade. It is one finding the other
+two missed and Fable proved on a live chain: `register` never bound the payer
+to the upkeep's creator, so a victim could sign both payments while an
+attacker signed the app call and owned the resulting upkeep. Every check the
+project teaches a user to make passed, because the receiver and the app id
+really were the right ones.
+
+Two asserts, no struct change, and `subscription` had had the same assert
+since it was written. Five review rounds and four audits had not found it.
+
+Fable also named the pattern behind it: fixes that are correct at the site
+where the bug was found and absent at the siblings with the identical shape,
+with the reasoning written down at the fixed site and not carried across.
+[#105](../../issues/105) is the open instance of that pattern.

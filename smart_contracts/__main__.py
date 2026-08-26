@@ -214,4 +214,8 @@ if __name__ == "__main__":
     elif len(sys.argv) > 1:
         main(sys.argv[1])
     else:
-        main("all")
+        # Not `main("all")`. That built and *deployed* every contract against
+        # whatever environment happened to be loaded, so a bare invocation in
+        # a shell pointed at a real network was a deployment. Building is the
+        # safe default; deploying should always be asked for by name.
+        main("build")

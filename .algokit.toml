@@ -22,10 +22,12 @@ environment_secrets = [
   "DEPLOYER_MNEMONIC",
 ]
 
-[project.deploy.mainnet]
-environment_secrets = [
-  "DEPLOYER_MNEMONIC",
-]
+# No [project.deploy.mainnet]. It named DEPLOYER_MNEMONIC as the MainNet
+# secret, and `algokit project deploy mainnet` reaches the factory without
+# ever passing through scripts/network.py, where the multisig gate lives. That
+# created a keeper whose creator is one key, permanently, because an app's
+# creator cannot be changed. MainNet is created with
+# `poetry run python -m scripts.govern create`, which requires the 3-of-5.
 
 [project.run]
 # Commands intented for use locally and in CI
