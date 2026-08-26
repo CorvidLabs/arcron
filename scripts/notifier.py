@@ -82,6 +82,7 @@ class Snapshot:
                     "fee_cap": upkeep.fee_cap,
                     "fee_asset": upkeep.fee_asset,
                     "last_serviced_round": upkeep.last_serviced_round,
+                    "creator": upkeep.creator,
                 }
                 for upkeep in upkeeps
             },
@@ -125,7 +126,11 @@ def _algos(micro_algo: int) -> str:
     return f"{micro_algo / 1_000_000:.6f}".rstrip("0").rstrip(".") + " ALGO"
 
 
-def diff(previous: Snapshot, current: Snapshot) -> list[Event]:
+def diff(
+    previous: Snapshot,
+    current: Snapshot,
+    known_creators: frozenset[str] = frozenset(),
+) -> list[Event]:
     """What changed between two views of the registry.
 
     Pure, so the interesting cases can be tested without a chain. Conditions
@@ -137,7 +142,29 @@ def diff(previous: Snapshot, current: Snapshot) -> list[Event]:
     for upkeep_id, now in sorted(current.upkeeps.items()):
         before = previous.upkeeps.get(upkeep_id)
         if before is None:
-            if previous.upkeeps:  # a first run is not a flood of "new upkeep"
+            creator = now.get("creator", "")
+            ours = not known_creators or creator in known_creators
+            if not ours:
+                # The one event that must never be suppressed. The plan for an
+                # unfrozen MainNet deployment is to freeze the moment somebody
+                # who is not us escrows into it, and that plan is worth nothing
+                # if nothing notices. Announced on a first run too, unlike an
+                # ordinary registration: on an app that is supposed to be empty,
+                # a stranger already present is exactly the thing being watched
+                # for, and the flood this suppression avoids does not exist.
+                events.append(
+                    Event(
+                        "stranger",
+                        upkeep_id,
+                        f"**Upkeep {upkeep_id} was registered by {creator}, who is not "
+                        f"one of us.** Somebody has escrowed real value here. If this "
+                        f"deployment is unfrozen, the agreed answer is to freeze now "
+                        f"rather than to wait out the schedule: they are trusting a "
+                        f"keyholder, and they did not agree to that. Targets app "
+                        f"{now['target_app']}, every {now['interval_rounds']} rounds.",
+                    )
+                )
+            elif previous.upkeeps:  # a first run is not a flood of "new upkeep"
                 events.append(
                     Event(
                         "registered",
@@ -355,6 +382,16 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--state-file", type=Path, default=None, help="where to remember what was announced"
     )
+    parser.add_argument(
+        "--ours",
+        default="",
+        help=(
+            "comma-separated addresses whose upkeeps are expected. Any other creator is "
+            "announced as a stranger. Empty means announce nobody as a stranger, which "
+            "is right on a shared TestNet app and wrong on a MainNet one whose id is "
+            "supposed to be unpublished."
+        ),
+    )
     parser.add_argument("--no-state", action="store_true", help="announce from scratch each run")
     args = parser.parse_args(argv)
 
@@ -368,6 +405,14 @@ def main(argv: list[str] | None = None) -> None:
         f"Watching app {app_id} on {args.network}; "
         f"{'posting to Discord' if webhook else 'printing here (set DISCORD_WEBHOOK_URL to post)'}"
     )
+    known_creators = frozenset(a.strip() for a in args.ours.split(",") if a.strip())
+    if known_creators:
+        logger.info(f"  {len(known_creators)} creator(s) expected; any other is a stranger")
+    else:
+        logger.info(
+            "  No --ours given, so no creator is treated as a stranger. On a deployment "
+            "whose id is meant to be unpublished, pass it."
+        )
     previous = load(path)
     executions_since_summary = 0
     paid_since_summary = 0
@@ -377,7 +422,7 @@ def main(argv: list[str] | None = None) -> None:
         try:
             current_round = algod.status()["last-round"]
             snapshot = Snapshot.of(scan_upkeeps(algod, app_id), current_round)
-            for event in diff(previous, snapshot):
+            for event in diff(previous, snapshot, known_creators):
                 text = event.text
                 if event.kind == "executed":
                     keeper = attribute(algod, app_id, previous.last_round, current_round)

@@ -27,6 +27,7 @@ NOTIFIER_SOURCE = Path("scripts/notifier.py")
 def upkeep(**overrides) -> Upkeep:
     base = dict(
         upkeep_id=1,
+        creator="E5M2OH5XNDMNABJ6VOFOUVR2IKRPCGQH43PVC5P3DWQQ2LV2VJV2FJZQ3E",
         target_app=1043,
         interval_rounds=10,
         next_execution_round=1_000,
@@ -249,3 +250,58 @@ def test_a_snapshot_from_before_escalation_does_not_report_the_ceiling() -> None
 
     current = {**legacy, "times_executed": 2, "fee_cap": 12_000, "last_serviced_round": 1_010}
     assert _burst_cost(legacy, current, 2) == 8_000
+
+
+# --- the detector the pre-freeze window depends on ---------------------
+#
+# The plan for an unfrozen MainNet deployment is to freeze the moment somebody
+# who is not us escrows into it. A reviewer pointed out that the plan was worth
+# nothing because nothing could tell one creator's upkeep from another's: the
+# box always carried the creator and the decoder dropped it, and the snapshot
+# had no field for it.
+
+OURS = "E5M2OH5XNDMNABJ6VOFOUVR2IKRPCGQH43PVC5P3DWQQ2LV2VJV2FJZQ3E"
+STRANGER = "WOX2O7LDLN74QDQYDJRUHGBLAH3JBEUYAFJO6FQL4P2EXV33VYAR536BBY"
+
+
+def test_a_stranger_registering_is_announced() -> None:
+    events = diff(
+        snapshot([]),
+        snapshot([upkeep(creator=STRANGER)]),
+        known_creators=frozenset({OURS}),
+    )
+    assert [e.kind for e in events] == ["stranger"]
+    assert "who is not one of us" in events[0].text
+
+
+def test_a_stranger_is_announced_even_on_a_first_run() -> None:
+    """An ordinary registration is suppressed on a first run so the initial
+    registry is not a flood. A stranger must not be, because an app that is
+    supposed to be empty and is not is exactly the thing being watched for,
+    and there is no flood to avoid."""
+    events = diff(
+        Snapshot(),  # no previous run at all
+        snapshot([upkeep(creator=STRANGER)]),
+        known_creators=frozenset({OURS}),
+    )
+    assert [e.kind for e in events] == ["stranger"]
+
+
+def test_our_own_upkeep_is_not_a_stranger() -> None:
+    """A detector that flags everybody is an outage, not a detector."""
+    events = diff(
+        snapshot([upkeep()]),
+        snapshot([upkeep(upkeep_id=2, creator=OURS), upkeep()]),
+        known_creators=frozenset({OURS}),
+    )
+    assert [e.kind for e in events] == ["registered"]
+
+
+def test_no_allowlist_means_nobody_is_a_stranger() -> None:
+    """Right on a shared TestNet app, wrong on one whose id is unpublished,
+    which is why the runner says so at startup rather than defaulting quietly."""
+    events = diff(
+        snapshot([upkeep()]),
+        snapshot([upkeep(upkeep_id=2, creator=STRANGER), upkeep()]),
+    )
+    assert [e.kind for e in events] == ["registered"]

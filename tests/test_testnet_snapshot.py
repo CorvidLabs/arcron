@@ -13,6 +13,7 @@ from scripts.testnet_snapshot import _upkeep_json
 
 def upkeep(**overrides: int) -> Upkeep:
     fields = {
+        "creator": "E5M2OH5XNDMNABJ6VOFOUVR2IKRPCGQH43PVC5P3DWQQ2LV2VJV2FJZQ3E",
         "upkeep_id": 34,
         "target_app": 769823097,
         "interval_rounds": 100,
