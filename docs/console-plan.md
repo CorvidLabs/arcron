@@ -509,3 +509,51 @@ with wording that names the creator in full.
 button, the honest cost quote, the ASA bonus actions on `/u/:id` (both service
 methods still have no UI, and a permanent 0.1 ALGO opt-in deserves its own
 wording pass), and any fourth destination.
+
+## What is blocked on the owner, as of 2026-08-26
+
+Build order items 0 through 5 have landed. Three things remain, and none of them
+can be finished from inside this repository.
+
+**The nginx fallback, and it is now load-bearing.** `web-build-hosted` copies
+`index.html` to `404.html`, which is the convention static hosts like GitHub
+Pages honour. **nginx does not.** Verified: serving the built bundle with a
+plain static server, `/arcron/console/u/19` returns 404 with the `404.html`
+sitting right there unused; serving it with `try_files` behaviour, the same URL
+returns the upkeep page with its query string intact. So `CorvidLabs/site`
+needs this in `deploy/vps/nginx.conf` before any `/u/:id` link is shared:
+
+```nginx
+location ^~ /arcron/console/ {
+    try_files $uri $uri/index.html /arcron/console/index.html;
+}
+```
+
+Without it every deep link works when clicked inside the console and breaks on
+reload or when pasted, which is the worst version: it fails only for the person
+you sent it to.
+
+**The push itself.** `fledge run site-console -- --site ../../site` stages the
+bundle and prints the git commands. Nothing has been pushed. The repository is
+still private pending the audit in issue #23, and making it visible is a
+decision, not a build step.
+
+**The keeper is still a laptop.** `.github/workflows/keeper-bot.yml` remains a
+no-op for want of `KEEPER_MNEMONIC`. The 30 day beta clock cannot start until a
+keeper runs somewhere that is not this machine, and the notifier is not running
+at all, so there is no record to point at even once it does.
+
+### What the parallel work cost, and what it caught
+
+Four agents worked at once and two of them shared `web/`. The merge cost five
+conflicts, all real: both wanted `fledge.toml`, both changed `registry-table.ts`
+(explorer links from one, router links from the other, and both were kept), and
+both edited this file's build order.
+
+It also caught something a single worker would not have. The register form's
+Test button was written against a keeper bot that capped at four references, and
+graded five and six as "the protocol allows this, our keeper does not". While it
+was being written, the other agent removed that cap. Because the grade was built
+behind one constant with a comment naming the condition, the collapse was a
+one line change and a test now asserts the two numbers are equal, so the band
+returns if the keeper ever falls behind the protocol again.
