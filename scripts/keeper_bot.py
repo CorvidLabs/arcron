@@ -10,6 +10,10 @@ DEPLOYER_MNEMONIC; execution fees are paid to that account. On LocalNet both
 come from KMD, so no mnemonic is needed.
 
 Run:  poetry run python -m scripts.keeper_bot [--once] [--network N] [--app-id N]
+
+`--align S` holds the first scan until the next whole multiple of S seconds,
+which is how two keepers started from the same schedule end up competing for
+the same upkeep instead of taking turns at it.
 """
 
 import argparse
@@ -24,7 +28,7 @@ from pathlib import Path
 from types import FrameType
 
 import algokit_utils
-from algosdk import encoding
+from algosdk import constants, encoding
 
 from scripts import network as net
 from scripts.keeper_backoff import Backoff, default_state_path
@@ -362,6 +366,117 @@ def _decode_upkeep(upkeep_id: int, raw: bytes) -> Upkeep:
     )
 
 
+def failure_text(exc: Exception) -> str:
+    """Everything the node said, not just what the client chose to show.
+
+    `str(exc)` on algokit-utils' `LogicError` is a rendered summary; the raw
+    algod text hangs off `logic_error_str`, and only that carries the
+    "inner tx N failed" attribution that separates a target's failure from the
+    keeper contract's own. Both are passed on, so neither has to be guessed at.
+    """
+    raw = getattr(exc, "logic_error_str", None)
+    return f"{exc}" if not raw else f"{exc} | {raw}"
+
+
+def read_upkeep(algod, app_id: int, upkeep_id: int) -> Upkeep | None:
+    """One upkeep, or None if its box is gone (cancelled, or never existed)."""
+    name = b"u" + upkeep_id.to_bytes(8, "big")
+    try:
+        raw = _as_bytes(algod.application_box_by_name(app_id, name)["value"])
+    except Exception:
+        return None
+    return _decode_upkeep(upkeep_id, raw)
+
+
+def registry_moved_on(algod, app_id: int, before: Upkeep) -> tuple[bool | None, Upkeep | None]:
+    """Did somebody execute this upkeep while we were reaching for it?
+
+    The contract records every execution in the box itself, so this is the one
+    account of a lost race that no target and no error string can influence.
+    Returns (moved, upkeep as it stands now); moved is None when the registry
+    could not be read at all, which is a node problem rather than an answer.
+
+    A box that has vanished counts as moved on: the upkeep was cancelled
+    mid-flight, and there is nothing left to back off.
+    """
+    try:
+        after = read_upkeep(algod, app_id, before.upkeep_id)
+    except Exception:
+        return None, None
+    if after is None:
+        return True, None
+    moved = (
+        after.times_executed > before.times_executed
+        or after.next_execution_round > before.next_execution_round
+    )
+    return moved, after
+
+
+def _as_address(value: object) -> str | None:
+    """A sender field, however this node chose to render it.
+
+    algod's block endpoint returns senders already in base32 (58 characters);
+    other responses hand back the 32 raw bytes, or those bytes in base64.
+    """
+    if isinstance(value, str):
+        return value if len(value) == constants.ADDRESS_LEN else _as_address(_as_bytes(value))
+    if isinstance(value, (bytes, bytearray)) and len(value) == 32:
+        return encoding.encode_address(bytes(value))
+    return None
+
+
+def find_winner(algod, app_id: int, upkeep_id: int, block_round: int) -> str | None:
+    """Which keeper executed this upkeep, read out of the block it landed in.
+
+    A losing keeper's own transaction never reaches a block, so the only
+    durable record of a race is the winner's. Best effort by design: a node
+    that does not serve blocks, or an archival gap, must never turn a lost
+    race into an error.
+    """
+    if block_round <= 0:
+        return None
+    try:
+        block = algod.block_info(block_round).get("block") or {}
+        wanted = upkeep_id.to_bytes(8, "big")
+        for entry in block.get("txns") or []:
+            txn = (entry.get("txn") or {}) if isinstance(entry, dict) else {}
+            if txn.get("apid") != app_id:
+                continue
+            args = txn.get("apaa") or []
+            if args and _as_bytes(args[-1]) == wanted:
+                return _as_address(txn.get("snd"))
+    except Exception:
+        return None
+    return None
+
+
+def align_to(period_seconds: int, stop=None) -> None:
+    """Block until the next whole multiple of `period_seconds` in UTC.
+
+    Two keepers started from the same schedule do not race: the one that
+    finishes setting up first takes every due upkeep, and the other arrives
+    seconds later to find nothing due. That is not competition, it is a queue.
+
+    A shared wall-clock barrier turns it into competition, because both scan
+    in the same round window and both reach for the same upkeep. Runner clocks
+    are NTP-synced, so an absolute instant is something two machines that have
+    never met can agree on, which a countdown from each one's own start is not.
+    """
+    now = time.time()
+    target = (int(now) // period_seconds + 1) * period_seconds
+    emit(
+        "aligning",
+        f"Waiting {target - now:.1f}s for the shared {period_seconds}s barrier, "
+        f"so a keeper starting elsewhere scans the same round",
+        wait_seconds=round(target - now, 1),
+        period_seconds=period_seconds,
+    )
+    while time.time() < target:
+        if stop is not None and stop.requested:
+            return
+        time.sleep(min(0.5, target - time.time()))
+
+
 def scan_upkeeps(algod, app_id: int) -> list[Upkeep]:
     upkeeps: list[Upkeep] = []
     token: str | None = None
@@ -541,6 +656,17 @@ def main(argv: list[str] | None = None) -> None:
         help="forget one upkeep's backoff before scanning, after fixing its target",
     )
     parser.add_argument(
+        "--align",
+        type=int,
+        metavar="SECONDS",
+        default=int(os.environ.get("KEEPER_ALIGN_SECONDS", 0)),
+        help=(
+            "wait for the next UTC multiple of SECONDS before the first scan, so "
+            "keepers started independently reach for the same due upkeep in the "
+            "same round instead of taking turns (default: %(default)s, off)"
+        ),
+    )
+    parser.add_argument(
         "--log-format",
         choices=("text", "json"),
         default=os.environ.get("ARCRON_LOG_FORMAT", "text"),
@@ -633,6 +759,9 @@ def main(argv: list[str] | None = None) -> None:
         backoff_state=str(state_file) if state_file else "memory",
     )
 
+    if args.align > 0:
+        align_to(args.align, shutdown)
+
     error_delay = ERROR_RETRY_SECONDS
     executed_count = 0
     scans = 0
@@ -688,6 +817,12 @@ def main(argv: list[str] | None = None) -> None:
                         and upkeep.fee_asset in opted_in_assets
                     ):
                         extra_fee += BONUS_FEE_MICROALGO
+                    # Read before reaching, so that if this call loses a race
+                    # the keeper's own log can say what losing cost it. That
+                    # number is the whole argument for running a keeper at all
+                    # (docs/arcron.md), and until now nothing but a controlled
+                    # experiment had ever measured it.
+                    balance_before = algod.account_info(keeper.address)["amount"]
                     response = client.send.execute(
                         args=ExecuteArgs(upkeep_id=upkeep.upkeep_id),
                         params=_resolve_execute_references(client, upkeep, extra_fee),
@@ -725,19 +860,52 @@ def main(argv: list[str] | None = None) -> None:
                         tx_id=response.tx_id,
                     )
                 except Exception as exc:
+                    reason = failure_text(exc)
+                    # Ask the registry what happened before deciding what this
+                    # failure was. The box is the contract's own record, so it
+                    # settles the question the error string can only hint at.
+                    moved, after = registry_moved_on(algod, app_id, upkeep)
                     entry = backoff.record_failure(
-                        upkeep.upkeep_id, str(exc), current, upkeep.interval_rounds
+                        upkeep.upkeep_id,
+                        reason,
+                        current,
+                        upkeep.interval_rounds,
+                        advanced=moved,
                     )
                     if entry is None:
                         # Another keeper got there first, or it was cancelled
                         # mid-flight. Nothing was spent and nothing is wrong, and
                         # backing off here would only reduce our coverage.
+                        #
+                        # A losing transaction is rejected at validation and
+                        # never reaches a block, so it leaves nothing on chain
+                        # to look up afterwards. This line is the only record
+                        # the race ever gets, which is why it carries the
+                        # winner and the cost rather than just an apology.
+                        spent = balance_before - algod.account_info(keeper.address)["amount"]
+                        won_at = after.last_serviced_round if after else 0
+                        winner = find_winner(algod, app_id, upkeep.upkeep_id, won_at)
                         emit(
                             "race_lost",
-                            f"Upkeep {upkeep.upkeep_id} was already handled by "
-                            f"another keeper",
+                            f"Lost upkeep {upkeep.upkeep_id} to "
+                            f"{winner or 'another keeper'}"
+                            + (f" at round {won_at}" if won_at else "")
+                            + f"; forfeited {effective_fee(upkeep, current)} µALGO "
+                            f"and paid {spent} µALGO to find out",
                             round=current,
                             upkeep_id=upkeep.upkeep_id,
+                            target_app=upkeep.target_app,
+                            winner=winner,
+                            won_at_round=won_at or None,
+                            fee_forgone=effective_fee(upkeep, current),
+                            spent=spent,
+                            registry_advanced=moved,
+                            # The id of the transaction that was thrown away.
+                            # Nothing on chain will ever have it, which is the
+                            # claim: an indexer lookup that comes back empty is
+                            # how anyone else can check this line was honest.
+                            tx_id=getattr(exc, "transaction_id", None),
+                            reason=reason[:400],
                         )
                     else:
                         emit(
@@ -750,7 +918,8 @@ def main(argv: list[str] | None = None) -> None:
                             upkeep_id=upkeep.upkeep_id,
                             failures=entry.failures,
                             next_attempt_round=entry.next_attempt_round,
-                            reason=str(exc)[:400],
+                            registry_advanced=moved,
+                            reason=reason[:400],
                         )
             if scans % HEARTBEAT_SCANS == 0 or args.once:
                 # Proof of life, and the number that kills bots silently.

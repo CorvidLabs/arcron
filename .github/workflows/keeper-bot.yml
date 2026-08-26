@@ -22,6 +22,15 @@
 #   * The mnemonic lives in repository secrets, readable by any workflow here.
 #
 # A long-lived process avoids all four. deploy/vps/install.sh sets one up.
+#
+# This is the *first* of two keepers. `.github/workflows/keeper-bot-2.yml` is
+# the second, on the same cron and a different account, so that the two
+# actually compete rather than take turns. `--align 120` below is what makes
+# that work: both hold their first scan until the next whole two-minute mark
+# in UTC, so both reach for the same due upkeep in the same round window
+# instead of one arriving to an empty registry seconds after the other cleared
+# it. It costs a minute of wall time per run, on average, and it is the
+# difference between competition and a queue.
 
 name: Keeper bot
 
@@ -76,4 +85,6 @@ jobs:
           KEEPER_MNEMONIC: ${{ secrets.KEEPER_MNEMONIC }}
           KEEPER_APP_ID: ${{ inputs.app_id || '769891898' }}
           ALGOD_SERVER: https://testnet-api.algonode.cloud
-        run: poetry run python -m scripts.keeper_bot --once --network testnet --log-format json
+        run: >
+          poetry run python -m scripts.keeper_bot
+          --once --network testnet --log-format json --align 120

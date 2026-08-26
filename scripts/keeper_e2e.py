@@ -24,6 +24,7 @@ import algokit_utils
 from algosdk import abi, encoding
 
 from scripts import keeper_bot, network as net
+from scripts.keeper_backoff import Backoff
 from smart_contracts.artifacts.keeper.keeper_client import (
     CancelArgs,
     OptInAssetArgs,
@@ -726,7 +727,105 @@ def main(argv: list[str] | None = None) -> None:
     _assert("failed execution took escrow", still_doomed.balance, doomed.balance)
     logger.info("  ✔ a failed execution is free: no fee, no state change")
 
-    for cleanup_id in (race_id, doomed_id):
+    # The same two losses, but reached through the bot rather than raw, because
+    # what the keeper *does* about a loss is decided by which of them it thinks
+    # it just had. Losing a race must never back an upkeep off; a target that
+    # rejects must. The two arrive as the same kind of exception, so the code
+    # that separates them is worth pinning against a real AVM.
+    logger.info("── 14b. A losing keeper can tell a race from a broken target ──")
+    collision_id = _register(algorand, keeper_client, deployer, pulse_client.app_id, FEE * 4)
+    collision, _ = _read_upkeep(algorand, app_id, collision_id)
+    net.wait_for_round(algorand, collision.next_execution_round, poker=deployer)
+
+    # Both keepers reach at the same round, so both simulate against a state
+    # where the upkeep is still due. That is the ordinary shape of a race and
+    # the one a controlled experiment misses: the loser is not refused before
+    # it broadcasts, it is refused by the pool after it does.
+    winner_params = keeper_bot._resolve_execute_references(
+        stranger_client, collision, keeper_bot.EXTRA_FEE_MICROALGO
+    )
+    loser_params = keeper_bot._resolve_execute_references(
+        keeper_client, collision, keeper_bot.EXTRA_FEE_MICROALGO
+    )
+    no_populate = algokit_utils.SendParams(populate_app_call_resources=False)
+    stranger_client.send.execute(
+        args=ExecuteArgs(upkeep_id=collision_id),
+        params=winner_params,
+        send_params=no_populate,
+    )
+    loser_before = _balance(algorand, deployer.address)
+    try:
+        with _quiet():
+            keeper_client.send.execute(
+                args=ExecuteArgs(upkeep_id=collision_id),
+                params=loser_params,
+                send_params=no_populate,
+            )
+    except Exception as exc:
+        lost = exc
+    else:
+        lost = None
+    assert lost is not None, "both keepers cannot win the same execution"
+    _assert_rejected_by_algod(keeper_bot.failure_text(lost))
+    _assert("losing keeper charged, mid-flight", loser_before - _balance(algorand, deployer.address), 0)
+
+    moved, after_race = keeper_bot.registry_moved_on(
+        algorand.client.algod, app_id, collision
+    )
+    _assert("the registry says it moved on", moved, True)
+    assert after_race is not None
+    _assert(
+        "and names the round it moved in",
+        after_race.last_serviced_round >= collision.next_execution_round,
+        True,
+    )
+    _assert(
+        "the winner is recoverable from the block",
+        keeper_bot.find_winner(
+            algorand.client.algod, app_id, collision_id, after_race.last_serviced_round
+        ),
+        stranger.address,
+    )
+    race_backoff = Backoff(None)
+    _assert(
+        "a lost race backs nothing off",
+        race_backoff.record_failure(
+            collision_id, keeper_bot.failure_text(lost), 0, INTERVAL_ROUNDS, advanced=moved
+        ),
+        None,
+    )
+
+    # And the contrast, from the same code path: the doomed upkeep's target is
+    # what failed, so the registry has not moved and the bot backs it off.
+    try:
+        with _quiet():
+            keeper_client.send.execute(
+                args=ExecuteArgs(upkeep_id=doomed_id),
+                params=keeper_bot._resolve_execute_references(
+                    keeper_client, still_doomed, keeper_bot.EXTRA_FEE_MICROALGO
+                ),
+                send_params=no_populate,
+            )
+    except Exception as exc:
+        broke = exc
+    else:
+        broke = None
+    assert broke is not None, "a target that rejects cannot be executed"
+    broken_moved, _ = keeper_bot.registry_moved_on(
+        algorand.client.algod, app_id, still_doomed
+    )
+    _assert("a broken target moves nothing", broken_moved, False)
+    entry = race_backoff.record_failure(
+        doomed_id, keeper_bot.failure_text(broke), 100, INTERVAL_ROUNDS, advanced=broken_moved
+    )
+    assert entry is not None, "a broken target must be backed off"
+    _assert("and is retried later, not never", entry.next_attempt_round, 100 + INTERVAL_ROUNDS)
+    logger.info(
+        f"  ✔ the loser paid 0 µALGO and kept trying; the broken target waits "
+        f"{INTERVAL_ROUNDS} rounds"
+    )
+
+    for cleanup_id in (race_id, collision_id, doomed_id):
         keeper_client.send.cancel(
             args=CancelArgs(upkeep_id=cleanup_id),
             params=algokit_utils.CommonAppCallParams(

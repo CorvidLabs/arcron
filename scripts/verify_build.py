@@ -37,7 +37,7 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
-CONTRACTS = ("keeper", "pulse")
+CONTRACTS = ("keeper", "pulse", "rain")
 
 
 def _spec(name: str) -> dict:
