@@ -210,8 +210,8 @@ jobs:
       - name: Keeper end-to-end
         run: fledge run smoke-keeper
 
-      - name: Timed release demo
-        run: fledge run smoke-embargo
+      - name: Daily rain demo
+        run: fledge run smoke-rain
 
       - name: LocalNet state on failure
         if: failure()

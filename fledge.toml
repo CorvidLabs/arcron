@@ -48,12 +48,8 @@ smoke-keeper = "poetry run python -m scripts.keeper_e2e --network localnet"
 # Every attack any review ever found, each asserted to be refused by its own
 # guard rather than by anything incidental. See scripts/attacks.py.
 attacks = "poetry run python -m scripts.attacks --network localnet"
-smoke-embargo = "poetry run python -m scripts.embargo_demo --network localnet"
 smoke-rain = "poetry run python -m scripts.rain_demo --network localnet"
 smoke-community-rain = "poetry run python -m scripts.community_rain_demo --network localnet"
-smoke-deadman = "poetry run python -m scripts.deadman_demo --network localnet"
-smoke-watchdog = "poetry run python -m scripts.watchdog_demo --network localnet"
-smoke-treasury = "poetry run python -m scripts.treasury_demo --network localnet"
 smoke-subscription = "poetry run python -m scripts.subscription_demo --network localnet"
 soak = "poetry run python -m scripts.keeper_soak --network localnet --minutes 3"
 # A populated registry with competing keepers, asserting what has to be true
@@ -66,7 +62,7 @@ steps = ["build", "test", "spec", "js-install", "js-test", "web-test", "web-buil
 
 [lanes.local]
 description = "CI plus the LocalNet end-to-end test (needs algokit localnet start)"
-steps = ["build", "test", "spec", "js-install", "js-test", "web-test", "web-build", "smoke-keeper", "smoke-embargo", "smoke-rain", "smoke-community-rain", "smoke-deadman", "smoke-watchdog", "smoke-treasury", "smoke-subscription", "smoke-govern", "smoke-multisig", "smoke-clawback", "attacks"]
+steps = ["build", "test", "spec", "js-install", "js-test", "web-test", "web-build", "smoke-keeper", "smoke-rain", "smoke-community-rain", "smoke-subscription", "smoke-govern", "smoke-multisig", "smoke-clawback", "attacks"]
 
 [lanes.endurance]
 description = "The local lane plus a soak: many consecutive executions, no drift"

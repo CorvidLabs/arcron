@@ -458,45 +458,22 @@ timed by an interested party. It does not supply the data.
 
 One case needs no oracle trust at all: a **staleness check** that compares the
 feed's last-updated round against the current round and flags the feed if it
-has gone quiet. Comparing timestamps cannot be lied to.
+has gone quiet. Comparing timestamps cannot be lied to. A previous revision of
+this page had a worked example of this pattern (`smart_contracts/watchdog/`);
+it was cut from the repository on 2026-08-26 as one of four example contracts
+whose review findings outweighed their purpose as illustrations, so this page
+now states the pattern rather than pointing at a shipped instance of it.
 
-### Reference: Arcron plus an oracle
-
-`smart_contracts/watchdog/` is the worked example, and the division of labour
-is the point:
-
-| Concern | Who supplies it | Can they lie? |
-|---------|-----------------|---------------|
-| The value | the reporter | yes; this is oracle trust, and Arcron does not reduce it |
-| That a value arrived | the chain | no |
-| That nobody has noticed the silence | **Arcron** | no, it only compares rounds |
-
-The watchdog never inspects the reported value, so it cannot be fed a wrong
-price. It answers one question: has an update landed within the threshold? The
-answer is arithmetic on round numbers.
-
-Why a keeper rather than the consumer: a provider that goes down has no
-incentive to announce it and usually no ability to, so detection has to come
-from someone whose payment does not depend on the provider's cooperation. That
-is exactly what a permissionless, paid execution is.
-
-Two design choices worth copying:
-
-- **The flag clears on the next update, and every episode is counted.** One-way
-  flagging needs an authority to clear it: either the reporter, whose outage
-  caused it, or an admin, which reintroduces the operator the design removes.
-  Recording `stale_episodes` and `last_recovery_round` lets a cautious consumer
-  impose its own cool-down without anyone's permission.
-- **The threshold is in rounds and cannot be tighter than 30.** Arcron's own
-  cadence minimum is 10 rounds, so a tighter threshold would flag ordinary
-  keeper lateness as a provider outage. Rounds are also not wall-clock time,
-  and a "one hour" threshold drifts (see [Liveness](#liveness)), so leave
-  margin.
-
-The flag is only as current as the last sweep: between checks a feed can go
-quiet unflagged. A consumer that can do the arithmetic itself should. What the
-watchdog adds is an on-chain record made by a party with no stake in hiding it,
-and an event a monitor can alert on.
+The shape stays the same whichever contract implements it: the value comes
+from the reporter, and Arcron does not reduce the trust that requires; that a
+value arrived at all is the chain's own record; and that nobody has noticed a
+silence is what Arcron adds, because it only compares round numbers and
+cannot be fed a wrong price. Two things are worth keeping if you build one:
+let the flag clear on the next update rather than needing an authority to
+clear it, and keep the threshold in rounds and no tighter than Arcron's own
+10-round cadence minimum, since rounds are not wall-clock time (see
+[Liveness](#liveness)) and a tight threshold flags ordinary keeper lateness as
+a provider outage.
 
 ### What an Arcron-triggered call can reach
 

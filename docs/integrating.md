@@ -228,8 +228,8 @@ claim()            the counterparty sends this themselves, and is therefore
 
 Worked examples: `smart_contracts/rain/` pulls a *resource* this way. The
 scheduled draw fixes a beacon round and a participant supplies the beacon
-reference when resolving. `smart_contracts/treasury/` credits recipients who
-then claim. `smart_contracts/deadman/` allocates to a beneficiary who claims.
+reference when resolving. `smart_contracts/subscription/` credits the
+provider on `settle`, who then `claim`s it themselves.
 
 ## Reaching resources your hook cannot name
 
@@ -397,8 +397,8 @@ not the point at which the upkeep goes quiet.
   reports an upkeep whose escrow has fallen below one fee as **starved** and
   exits non-zero, so it drops straight into cron.
 - **Cancel when done.** A hook that has finished its job for good, like a
-  fired dead man's switch or a published embargo, keeps being called and keeps
-  paying keepers to do nothing until you cancel.
+  one-shot task that already ran, keeps being called and keeps paying keepers
+  to do nothing until you cancel.
 
 ## Four things that will cost you an hour
 
@@ -459,8 +459,7 @@ app.send.claim(
 
 Prove it on LocalNet before TestNet, and prove it on TestNet before you rely
 on it. `scripts/keeper_e2e.py` is the reference for what that looks like; each
-demo script here (`embargo_demo.py`, `rain_demo.py`, `community_rain_demo.py`,
-`deadman_demo.py`, `watchdog_demo.py`, `treasury_demo.py`,
+demo script here (`rain_demo.py`, `community_rain_demo.py`,
 `subscription_demo.py`) is a smaller worked version.
 
 **Unit tests will not catch the things that break integrations.**
