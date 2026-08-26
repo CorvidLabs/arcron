@@ -46,7 +46,14 @@ web-build = "cd web && bun run ng build"
 # it references is relative, so the base href is the only thing that has to
 # know the path, and getting it wrong is invisible until the page is served
 # from somewhere other than the root.
-web-build-hosted = "cd web && bun run ng build --base-href /arcron/console/ --output-path dist/hosted"
+#
+# The 404 copy is what makes `/u/:id` a real link. The console routes on the
+# path, so a static host asked for `/arcron/console/u/21` has no such file;
+# serving index.html as the not-found page hands it to the router instead,
+# which is the standard single-page fallback and the only reason a shared
+# upkeep link survives a cold load. nginx needs the equivalent `try_files`;
+# `web-verify-hosted` prints the block.
+web-build-hosted = "cd web && bun run ng build --base-href /arcron/console/ --output-path dist/hosted && cp dist/hosted/browser/index.html dist/hosted/browser/404.html"
 # So this serves that build at the subpath and fetches every file in it. A
 # hosted bundle that 404s its own JavaScript compiles perfectly, which is why
 # it belongs in the lane rather than in somebody's memory.

@@ -34,11 +34,22 @@ export class KeeperService {
   readonly activity = signal<readonly Activity[]>([]);
   readonly canSign = computed(() => this.wallet.connected());
 
-  async register(params: txns.RegisterParams): Promise<void> {
+  /**
+   * Register an upkeep, and hand back the id the contract assigned it.
+   *
+   * The id is the whole point of the return: registering ends on that
+   * upkeep's own page, so the caller needs the number and not just a line in
+   * the activity log. Null when the call did not land, which `send` has
+   * already reported through `error`.
+   */
+  async register(params: txns.RegisterParams): Promise<bigint | null> {
+    let registered: bigint | null = null;
     await this.send('register', null, async (algod, appId, signing) => {
       const result = await txns.register(algod, appId, signing, params);
+      registered = result.returnValue ?? null;
       return { result, message: `Registered upkeep ${result.returnValue}` };
     });
+    return registered;
   }
 
   async topUp(upkeep: Upkeep, amount: number): Promise<void> {

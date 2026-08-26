@@ -82,24 +82,41 @@ button {
     color 0.15s ease;
 }
 
-button.primary {
+/* A link that goes somewhere but reads as a primary action, so the theme
+   dance below is written once rather than per component. */
+a.primary {
+  display: inline-block;
+  padding: 0.45rem 0.95rem;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  font-size: 0.88rem;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+button.primary,
+a.primary {
   background: var(--sheen);
   border-color: var(--sheen);
   color: var(--paper);
 }
 
 :root[data-theme='dark'] button.primary,
-:root:not([data-theme='light']) button.primary {
+:root:not([data-theme='light']) button.primary,
+:root[data-theme='dark'] a.primary,
+:root:not([data-theme='light']) a.primary {
   color: #10201e;
 }
 
 @media (prefers-color-scheme: light) {
-  :root:not([data-theme='dark']) button.primary {
+  :root:not([data-theme='dark']) button.primary,
+  :root:not([data-theme='dark']) a.primary {
     color: var(--paper);
   }
 }
 
-button.primary:hover:not(:disabled) {
+button.primary:hover:not(:disabled),
+a.primary:hover {
   background: var(--sheen-hover);
   border-color: var(--sheen-hover);
 }

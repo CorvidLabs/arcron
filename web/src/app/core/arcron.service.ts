@@ -12,7 +12,8 @@ import algosdk from 'algosdk';
 
 import { NETWORKS, type NetworkKey } from '@corvidlabs/arcron/networks';
 
-import { type Entry, entryFrom, entryLink, rememberedAppId } from './entry';
+import { appIdStorageKey, type Entry, entryFrom, rememberedAppId, storeAppId } from './entry';
+import { canonicalAppId, isQuarantined, standingOf } from './quarantine';
 import { decodeUpkeep, type Upkeep, upkeepIdFromBoxName } from '@corvidlabs/arcron/upkeep';
 
 const POLL_INTERVAL_MS = 2_500;
@@ -21,7 +22,6 @@ const RATE_SAMPLES = 48;
 /** Below this the sample window is too short to divide by. */
 const MIN_RATE_WINDOW_MS = 8_000;
 const NETWORK_STORAGE_KEY = 'arcron.network';
-const APP_ID_STORAGE_KEY = (network: NetworkKey) => `arcron.appId.${network}`;
 
 export interface AppAccount {
   readonly address: string;
@@ -46,7 +46,8 @@ export type ConnectionStatus = 'connecting' | 'ready' | 'error';
  */
 /**
  * Whether it is safe to put money on screen: the read succeeded, the node is
- * the chain it claims to be, and there is an app to talk to.
+ * the chain it claims to be, there is an app to talk to, and that app is not
+ * one the console has quarantined.
  *
  * Exported so its test binds to the predicate the console actually runs. A
  * test that redeclares this passes with the guard deleted, which is how the
@@ -56,8 +57,20 @@ export function canCommitMoney(state: {
   status: string;
   genesisMatches: boolean | null;
   appId: number | null;
+  /**
+   * A link named an app that is not the published deployment and the visitor
+   * has not accepted it. See `quarantine.ts`: this is the single gate every
+   * money button and `KeeperService.send` already key on, which is why the
+   * quarantine is enforced here rather than button by button.
+   */
+  quarantined: boolean;
 }): boolean {
-  return state.status === 'ready' && state.genesisMatches !== false && state.appId !== null;
+  return (
+    state.status === 'ready' &&
+    state.genesisMatches !== false &&
+    state.appId !== null &&
+    !state.quarantined
+  );
 }
 
 export function isFrozen(
@@ -78,6 +91,15 @@ export class ArcronService {
   private readonly entry = readEntry();
   readonly network = signal<NetworkKey>(this.entry.network);
   readonly appId = signal<number | null>(this.entry.appId);
+
+  /**
+   * The app id this visitor said to continue to anyway, if any.
+   *
+   * Held per app id and only in memory. Accepting a foreign app is a decision
+   * about this page, not a preference, so it dies with the tab and a reload
+   * asks again.
+   */
+  private readonly acceptedAppId = signal<number | null>(null);
 
   readonly status = signal<ConnectionStatus>('connecting');
   readonly error = signal<string | null>(null);
@@ -169,7 +191,30 @@ export class ArcronService {
       status: this.status(),
       genesisMatches: this.genesisMatches(),
       appId: this.appId(),
+      quarantined: this.quarantined(),
     }),
+  );
+
+  /** The app id this console ships pointing at on the current network. */
+  readonly canonicalAppId = computed(() => canonicalAppId(this.network()));
+
+  /** What the console can say about the app id it is pointed at. */
+  readonly standing = computed(() =>
+    standingOf({ appId: this.appId(), network: this.network() }),
+  );
+
+  /** Whether this visitor has said to continue to the app currently selected. */
+  readonly accepted = computed(() => this.acceptedAppId() === this.appId());
+
+  /**
+   * Whether every money button must stay dead.
+   *
+   * Deliberately independent of `status`: the comparison needs no chain data,
+   * and gating it on a successful read would let a hostile app switch its own
+   * quarantine off by serving one box that will not decode.
+   */
+  readonly quarantined = computed(() =>
+    isQuarantined({ standing: this.standing(), accepted: this.accepted() }),
   );
   readonly totalEscrowed = computed(() =>
     this.upkeeps().reduce((total, upkeep) => total + upkeep.balance, 0n),
@@ -185,19 +230,16 @@ export class ArcronService {
       const network = this.network();
       localStorage.setItem(NETWORK_STORAGE_KEY, network);
     });
+    // `storeAppId` is the only writer, and it refuses a foreign app id. That
+    // refusal is the reason a poisoned link cannot outlive the visit: the id
+    // arrived in the URL and the URL is the only thing that can bring it back.
     effect(() => {
-      const appId = this.appId();
-      const key = APP_ID_STORAGE_KEY(this.network());
-      if (appId === null) localStorage.removeItem(key);
-      else localStorage.setItem(key, String(appId));
+      storeAppId(localStorage, this.network(), this.appId(), this.standing());
     });
-    // Keep the address bar describing what is on screen, so the URL is always
-    // the shareable link, with no copy button to find, and a reload comes back
-    // to the same registry rather than to whatever was last remembered.
-    effect(() => {
-      const link = entryLink(location.pathname, this.network(), this.appId());
-      history.replaceState(history.state, '', link);
-    });
+    // Keeping the address bar in step with this state is the shell's job, not
+    // this service's: it goes through the router (`app.ts`), because writing
+    // the URL behind the router's back leaves its own copy stale and the next
+    // routerLink rebuilds the address from that stale copy.
     this.start();
   }
 
@@ -214,6 +256,22 @@ export class ArcronService {
     this.appId.set(appId);
     this.reset();
     void this.refresh();
+  }
+
+  /** Leave a quarantined app for the one this console ships pointing at. */
+  useCanonicalApp(): void {
+    const canonical = this.canonicalAppId();
+    if (canonical !== null) this.setAppId(canonical);
+  }
+
+  /**
+   * The visitor has read the warning and wants to continue to this app.
+   *
+   * Unlocks the money buttons for this app id, in this tab, until the app id
+   * changes or the page is reloaded. Nothing is written down.
+   */
+  acceptCurrentApp(): void {
+    this.acceptedAppId.set(this.appId());
   }
 
   start(): void {
@@ -358,13 +416,13 @@ function readEntry(): Entry {
   return entryFrom(
     location.search,
     localStorage.getItem(NETWORK_STORAGE_KEY),
-    (network) => localStorage.getItem(APP_ID_STORAGE_KEY(network)),
+    (network) => localStorage.getItem(appIdStorageKey(network)),
   );
 }
 
 /** The app id for a network the *user* switched to, from memory only and never the link. */
 function readAppId(network: NetworkKey): number | null {
-  return rememberedAppId(network, localStorage.getItem(APP_ID_STORAGE_KEY(network)));
+  return rememberedAppId(network, localStorage.getItem(appIdStorageKey(network)));
 }
 
 export function describe(cause: unknown): string {

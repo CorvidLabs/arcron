@@ -201,10 +201,11 @@ routes and not five, in the AC files' favour.
    would have opened every stranger against `http://localhost:4001`, which
    HTTPS blocks as mixed content. `js/test/networks.test.ts` now pins it, so
    the claim is falsifiable rather than merely written down.
-2. Router and a page per upkeep. Registering ends there. Three routes: `/`,
-   `/u/:id`, `/register`.
-3. Quarantine non-canonical app ids, and stop persisting them. Before publish,
-   because publishing is what makes a poisoned link worth sending.
+2. ~~Router and a page per upkeep. Registering ends there. Three routes: `/`,
+   `/u/:id`, `/register`.~~ Done; see "What items 2 and 3 landed as" below.
+3. ~~Quarantine non-canonical app ids, and stop persisting them.~~ Done. It
+   landed before publishing, which was the point: publishing is what makes a
+   poisoned link worth sending.
 4. ~~Publish under `corvidlabs.xyz`, and name the URL in the docs.~~ The path
    exists and is proven; the push is the owner's. See below.
 5. The register form's honesty: real cost, name what is being paid, read the
@@ -471,3 +472,40 @@ It is also a lesson about the evidence, not the contract. Nothing in
 drifted apart for a day and the one command that checks it was not run by
 anything. `verify_build` belongs in a scheduled job against the live app, not
 in a human's memory.
+
+## What items 2 and 3 landed as (2026-08-26)
+
+**Three routes.** `/` keeps the two tabs, `/u/:id` is new and is where
+registering now ends, `/register` is the form, and an unknown path redirects to
+`/` carrying its query string. `web/src/app/routes.test.ts` asserts the count
+rather than the existence of each, because the count is the decision that was
+taken and a fourth destination should have to argue for itself.
+
+**The query parameters survive by policy, not by discipline.**
+`withRouterConfig({ defaultQueryParamsHandling: 'preserve' })` means no link in
+the console has to remember `?network=` and `?app=`, and the one place that
+changes them asks for `'merge'` explicitly. That sync moved out of
+`ArcronService` and into the shell: it goes through the router, because
+`history.replaceState` leaves the router's own copy of the URL stale and the
+next `routerLink` rebuilds the address from the stale copy. Two things were
+learned doing it, both by driving it:
+
+- `router.navigate([], { queryParams })` with no `relativeTo` resolves against
+  the root, so it rewrote `/register` to `/`. The sync builds a `UrlTree` from
+  the settled URL instead.
+- The sync is itself a navigation, so keying focus management on "a navigation
+  ended" stole focus on page load. Focus is keyed on the *path* changing.
+
+**Quarantine gates rather than warns.** The identity comparison left the trust
+banner, which now carries only what a read can tell you plus the one case with
+nothing to compare against. What replaced it is a state: money is dead until
+the visitor continues, the app id is never written to `localStorage`, both ids
+are named, and one button goes back. LocalNet is deliberately outside it, and
+`docs/ac/j3-j4.md`'s D1 was taken as B at the same time: topping up a
+stranger's upkeep is a gift, so it left the table rows and lives on `/u/:id`
+with wording that names the creator in full.
+
+**What was deliberately not built:** search, filters, "mine", the graded Test
+button, the honest cost quote, the ASA bonus actions on `/u/:id` (both service
+methods still have no UI, and a permanent 0.1 ALGO opt-in deserves its own
+wording pass), and any fourth destination.

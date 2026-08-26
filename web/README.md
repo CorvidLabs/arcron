@@ -65,10 +65,36 @@ script's. See [`scripts/publish_console.py`](../scripts/publish_console.py).
 - **On LocalNet**, KMD is offered as a wallet too, so a browser can sign with
   nothing installed. Keys never leave KMD.
 
+## Three destinations
+
+| Route | What it is |
+|---|---|
+| `/` | The registry and the keeper board, as two tabs. |
+| `/u/:id` | One upkeep: everything about it, and every action anyone can take on it. |
+| `/register` | The register form. Registering ends on `/u/:id` for the upkeep just created. |
+
+Three, not five. An earlier plan copied NFDomains' five destinations onto a
+registry of five rows; `docs/console-plan.md` defers the other four until
+something needs a fourth reading. `routes.test.ts` asserts the count, because
+the count is the decision.
+
+`?network=` and `?app=` describe which chain and which registry the page is
+showing, so they belong to every destination. The router preserves them on
+every link by default (`routes.ts`), and `app.ts` keeps the address bar in
+step with what is on screen, so the URL is always the shareable link.
+
+Because the console routes on the path rather than on a hash, a static host
+needs `index.html` as its 404 page or a cold load of `/u/21` will not resolve.
+`fledge run web-build-hosted` writes that copy.
+
+Focus moves to the routed region on every navigation but the first. A router
+that does not move focus is a router that breaks screen readers.
+
 ## Two views of the same state
 
 **Registry** is for someone watching their own upkeeps: every upkeep, its
-cadence, escrow and runway, with register/top-up/cancel.
+cadence, escrow and runway, with execute per row and a link to each upkeep's
+own page.
 
 **Keeper board** is for someone deciding what to work on: what is claimable
 right now and what it pays *net of the 3,000 µALGO an execution costs*,
@@ -108,6 +134,39 @@ UI is a bad trade. It becomes a reasonable one only if
 [#15](https://github.com/CorvidLabs/arcron/issues/15) proceeds, since staking
 would give keeper reputation a mechanical use rather than a decorative one.
 
+## Quarantine: a link naming an app that is not this deployment
+
+The console is meant to spread by people sending each other links, and a link
+is the only attack this product has. The ABI and the box layout are public, so
+anyone can deploy a look-alike keeper: it shows the same registry, accepts the
+same register form, and keeps whatever is escrowed in it. `?app=` is a query
+parameter, so a link can point the console at one.
+
+The console knows the app id it ships pointing at, per network
+(`defaultAppId` in `js/src/networks.ts`). Any other id on a network that has
+one is **quarantined**, which is three things and not a paragraph:
+
+1. An unmissable panel above everything, naming both ids, with one button back
+   to the real deployment.
+2. Every money button dead until the visitor explicitly continues. That is one
+   gate, `canCommitMoney` in `arcron.service.ts`, which every button and
+   `KeeperService.send` already key on.
+3. The id is **never written to `localStorage`** (`entry.ts::storeAppId`), so
+   the poison cannot outlive the visit. Continuing anyway is not written down
+   either: it says "show me this app now", not "open here next time", and a
+   reload asks again. Whatever the visitor had remembered before the link
+   arrived is left alone rather than overwritten.
+
+**LocalNet is not quarantined.** It records no published deployment, the app
+is whatever you just deployed, and the node is on your own machine, so a link
+cannot aim it at anything an attacker controls. It gets the trust banner's
+"no published app is recorded" warning and keeps working. A developer running
+their own TestNet deployment continues once per visit; that escape hatch is
+deliberate rather than silent, which is the whole design.
+
+`web/src/app/core/quarantine.test.ts` pins all of it, against the real
+predicate and the real writer rather than copies of them.
+
 ## Layout
 
 Everything framework-independent lives one directory up, in `js/`, and the
@@ -122,8 +181,12 @@ console consumes it as a package. Only the Angular half is here.
   target-test.ts     the Test button: simulate the inner call, grade its resource use
   board.ts           what a keeper is offered: classification, sorting, network stats
   format.ts          ALGO amounts and rounds-as-time
+src/app/
+  routes.ts          the three destinations, and the query-parameter policy
+  pages/             one component per destination
 src/app/core/
   entry.ts           where the console opens: link, then memory, then default
+  quarantine.ts      whether the console can vouch for the app it is pointed at
   wallets.ts         the wallet catalogue (KMD on LocalNet, five public wallets)
   wallet.service.ts  connect/disconnect/sign, use-wallet's store as signals
   arcron.service.ts  polling registry state as signals; measures the round rate
@@ -132,7 +195,9 @@ src/app/core/
   affordability.ts   whether that balance covers a total, and by how much it does not
   target-test.service.ts  running the Test button, and discarding a stale verdict
   explorer.ts        block-explorer links, absent on LocalNet by design
-src/app/components/  network bar, stat tiles, registry table, keeper board, register form, activity log
+  quarantine.ts      whether a linked app is the published one, and what that permits
+src/app/pages/       one component per route: registry, upkeep, register
+src/app/components/  network bar, stat tiles, registry table, keeper board, register form, activity log, trust banner, quarantine panel
 scripts/
   dev.ts             poke rounds / seed hour- and day-cadence upkeeps on LocalNet
   localnet-txns.ts   drive the transaction builders headlessly against LocalNet

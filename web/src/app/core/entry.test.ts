@@ -9,7 +9,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { DEFAULT_NETWORK, NETWORKS } from '@corvidlabs/arcron/networks';
 
-import { entryFrom, entryLink, rememberedAppId } from './entry';
+import { appIdStorageKey, entryFrom, entryParams, rememberedAppId, storeAppId } from './entry';
 
 /** Nothing remembered for any network. */
 const nothingStored = () => null;
@@ -75,19 +75,52 @@ describe('switching network in the picker', () => {
     });
 });
 
-describe('producing a link', () => {
-    test('round-trips through entryFrom', () => {
-        const link = entryLink('/arcron/console/', 'testnet', LINKED_APP);
-        expect(link).toBe(`/arcron/console/?network=testnet&app=${LINKED_APP}`);
-        const search = link.slice(link.indexOf('?'));
-        expect(entryFrom(search, 'localnet', () => '42')).toEqual({
+describe('what a link is allowed to leave behind', () => {
+    test('the app id it opened on is remembered, so a reload and a bookmark agree', () => {
+        const written = new Map<string, string>();
+        storeAppId(
+            { setItem: (k, v) => void written.set(k, v), removeItem: () => undefined },
+            'testnet',
+            NETWORKS.testnet.defaultAppId ?? 0,
+            'canonical',
+        );
+        expect(written.get(appIdStorageKey('testnet'))).toBe(String(NETWORKS.testnet.defaultAppId));
+    });
+
+    test('unless the console cannot vouch for it, in which case nothing is written', () => {
+        // The precedence at the top of this file makes a link beat memory,
+        // which is right. It also used to make a link *become* memory, and a
+        // poisoned app id then survived every visit after the one that
+        // carried it. `quarantine.test.ts` covers the rule; this pins that
+        // the writer is the one enforcing it.
+        const written = new Map<string, string>();
+        const removed: string[] = [];
+        storeAppId(
+            { setItem: (k, v) => void written.set(k, v), removeItem: (k) => void removed.push(k) },
+            'testnet',
+            LINKED_APP,
+            'foreign',
+        );
+        expect(written.size).toBe(0);
+        expect(removed).toEqual([]);
+    });
+});
+
+describe('the parameters the address bar carries', () => {
+    // `app.ts` merges exactly these into the URL after every change, so what
+    // the console writes and what it reads back have to be the same shape.
+    const search = (network: 'testnet' | 'localnet', appId: number | null) =>
+        `?${new URLSearchParams(entryParams(network, appId)).toString()}`;
+
+    test('round-trip through entryFrom', () => {
+        expect(search('testnet', LINKED_APP)).toBe(`?network=testnet&app=${LINKED_APP}`);
+        expect(entryFrom(search('testnet', LINKED_APP), 'localnet', () => '42')).toEqual({
             network: 'testnet',
             appId: LINKED_APP,
         });
     });
 
     test('an empty registry round-trips as empty, not as the canonical app', () => {
-        const link = entryLink('/arcron/console/', 'testnet', null);
-        expect(entryFrom(link.slice(link.indexOf('?')), null, () => '42').appId).toBeNull();
+        expect(entryFrom(search('testnet', null), null, () => '42').appId).toBeNull();
     });
 });

@@ -42,7 +42,7 @@ describe('reading the freeze flag', () => {
 
 
 describe('when it is safe to commit money', () => {
-    const ok = { status: 'ready', genesisMatches: true, appId: 769_891_898 };
+    const ok = { status: 'ready', genesisMatches: true, appId: 769_891_898, quarantined: false };
 
     test('a healthy read on the right chain with an app selected', () => {
         expect(canWrite(ok)).toBe(true);
@@ -64,5 +64,11 @@ describe('when it is safe to commit money', () => {
         // null means the first read has not returned. Blocking on that would
         // make every page load briefly unusable rather than briefly unknown.
         expect(canWrite({ ...ok, genesisMatches: null })).toBe(true);
+    });
+
+    test('a quarantined app blocks writes, however healthy everything else is', () => {
+        // A link can name any app id, and a look-alike keeper answers every
+        // read perfectly well. See `quarantine.test.ts` for the whole rule.
+        expect(canWrite({ ...ok, quarantined: true })).toBe(false);
     });
 });

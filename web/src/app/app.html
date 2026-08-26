@@ -10,35 +10,19 @@
     <p class="banner" role="alert">{{ message }}</p>
   }
 
+  <arcron-quarantine-panel />
   <arcron-trust-banner />
 
   <arcron-signer-bar />
   <arcron-stat-tiles />
 
-  <nav class="views" aria-label="View">
-    @for (option of views; track option.key) {
-      <button
-        type="button"
-        class="ghost small"
-        [class.current]="view() === option.key"
-        [attr.aria-current]="view() === option.key ? 'true' : null"
-        (click)="show(option.key)"
-      >
-        {{ option.label }}
-      </button>
-    }
-  </nav>
-
-  @if (view() === 'registry') {
-    <arcron-registry-table />
-  } @else {
-    <arcron-upkeep-board />
-  }
-
-  <div class="columns">
-    <arcron-register-form />
-    <arcron-activity-log />
+  <!-- Focused after every navigation but the first, so the caret follows the
+       URL. `tabindex="-1"` makes it a focus target without adding a tab stop. -->
+  <div class="routed" #routed tabindex="-1">
+    <router-outlet />
   </div>
+
+  <arcron-activity-log />
 </main>
 
 <footer class="chrome">
