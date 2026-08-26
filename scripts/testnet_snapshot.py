@@ -9,7 +9,7 @@ against algod for themselves, and the snapshot records the app, the round and
 the bytecode hash needed to do it:
 
     poetry run python -m scripts.testnet_snapshot --network testnet \\
-        --app-id 769823086 --out ../site/public/arcron/evidence/testnet.json
+        --app-id 769891898 --out ../site/public/arcron/evidence/testnet.json
 """
 
 import argparse

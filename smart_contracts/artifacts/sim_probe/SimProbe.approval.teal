@@ -1,0 +1,479 @@
+#pragma version 11
+#pragma typetrack false
+
+// algopy.arc4.ARC4Contract.approval_program() -> uint64:
+main:
+    intcblock 0 1 32
+    bytecblock "calls" 0x151f7c75 "s0" "s1" "s2" "s3" "s4" "s5" "keeper_app" "s6"
+    txn ApplicationID
+    bnz main_after_if_else@2
+    // smart_contracts/sim_probe/contract.py:51
+    // self.keeper_app = GlobalState(UInt64(0))
+    bytec 8 // "keeper_app"
+    intc_0 // 0
+    app_global_put
+    // smart_contracts/sim_probe/contract.py:52
+    // self.calls = GlobalState(UInt64(0))
+    bytec_0 // "calls"
+    intc_0 // 0
+    app_global_put
+    // smart_contracts/sim_probe/contract.py:53
+    // self.s0 = GlobalState(Account())
+    bytec_2 // "s0"
+    global ZeroAddress
+    app_global_put
+    // smart_contracts/sim_probe/contract.py:54
+    // self.s1 = GlobalState(Account())
+    bytec_3 // "s1"
+    global ZeroAddress
+    app_global_put
+    // smart_contracts/sim_probe/contract.py:55
+    // self.s2 = GlobalState(Account())
+    bytec 4 // "s2"
+    global ZeroAddress
+    app_global_put
+    // smart_contracts/sim_probe/contract.py:56
+    // self.s3 = GlobalState(Account())
+    bytec 5 // "s3"
+    global ZeroAddress
+    app_global_put
+    // smart_contracts/sim_probe/contract.py:57
+    // self.s4 = GlobalState(Account())
+    bytec 6 // "s4"
+    global ZeroAddress
+    app_global_put
+    // smart_contracts/sim_probe/contract.py:58
+    // self.s5 = GlobalState(Account())
+    bytec 7 // "s5"
+    global ZeroAddress
+    app_global_put
+    // smart_contracts/sim_probe/contract.py:59
+    // self.s6 = GlobalState(Account())
+    bytec 9 // "s6"
+    global ZeroAddress
+    app_global_put
+
+main_after_if_else@2:
+    // smart_contracts/sim_probe/contract.py:47
+    // class SimProbe(ARC4Contract):
+    txn NumAppArgs
+    bz main___algopy_default_create@17
+    txn OnCompletion
+    !
+    assert
+    txn ApplicationID
+    assert
+    pushbytess 0x671543f9 0xcd1a3813 0x1e0fa4a4 0xd6ffc97e 0x512b7366 0x32b4ba58 0xdd51b589 0x46ccfce2 // method "configure(uint64)void", method "configure_subjects(address,address,address,address,address,address,address)void", method "works()uint64", method "keeper_only()uint64", method "always_reverts()uint64", method "needs_six()uint64", method "needs_seven()uint64", method "burns_budget()uint64"
+    txna ApplicationArgs 0
+    match configure configure_subjects works keeper_only main_always_reverts_route@10 needs_six needs_seven burns_budget
+    err
+
+main_always_reverts_route@10:
+    // smart_contracts/sim_probe/contract.py:104
+    // assert False, "deliberate revert"
+    err // deliberate revert
+
+main___algopy_default_create@17:
+    txn OnCompletion
+    !
+    txn ApplicationID
+    !
+    &&
+    return
+
+
+// smart_contracts.sim_probe.contract.SimProbe.configure[routing]() -> void:
+configure:
+    // smart_contracts/sim_probe/contract.py:61
+    // @abimethod()
+    txna ApplicationArgs 1
+    dup
+    len
+    pushint 8
+    ==
+    assert // invalid number of bytes for arc4.uint64
+    btoi
+    // smart_contracts/sim_probe/contract.py:64
+    // self.keeper_app.value = keeper_app
+    bytec 8 // "keeper_app"
+    swap
+    app_global_put
+    // smart_contracts/sim_probe/contract.py:61
+    // @abimethod()
+    intc_1 // 1
+    return
+
+
+// smart_contracts.sim_probe.contract.SimProbe.configure_subjects[routing]() -> void:
+configure_subjects:
+    // smart_contracts/sim_probe/contract.py:66
+    // @abimethod()
+    txna ApplicationArgs 1
+    dup
+    len
+    intc_2 // 32
+    ==
+    assert // invalid number of bytes for arc4.static_array<arc4.uint8, 32>
+    txna ApplicationArgs 2
+    dup
+    len
+    intc_2 // 32
+    ==
+    assert // invalid number of bytes for arc4.static_array<arc4.uint8, 32>
+    txna ApplicationArgs 3
+    dup
+    len
+    intc_2 // 32
+    ==
+    assert // invalid number of bytes for arc4.static_array<arc4.uint8, 32>
+    txna ApplicationArgs 4
+    dup
+    len
+    intc_2 // 32
+    ==
+    assert // invalid number of bytes for arc4.static_array<arc4.uint8, 32>
+    txna ApplicationArgs 5
+    dup
+    len
+    intc_2 // 32
+    ==
+    assert // invalid number of bytes for arc4.static_array<arc4.uint8, 32>
+    txna ApplicationArgs 6
+    dup
+    len
+    intc_2 // 32
+    ==
+    assert // invalid number of bytes for arc4.static_array<arc4.uint8, 32>
+    txna ApplicationArgs 7
+    dup
+    len
+    intc_2 // 32
+    ==
+    assert // invalid number of bytes for arc4.static_array<arc4.uint8, 32>
+    // smart_contracts/sim_probe/contract.py:78
+    // self.s0.value = s0.native
+    bytec_2 // "s0"
+    uncover 7
+    app_global_put
+    // smart_contracts/sim_probe/contract.py:79
+    // self.s1.value = s1.native
+    bytec_3 // "s1"
+    uncover 6
+    app_global_put
+    // smart_contracts/sim_probe/contract.py:80
+    // self.s2.value = s2.native
+    bytec 4 // "s2"
+    uncover 5
+    app_global_put
+    // smart_contracts/sim_probe/contract.py:81
+    // self.s3.value = s3.native
+    bytec 5 // "s3"
+    uncover 4
+    app_global_put
+    // smart_contracts/sim_probe/contract.py:82
+    // self.s4.value = s4.native
+    bytec 6 // "s4"
+    uncover 3
+    app_global_put
+    // smart_contracts/sim_probe/contract.py:83
+    // self.s5.value = s5.native
+    bytec 7 // "s5"
+    uncover 2
+    app_global_put
+    // smart_contracts/sim_probe/contract.py:84
+    // self.s6.value = s6.native
+    bytec 9 // "s6"
+    swap
+    app_global_put
+    // smart_contracts/sim_probe/contract.py:66
+    // @abimethod()
+    intc_1 // 1
+    return
+
+
+// smart_contracts.sim_probe.contract.SimProbe.works[routing]() -> void:
+works:
+    // smart_contracts/sim_probe/contract.py:89
+    // self.calls.value += 1
+    intc_0 // 0
+    bytec_0 // "calls"
+    app_global_get_ex
+    assert // check self.calls exists
+    intc_1 // 1
+    +
+    bytec_0 // "calls"
+    dig 1
+    app_global_put
+    // smart_contracts/sim_probe/contract.py:86
+    // @abimethod()
+    itob
+    bytec_1 // 0x151f7c75
+    swap
+    concat
+    log
+    intc_1 // 1
+    return
+
+
+// smart_contracts.sim_probe.contract.SimProbe.keeper_only[routing]() -> void:
+keeper_only:
+    // smart_contracts/sim_probe/contract.py:96
+    // Txn.sender == Application(self.keeper_app.value).address
+    txn Sender
+    intc_0 // 0
+    bytec 8 // "keeper_app"
+    app_global_get_ex
+    assert // check self.keeper_app exists
+    app_params_get AppAddress
+    assert // application exists
+    ==
+    // smart_contracts/sim_probe/contract.py:95-97
+    // assert (
+    //     Txn.sender == Application(self.keeper_app.value).address
+    // ), "Only the keeper app"
+    assert // Only the keeper app
+    // smart_contracts/sim_probe/contract.py:98
+    // self.calls.value += 1
+    intc_0 // 0
+    bytec_0 // "calls"
+    app_global_get_ex
+    assert // check self.calls exists
+    intc_1 // 1
+    +
+    bytec_0 // "calls"
+    dig 1
+    app_global_put
+    // smart_contracts/sim_probe/contract.py:92
+    // @abimethod()
+    itob
+    bytec_1 // 0x151f7c75
+    swap
+    concat
+    log
+    intc_1 // 1
+    return
+
+
+// smart_contracts.sim_probe.contract.SimProbe.needs_six[routing]() -> void:
+needs_six:
+    // smart_contracts/sim_probe/contract.py:110
+    // total += self.s0.value.balance
+    intc_0 // 0
+    bytec_2 // "s0"
+    app_global_get_ex
+    assert // check self.s0 exists
+    acct_params_get AcctBalance
+    assert // account funded
+    // smart_contracts/sim_probe/contract.py:111
+    // total += self.s1.value.balance
+    intc_0 // 0
+    bytec_3 // "s1"
+    app_global_get_ex
+    assert // check self.s1 exists
+    acct_params_get AcctBalance
+    assert // account funded
+    +
+    // smart_contracts/sim_probe/contract.py:112
+    // total += self.s2.value.balance
+    intc_0 // 0
+    bytec 4 // "s2"
+    app_global_get_ex
+    assert // check self.s2 exists
+    acct_params_get AcctBalance
+    assert // account funded
+    +
+    // smart_contracts/sim_probe/contract.py:113
+    // total += self.s3.value.balance
+    intc_0 // 0
+    bytec 5 // "s3"
+    app_global_get_ex
+    assert // check self.s3 exists
+    acct_params_get AcctBalance
+    assert // account funded
+    +
+    // smart_contracts/sim_probe/contract.py:114
+    // total += self.s4.value.balance
+    intc_0 // 0
+    bytec 6 // "s4"
+    app_global_get_ex
+    assert // check self.s4 exists
+    acct_params_get AcctBalance
+    assert // account funded
+    +
+    // smart_contracts/sim_probe/contract.py:115
+    // total += self.s5.value.balance
+    intc_0 // 0
+    bytec 7 // "s5"
+    app_global_get_ex
+    assert // check self.s5 exists
+    acct_params_get AcctBalance
+    assert // account funded
+    +
+    // smart_contracts/sim_probe/contract.py:116
+    // self.calls.value += 1
+    intc_0 // 0
+    bytec_0 // "calls"
+    app_global_get_ex
+    assert // check self.calls exists
+    intc_1 // 1
+    +
+    bytec_0 // "calls"
+    swap
+    app_global_put
+    // smart_contracts/sim_probe/contract.py:106
+    // @abimethod()
+    itob
+    bytec_1 // 0x151f7c75
+    swap
+    concat
+    log
+    intc_1 // 1
+    return
+
+
+// smart_contracts.sim_probe.contract.SimProbe.needs_seven[routing]() -> void:
+needs_seven:
+    // smart_contracts/sim_probe/contract.py:123
+    // total += self.s0.value.balance
+    intc_0 // 0
+    bytec_2 // "s0"
+    app_global_get_ex
+    assert // check self.s0 exists
+    acct_params_get AcctBalance
+    assert // account funded
+    // smart_contracts/sim_probe/contract.py:124
+    // total += self.s1.value.balance
+    intc_0 // 0
+    bytec_3 // "s1"
+    app_global_get_ex
+    assert // check self.s1 exists
+    acct_params_get AcctBalance
+    assert // account funded
+    +
+    // smart_contracts/sim_probe/contract.py:125
+    // total += self.s2.value.balance
+    intc_0 // 0
+    bytec 4 // "s2"
+    app_global_get_ex
+    assert // check self.s2 exists
+    acct_params_get AcctBalance
+    assert // account funded
+    +
+    // smart_contracts/sim_probe/contract.py:126
+    // total += self.s3.value.balance
+    intc_0 // 0
+    bytec 5 // "s3"
+    app_global_get_ex
+    assert // check self.s3 exists
+    acct_params_get AcctBalance
+    assert // account funded
+    +
+    // smart_contracts/sim_probe/contract.py:127
+    // total += self.s4.value.balance
+    intc_0 // 0
+    bytec 6 // "s4"
+    app_global_get_ex
+    assert // check self.s4 exists
+    acct_params_get AcctBalance
+    assert // account funded
+    +
+    // smart_contracts/sim_probe/contract.py:128
+    // total += self.s5.value.balance
+    intc_0 // 0
+    bytec 7 // "s5"
+    app_global_get_ex
+    assert // check self.s5 exists
+    acct_params_get AcctBalance
+    assert // account funded
+    +
+    // smart_contracts/sim_probe/contract.py:129
+    // total += self.s6.value.balance
+    intc_0 // 0
+    bytec 9 // "s6"
+    app_global_get_ex
+    assert // check self.s6 exists
+    acct_params_get AcctBalance
+    assert // account funded
+    +
+    // smart_contracts/sim_probe/contract.py:130
+    // self.calls.value += 1
+    intc_0 // 0
+    bytec_0 // "calls"
+    app_global_get_ex
+    assert // check self.calls exists
+    intc_1 // 1
+    +
+    bytec_0 // "calls"
+    swap
+    app_global_put
+    // smart_contracts/sim_probe/contract.py:119
+    // @abimethod()
+    itob
+    bytec_1 // 0x151f7c75
+    swap
+    concat
+    log
+    intc_1 // 1
+    return
+
+
+// smart_contracts.sim_probe.contract.SimProbe.burns_budget[routing]() -> void:
+burns_budget:
+    // smart_contracts/sim_probe/contract.py:141
+    // digest = op.bzero(32)
+    intc_2 // 32
+    bzero
+    // smart_contracts/sim_probe/contract.py:142
+    // for i in urange(100):
+    intc_0 // 0
+
+burns_budget_for_header@2:
+    // smart_contracts/sim_probe/contract.py:142
+    // for i in urange(100):
+    dup
+    pushint 100
+    <
+    bz burns_budget_after_for@5
+    // smart_contracts/sim_probe/contract.py:143
+    // digest = op.sha256(op.itob(i) + digest)
+    dup
+    itob
+    uncover 2
+    concat
+    sha256
+    swap
+    // smart_contracts/sim_probe/contract.py:142
+    // for i in urange(100):
+    intc_1 // 1
+    +
+    b burns_budget_for_header@2
+
+burns_budget_after_for@5:
+    pop
+    // smart_contracts/sim_probe/contract.py:144
+    // self.calls.value += 1
+    intc_0 // 0
+    bytec_0 // "calls"
+    app_global_get_ex
+    assert // check self.calls exists
+    intc_1 // 1
+    +
+    bytec_0 // "calls"
+    dig 1
+    app_global_put
+    // smart_contracts/sim_probe/contract.py:145
+    // assert digest.length == 32, "unreachable, keeps digest live"
+    swap
+    len
+    intc_2 // 32
+    ==
+    assert // unreachable, keeps digest live
+    // smart_contracts/sim_probe/contract.py:133
+    // @abimethod()
+    itob
+    bytec_1 // 0x151f7c75
+    swap
+    concat
+    log
+    intc_1 // 1
+    return

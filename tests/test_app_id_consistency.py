@@ -18,8 +18,19 @@ import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 
+# `.sh` is here because `deploy/vps/install.sh` defaulted to a superseded app
+# and this test could not see it: shell scripts point humans at deployments
+# just as effectively as Python does.
+CHECKED_SUFFIXES = {".py", ".ts", ".md", ".yml", ".yaml", ".example", ".sh", ".service"}
+
 # Deployments that exist but must never be presented as current.
-SUPERSEDED = {"769802474", "769772891", "769772906"}
+#
+# 769823086 (alpha-1) was missing from this set until 2026-08-26, and the
+# cost was exactly what this file was written to prevent: a keeper bot ran
+# for hours against it while the live deployment went unserviced. It is
+# immutable and pre-governance, so pointing anything at it is worse than
+# pointing at an empty registry.
+SUPERSEDED = {"769823086", "769802474", "769772891", "769772906"}
 
 # Files that record history and are *expected* to name superseded apps: a
 # completed task or an explicit "do not use this one" warning.
@@ -37,7 +48,16 @@ HISTORICAL = {
     "docs/status.md",
     "SECURITY.md",
     "tests/test_app_id_consistency.py",
+    # Acceptance criteria and the console plan name the dead deployments as
+    # the input to a scenario ("what should the banner say about this one?")
+    # and as the record of a misconfiguration. Both are warnings.
+    "docs/ac/j1-j5.md",
+    "docs/console-plan.md",
 }
+
+# Dated review records. They describe the tree as it stood on a day, so a
+# superseded id in one is evidence, not a pointer.
+HISTORICAL_PREFIXES = ("docs/reviews/",)
 
 # Every place that points at the live keeper app, with the pattern that finds it.
 LIVE_KEEPER_POINTERS = [
@@ -81,10 +101,15 @@ def test_superseded_apps_appear_only_where_history_is_recorded() -> None:
     """A dead app id outside a historical file is a pointer someone will follow."""
     offenders = []
     for path in sorted(ROOT.rglob("*")):
-        if not path.is_file() or path.suffix not in {".py", ".ts", ".md", ".yml", ".yaml", ".example"}:
+        if not path.is_file() or path.suffix not in CHECKED_SUFFIXES:
             continue
         relative = path.relative_to(ROOT).as_posix()
-        if relative in HISTORICAL or "node_modules" in relative or relative.startswith("."):
+        if (
+            relative in HISTORICAL
+            or relative.startswith(HISTORICAL_PREFIXES)
+            or "node_modules" in relative
+            or relative.startswith(".")
+        ):
             continue
         if relative.endswith(".example") or "/workflows/" in relative:
             pass  # still checked; listed here only because they are not source

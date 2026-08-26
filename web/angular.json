@@ -71,7 +71,14 @@
               "buildTarget": "web:build:development"
             }
           },
-          "defaultConfiguration": "development"
+          "defaultConfiguration": "development",
+          "options": {
+            "prebundle": {
+              "exclude": [
+                "@corvidlabs/arcron"
+              ]
+            }
+          }
         },
         "test": {
           "builder": "@angular/build:unit-test"

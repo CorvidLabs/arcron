@@ -48,5 +48,10 @@
       <span>App account {{ address }}</span>
     }
   </p>
-  <p>Registry reads are public box state; signing on LocalNet goes through KMD.</p>
+  <p>
+    Registry reads are public box state.
+    @if (arcron.network() === 'localnet') {
+      <span>Signing on LocalNet goes through KMD.</span>
+    }
+  </p>
 </footer>

@@ -9,7 +9,7 @@ import { describe, expect, test } from 'bun:test';
 // The real function the console runs, not a copy. An earlier version of this
 // file declared its own, so reverting the coercion in the service left every
 // test here green.
-import { isFrozen } from './arcron.service';
+import { canCommitMoney as canWrite, isFrozen } from './arcron.service';
 
 const key = (name: string) => new TextEncoder().encode(name);
 
@@ -40,14 +40,6 @@ describe('reading the freeze flag', () => {
 // left every money button live underneath it. Two reviewers found that in the
 // same pass.
 
-/** The predicate `ArcronService.canWrite` computes, isolated from signals. */
-function canWrite(state: {
-    status: string;
-    genesisMatches: boolean | null;
-    appId: number | null;
-}): boolean {
-    return state.status === 'ready' && state.genesisMatches !== false && state.appId !== null;
-}
 
 describe('when it is safe to commit money', () => {
     const ok = { status: 'ready', genesisMatches: true, appId: 769_891_898 };

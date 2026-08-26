@@ -43,7 +43,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
+      # Full history: tests/test_verify_release.py checks that the release
+      # record names a commit this repository contains, and that drift
+      # detection still reports the commits it is supposed to. A shallow
+      # clone of a merge commit resolves neither, and the failure looks
+      # like a broken test rather than a missing checkout option.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
@@ -90,6 +97,12 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        # Full history: tests/test_verify_release.py checks that the release
+        # record names a commit this repository contains, and that drift
+        # detection still reports what it should. A shallow clone of a merge
+        # commit resolves neither.
+        with:
+          fetch-depth: 0
 
       - name: Toolchain
         run: |
@@ -173,6 +186,12 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
+        # Full history: tests/test_verify_release.py checks that the release
+        # record names a commit this repository contains, and that drift
+        # detection still reports what it should. A shallow clone of a merge
+        # commit resolves neither.
+        with:
+          fetch-depth: 0
 
       - name: Docker and AlgoKit
         run: |

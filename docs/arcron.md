@@ -63,6 +63,43 @@ creator                keeper app (769891898)               target app
 All methods are ARC-4 ABI methods on the keeper app
 (`smart_contracts/keeper/contract.py`).
 
+**The exact signatures**, because a selector is `sha512_256(signature)[:4]` and
+a table of parameter *names* is not enough to compute one. Getting this wrong
+does not produce a helpful error: the contract's method router falls through to
+`err`, and you see `logic eval error: err opcode executed` with no mention of
+the method or the selector.
+
+```
+register(pay,pay,uint64,byte[][],uint64,uint64,uint64,uint64,uint64,uint64)uint64
+execute(uint64)uint64
+top_up(uint64,pay)uint64
+cancel(uint64)uint64
+opt_in_asset(pay,uint64,uint64)uint64
+top_up_asset(uint64,axfer)uint64
+freeze()void
+update()void
+```
+
+Note `opt_in_asset` takes the asset as a plain `uint64`, not the ARC-4
+`asset` reference type. The natural guess is wrong.
+
+The machine-readable version is the ARC-56 spec at
+`smart_contracts/artifacts/keeper/Keeper.arc56.json`, produced by
+`poetry run python -m smart_contracts build`. Prefer it over this table; the
+table is for reading and the JSON is for calling.
+
+Three things that are not in any signature and that you cannot call `register`
+without:
+
+- **Both payments go to the keeper application's own account**, the address
+  derived from its app id, not to the creator and not to a keeper.
+- **The group order is `[mbr_payment, funding_payment, app call]`.**
+- **The call must carry a box reference for `b"u" + itob(n)`**, where `n` is
+  the app's global `next_upkeep_id`. `register` assigns the id, so you have to
+  predict it before you send: read that global key first. (A typed
+  algokit-utils client does this for you. Building the group from raw algosdk,
+  you have to. The alternative is a simulate with unnamed resources.)
+
 | Method | Callers | Purpose |
 |--------|---------|---------|
 | `register(mbr_payment, funding_payment, target_app, call_args, interval_rounds, fee_per_execution, policy, fee_cap, fee_asset, asset_fee) → uint64` | anyone | Create an upkeep; returns its id. Two payment args fund the box MBR and the escrow. `call_args` is every app arg of the call, in order. `policy` is `CATCH_UP` (0) or `SKIP_AHEAD` (1); `fee_cap` is the most one run may ever pay in ALGO, or 0 for no escalation. `fee_asset`/`asset_fee` add an ASA bonus, or 0 for ALGO only. |
@@ -71,6 +108,8 @@ All methods are ARC-4 ABI methods on the keeper app
 | `cancel(upkeep_id) → uint64` | creator only | Delete the upkeep; refunds remaining escrow **plus the box MBR** the deletion releases, and any unspent ASA bonus. Returns the refunded ALGO. |
 | `opt_in_asset(mbr_payment, upkeep_id, asset) → uint64` | anyone | Let the app account hold an upkeep's bonus asset. 0.1 ALGO, permanent, not refundable. |
 | `top_up_asset(upkeep_id, asset_funding) → uint64` | anyone | Add to an upkeep's ASA bonus escrow; returns the new asset balance. |
+| `freeze() → void` | creator only | Give up the update path permanently. Sets the global `frozen` to 1, after which nobody can replace the programs. See the warning in `README.md`: until this is called, the creator can reach every escrow in the app. |
+| `update() → void` | creator only | Replace the programs. Refused once `frozen` is 1. This is the power `freeze` gives up. |
 
 Constraints (asserted on-chain):
 
@@ -127,7 +166,28 @@ fee_asset: uint64 | asset_fee: uint64 | asset_balance: uint64
 | `[106:114]` | fee_asset |
 | `[114:122]` | asset_fee |
 | `[122:130]` | asset_balance |
-| `[130:]` | tail: ARC-4 `byte[][]` (a count, an offset per argument, then each argument's length and bytes) |
+| `[130:]` | tail: ARC-4 `byte[][]`, see below |
+
+The tail is a uint16 count, then one uint16 offset per argument, then each
+argument as a uint16 length followed by its bytes. **Every offset is measured
+from just after the count, so add 2 to it before indexing into the tail.**
+
+That sentence is the whole reason this section exists. Omitting it does not
+raise: it yields a plausible wrong value. Decoding one real box without the +2
+returns `["0004"]` where the argument is actually `["40d7be68"]`, and a keeper
+built that way would mis-read every upkeep in the registry and never find out.
+
+The head is always 130 bytes and the contract always writes 130 as the tail
+offset at `[40:42]`. Both decoders reject anything else rather than reading on,
+because a box from an older deployment is shorter and reading past its end
+silently yields zeros.
+
+### Global state
+
+| Key | Meaning |
+|-----|---------|
+| `next_upkeep_id` | The id `register` will assign next. Read this to predict the box name your `register` group must reference. |
+| `frozen` | 0 while the creator can still replace the programs, 1 once `freeze` has been called. An app deployed before governance carries no `frozen` key at all, and a missing flag reads as frozen rather than unknown, because such an app has no update path. |
 
 Reference decoder: `scripts/keeper_bot.py::_decode_upkeep`; its TypeScript twin
 is `js/src/upkeep.ts`. Both are pinned to the *same* recorded box, in
@@ -505,8 +565,20 @@ provided some keeper attaches the reference.
 
 **The budget is 8 references per transaction.** Arcron spends two of them (the
 upkeep's box and the target app), leaving **six** for the keeper to fill with
-accounts, assets or apps in any mix. (Six accounts were accepted at this
-protocol version, so the old four-account cap no longer binds separately.)
+accounts, assets or apps in any mix. Six accounts were accepted at this
+protocol version, so the old four-account cap no longer binds *at the AVM*.
+
+**It still binds on the bot in this repository.** `scripts/keeper_bot.py` sends
+through algokit-utils' typed client, whose default resource populator caps at
+four direct account references per transaction and refuses a fifth with
+"No more transactions below reference limit". Measured, both ways, in
+`scripts/spike_simulate_test_button.py`: a six-account target succeeds when the
+references are attached by hand and fails through `send.execute`.
+
+So a target needing five or six accounts is executable by the protocol and not
+by the keeper most likely to try. Treat six as the ceiling of what is possible
+and four as the ceiling of what will actually be serviced today, and prefer
+[the pull pattern](integrating.md#the-pull-pattern) over either.
 
 **What is still missing is discovery, not capability.** Nothing on-chain tells
 a keeper which resources an upkeep needs; the reference list is not part of the
