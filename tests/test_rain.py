@@ -17,6 +17,7 @@ from algopy_testing import AlgopyTestContext, algopy_testing_context
 
 from smart_contracts.rain.contract import (
     ALLOCATION_PREFIX,
+    APP_BASE_MBR,
     ASSET_OPT_IN_MBR,
     BEACON_WINDOW,
     ALLOCATION_MBR,
@@ -35,12 +36,30 @@ def context() -> Iterator[AlgopyTestContext]:
         yield ctx
 
 
+def _configure(
+    context: AlgopyTestContext,
+    contract: Rain,
+    beacon_app,
+    gate_creator,
+    prize_asset,
+    *,
+    amount: int = APP_BASE_MBR,
+    payment_fields: dict | None = None,
+) -> None:
+    payment = context.any.txn.payment(
+        receiver=context.ledger.get_app(contract).address,
+        amount=amount,
+        **(payment_fields or {}),
+    )
+    contract.configure(payment, beacon_app, gate_creator, prize_asset)
+
+
 @pytest.fixture()
 def rain(context: AlgopyTestContext) -> Rain:
     """Open entry, ALGO prize: the original shape, still the default."""
     context.ledger.patch_global_fields(round=UInt64(START_ROUND))
     contract = Rain()
-    contract.configure(UInt64(BEACON_APP), arc4.Address(), UInt64(0))
+    _configure(context, contract, UInt64(BEACON_APP), arc4.Address(), UInt64(0))
     return contract
 
 
@@ -74,10 +93,34 @@ def _deposit(
 
 def test_configure_is_once_and_creator_only(context: AlgopyTestContext) -> None:
     rain = Rain()
-    rain.configure(UInt64(BEACON_APP), arc4.Address(), UInt64(0))
+    _configure(context, rain, UInt64(BEACON_APP), arc4.Address(), UInt64(0))
     assert rain.beacon_app.value == BEACON_APP
     with pytest.raises(AssertionError, match="Already configured"):
-        rain.configure(UInt64(123), arc4.Address(), UInt64(0))
+        _configure(context, rain, UInt64(123), arc4.Address(), UInt64(0))
+
+
+def test_configure_refuses_an_mbr_payment_below_the_app_floor(
+    context: AlgopyTestContext,
+) -> None:
+    """The whole point of #105: a floor that is never in place cannot be
+    reserved, and the last winner would find that out only at claim time."""
+    contract = Rain()
+    payment = context.any.txn.payment(
+        receiver=context.ledger.get_app(contract).address, amount=APP_BASE_MBR - 1
+    )
+    with pytest.raises(AssertionError, match="MBR payment too small"):
+        contract.configure(payment, UInt64(BEACON_APP), arc4.Address(), UInt64(0))
+
+
+def test_configure_accepts_an_mbr_payment_that_covers_the_floor(
+    context: AlgopyTestContext,
+) -> None:
+    contract = Rain()
+    payment = context.any.txn.payment(
+        receiver=context.ledger.get_app(contract).address, amount=APP_BASE_MBR
+    )
+    contract.configure(payment, UInt64(BEACON_APP), arc4.Address(), UInt64(0))
+    assert contract.beacon_app.value == BEACON_APP
 
 
 # --- tickets and pot --------------------------------------------------
@@ -228,7 +271,7 @@ def gated(context: AlgopyTestContext, collection) -> Rain:
     creator, _ = collection
     context.ledger.patch_global_fields(round=UInt64(START_ROUND))
     contract = Rain()
-    contract.configure(UInt64(BEACON_APP), arc4.Address(creator), UInt64(0))
+    _configure(context, contract, UInt64(BEACON_APP), arc4.Address(creator), UInt64(0))
     return contract
 
 
@@ -283,7 +326,7 @@ def test_the_prize_asset_is_not_a_gate_token_at_claim_either(
     prize = context.any.asset(creator=creator)
     contract = Rain()
     context.ledger.patch_global_fields(round=UInt64(START_ROUND))
-    contract.configure(UInt64(BEACON_APP), arc4.Address(creator), prize.id)
+    _configure(context, contract, UInt64(BEACON_APP), arc4.Address(creator), prize.id)
 
     holder = context.any.account(opted_asset_balances={prize.id: UInt64(5)})
     context.ledger.set_box(contract, ALLOCATION_PREFIX + holder.bytes, op.itob(UInt64(1_000)))
@@ -383,7 +426,7 @@ def test_an_asset_draw_refuses_algo_deposits(context: AlgopyTestContext) -> None
     asset = context.any.asset()
     context.ledger.patch_global_fields(round=UInt64(START_ROUND))
     contract = Rain()
-    contract.configure(UInt64(BEACON_APP), arc4.Address(), asset.id)
+    _configure(context, contract, UInt64(BEACON_APP), arc4.Address(), asset.id)
     payment = context.any.txn.payment(
         receiver=context.ledger.get_app(contract).address, amount=1_000
     )
@@ -395,7 +438,7 @@ def test_an_asset_pot_grows_by_the_transfer(context: AlgopyTestContext) -> None:
     asset = context.any.asset()
     context.ledger.patch_global_fields(round=UInt64(START_ROUND))
     contract = Rain()
-    contract.configure(UInt64(BEACON_APP), arc4.Address(), asset.id)
+    _configure(context, contract, UInt64(BEACON_APP), arc4.Address(), asset.id)
     transfer = context.any.txn.asset_transfer(
         xfer_asset=asset,
         asset_receiver=context.ledger.get_app(contract).address,
@@ -409,7 +452,7 @@ def test_the_wrong_asset_is_refused(context: AlgopyTestContext) -> None:
     prize, other = context.any.asset(), context.any.asset()
     context.ledger.patch_global_fields(round=UInt64(START_ROUND))
     contract = Rain()
-    contract.configure(UInt64(BEACON_APP), arc4.Address(), prize.id)
+    _configure(context, contract, UInt64(BEACON_APP), arc4.Address(), prize.id)
     transfer = context.any.txn.asset_transfer(
         xfer_asset=other,
         asset_receiver=context.ledger.get_app(contract).address,
@@ -425,7 +468,7 @@ def asset_rain_pair(context: AlgopyTestContext):
     prize = context.any.asset()
     context.ledger.patch_global_fields(round=UInt64(START_ROUND))
     contract = Rain()
-    contract.configure(UInt64(BEACON_APP), arc4.Address(), prize.id)
+    _configure(context, contract, UInt64(BEACON_APP), arc4.Address(), prize.id)
     return contract, prize
 
 
@@ -436,11 +479,11 @@ def test_configure_is_refused_once_a_pot_exists(context: AlgopyTestContext) -> N
     """Nobody may repoint the denomination under people who already funded it."""
     contract = Rain()
     context.ledger.patch_global_fields(round=UInt64(START_ROUND))
-    contract.configure(UInt64(BEACON_APP), arc4.Address(), UInt64(0))
+    _configure(context, contract, UInt64(BEACON_APP), arc4.Address(), UInt64(0))
     _deposit(context, contract, 100_000)
     contract.beacon_app.value = UInt64(0)  # pretend the one-shot latch is open
     with pytest.raises(AssertionError, match="before the pot is funded"):
-        contract.configure(UInt64(BEACON_APP), arc4.Address(), UInt64(999))
+        _configure(context, contract, UInt64(BEACON_APP), arc4.Address(), UInt64(999))
 
 
 def test_entering_and_depositing_need_configuration_first(
@@ -462,7 +505,7 @@ def test_the_prize_asset_cannot_buy_a_ticket(context: AlgopyTestContext) -> None
     prize = context.any.asset(creator=artist)
     context.ledger.patch_global_fields(round=UInt64(START_ROUND))
     contract = Rain()
-    contract.configure(UInt64(BEACON_APP), arc4.Address(artist), prize.id)
+    _configure(context, contract, UInt64(BEACON_APP), arc4.Address(artist), prize.id)
 
     holder = context.any.account(opted_asset_balances={prize.id: UInt64(1)})
     payment = context.any.txn.payment(
@@ -522,7 +565,7 @@ def test_a_rugable_prize_asset_is_refused(context: AlgopyTestContext) -> None:
 
     def app_for(asset) -> Rain:
         contract = Rain()
-        contract.configure(UInt64(BEACON_APP), arc4.Address(), asset.id)
+        _configure(context, contract, UInt64(BEACON_APP), arc4.Address(), asset.id)
         return contract
 
     for field, message in (
@@ -554,7 +597,7 @@ def test_a_prize_asset_frozen_by_default_is_refused(context: AlgopyTestContext) 
     context.ledger.patch_global_fields(round=UInt64(START_ROUND))
     asset = context.any.asset(default_frozen=True)
     contract = Rain()
-    contract.configure(UInt64(BEACON_APP), arc4.Address(), asset.id)
+    _configure(context, contract, UInt64(BEACON_APP), arc4.Address(), asset.id)
     payment = context.any.txn.payment(
         receiver=context.ledger.get_app(contract).address, amount=ASSET_OPT_IN_MBR
     )
@@ -567,7 +610,7 @@ def test_a_clean_prize_asset_is_accepted(context: AlgopyTestContext) -> None:
     context.ledger.patch_global_fields(round=UInt64(START_ROUND))
     clean = context.any.asset()
     contract = Rain()
-    contract.configure(UInt64(BEACON_APP), arc4.Address(), clean.id)
+    _configure(context, contract, UInt64(BEACON_APP), arc4.Address(), clean.id)
     payment = context.any.txn.payment(
         receiver=context.ledger.get_app(contract).address, amount=ASSET_OPT_IN_MBR
     )
@@ -579,7 +622,7 @@ def test_the_opt_in_refuses_a_different_asset(context: AlgopyTestContext) -> Non
     context.ledger.patch_global_fields(round=UInt64(START_ROUND))
     prize, decoy = context.any.asset(), context.any.asset()
     contract = Rain()
-    contract.configure(UInt64(BEACON_APP), arc4.Address(), prize.id)
+    _configure(context, contract, UInt64(BEACON_APP), arc4.Address(), prize.id)
     payment = context.any.txn.payment(
         receiver=context.ledger.get_app(contract).address, amount=ASSET_OPT_IN_MBR
     )
@@ -664,7 +707,7 @@ def test_deposit_asset_rejects_a_rekeyed_transfer(context: AlgopyTestContext) ->
     asset = context.any.asset()
     context.ledger.patch_global_fields(round=UInt64(START_ROUND))
     contract = Rain()
-    contract.configure(UInt64(BEACON_APP), arc4.Address(), asset.id)
+    _configure(context, contract, UInt64(BEACON_APP), arc4.Address(), asset.id)
     transfer = context.any.txn.asset_transfer(
         xfer_asset=asset,
         asset_receiver=context.ledger.get_app(contract).address,
@@ -679,7 +722,7 @@ def test_deposit_asset_rejects_a_closing_transfer(context: AlgopyTestContext) ->
     asset = context.any.asset()
     context.ledger.patch_global_fields(round=UInt64(START_ROUND))
     contract = Rain()
-    contract.configure(UInt64(BEACON_APP), arc4.Address(), asset.id)
+    _configure(context, contract, UInt64(BEACON_APP), arc4.Address(), asset.id)
     transfer = context.any.txn.asset_transfer(
         xfer_asset=asset,
         asset_receiver=context.ledger.get_app(contract).address,
@@ -694,7 +737,7 @@ def test_opt_in_prize_asset_rejects_a_rekeyed_mbr_payment(context: AlgopyTestCon
     context.ledger.patch_global_fields(round=UInt64(START_ROUND))
     clean = context.any.asset()
     contract = Rain()
-    contract.configure(UInt64(BEACON_APP), arc4.Address(), clean.id)
+    _configure(context, contract, UInt64(BEACON_APP), arc4.Address(), clean.id)
     payment = context.any.txn.payment(
         receiver=context.ledger.get_app(contract).address,
         amount=ASSET_OPT_IN_MBR,
@@ -708,7 +751,7 @@ def test_opt_in_prize_asset_rejects_a_closing_mbr_payment(context: AlgopyTestCon
     context.ledger.patch_global_fields(round=UInt64(START_ROUND))
     clean = context.any.asset()
     contract = Rain()
-    contract.configure(UInt64(BEACON_APP), arc4.Address(), clean.id)
+    _configure(context, contract, UInt64(BEACON_APP), arc4.Address(), clean.id)
     payment = context.any.txn.payment(
         receiver=context.ledger.get_app(contract).address,
         amount=ASSET_OPT_IN_MBR,
@@ -716,3 +759,39 @@ def test_opt_in_prize_asset_rejects_a_closing_mbr_payment(context: AlgopyTestCon
     )
     with pytest.raises(AssertionError, match="MBR payment must not close"):
         contract.opt_in_prize_asset(clean, payment)
+
+
+def test_configure_rejects_a_rekeyed_mbr_payment(context: AlgopyTestContext) -> None:
+    contract = Rain()
+    with pytest.raises(AssertionError, match="MBR payment must not rekey"):
+        _configure(
+            context, contract, UInt64(BEACON_APP), arc4.Address(), UInt64(0),
+            payment_fields={"rekey_to": context.any.account()},
+        )
+
+
+def test_configure_rejects_a_closing_mbr_payment(context: AlgopyTestContext) -> None:
+    contract = Rain()
+    with pytest.raises(AssertionError, match="MBR payment must not close"):
+        _configure(
+            context, contract, UInt64(BEACON_APP), arc4.Address(), UInt64(0),
+            payment_fields={"close_remainder_to": context.any.account()},
+        )
+
+
+def test_configure_refuses_an_mbr_payment_from_anyone_but_the_caller(
+    context: AlgopyTestContext,
+) -> None:
+    """A victim's payment must not be usable to fund somebody else's call.
+
+    The same class of finding as #90 in `keeper.register`: receiver, amount,
+    rekey and close all check out, and the sender of the payment is the one
+    field nothing here would otherwise compare against the caller.
+    """
+    contract = Rain()
+    stranger = context.any.account()
+    with pytest.raises(AssertionError, match="must come from the caller"):
+        _configure(
+            context, contract, UInt64(BEACON_APP), arc4.Address(), UInt64(0),
+            payment_fields={"sender": stranger},
+        )

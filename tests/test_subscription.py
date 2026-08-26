@@ -12,7 +12,7 @@ import pytest
 from algopy import arc4
 from algopy_testing import AlgopyTestContext, algopy_testing_context
 
-from smart_contracts.subscription.contract import SUBSCRIBER_BOX_MBR, Subscription
+from smart_contracts.subscription.contract import APP_BASE_MBR, SUBSCRIBER_BOX_MBR, Subscription
 
 PRICE = 50_000
 MIN_ROUNDS = 30
@@ -35,11 +35,27 @@ def keeper(context: AlgopyTestContext):
     return context.any.application()
 
 
+def _set_keeper(
+    context: AlgopyTestContext,
+    contract: Subscription,
+    keeper_app: int,
+    *,
+    amount: int = APP_BASE_MBR,
+    payment_fields: dict | None = None,
+) -> None:
+    payment = context.any.txn.payment(
+        receiver=context.ledger.get_app(contract).address,
+        amount=amount,
+        **(payment_fields or {}),
+    )
+    contract.set_keeper(payment, arc4.UInt64(keeper_app))
+
+
 @pytest.fixture()
 def app(context: AlgopyTestContext, provider, keeper) -> Subscription:
     contract = Subscription()
     contract.create(arc4.Address(provider), arc4.UInt64(PRICE), arc4.UInt64(MIN_ROUNDS))
-    contract.set_keeper(arc4.UInt64(keeper.id))
+    _set_keeper(context, contract, keeper.id)
     return contract
 
 
@@ -325,7 +341,7 @@ def test_a_large_price_does_not_brick_the_box(
     huge = 2**63
     contract = Subscription()
     contract.create(arc4.Address(provider), arc4.UInt64(huge), arc4.UInt64(MIN_ROUNDS))
-    contract.set_keeper(arc4.UInt64(keeper.id))
+    _set_keeper(context, contract, keeper.id)
 
     victim = context.any.account()
     _subscribe(context, contract, victim, SUBSCRIBER_BOX_MBR + 1)
@@ -382,4 +398,92 @@ def test_subscribe_rejects_a_closing_deposit(
         _subscribe(
             context, app, who, SUBSCRIBER_BOX_MBR + 1,
             payment_fields={"close_remainder_to": context.any.account()},
+        )
+
+
+# --- #105: the app account's own floor must be funded before anyone's
+# money is at risk on it -------------------------------------------------
+#
+# `withdraw` refunds a subscriber's whole deposit plus their box MBR, so
+# without a floor held back separately, the last subscriber to leave would
+# drop the app account below its own minimum balance and the refund would
+# revert after `withdraw` had already booked it. `create` cannot take this
+# payment itself, because the app's address is not known until the create
+# transaction that assigns it has already been confirmed: nothing can pay an
+# address that does not exist yet inside the same atomic group. `set_keeper`
+# is the first call the creator makes afterward, so the payment lives there,
+# and `subscribe` refuses to run before it.
+
+
+def test_subscribing_before_the_keeper_is_set_is_refused(
+    context: AlgopyTestContext, provider
+) -> None:
+    """The floor must be in place before any subscriber's money arrives."""
+    contract = Subscription()
+    contract.create(arc4.Address(provider), arc4.UInt64(PRICE), arc4.UInt64(MIN_ROUNDS))
+    who = context.any.account()
+    with pytest.raises(AssertionError, match="Not configured"):
+        _subscribe(context, contract, who, SUBSCRIBER_BOX_MBR + 1)
+
+
+def test_set_keeper_refuses_an_mbr_payment_below_the_app_floor(
+    context: AlgopyTestContext, provider, keeper
+) -> None:
+    contract = Subscription()
+    contract.create(arc4.Address(provider), arc4.UInt64(PRICE), arc4.UInt64(MIN_ROUNDS))
+    with pytest.raises(AssertionError, match="MBR payment too small"):
+        _set_keeper(context, contract, keeper.id, amount=APP_BASE_MBR - 1)
+
+
+def test_set_keeper_accepts_an_mbr_payment_that_covers_the_floor(
+    context: AlgopyTestContext, provider, keeper
+) -> None:
+    contract = Subscription()
+    contract.create(arc4.Address(provider), arc4.UInt64(PRICE), arc4.UInt64(MIN_ROUNDS))
+    _set_keeper(context, contract, keeper.id)
+    assert contract.keeper_app.value == keeper.id
+    # And the floor being in place is exactly what lets the first subscriber
+    # through, where before this fix nothing gated them.
+    who = context.any.account()
+    _subscribe(context, contract, who, SUBSCRIBER_BOX_MBR + 1)
+
+
+def test_set_keeper_rejects_a_rekeyed_mbr_payment(
+    context: AlgopyTestContext, provider, keeper
+) -> None:
+    contract = Subscription()
+    contract.create(arc4.Address(provider), arc4.UInt64(PRICE), arc4.UInt64(MIN_ROUNDS))
+    with pytest.raises(AssertionError, match="MBR payment must not rekey"):
+        _set_keeper(
+            context, contract, keeper.id,
+            payment_fields={"rekey_to": context.any.account()},
+        )
+
+
+def test_set_keeper_rejects_a_closing_mbr_payment(
+    context: AlgopyTestContext, provider, keeper
+) -> None:
+    contract = Subscription()
+    contract.create(arc4.Address(provider), arc4.UInt64(PRICE), arc4.UInt64(MIN_ROUNDS))
+    with pytest.raises(AssertionError, match="MBR payment must not close"):
+        _set_keeper(
+            context, contract, keeper.id,
+            payment_fields={"close_remainder_to": context.any.account()},
+        )
+
+
+def test_set_keeper_refuses_an_mbr_payment_from_anyone_but_the_caller(
+    context: AlgopyTestContext, provider, keeper
+) -> None:
+    """The same class of finding as #90 in `keeper.register`: receiver,
+    amount, rekey and close all check out, and the sender of the payment is
+    the one field nothing here would otherwise compare against the caller.
+    """
+    contract = Subscription()
+    contract.create(arc4.Address(provider), arc4.UInt64(PRICE), arc4.UInt64(MIN_ROUNDS))
+    stranger = context.any.account()
+    with pytest.raises(AssertionError, match="must come from the caller"):
+        _set_keeper(
+            context, contract, keeper.id,
+            payment_fields={"sender": stranger},
         )

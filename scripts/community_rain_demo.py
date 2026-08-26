@@ -131,15 +131,18 @@ def main(argv: list[str] | None = None) -> None:
     rain, _ = algorand.client.get_typed_app_factory(
         RainFactory, default_sender=founder.address
     ).send.create.bare()
-    algorand.send.payment(
-        algokit_utils.PaymentParams(
-            sender=founder.address,
-            receiver=rain.app_address,
-            amount=algokit_utils.AlgoAmount(micro_algo=500_000),
-        )
-    )
+    # No separate pre-fund: `configure` requires an MBR payment covering the
+    # app account's own base minimum balance, so the last winner can always
+    # be paid. See scripts/rain_demo.py for the full explanation.
     rain.send.configure(
         args=ConfigureArgs(
+            mbr_payment=algorand.create_transaction.payment(
+                algokit_utils.PaymentParams(
+                    sender=founder.address,
+                    receiver=rain.app_address,
+                    amount=algokit_utils.AlgoAmount(micro_algo=500_000),
+                )
+            ),
             beacon_app=beacon.app_id,
             gate_creator=artist.address,
             prize_asset=prize_asset,
@@ -184,14 +187,14 @@ def main(argv: list[str] | None = None) -> None:
     rug_rain, _ = algorand.client.get_typed_app_factory(
         RainFactory, default_sender=founder.address
     ).send.create.bare()
-    algorand.send.payment(
-        algokit_utils.PaymentParams(
-            sender=founder.address, receiver=rug_rain.app_address,
-            amount=algokit_utils.AlgoAmount(micro_algo=300_000),
-        )
-    )
     rug_rain.send.configure(
         args=ConfigureArgs(
+            mbr_payment=algorand.create_transaction.payment(
+                algokit_utils.PaymentParams(
+                    sender=founder.address, receiver=rug_rain.app_address,
+                    amount=algokit_utils.AlgoAmount(micro_algo=300_000),
+                )
+            ),
             beacon_app=beacon.app_id, gate_creator=ZERO_ADDRESS, prize_asset=rugable
         )
     )
@@ -396,14 +399,14 @@ def main(argv: list[str] | None = None) -> None:
     solo_rain, _ = algorand.client.get_typed_app_factory(
         RainFactory, default_sender=founder.address
     ).send.create.bare()
-    algorand.send.payment(
-        algokit_utils.PaymentParams(
-            sender=founder.address, receiver=solo_rain.app_address,
-            amount=algokit_utils.AlgoAmount(micro_algo=500_000),
-        )
-    )
     solo_rain.send.configure(
         args=ConfigureArgs(
+            mbr_payment=algorand.create_transaction.payment(
+                algokit_utils.PaymentParams(
+                    sender=founder.address, receiver=solo_rain.app_address,
+                    amount=algokit_utils.AlgoAmount(micro_algo=500_000),
+                )
+            ),
             beacon_app=beacon.app_id, gate_creator=ZERO_ADDRESS, prize_asset=prize_asset
         )
     )

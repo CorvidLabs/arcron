@@ -114,25 +114,31 @@ def main(argv: list[str] | None = None) -> None:
     rain, _ = algorand.client.get_typed_app_factory(
         RainFactory, default_sender=host.address
     ).send.create.bare()
-    # The app account's own base minimum balance. Every Algorand account needs
-    # it before it can send anything, and this app pays out by inner payment,
-    # so without it the last party to leave cannot leave: the payment drops
-    # the account below its minimum and reverts after the contract has already
-    # booked the obligation. `deadman` had exactly that bug, hidden behind a
-    # payment like this one that nobody had explained, and it was found on a
-    # chain rather than by reading. Stated here so the next person to copy this
-    # contract knows the funding is load-bearing rather than incidental.
-    algorand.send.payment(
-        algokit_utils.PaymentParams(
-            sender=host.address,
-            receiver=rain.app_address,
-            amount=algokit_utils.AlgoAmount(micro_algo=200_000),
-        )
-    )
+    # No separate pre-fund. `configure` now requires an MBR payment covering
+    # the app account's own base minimum balance: every Algorand account
+    # needs it before it can send anything, and this app pays out by inner
+    # payment, so without it the last winner to claim could not: the payment
+    # would drop the account below its minimum and revert after `resolve` had
+    # already booked the allocation. `deadman` had exactly that bug, hidden
+    # behind an unexplained bare payment, and it was found on a chain rather
+    # than by reading; the contract now enforces it instead of trusting
+    # whoever deploys to remember.
+    #
     # Open entry, ALGO prize: the original shape. scripts/community_rain_demo.py
     # runs the gated, asset-paying one.
     rain.send.configure(
-        args=ConfigureArgs(beacon_app=beacon.app_id, gate_creator=ZERO_ADDRESS, prize_asset=0)
+        args=ConfigureArgs(
+            mbr_payment=algorand.create_transaction.payment(
+                algokit_utils.PaymentParams(
+                    sender=host.address,
+                    receiver=rain.app_address,
+                    amount=algokit_utils.AlgoAmount(micro_algo=200_000),
+                )
+            ),
+            beacon_app=beacon.app_id,
+            gate_creator=ZERO_ADDRESS,
+            prize_asset=0,
+        )
     )
     logger.info(f"  Rain app {rain.app_id}, beacon stub {beacon.app_id}")
 

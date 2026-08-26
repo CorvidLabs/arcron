@@ -42,6 +42,7 @@ own box is available by construction.
 | `BOX_PREFIX` | `b"s"` | Prefix for subscriber boxes, keyed by address. |
 | `MAX_ROUNDS_PER_PERIOD` | `1_000_000_000` | Ceiling on `min_rounds_per_period`, matching the keeper's own interval ceiling. An unbounded cadence overflows the comparison in `charge` and freezes billing permanently. |
 | `SUBSCRIBER_BOX_MBR` | `2_500 + 400 * (33 + 16)` | Minimum balance one subscriber box locks in the app account. Charged to the subscriber's first deposit and refunded on withdrawal. |
+| `APP_BASE_MBR` | `100_000` | The app account's own minimum balance, collected once at `set_keeper` and never credited to any subscriber's balance. `withdraw` pays out by inner payment, and an account cannot send itself below its own floor, so without this the last subscriber to leave could not: `withdraw` would already have booked the refund. |
 
 ### Exported Types
 
@@ -54,8 +55,8 @@ own box is available by construction.
 
 | Method | Parameters | Returns | Description |
 |--------|-----------|---------|-------------|
-| `create` | `provider: address, price_per_period: uint64, min_rounds_per_period: uint64` | — | Creation only. Fixes the provider, the price, and the shortest a period may be. |
-| `set_keeper` | `keeper_app: uint64` | — | Creator only, once. Names the keeper app allowed to advance billing. |
+| `create` | `provider: address, price_per_period: uint64, min_rounds_per_period: uint64` | — | Creation only. Fixes the provider, the price, and the shortest a period may be. Does **not** take the MBR payment described below: the app's address is not known until this transaction has already been confirmed and assigned it, so nothing can pay it inside the same atomic group. |
+| `set_keeper` | `mbr_payment: pay, keeper_app: uint64` | — | Creator only, once. Names the keeper app allowed to advance billing, and funds the app account's own base minimum balance. `subscribe` refuses to run before this has happened. |
 | `charge` | — | `uint64` | Zero-argument, the shape Arcron calls. Advances the period and returns it. Touches no boxes and moves no money. |
 | `subscribe` | `deposit: pay` | `uint64` | Opens or tops up a subscription; returns the resulting balance. |
 | `settle` | `subscriber: address` | `uint64` | Bills one subscriber for elapsed periods; returns the number actually paid for. |
@@ -101,6 +102,17 @@ own box is available by construction.
    both of which must be the zero address. Neither harms the contract, since
    a rekey or a close only ever harms the sender; this protects a subscriber
    whose front end slipped either into the group they signed.
+12. `set_keeper` requires a payment covering `APP_BASE_MBR`, funding the app
+   account's own minimum balance before any subscriber can arrive, and
+   `subscribe` refuses to run until `set_keeper` has been called. The payment
+   is held aside and never credited to any subscriber's balance, so a
+   subscriber can still take back every microalgo they put in: without it,
+   the last subscriber's `withdraw` would drop the account below its floor
+   and revert after the refund had already been booked. The payment must come
+   from the caller, checked the same way `keeper.register`'s theft path was
+   closed: receiver, amount, rekey and close all check out on a payment
+   signed by someone other than the caller, so the sender is checked
+   explicitly.
 
 ## Why billing is split from charging
 
@@ -152,8 +164,11 @@ subject, so the provider can run it for anybody.
 | `create` with a zero `min_rounds_per_period` | Fails with "A period must span some rounds" |
 | `create` with a cadence above `MAX_ROUNDS_PER_PERIOD` | Fails with "Cadence too long" |
 | `create` with the zero address as provider | Fails with "Provider required" |
+| `subscribe` before `set_keeper` has been called | Fails with "Not configured" |
 | `subscribe` paying another receiver | Fails with "Pay this app" |
 | `subscribe` where the deposit is not from the caller | Fails with "Deposit must come from the caller" |
+| `set_keeper`'s MBR payment below `APP_BASE_MBR` | Fails with "MBR payment too small" |
+| `set_keeper`'s MBR payment not from the caller, or carrying a rekey or close-remainder-to | Fails with "MBR payment must come from the caller" / "MBR payment must not rekey" / "MBR payment must not close" |
 | A first deposit not covering box MBR | Fails with "First deposit must cover the box" |
 | `settle` for an address with no box | Fails with "No such subscriber" |
 | `withdraw` without a subscription | Fails with "Not subscribed" |
@@ -188,21 +203,36 @@ lapsed, and the provider's claim. `fledge run smoke-subscription`.
 
 This contract pays out by inner payment, and every Algorand account must hold
 the base account minimum balance (100,000 microalgo) before it can send
-anything. Nothing in the contract reserves it, so the deployer must send it
-once, before the first payout is owed.
+anything. `set_keeper` now requires an `mbr_payment` argument covering
+`APP_BASE_MBR`, so this is enforced by the contract rather than left to
+whoever deploys to remember: `subscribe` refuses to run until `set_keeper` has
+been called.
 
-Skipping it does not fail at deploy or at deposit. It fails at the moment the
-last party tries to leave, after the contract has already booked what it owes
-them, and it fails as a reverted inner payment rather than as anything that
-names the cause.
+The payment could not be added to `create` itself. `create` is the transaction
+that assigns the app its id and address, so at the moment it runs, no other
+transaction in its group can name that address; only a call made afterward,
+once the address exists, can be paid into it. `set_keeper` is the first such
+call the creator makes, which is also why it was the natural place for the
+keeper app's cadence gate: both are one-time creator setup, and both now
+happen together.
 
-`deadman` reserves this out of its deposit instead, because it has exactly one
-depositor. A contract with many cannot do that without deciding which one pays
-for the app and never gets it back, so this one asks the deployer.
+Before this, nothing reserved the floor, and skipping it did not fail at
+deploy or at the first deposit: it failed at the moment the last subscriber
+tried to leave, after `withdraw` had already booked the refund, and it failed
+as a reverted inner payment rather than as anything that named the cause.
+`deadman` had exactly this bug, and `subscription` had the same shape without
+the same fix until now.
+
+`deadman` reserves this out of its one deposit instead of taking a separate
+payment, because it has exactly one depositor. A contract like this one, where
+subscribers arrive over time, cannot do that without deciding which deposit
+pays for the app and never gets it back, so `set_keeper` asks for it once,
+separately, up front.
 
 ## Change Log
 
 | Version | Change |
 |---------|--------|
+| 1 | #105: `set_keeper` now takes an `mbr_payment` argument covering `APP_BASE_MBR`, funding the app account's own minimum balance before any subscriber can arrive; `subscribe` refuses to run before `set_keeper` has been called. Closes the same class of bug `deadman` was fixed for: the last subscriber's `withdraw` could drop the account below its floor and revert after the refund had already been booked. Not a struct change; an ABI change on a contract nobody has deployed. The payment could not be added to `create`, because the app's address is not known until that transaction has already been confirmed. |
 | 1 | Initial contract, demo and spec. |
 | 1 | #102: `subscribe` now asserts `rekey_to` and `close_remainder_to` are the zero address on its deposit. Not a struct change; a mechanical hygiene sweep across every contract that accepts a gtxn. |
