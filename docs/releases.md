@@ -58,7 +58,10 @@ Getting outside upkeeps registered is therefore alpha work, not beta work.
 While we are here a redeploy costs nothing but our own time, which is exactly
 the condition under which you want to find out that a field is missing or a
 policy is wrong. The console has to be reachable for that to happen at all, so
-publishing it comes first.
+publishing it comes first. Its address is
+**https://corvidlabs.xyz/arcron/console/**, and that is also the canonical URL
+to check a link against: anything claiming to be Arcron at another address is
+somebody else's front end, whatever it looks like.
 
 ## beta: other people may rely on it
 

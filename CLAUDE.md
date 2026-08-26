@@ -16,6 +16,7 @@ TestNet (app 769891898; 769802474 and 769772891 are superseded, predating the
 - On a real chain: `fledge lanes run local` (ci + the keeper e2e; needs `algokit localnet start`)
 - Endurance: `fledge lanes run endurance` (adds `scripts/keeper_soak.py`, ~3 min)
 - Console: `cd web && bun run ng serve`; `bun test` for its unit tests
+- Console for hosting: `fledge run web-build-hosted` then `fledge run web-verify-hosted`; stage with `fledge run site-console -- --site <site checkout>`
 - Build: `poetry run python -m smart_contracts build` (always rebuild after contract changes)
 - Test: `poetry run pytest tests/ -q`
 - Specs: `specsync check --strict`
@@ -72,6 +73,12 @@ because these are easy to get wrong from memory:
   is its TypeScript twin; both are pinned to the same recorded box.
 - `web/` is styled only with the CorvidLabs design system vendored in
   `web/public/brand/`: no hardcoded colours, no hand-rolled theme toggle.
+- The console's canonical address is `https://corvidlabs.xyz/arcron/console/`,
+  and it is a security property rather than a convenience: the contract is
+  permissionless, so the address is the only thing separating our front end
+  from a copy. Changing it means changing the base href in `fledge.toml`, the
+  three constants at the top of `scripts/publish_console.py`, and every doc
+  that names it.
 - Wallets come from `@txnlab/use-wallet` (see `web/src/app/core/wallets.ts`),
   following the house pattern: Pera, Defly, Lute, Exodus and Kibisis need no
   configuration; only the generic WalletConnect entry takes a project id, and

@@ -8,6 +8,11 @@ Angular (standalone components, signals, zoneless) + Bun + algosdk, styled
 entirely on the [CorvidLabs design system](https://github.com/CorvidLabs/design-system)
 vendored in `public/brand/`.
 
+Its address is **https://corvidlabs.xyz/arcron/console/**, which is canonical
+rather than merely convenient: the contract is permissionless, anyone can build
+a front end for it, and where a console is served from is the only thing that
+tells one apart from a copy.
+
 ## Running it
 
 ```bash
@@ -19,6 +24,31 @@ bun test              # decoder, ABI and formatting tests
 It opens on **LocalNet** and needs `algokit localnet start` plus a deployed
 keeper app. Running `poetry run python -m scripts.keeper_e2e --network localnet`
 from the repo root deploys one and prints its id.
+
+## Building it for the site
+
+`bun run ng build` is the local build and assumes it owns the domain root. The
+hosted one does not, and the difference is one attribute:
+
+```bash
+fledge run web-build-hosted    # ng build --base-href /arcron/console/ --output-path dist/hosted
+fledge run web-verify-hosted   # serve dist/hosted/browser at /arcron/console/, fetch every file
+```
+
+Every asset reference the console emits is relative, so the `<base href>` is
+the only thing that knows the path, and a wrong one is invisible until the page
+is served from somewhere other than `/`. `web-verify-hosted` is what makes that
+visible, and both are in the `ci` lane.
+
+Staging it into a checkout of `CorvidLabs/site`, which is what deploys it:
+
+```bash
+fledge run site-console -- --site ../../site
+```
+
+That writes into the site's `public/arcron/console/` and stops. It does not
+commit and does not push, because publishing is a person's decision, not a
+script's. See [`scripts/publish_console.py`](../scripts/publish_console.py).
 
 ## How it talks to the chain
 

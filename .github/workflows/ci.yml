@@ -74,7 +74,7 @@ jobs:
             eval "$command"
             echo "::endgroup::"
           }
-          for task in build test spec web-install web-test web-build; do
+          for task in build test spec web-install web-test web-build web-build-hosted web-verify-hosted; do
             run_task "$task"
           done
 
@@ -175,6 +175,15 @@ jobs:
 
       - name: Console build
         run: fledge run web-build
+
+      - name: Hosted console build
+        # The bundle that goes to corvidlabs.xyz. It differs from the build
+        # above by one attribute, and that attribute is the whole difference
+        # between a working page and one that 404s its own JavaScript.
+        run: fledge run web-build-hosted
+
+      - name: Hosted console loads at its subpath
+        run: fledge run web-verify-hosted
 
   localnet:
     name: LocalNet end-to-end
