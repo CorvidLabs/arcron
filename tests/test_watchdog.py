@@ -64,6 +64,32 @@ def test_configure_is_once_only(context, watchdog, reporter) -> None:
         watchdog.configure(arc4.Address(reporter), UInt64(THRESHOLD))
 
 
+def test_configure_refuses_a_zero_address_reporter(context) -> None:
+    """A feed nobody can update can go stale and never recover.
+
+    No attacker can reach this, since nobody can sign as the zero address. A
+    creator can reach it with one mistyped argument, and the contract has no
+    second configure to undo it with.
+    """
+    contract = Watchdog()
+    with pytest.raises(AssertionError, match="Reporter cannot be the zero address"):
+        contract.configure(arc4.Address(), UInt64(THRESHOLD))
+
+
+def test_updating_before_configuration_says_so(context, reporter) -> None:
+    """The unconfigured case must answer the question actually being asked.
+
+    `reporter` is the zero address until configure runs, and no real sender
+    equals it, so checking the sender first told everyone "Only the reporter
+    can update" and made this branch unreachable. The spec documented the
+    error anyway, which is how the drift was found.
+    """
+    contract = Watchdog()
+    with context.txn.create_group(active_txn_overrides={"sender": reporter}):
+        with pytest.raises(AssertionError, match="Not configured"):
+            contract.update(UInt64(1))
+
+
 # --- the comparison, at its boundaries --------------------------------
 
 def test_a_fresh_feed_is_not_flagged(context, watchdog) -> None:

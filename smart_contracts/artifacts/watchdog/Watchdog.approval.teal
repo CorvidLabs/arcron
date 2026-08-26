@@ -115,17 +115,26 @@ configure:
     pushint 30
     >=
     assert // Threshold below minimum
-    // smart_contracts/watchdog/contract.py:83
+    // smart_contracts/watchdog/contract.py:82-85
+    // # A zero reporter can never sign, so the feed could only ever go stale
+    // # and never recover. Nobody can reach this by attack, only a creator
+    // # by typo, which is exactly when an assert is worth having.
+    // assert reporter.native != Global.zero_address, "Reporter cannot be the zero address"
+    dig 2
+    global ZeroAddress
+    !=
+    assert // Reporter cannot be the zero address
+    // smart_contracts/watchdog/contract.py:87
     // self.reporter.value = reporter.native
     bytec 5 // "reporter"
     uncover 3
     app_global_put
-    // smart_contracts/watchdog/contract.py:84
+    // smart_contracts/watchdog/contract.py:88
     // self.threshold_rounds.value = threshold_rounds
     bytec_0 // "threshold_rounds"
     swap
     app_global_put
-    // smart_contracts/watchdog/contract.py:85-86
+    // smart_contracts/watchdog/contract.py:89-90
     // # Start the clock, so a feed that never reports is caught too.
     // self.updated_round.value = Global.round
     bytec_1 // "updated_round"
@@ -143,7 +152,7 @@ configure:
 
 // smart_contracts.watchdog.contract.Watchdog.update[routing]() -> void:
 update:
-    // smart_contracts/watchdog/contract.py:89
+    // smart_contracts/watchdog/contract.py:93
     // @abimethod()
     txna ApplicationArgs 1
     dup
@@ -152,7 +161,19 @@ update:
     ==
     assert // invalid number of bytes for arc4.uint64
     btoi
-    // smart_contracts/watchdog/contract.py:92
+    // smart_contracts/watchdog/contract.py:96-101
+    // # Configured first: before configure runs, `reporter` is the zero
+    // # address, which no real sender can equal. Checking the sender first
+    // # therefore answers "Only the reporter can update" to somebody whose
+    // # actual problem is that nobody is the reporter yet, and makes the
+    // # "Not configured" branch unreachable rather than merely unlikely.
+    // assert self.threshold_rounds.value > 0, "Not configured"
+    intc_0 // 0
+    bytec_0 // "threshold_rounds"
+    app_global_get_ex
+    assert // check self.threshold_rounds exists
+    assert // Not configured
+    // smart_contracts/watchdog/contract.py:102
     // assert Txn.sender == self.reporter.value, "Only the reporter can update"
     txn Sender
     intc_0 // 0
@@ -161,14 +182,7 @@ update:
     assert // check self.reporter exists
     ==
     assert // Only the reporter can update
-    // smart_contracts/watchdog/contract.py:93
-    // assert self.threshold_rounds.value > 0, "Not configured"
-    intc_0 // 0
-    bytec_0 // "threshold_rounds"
-    app_global_get_ex
-    assert // check self.threshold_rounds exists
-    assert // Not configured
-    // smart_contracts/watchdog/contract.py:95
+    // smart_contracts/watchdog/contract.py:104
     // if self.stale.value == 1:
     intc_0 // 0
     bytec_2 // "stale"
@@ -177,7 +191,7 @@ update:
     intc_1 // 1
     ==
     bz update_after_if_else@3
-    // smart_contracts/watchdog/contract.py:96
+    // smart_contracts/watchdog/contract.py:105
     // silent_for: UInt64 = Global.round - self.stale_since.value
     global Round
     intc_0 // 0
@@ -185,32 +199,32 @@ update:
     app_global_get_ex
     assert // check self.stale_since exists
     -
-    // smart_contracts/watchdog/contract.py:97
+    // smart_contracts/watchdog/contract.py:106
     // self.stale.value = UInt64(0)
     bytec_2 // "stale"
     intc_0 // 0
     app_global_put
-    // smart_contracts/watchdog/contract.py:98
+    // smart_contracts/watchdog/contract.py:107
     // self.last_recovery_round.value = Global.round
     bytec 9 // "last_recovery_round"
     global Round
     app_global_put
-    // smart_contracts/watchdog/contract.py:101
+    // smart_contracts/watchdog/contract.py:110
     // recovered_round=arc4.UInt64(Global.round),
     global Round
     itob
-    // smart_contracts/watchdog/contract.py:102
+    // smart_contracts/watchdog/contract.py:111
     // silent_for=arc4.UInt64(silent_for),
     swap
     itob
-    // smart_contracts/watchdog/contract.py:103
+    // smart_contracts/watchdog/contract.py:112
     // episode=arc4.UInt64(self.stale_episodes.value),
     intc_0 // 0
     bytec 4 // "stale_episodes"
     app_global_get_ex
     assert // check self.stale_episodes exists
     itob
-    // smart_contracts/watchdog/contract.py:100-104
+    // smart_contracts/watchdog/contract.py:109-113
     // Recovered(
     //     recovered_round=arc4.UInt64(Global.round),
     //     silent_for=arc4.UInt64(silent_for),
@@ -220,7 +234,7 @@ update:
     concat
     swap
     concat
-    // smart_contracts/watchdog/contract.py:99-105
+    // smart_contracts/watchdog/contract.py:108-114
     // arc4.emit(
     //     Recovered(
     //         recovered_round=arc4.UInt64(Global.round),
@@ -234,20 +248,20 @@ update:
     log
 
 update_after_if_else@3:
-    // smart_contracts/watchdog/contract.py:107
+    // smart_contracts/watchdog/contract.py:116
     // self.value.value = value
     bytec 6 // "value"
     swap
     app_global_put
-    // smart_contracts/watchdog/contract.py:108
+    // smart_contracts/watchdog/contract.py:117
     // self.updated_round.value = Global.round
     bytec_1 // "updated_round"
     global Round
     app_global_put
-    // smart_contracts/watchdog/contract.py:109
+    // smart_contracts/watchdog/contract.py:118
     // return Global.round
     global Round
-    // smart_contracts/watchdog/contract.py:89
+    // smart_contracts/watchdog/contract.py:93
     // @abimethod()
     itob
     bytec_3 // 0x151f7c75
@@ -260,7 +274,7 @@ update_after_if_else@3:
 
 // smart_contracts.watchdog.contract.Watchdog.check_freshness[routing]() -> void:
 check_freshness:
-    // smart_contracts/watchdog/contract.py:120
+    // smart_contracts/watchdog/contract.py:129
     // self.checks.value += 1
     intc_0 // 0
     bytec 8 // "checks"
@@ -271,7 +285,7 @@ check_freshness:
     bytec 8 // "checks"
     swap
     app_global_put
-    // smart_contracts/watchdog/contract.py:121
+    // smart_contracts/watchdog/contract.py:130
     // if self.threshold_rounds.value == 0 or self.stale.value == 1:
     intc_0 // 0
     bytec_0 // "threshold_rounds"
@@ -287,12 +301,12 @@ check_freshness:
     bz check_freshness_after_if_else@4
 
 check_freshness_if_body@3:
-    // smart_contracts/watchdog/contract.py:122
+    // smart_contracts/watchdog/contract.py:131
     // return UInt64(0)
     intc_0 // 0
 
 check_freshness_after_inlined_smart_contracts.watchdog.contract.Watchdog.check_freshness@7:
-    // smart_contracts/watchdog/contract.py:111
+    // smart_contracts/watchdog/contract.py:120
     // @abimethod()
     itob
     bytec_3 // 0x151f7c75
@@ -303,7 +317,7 @@ check_freshness_after_inlined_smart_contracts.watchdog.contract.Watchdog.check_f
     return
 
 check_freshness_after_if_else@4:
-    // smart_contracts/watchdog/contract.py:124
+    // smart_contracts/watchdog/contract.py:133
     // silent: UInt64 = Global.round - self.updated_round.value
     global Round
     intc_0 // 0
@@ -312,7 +326,7 @@ check_freshness_after_if_else@4:
     assert // check self.updated_round exists
     -
     dup
-    // smart_contracts/watchdog/contract.py:125
+    // smart_contracts/watchdog/contract.py:134
     // if silent <= self.threshold_rounds.value:
     intc_0 // 0
     bytec_0 // "threshold_rounds"
@@ -321,25 +335,25 @@ check_freshness_after_if_else@4:
     <=
     bz check_freshness_after_if_else@6
     pop
-    // smart_contracts/watchdog/contract.py:126
+    // smart_contracts/watchdog/contract.py:135
     // return UInt64(0)
     intc_0 // 0
-    // smart_contracts/watchdog/contract.py:111
+    // smart_contracts/watchdog/contract.py:120
     // @abimethod()
     b check_freshness_after_inlined_smart_contracts.watchdog.contract.Watchdog.check_freshness@7
 
 check_freshness_after_if_else@6:
-    // smart_contracts/watchdog/contract.py:128
+    // smart_contracts/watchdog/contract.py:137
     // self.stale.value = UInt64(1)
     bytec_2 // "stale"
     intc_1 // 1
     app_global_put
-    // smart_contracts/watchdog/contract.py:129
+    // smart_contracts/watchdog/contract.py:138
     // self.stale_since.value = Global.round
     bytec 7 // "stale_since"
     global Round
     app_global_put
-    // smart_contracts/watchdog/contract.py:130
+    // smart_contracts/watchdog/contract.py:139
     // self.stale_episodes.value += 1
     intc_0 // 0
     bytec 4 // "stale_episodes"
@@ -350,26 +364,26 @@ check_freshness_after_if_else@6:
     bytec 4 // "stale_episodes"
     dig 1
     app_global_put
-    // smart_contracts/watchdog/contract.py:133
+    // smart_contracts/watchdog/contract.py:142
     // flagged_round=arc4.UInt64(Global.round),
     global Round
     itob
-    // smart_contracts/watchdog/contract.py:134
+    // smart_contracts/watchdog/contract.py:143
     // last_update_round=arc4.UInt64(self.updated_round.value),
     intc_0 // 0
     bytec_1 // "updated_round"
     app_global_get_ex
     assert // check self.updated_round exists
     itob
-    // smart_contracts/watchdog/contract.py:135
+    // smart_contracts/watchdog/contract.py:144
     // rounds_silent=arc4.UInt64(silent),
     uncover 3
     itob
-    // smart_contracts/watchdog/contract.py:136
+    // smart_contracts/watchdog/contract.py:145
     // episode=arc4.UInt64(self.stale_episodes.value),
     uncover 3
     itob
-    // smart_contracts/watchdog/contract.py:132-137
+    // smart_contracts/watchdog/contract.py:141-146
     // WentStale(
     //     flagged_round=arc4.UInt64(Global.round),
     //     last_update_round=arc4.UInt64(self.updated_round.value),
@@ -383,7 +397,7 @@ check_freshness_after_if_else@6:
     concat
     swap
     concat
-    // smart_contracts/watchdog/contract.py:131-138
+    // smart_contracts/watchdog/contract.py:140-147
     // arc4.emit(
     //     WentStale(
     //         flagged_round=arc4.UInt64(Global.round),
@@ -396,17 +410,17 @@ check_freshness_after_if_else@6:
     swap
     concat
     log
-    // smart_contracts/watchdog/contract.py:139
+    // smart_contracts/watchdog/contract.py:148
     // return Global.round
     global Round
-    // smart_contracts/watchdog/contract.py:111
+    // smart_contracts/watchdog/contract.py:120
     // @abimethod()
     b check_freshness_after_inlined_smart_contracts.watchdog.contract.Watchdog.check_freshness@7
 
 
 // smart_contracts.watchdog.contract.Watchdog.is_stale[routing]() -> void:
 is_stale:
-    // smart_contracts/watchdog/contract.py:150
+    // smart_contracts/watchdog/contract.py:159
     // return self.stale.value == 1
     intc_0 // 0
     bytec_2 // "stale"
@@ -414,7 +428,7 @@ is_stale:
     assert // check self.stale exists
     intc_1 // 1
     ==
-    // smart_contracts/watchdog/contract.py:141
+    // smart_contracts/watchdog/contract.py:150
     // @abimethod(readonly=True)
     pushbytes 0x00
     intc_0 // 0
@@ -430,7 +444,7 @@ is_stale:
 
 // smart_contracts.watchdog.contract.Watchdog.rounds_since_update[routing]() -> void:
 rounds_since_update:
-    // smart_contracts/watchdog/contract.py:154
+    // smart_contracts/watchdog/contract.py:163
     // return Global.round - self.updated_round.value
     global Round
     intc_0 // 0
@@ -438,7 +452,7 @@ rounds_since_update:
     app_global_get_ex
     assert // check self.updated_round exists
     -
-    // smart_contracts/watchdog/contract.py:152
+    // smart_contracts/watchdog/contract.py:161
     // @abimethod(readonly=True)
     itob
     bytec_3 // 0x151f7c75
@@ -451,13 +465,13 @@ rounds_since_update:
 
 // smart_contracts.watchdog.contract.Watchdog.reading[routing]() -> void:
 reading:
-    // smart_contracts/watchdog/contract.py:159
+    // smart_contracts/watchdog/contract.py:168
     // return self.value.value
     intc_0 // 0
     bytec 6 // "value"
     app_global_get_ex
     assert // check self.value exists
-    // smart_contracts/watchdog/contract.py:156
+    // smart_contracts/watchdog/contract.py:165
     // @abimethod(readonly=True)
     itob
     bytec_3 // 0x151f7c75

@@ -79,6 +79,10 @@ class Watchdog(ARC4Contract):
         assert Txn.sender == Global.creator_address, "Only the creator can configure"
         assert self.threshold_rounds.value == 0, "Already configured"
         assert threshold_rounds >= MIN_THRESHOLD_ROUNDS, "Threshold below minimum"
+        # A zero reporter can never sign, so the feed could only ever go stale
+        # and never recover. Nobody can reach this by attack, only a creator
+        # by typo, which is exactly when an assert is worth having.
+        assert reporter.native != Global.zero_address, "Reporter cannot be the zero address"
 
         self.reporter.value = reporter.native
         self.threshold_rounds.value = threshold_rounds
@@ -89,8 +93,13 @@ class Watchdog(ARC4Contract):
     @abimethod()
     def update(self, value: UInt64) -> UInt64:
         """Report a value. Reporter only. Returns the round it landed in."""
-        assert Txn.sender == self.reporter.value, "Only the reporter can update"
+        # Configured first: before configure runs, `reporter` is the zero
+        # address, which no real sender can equal. Checking the sender first
+        # therefore answers "Only the reporter can update" to somebody whose
+        # actual problem is that nobody is the reporter yet, and makes the
+        # "Not configured" branch unreachable rather than merely unlikely.
         assert self.threshold_rounds.value > 0, "Not configured"
+        assert Txn.sender == self.reporter.value, "Only the reporter can update"
 
         if self.stale.value == 1:
             silent_for: UInt64 = Global.round - self.stale_since.value
