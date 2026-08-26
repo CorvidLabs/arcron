@@ -825,16 +825,38 @@ def main(argv: list[str] | None = None) -> None:
         )
         return paid, after
 
-    # Executed as soon as it comes due. LocalNet advances a round per
-    # transaction, so "on time" here is a round or two past due — enough to
-    # show the curve has barely started, not enough to reach the ceiling.
+    # Executed as soon as it comes due, which is never exactly on the due
+    # round. LocalNet advances a round per transaction, so this lands one or
+    # two rounds late. TestNet advances every ~2.8 seconds whether or not
+    # anyone is sending, so the same code lands three or four rounds late and
+    # the fee has climbed correspondingly further up the curve.
+    #
+    # An earlier version asserted the fee was within a fixed quarter of the
+    # way to the ceiling. That is a LocalNet assumption: it passed there
+    # always, and on TestNet it passed or failed depending on how many rounds
+    # happened to elapse while the transaction was in flight. It failed at
+    # 6,400 against a 6,000 bound, having landed three rounds late, with the
+    # contract behaving exactly as specified.
+    #
+    # So bound the claim by what actually happened rather than by a constant.
+    # The escalation is linear in rounds late over one interval, so a fee that
+    # is on the curve for its own lateness is the real invariant, and the
+    # assertion above has already checked it against the contract's own
+    # arithmetic.
     net.wait_for_round(algorand, before.next_execution_round, poker=deployer)
     on_time_fee, after_on_time = _execute_and_price(esc_id, before)
     _assert("an on-time execution does not pay the ceiling", on_time_fee < cap, True)
+
+    rounds_late = after_on_time.last_serviced_round - before.next_execution_round
     _assert(
-        "and is still near the base fee",
-        on_time_fee < FEE + (cap - FEE) // 4,
+        f"and is only {rounds_late} round(s) late, so barely up the curve",
+        rounds_late < INTERVAL_ROUNDS,
         True,
+    )
+    _assert(
+        "the fee is where the curve puts it for that lateness",
+        on_time_fee,
+        FEE + (cap - FEE) * rounds_late // INTERVAL_ROUNDS,
     )
 
     # Neglected for two intervals past the last service: the curve is flat at
