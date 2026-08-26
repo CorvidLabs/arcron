@@ -419,37 +419,37 @@ needs_seven:
 
 // smart_contracts.sim_probe.contract.SimProbe.burns_budget[routing]() -> void:
 burns_budget:
-    // smart_contracts/sim_probe/contract.py:139
-    // spins = UInt64(0)
-    intc_0 // 0
-    // smart_contracts/sim_probe/contract.py:140
+    // smart_contracts/sim_probe/contract.py:141
     // digest = op.bzero(32)
     intc_2 // 32
     bzero
-    swap
-
-burns_budget_while_top@2:
-    // smart_contracts/sim_probe/contract.py:141
-    // while Global.opcode_budget() > UInt64(30):
-    global OpcodeBudget
-    pushint 30
-    >
-    bz burns_budget_after_while@4
     // smart_contracts/sim_probe/contract.py:142
-    // digest = op.sha256(op.itob(spins) + digest)
+    // for i in urange(100):
+    intc_0 // 0
+
+burns_budget_for_header@2:
+    // smart_contracts/sim_probe/contract.py:142
+    // for i in urange(100):
+    dup
+    pushint 100
+    <
+    bz burns_budget_after_for@5
+    // smart_contracts/sim_probe/contract.py:143
+    // digest = op.sha256(op.itob(i) + digest)
     dup
     itob
     uncover 2
     concat
     sha256
     swap
-    // smart_contracts/sim_probe/contract.py:143
-    // spins += 1
+    // smart_contracts/sim_probe/contract.py:142
+    // for i in urange(100):
     intc_1 // 1
     +
-    b burns_budget_while_top@2
+    b burns_budget_for_header@2
 
-burns_budget_after_while@4:
+burns_budget_after_for@5:
+    pop
     // smart_contracts/sim_probe/contract.py:144
     // self.calls.value += 1
     intc_0 // 0
@@ -459,7 +459,7 @@ burns_budget_after_while@4:
     intc_1 // 1
     +
     bytec_0 // "calls"
-    swap
+    dig 1
     app_global_put
     // smart_contracts/sim_probe/contract.py:145
     // assert digest.length == 32, "unreachable, keeps digest live"

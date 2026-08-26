@@ -34,12 +34,12 @@ from algopy import (
     ARC4Contract,
     Account,
     Application,
-    Global,
     GlobalState,
     Txn,
     UInt64,
     arc4,
     op,
+    urange,
 )
 from algopy.arc4 import abimethod
 
@@ -132,15 +132,15 @@ class SimProbe(ARC4Contract):
 
     @abimethod()
     def burns_budget(self) -> UInt64:
-        """Spins on a cheap op until the call's own budget is nearly gone,
-        then does one more. Fails wherever the budget it is handed is smaller
-        than what this loop demands.
+        """Does a fixed, large number of costly ops -- deliberately more than
+        the ~1,250 a target gets when called through a real Arcron execution
+        (`docs/integrating.md`), so it fails everywhere a real chain would run
+        it. Exists to check whether a simulated call can be handed a budget no
+        real execution will ever grant it (`extra_opcode_budget`).
         """
-        spins = UInt64(0)
         digest = op.bzero(32)
-        while Global.opcode_budget() > UInt64(30):
-            digest = op.sha256(op.itob(spins) + digest)
-            spins += 1
+        for i in urange(100):
+            digest = op.sha256(op.itob(i) + digest)
         self.calls.value += 1
         assert digest.length == 32, "unreachable, keeps digest live"
-        return spins
+        return self.calls.value

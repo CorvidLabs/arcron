@@ -565,8 +565,20 @@ provided some keeper attaches the reference.
 
 **The budget is 8 references per transaction.** Arcron spends two of them (the
 upkeep's box and the target app), leaving **six** for the keeper to fill with
-accounts, assets or apps in any mix. (Six accounts were accepted at this
-protocol version, so the old four-account cap no longer binds separately.)
+accounts, assets or apps in any mix. Six accounts were accepted at this
+protocol version, so the old four-account cap no longer binds *at the AVM*.
+
+**It still binds on the bot in this repository.** `scripts/keeper_bot.py` sends
+through algokit-utils' typed client, whose default resource populator caps at
+four direct account references per transaction and refuses a fifth with
+"No more transactions below reference limit". Measured, both ways, in
+`scripts/spike_simulate_test_button.py`: a six-account target succeeds when the
+references are attached by hand and fails through `send.execute`.
+
+So a target needing five or six accounts is executable by the protocol and not
+by the keeper most likely to try. Treat six as the ceiling of what is possible
+and four as the ceiling of what will actually be serviced today, and prefer
+[the pull pattern](integrating.md#the-pull-pattern) over either.
 
 **What is still missing is discovery, not capability.** Nothing on-chain tells
 a keeper which resources an upkeep needs; the reference list is not part of the
