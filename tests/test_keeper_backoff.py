@@ -163,32 +163,54 @@ def test_blocked_ids_reports_what_is_being_skipped(state_file) -> None:
 
 
 # --- a target must not be able to disguise itself as a lost race -------
+#
+# Every string below was copied from a real failure on a real node, because
+# the point of these tests is that the classifier meets what algod actually
+# writes. The earlier versions asserted against "Runtime error when executing
+# Pulse (…)", which no keeper can ever see: algokit-utils renders that phrase
+# from the *caller's* own app spec, so the name in it is always "Keeper".
+
+# A race lost to another keeper, rejected by the pool after broadcast.
+LOST_RACE = (
+    "Txn UE52VS3EFC3CHDWSBSWAKPQO5TNTZSABGUDEYCCEBC2E7VLICYBA had error 'Runtime "
+    "error when executing Keeper (appId: 1002) in transaction "
+    "UE52VS3EFC3CHDWSBSWAKPQO5TNTZSABGUDEYCCEBC2E7VLICYBA: Not due' at PC 1122: "
+    "| TransactionPool.Remember: transaction "
+    "UE52VS3EFC3CHDWSBSWAKPQO5TNTZSABGUDEYCCEBC2E7VLICYBA: logic eval error: "
+    "assert failed pc=1122. Details: app=1002, pc=1122, opcodes=global Round; "
+    "<=; assert"
+)
+# A target that rejects the call the upkeep registered.
+BROKEN_TARGET = (
+    "Txn AJ7X6DCHC3Z4TIWF7HYJCLWMDGUOC3I5OFRHM3JWVQD2QZ7FBE5A had error 'inner tx "
+    "0 failed: logic eval error: err opcode executed. Details: app=1094, pc=92, "
+    "opcodes=txna ApplicationArgs 0; match label3 label4; err; label2:' at PC 1483:"
+)
 
 
 def test_a_target_saying_not_due_is_not_a_lost_race() -> None:
-    """The failure Kimi found: the marker was matched anywhere in the string.
+    """A target has a say in this string; it has no say in who failed.
 
-    A target's own assert text travels back in the same error, and the target
-    chooses that text. One asserting "cooldown not due" was read as another
-    keeper having won, so the upkeep was never backed off and the bot retried
-    a broken target forever at its own expense.
-
-    algod names the application that failed, and the target does not control
-    that.
+    On-chain failures carry no assert text, but algod disassembles the failing
+    program into the error, so a target *can* get chosen words in front of a
+    keeper by putting them in a byte constant. What it cannot do is fail
+    without the node saying the failure happened in an inner transaction:
+    `execute` checks the schedule before it calls anything, so a keeper-side
+    refusal never carries that marker and a target-side one always does.
     """
-    target = (
-        "Runtime error when executing Pulse (appId: 1004) in transaction 0: "
-        "cooldown not due"
+    hostile = (
+        "Txn AJ7X6DCHC3Z4TIWF7HYJCLWMDGUOC3I5OFRHM3JWVQD2QZ7FBE5A had error 'inner "
+        "tx 0 failed: logic eval error: assert failed pc=42. Details: app=1094, "
+        'pc=42, opcodes=pushbytes 0x6e6f742064756500 // "not due"; log; assert\' '
+        "at PC 1483:"
     )
-    keeper = (
-        "Runtime error when executing Keeper (appId: 1002) in transaction 0: Not due"
-    )
-    assert is_lost_race(keeper) is True
-    assert is_lost_race(target) is False
+    assert is_lost_race(LOST_RACE) is True
+    assert is_lost_race(hostile) is False
+    assert is_lost_race(BROKEN_TARGET) is False
 
 
 def test_a_real_keeper_error_is_still_a_failure() -> None:
-    """Attribution to the keeper is necessary, not sufficient."""
+    """Coming from the keeper contract is necessary, not sufficient."""
     assert (
         is_lost_race(
             "Runtime error when executing Keeper (appId: 1) in transaction 0: "
@@ -199,7 +221,61 @@ def test_a_real_keeper_error_is_still_a_failure() -> None:
 
 
 def test_an_error_with_no_attribution_falls_back_to_the_message() -> None:
-    """Not every error shape names the app; the message is then all there is."""
+    """Not every error shape names an inner transaction; the message is then all
+    there is."""
     assert is_lost_race("logic eval error: Not due") is True
     assert is_lost_race("upkeep not found") is True
     assert is_lost_race("something else entirely") is False
+
+
+# --- what the registry says outranks what the error says ---------------
+
+
+def test_the_registry_moving_on_is_a_lost_race_whatever_the_error_said(
+    state_file,
+) -> None:
+    """The shape a message-only classifier gets wrong on a public network.
+
+    A losing keeper's transaction is not always refused at broadcast. Its own
+    node can accept it — the winner's has not reached that node yet — and then
+    it simply never lands, so what comes back is a timeout that mentions
+    neither "not due" nor anything else a keeper could read. Backing off on
+    that would punish an upkeep for being popular.
+    """
+    timed_out = "Wait for transaction id 6XTU7Y3P4KZ2WQ3O4B5MJ6TSBWLNXKGZ timed out"
+    assert is_lost_race(timed_out) is False
+
+    backoff = Backoff(state_file)
+    assert (
+        backoff.record_failure(1, timed_out, 1_000, INTERVAL, advanced=True) is None
+    )
+    assert backoff.blocked(1, 1_000) is False
+
+
+def test_the_registry_standing_still_does_not_overrule_a_clear_race(
+    state_file,
+) -> None:
+    """False means "no news", not "nothing happened".
+
+    The winner's transaction sits in the pool for a round before it commits, so
+    a keeper refused in that window reads a box that has not moved yet. The
+    error is unambiguous there, and it wins.
+    """
+    backoff = Backoff(state_file)
+    assert backoff.record_failure(1, LOST_RACE, 1_000, INTERVAL, advanced=False) is None
+    assert backoff.blocked(1, 1_000) is False
+
+
+def test_a_broken_target_is_backed_off_with_the_registry_agreeing(state_file) -> None:
+    backoff = Backoff(state_file)
+    entry = backoff.record_failure(1, BROKEN_TARGET, 1_000, INTERVAL, advanced=False)
+    assert entry is not None
+    assert entry.next_attempt_round == 1_000 + INTERVAL
+    assert backoff.blocked(1, 1_000) is True
+
+
+def test_an_unreadable_registry_leaves_the_message_in_charge(state_file) -> None:
+    """A node that will not answer must not turn every failure into a backoff."""
+    backoff = Backoff(state_file)
+    assert backoff.record_failure(1, LOST_RACE, 1_000, INTERVAL, advanced=None) is None
+    assert backoff.record_failure(2, BROKEN_TARGET, 1_000, INTERVAL, advanced=None) is not None

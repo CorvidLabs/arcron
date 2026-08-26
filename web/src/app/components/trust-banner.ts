@@ -16,6 +16,8 @@ export function noticesFor(state: {
   status: string;
   frozen: boolean | null;
   undecodableBoxes: number;
+  /** Counted, and deliberately not surfaced. See below. */
+  unreadableBoxes: number;
 }): Notice[] {
   const { appId } = state;
   if (appId === null) return [];
@@ -51,6 +53,12 @@ export function noticesFor(state: {
     });
   }
 
+  // Deliberately silent about unreadable boxes. A box the node would not hand
+  // over says nothing about the app: cancel deletes a box, so a read racing a
+  // cancel finds nothing, and a rate-limited node answers nothing for
+  // anything. The read failure itself is already reported above, and adding a
+  // second alarming notice for the same cause taught people to distrust an
+  // honest deployment for doing exactly what they asked it to do.
   const undecodable = state.undecodableBoxes;
   if (undecodable > 0) {
     found.push({
@@ -143,6 +151,7 @@ export class TrustBanner {
       status: this.arcron.status(),
       frozen: this.arcron.frozen(),
       undecodableBoxes: this.arcron.undecodableBoxes(),
+      unreadableBoxes: this.arcron.unreadableBoxes(),
     }),
   );
 }

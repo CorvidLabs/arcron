@@ -15,7 +15,10 @@ want, and makes two things important:
   so ours came back "Not due". In a healthy multi-keeper network that is the
   common case, it is free, and backing off would actively reduce coverage: a
   keeper that stopped trying every upkeep it lost a race for would service
-  less and less of the registry. Never backs off.
+  less and less of the registry. Never backs off. Two signals say a race was
+  lost, and they are not equally good: the error text, which a target has
+  some say in, and the registry having moved on, which only an execution can
+  do. `record_failure` takes both.
 * **A broken target is worth retrying, just not constantly.** The wait grows
   exponentially in the upkeep's own intervals but is capped in *rounds*, so a
   daily upkeep is retried hourly rather than in eight days. Retrying is cheap;
@@ -37,18 +40,23 @@ MAX_INTERVAL_MULTIPLIER = 8
 # Retrying costs nothing, so a slow upkeep should not mean a slow recovery:
 # without this, a daily upkeep at 8x would go unretried for over a week.
 MAX_BACKOFF_ROUNDS = 1_286  # roughly an hour at 2.8 s/round
-# The keeper's own reasons for refusing: another keeper got there first, or
-# the upkeep is gone.
+# The keeper contract's own reasons for refusing: another keeper got there
+# first, or the upkeep is gone.
 RACE_MESSAGES = ("not due", "upkeep not found")
-# algod names the application that failed, as
-# "Runtime error when executing Keeper (appId: N) in transaction 0: Not due".
-# That attribution is what makes the message trustworthy. A target's own error
-# text travels back in the same string, and a target asserting something like
-# "cooldown not due" would otherwise be read as a lost race and retried
-# forever at the keeper's expense. The target controls its text; it does not
-# control which app the node says failed.
-KEEPER_ATTRIBUTION = "executing keeper"
-_ATTRIBUTION_MARKER = "when executing "
+# What algod writes when the failure happened inside the call the upkeep
+# registered, as "inner tx 0 failed: logic eval error: …". Everything after
+# that marker is the *target's* program failing, and a target chooses its own
+# text: one asserting "cooldown not due" would otherwise read as another
+# keeper having won, and be retried forever. The target cannot suppress the
+# marker, because the node writes it, and a keeper-side refusal never carries
+# one — `execute` checks the schedule before it calls anything.
+#
+# This replaces an earlier check for "executing Keeper" in the message. That
+# string is not written by algod at all: `algokit-utils` renders it from the
+# *caller's* own app spec (`applications/app_client.py`), so it says "Keeper"
+# for every error the bot will ever see, whichever app actually failed, and
+# the check it was making was always true.
+INNER_FAILURE_MARKER = "inner tx"
 
 
 def is_lost_race(reason: str) -> bool:
@@ -57,15 +65,17 @@ def is_lost_race(reason: str) -> bool:
     Wrong in either direction costs something. Treating a broken target as a
     lost race retries it forever; treating a lost race as a broken target
     backs off an upkeep that is perfectly healthy.
+
+    This reads the error text, which is the only evidence available at the
+    moment of failure. The registry itself is better evidence and arrives a
+    beat later: see `record_failure`'s `advanced`.
     """
     lowered = reason.lower()
-    if not any(message in lowered for message in RACE_MESSAGES):
+    if INNER_FAILURE_MARKER in lowered:
+        # The target's program is what failed, so nothing in this message
+        # means "another keeper won", whatever words the target chose.
         return False
-    if _ATTRIBUTION_MARKER in lowered:
-        # The node said which app failed, so believe it rather than the text.
-        return KEEPER_ATTRIBUTION in lowered
-    # No attribution in this error shape: the message is all there is.
-    return True
+    return any(message in lowered for message in RACE_MESSAGES)
 
 
 @dataclass
@@ -111,10 +121,27 @@ class Backoff:
 
     # -- updates ---------------------------------------------------------
     def record_failure(
-        self, upkeep_id: int, reason: str, current_round: int, interval_rounds: int
+        self,
+        upkeep_id: int,
+        reason: str,
+        current_round: int,
+        interval_rounds: int,
+        advanced: bool | None = None,
     ) -> Entry | None:
-        """Back an upkeep off after a failure; returns its entry, or None for a race."""
-        if is_lost_race(reason):
+        """Back an upkeep off after a failure; returns its entry, or None for a race.
+
+        `advanced` is what the registry says: True when the upkeep moved on
+        between the scan that picked it and the call that failed, which means
+        somebody executed it and we lost, whatever the error text says. It is
+        the trustworthy half of the answer, because a keeper reads it from the
+        contract's own boxes rather than from a string a target had a hand in.
+
+        It is only ever evidence *for* a race, never against one: a winner
+        whose transaction is still in the pool has not moved the box yet, so
+        False means "no news", not "nothing happened". Pass None when the
+        registry could not be read, and the message is all there is.
+        """
+        if advanced or is_lost_race(reason):
             # Another keeper won. Nothing to punish, and the upkeep's own
             # schedule already keeps us from hammering it.
             return None

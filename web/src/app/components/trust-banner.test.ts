@@ -21,6 +21,7 @@ const state = (overrides: Partial<Parameters<typeof noticesFor>[0]> = {}) =>
         status: 'ready',
         frozen: true,
         undecodableBoxes: 0,
+        unreadableBoxes: 0,
         ...overrides,
     });
 
@@ -91,5 +92,39 @@ describe('a network with no published deployment', () => {
         const notices = state({ standing: 'foreign', frozen: false, undecodableBoxes: 2 });
         expect(notices.some((n) => n.headline.includes('not frozen'))).toBe(true);
         expect(notices.some((n) => n.headline.includes('does not decode'))).toBe(true);
+    });
+});
+
+describe('a box the node would not hand over is not an accusation', () => {
+    test('an unreadable box raises no notice at all', () => {
+        // Cancelling an upkeep deletes its box. The console lists boxes, then
+        // reads each one, and a cancel lands between the two. Before fetching
+        // was separated from decoding, that produced "this app is holding data
+        // shaped like an upkeep and is not one, which usually means it is a
+        // different contract wearing these box names" against the visitor's
+        // own honest deployment, immediately after they did exactly what the
+        // console told them to do.
+        const notices = state({ unreadableBoxes: 1 });
+        expect(notices.some((n) => n.headline.includes('does not decode'))).toBe(false);
+        expect(notices.some((n) => n.detail.includes('different contract'))).toBe(false);
+    });
+
+    test('many unreadable boxes are still not an accusation', () => {
+        // A rate-limited node answers nothing for anything, so this is the
+        // shape of a 403 during a full read, not of a hostile app.
+        const notices = state({ unreadableBoxes: 11 });
+        expect(notices.some((n) => n.detail.includes('different contract'))).toBe(false);
+    });
+
+    test('a box that decodes wrongly IS still an accusation', () => {
+        // The distinction has to cut both ways, or the fix has quietly deleted
+        // a real security warning. Box contents belong to whoever owns the app.
+        const notices = state({ undecodableBoxes: 1 });
+        expect(notices.some((n) => n.detail.includes('different contract'))).toBe(true);
+    });
+
+    test('an unreadable box does not mask a real one', () => {
+        const notices = state({ unreadableBoxes: 5, undecodableBoxes: 1 });
+        expect(notices.some((n) => n.headline.includes('1 box here does not decode'))).toBe(true);
     });
 });

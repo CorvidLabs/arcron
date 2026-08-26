@@ -123,6 +123,12 @@ export class ArcronService {
    * to break the reader.
    */
   readonly undecodableBoxes = signal(0);
+  /**
+   * Boxes the node would not hand over. Not a claim about the app: a
+   * cancelled upkeep's box is deleted, so a read racing a cancel finds
+   * nothing, and a rate-limited node answers nothing for anything.
+   */
+  readonly unreadableBoxes = signal(0);
 
   /** Which refresh is allowed to write. See `refresh`. */
   private generation = 0;
@@ -366,26 +372,48 @@ export class ArcronService {
   ): Promise<Upkeep[]> {
     const { boxes } = await algod.getApplicationBoxes(appId).do();
     let undecodable = 0;
+    let unreadable = 0;
     const upkeeps = await Promise.all(
       boxes.map(async (box) => {
         const id = upkeepIdFromBoxName(box.name);
         if (id === null) return null;
+
+        // Fetching and decoding fail for entirely different reasons and must
+        // not share a catch. An earlier version wrapped both, so a 403 from a
+        // rate-limited node, a timeout, or a box deleted between the listing
+        // and the read all counted as "does not decode", and the banner then
+        // told the visitor this app "is a different contract wearing these box
+        // names". Cancelling an upkeep reliably produced that accusation
+        // against an honest deployment, because the delete raced the read.
+        let value: { value: Uint8Array };
         try {
-          const value = await algod.getApplicationBoxByName(appId, box.name).do();
+          value = await algod.getApplicationBoxByName(appId, box.name).do();
+        } catch {
+          // A box that cannot be fetched says nothing about the app. It is
+          // either gone, which is what cancel does, or the node did not
+          // answer, which `status` already reports honestly.
+          unreadable += 1;
+          return null;
+        }
+
+        try {
           return decodeUpkeep(id, value.value);
         } catch {
-          // Box contents belong to whoever owns the app, and a decoder throw
-          // inside a bare Promise.all rejects the whole read. That pinned the
-          // connection at 'error' for one malformed box, which cost an
-          // attacker about 0.058 ALGO and switched off every warning on the
-          // page while the register button stayed live. One bad box now
-          // drops one row.
+          // This one IS the signal. Box contents belong to whoever owns the
+          // app, and a decoder throw inside a bare Promise.all rejects the
+          // whole read. That pinned the connection at 'error' for one
+          // malformed box, which cost an attacker about 0.058 ALGO and
+          // switched off every warning on the page while the register button
+          // stayed live. One bad box now drops one row.
           undecodable += 1;
           return null;
         }
       }),
     );
-    if (current()) this.undecodableBoxes.set(undecodable);
+    if (current()) {
+      this.undecodableBoxes.set(undecodable);
+      this.unreadableBoxes.set(unreadable);
+    }
     return upkeeps
       .filter((upkeep): upkeep is Upkeep => upkeep !== null)
       .sort((left, right) => (left.id < right.id ? -1 : 1));
@@ -406,6 +434,7 @@ export class ArcronService {
     this.nextUpkeepId.set(null);
     this.frozen.set(null);
     this.undecodableBoxes.set(0);
+    this.unreadableBoxes.set(0);
     this.genesisId.set(null);
     this.rateSamples.set([]);
   }

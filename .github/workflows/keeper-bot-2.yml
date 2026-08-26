@@ -1,0 +1,91 @@
+# A second keeper, on the same schedule as the first, so that they compete.
+#
+# Arcron's whole economic argument is that competition between keepers holds
+# the fee below the ceiling. Until this existed, one keeper serviced TestNet
+# and won everything by default, so the argument had never been tested on a
+# real chain: a keeper that never loses a race is not evidence about what
+# losing costs.
+#
+# The design point that is easy to get wrong: **an offset schedule does not
+# race**. Two keepers thirty minutes apart never contend for anything. The
+# first takes every due upkeep and the second arrives to an empty registry,
+# which looks like redundancy and is actually a queue. So this runs on the
+# *same* cron as .github/workflows/keeper-bot.yml, from a different account,
+# with a different secret.
+#
+# Same cron is necessary and not sufficient. Two runners that start together
+# still finish installing dependencies tens of seconds apart, and the loser of
+# that finishes to find nothing due. Both jobs therefore pass `--align 120`,
+# which holds the first scan until the next whole two-minute mark in UTC. An
+# absolute instant is the one thing two machines that have never met can agree
+# on, and it puts both scans in the same round window, which is what a race
+# needs. Anybody else's keeper can join the same barrier; nothing about it is
+# specific to this repository or to GitHub.
+#
+# Separate concurrency group on purpose. Sharing one with the first keeper
+# would queue this behind it, which is exactly the offset schedule the whole
+# arrangement exists to avoid.
+#
+# See docs/hosting.md for what the owner runs to create, fund and register the
+# second account, and for what two keepers cost in billed minutes.
+
+name: Keeper bot 2
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_id:
+        description: Keeper app id to service
+        required: false
+        default: "769891898"
+  schedule:
+    # Identical to the first keeper's. Changing one without the other turns
+    # the pair back into a queue.
+    - cron: "*/30 * * * *"
+
+concurrency:
+  group: keeper-bot-2
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: |
+          pip install "poetry>=2.0,<3.0"
+          poetry install --only main --no-root --no-interaction
+
+      - name: Check the second keeper account is configured
+        id: configured
+        env:
+          KEEPER_MNEMONIC: ${{ secrets.KEEPER_2_MNEMONIC }}
+        run: |
+          if [ -z "$KEEPER_MNEMONIC" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::KEEPER_2_MNEMONIC is not set, so the second keeper did" \
+                 "not run and nothing raced. Add it as a repository secret to start" \
+                 "competing; docs/hosting.md has the commands. It must be a" \
+                 "different account from KEEPER_MNEMONIC: one account cannot race" \
+                 "itself, and two jobs signing as the same address would simply" \
+                 "collide on the transaction id."
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Service due upkeeps
+        if: steps.configured.outputs.ready == 'true'
+        env:
+          KEEPER_MNEMONIC: ${{ secrets.KEEPER_2_MNEMONIC }}
+          KEEPER_APP_ID: ${{ inputs.app_id || '769891898' }}
+          ALGOD_SERVER: https://testnet-api.algonode.cloud
+        run: >
+          poetry run python -m scripts.keeper_bot
+          --once --network testnet --log-format json --align 120
