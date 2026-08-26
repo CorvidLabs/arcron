@@ -563,22 +563,34 @@ That makes far more buildable today than "no foreign arrays" suggests: a target
 can pay an arbitrary address, move an ASA, read a balance or call another app,
 provided some keeper attaches the reference.
 
-**The budget is 8 references per transaction.** Arcron spends two of them (the
+**The budget is 8 references per transaction, and the reference keeper
+services all six a target can be given.** Arcron spends two of them (the
 upkeep's box and the target app), leaving **six** for the keeper to fill with
 accounts, assets or apps in any mix. Six accounts were accepted at this
-protocol version, so the old four-account cap no longer binds *at the AVM*.
+protocol version, so the old four-account cap no longer binds at the AVM, and
+`scripts/keeper_bot.py` no longer stops short of it either.
 
-**It still binds on the bot in this repository.** `scripts/keeper_bot.py` sends
-through algokit-utils' typed client, whose default resource populator caps at
-four direct account references per transaction and refuses a fifth with
-"No more transactions below reference limit". Measured, both ways, in
-`scripts/spike_simulate_test_button.py`: a six-account target succeeds when the
-references are attached by hand and fails through `send.execute`.
+That second half used to be false, and the failure mode is worth knowing even
+though it is fixed here, because a keeper built by copying algokit-utils'
+default pattern will still hit it. `send.execute` used to leave every
+reference to algokit-utils' typed client, whose default resource populator
+caps at four direct account references per transaction and refuses a fifth
+with "No more transactions below reference limit", a client-side ceiling that
+predates the AVM allowing six, not a protocol one. `scripts/keeper_bot.py` now
+simulates the call itself first
+(`scripts/keeper_bot.py::_resolve_execute_references`), names every account,
+app, asset and box the simulation reports directly on the transaction, and
+tells the populator not to run at all, the same recipe
+`scripts/spike_simulate_test_button.py` (section 5b) proved by hand. Copy that
+pattern rather than a bare `send.execute` if you are building your own keeper
+and want it as capable as the protocol.
 
-So a target needing five or six accounts is executable by the protocol and not
-by the keeper most likely to try. Treat six as the ceiling of what is possible
-and four as the ceiling of what will actually be serviced today, and prefer
-[the pull pattern](integrating.md#the-pull-pattern) over either.
+`scripts/reference_boundary.py` pins the result on LocalNet through the real
+bot: a `needs_six()` target is serviced, and a `needs_seven()` one is refused
+with `tx references exceed MaxAppTotalTxnReferences = 8`, a genuine AVM
+ceiling rather than a client one. Both are asserted every run of the `local`
+lane (`smoke-reference-boundary` in `fledge.toml`), so a future change to
+algokit-utils' populator cap regresses this loudly instead of quietly.
 
 **What is still missing is discovery, not capability.** Nothing on-chain tells
 a keeper which resources an upkeep needs; the reference list is not part of the

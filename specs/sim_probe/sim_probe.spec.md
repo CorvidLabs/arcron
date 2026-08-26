@@ -103,9 +103,11 @@ is not deployed to any public network.
 | Module | What is used |
 |--------|-------------|
 | `scripts/spike_simulate_test_button.py` | Registers each target as an upkeep, simulates the inner call standalone with a keeper-app-address sender, and compares the prediction against a real `execute()` |
+| `scripts/reference_boundary.py` | Registers `needs_six`/`needs_seven` as upkeeps and services them through the real `scripts.keeper_bot.main`, pinning that the bot (not just a hand-built call) reaches the six-reference ceiling and no further |
 
 ## Change Log
 
 | Date | Author | Change |
 |------|--------|--------|
+| 2026-08-26 | CorvidLabs | `needs_six`/`needs_seven` now also pin `scripts/keeper_bot.py` itself, not only the AVM: `scripts/reference_boundary.py` runs both through the real bot and asserts the six-reference target is serviced and the seven-reference one is refused by the AVM, not by the bot falling short of the protocol. No contract change; `scripts/keeper_bot.py` stopped leaving references to algokit-utils' four-account-capped populator. |
 | 2026-08-26 | CorvidLabs | Created to answer whether the console's proposed pre-registration "Test" button can honestly predict a real `execute()`. Findings recorded in `scripts/spike_simulate_test_button.py`'s own docstring and run output. |

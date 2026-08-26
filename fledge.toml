@@ -48,6 +48,11 @@ smoke-keeper = "poetry run python -m scripts.keeper_e2e --network localnet"
 # Every attack any review ever found, each asserted to be refused by its own
 # guard rather than by anything incidental. See scripts/attacks.py.
 attacks = "poetry run python -m scripts.attacks --network localnet"
+# Pins the reference boundary in docs/arcron.md: the real keeper bot services
+# a six-reference target and refuses a seven-reference one. Nothing else
+# fails loudly if algokit-utils' resource populator changes shape underneath
+# scripts.keeper_bot._resolve_execute_references. See scripts/reference_boundary.py.
+smoke-reference-boundary = "poetry run python -m scripts.reference_boundary --network localnet"
 smoke-rain = "poetry run python -m scripts.rain_demo --network localnet"
 smoke-community-rain = "poetry run python -m scripts.community_rain_demo --network localnet"
 smoke-subscription = "poetry run python -m scripts.subscription_demo --network localnet"
@@ -62,7 +67,7 @@ steps = ["build", "test", "spec", "js-install", "js-test", "web-test", "web-buil
 
 [lanes.local]
 description = "CI plus the LocalNet end-to-end test (needs algokit localnet start)"
-steps = ["build", "test", "spec", "js-install", "js-test", "web-test", "web-build", "smoke-keeper", "smoke-rain", "smoke-community-rain", "smoke-subscription", "smoke-govern", "smoke-multisig", "smoke-clawback", "attacks"]
+steps = ["build", "test", "spec", "js-install", "js-test", "web-test", "web-build", "smoke-keeper", "smoke-rain", "smoke-community-rain", "smoke-subscription", "smoke-govern", "smoke-multisig", "smoke-clawback", "attacks", "smoke-reference-boundary"]
 
 [lanes.endurance]
 description = "The local lane plus a soak: many consecutive executions, no drift"

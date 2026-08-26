@@ -19,7 +19,7 @@ import logging
 import os
 import signal
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from types import FrameType
 
@@ -191,6 +191,123 @@ def select_due(
             and not (is_blocked is not None and is_blocked(upkeep.upkeep_id))
         ),
         key=lambda upkeep: (-effective_fee(upkeep, current_round), upkeep.upkeep_id),
+    )
+
+
+def _merge_unnamed_resources(*accessed: dict | None) -> dict:
+    """The union of every unnamed resource algod reported, across as many
+    `unnamed-resources-accessed` objects as are passed in.
+
+    A target's own resource needs can be attributed to the whole group or to
+    the call's single transaction depending on how algod resolves them, so
+    both are read (`_resolve_execute_references` passes both) and merged into
+    one set of references to attach.
+    """
+    accounts: list[str] = []
+    apps: list[int] = []
+    assets: list[int] = []
+    boxes: list[tuple[int, bytes]] = []
+    extra_box_refs = 0
+
+    def account(address: str) -> None:
+        if address not in accounts:
+            accounts.append(address)
+
+    def app(app_id: int) -> None:
+        if app_id not in apps:
+            apps.append(app_id)
+
+    def asset(asset_id: int) -> None:
+        if asset_id not in assets:
+            assets.append(asset_id)
+
+    def box(app_id: int, name: bytes) -> None:
+        if (app_id, name) not in boxes:
+            boxes.append((app_id, name))
+
+    for source in accessed:
+        if not source:
+            continue
+        for address in source.get("accounts") or []:
+            account(address)
+        for app_id in source.get("apps") or []:
+            app(int(app_id))
+        for asset_id in source.get("assets") or []:
+            asset(int(asset_id))
+        for entry in source.get("boxes") or []:
+            box(int(entry["app"]), base64.b64decode(entry["name"]))
+        for holding in source.get("asset-holdings") or []:
+            account(holding["account"])
+            asset(int(holding["asset"]))
+        for local in source.get("app-locals") or []:
+            account(local["account"])
+            app(int(local["app"]))
+        extra_box_refs = max(extra_box_refs, source.get("extra-box-refs") or 0)
+
+    return {
+        "accounts": accounts,
+        "apps": apps,
+        "assets": assets,
+        "boxes": boxes,
+        "extra_box_refs": extra_box_refs,
+    }
+
+
+def _resolve_execute_references(
+    client: KeeperClient, upkeep: Upkeep, extra_fee: int
+) -> algokit_utils.CommonAppCallParams:
+    """What `execute(upkeep_id)` needs to reach its target, named directly.
+
+    algokit-utils' own resource populator would discover this for us -- it is
+    what every execution used to rely on entirely -- but its default spreader
+    caps at four direct account references per transaction
+    (`MAX_APP_CALL_ACCOUNT_REFERENCES` in algokit-utils) and refuses a fifth
+    with "No more transactions below reference limit", even though the AVM
+    allows up to six references for a target once the two Arcron itself
+    always spends are set aside (the upkeep's own box and the target app; see
+    docs/arcron.md). Both of those are already known, so only what the target
+    itself reaches for has to be discovered by simulating first, and
+    everything is then attached by hand rather than left for that populator,
+    which the real send is told not to run at all (see the `execute` call
+    site below).
+    """
+    box_ref = algokit_utils.BoxReference(
+        app_id=0, name=b"u" + upkeep.upkeep_id.to_bytes(8, "big")
+    )
+    base_params = algokit_utils.CommonAppCallParams(
+        box_references=[box_ref],
+        app_references=[upkeep.target_app],
+        extra_fee=algokit_utils.AlgoAmount(micro_algo=extra_fee),
+        # A ceiling on what this will sign, rather than trusting the node's
+        # suggested per-byte fee.
+        max_fee=algokit_utils.AlgoAmount(micro_algo=MAX_OUTER_FEE_MICROALGO + extra_fee),
+    )
+    simulated = (
+        client.new_group()
+        .execute(args=ExecuteArgs(upkeep_id=upkeep.upkeep_id), params=base_params)
+        .simulate(allow_unnamed_resources=True)
+    )
+    group_response = simulated.simulate_response["txn-groups"][0]
+    accessed = _merge_unnamed_resources(
+        group_response.get("unnamed-resources-accessed"),
+        *(
+            result.get("unnamed-resources-accessed")
+            for result in group_response.get("txn-results", [])
+        ),
+    )
+    extra_boxes = [
+        algokit_utils.BoxReference(app_id=box_app, name=box_name)
+        for box_app, box_name in accessed["boxes"]
+    ] + [
+        algokit_utils.BoxReference(app_id=0, name=b"")
+        for _ in range(accessed["extra_box_refs"])
+    ]
+    return replace(
+        base_params,
+        account_references=accessed["accounts"] or None,
+        app_references=[upkeep.target_app, *accessed["apps"]],
+        asset_references=accessed["assets"] or None,
+        box_references=[box_ref, *extra_boxes],
     )
 
 
@@ -573,13 +690,15 @@ def main(argv: list[str] | None = None) -> None:
                         extra_fee += BONUS_FEE_MICROALGO
                     response = client.send.execute(
                         args=ExecuteArgs(upkeep_id=upkeep.upkeep_id),
-                        params=algokit_utils.CommonAppCallParams(
-                            extra_fee=algokit_utils.AlgoAmount(micro_algo=extra_fee),
-                            # A ceiling on what this will sign, rather than
-                            # trusting the node's suggested per-byte fee.
-                            max_fee=algokit_utils.AlgoAmount(
-                                micro_algo=MAX_OUTER_FEE_MICROALGO + extra_fee
-                            ),
+                        params=_resolve_execute_references(client, upkeep, extra_fee),
+                        # Every reference the call needs is already named
+                        # directly by _resolve_execute_references, so the
+                        # populator has nothing left to add. It is told not
+                        # to run at all rather than left to try: its own
+                        # spreader still caps at four direct accounts, which
+                        # this sidesteps rather than collides with.
+                        send_params=algokit_utils.SendParams(
+                            populate_app_call_resources=False
                         ),
                     )
                     executed_count += 1
