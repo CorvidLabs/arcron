@@ -91,6 +91,16 @@ escrow until it has run unattended for a while.** Not for a calendar, but
 because "we can fix it" stops being a complete answer the moment someone
 else's money is involved.
 
+With one correction, which an outside review made and which matters:
+**there is no such thing as not inviting people, on chain.** `register` is
+permissionless, so anyone who learns the app id can escrow into it during
+that window, and an explorer listing, a bot log, a README or a status post is
+the invitation. The protection during the unattended period is not the
+calendar and not our intent: it is that the MainNet app id is not published
+anywhere. If an upkeep we did not create appears before freeze, that is a
+real person who has trusted us, and the answer is to freeze then rather than
+to wait out the remaining time.
+
 ## How to help
 
 Three tasks, each about half an hour to an hour, each answering one of the
