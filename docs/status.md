@@ -80,15 +80,40 @@ Those three are what the alpha tasks below exist to answer.
 The stages and what each one freezes are in [releases.md](releases.md). In
 order:
 
-1. **Close every open review finding.** MainNet does not happen while any of
-   them is outstanding. Four independent reviews produced them, and carrying
-   a known-open one onto a chain with real money is the thing this stage
-   exists to avoid.
+1. **Close every finding that a MainNet create would make permanent**, and
+   reach a consensus of about 90 to 95 percent confidence across independent
+   reviewers. Not every open finding: an earlier version of this page said
+   that, and it contradicted the line below, because one of the open findings
+   is "the console has no MainNet entry" and closing that publishes the path
+   to the app.
 2. Run the dogfood upkeep unattended, with the notifier watching. This is the
    only evidence that accrues while nobody is looking.
 3. Answer the three unknowns above through the alpha tasks.
 4. MainNet, deployed from the 3-of-5 multisig, with the app id unpublished
    until it is frozen.
+
+### Why 90 to 95 and not 100
+
+Because the deployment is upgradeable, and that is a deliberate trade rather
+than a stage we have not finished yet.
+
+A frozen contract has to be right the first time. Its only remedy for a bug is
+telling every creator to cancel and re-register by hand, so the bar before
+freezing is as close to certainty as a review process can get, which in
+practice means a paid audit and months of unchanged bytecode.
+
+An unfrozen one can be fixed in place. That does not make bugs acceptable; it
+makes the cost of the last few percent of confidence wildly disproportionate
+to what it buys, because the failure mode it protects against is one we have a
+remedy for.
+
+The honest counterpart, said plainly so nobody has to work it out: **that
+allowance is ours and does not transfer.** The reason we can accept 90 rather
+than 100 is that the creator can still reach every escrow, and while that is
+true, anyone escrowing here is trusting a keyholder rather than bytecode.
+Which is exactly why the app id stays unpublished until freeze, and why an
+unexpected upkeep before then is a person to freeze for rather than a schedule
+to finish.
 
 The one rule held throughout: **do not freeze, and do not invite outside
 escrow until it has run unattended for a while.** Not for a calendar, but
