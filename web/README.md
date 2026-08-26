@@ -89,6 +89,7 @@ console consumes it as a package. Only the Angular half is here.
   upkeep.ts          the Upkeep box decoder (mirrors scripts/keeper_bot.py)
   keeper-abi.ts      method signatures, checked against the ARC-56 artifact
   keeper-txns.ts     register / top_up / cancel / execute over algosdk
+  target-test.ts     the Test button: simulate the inner call, grade its resource use
   board.ts           what a keeper is offered: classification, sorting, network stats
   format.ts          ALGO amounts and rounds-as-time
 src/app/core/
@@ -97,12 +98,58 @@ src/app/core/
   wallet.service.ts  connect/disconnect/sign, use-wallet's store as signals
   arcron.service.ts  polling registry state as signals; measures the round rate
   keeper.service.ts  the four calls as UI state
+  payer.service.ts   the connected account's balance, and the node's minimum fee
+  affordability.ts   whether that balance covers a total, and by how much it does not
+  target-test.service.ts  running the Test button, and discarding a stale verdict
+  explorer.ts        block-explorer links, absent on LocalNet by design
 src/app/components/  network bar, stat tiles, registry table, keeper board, register form, activity log
 scripts/
   dev.ts             poke rounds / seed hour- and day-cadence upkeeps on LocalNet
   localnet-txns.ts   drive the transaction builders headlessly against LocalNet
   wallet-kmd-e2e.ts  drive a real transaction through use-wallet, headlessly
 ```
+
+## Registering, and what the Test button will not claim
+
+The register form quotes the **whole** debit: the box deposit, the escrow, and
+the three fees of the group `register` builds, each named and each saying
+whether it comes back. It reads the connected account's spendable balance and
+refuses rather than opening a wallet for a registration that cannot be paid
+for, with a re-check control so an account funded from elsewhere is never stuck
+behind a stale read.
+
+Before any of that it can **simulate the call**, from the keeper application's
+own account, exactly as a keeper's inner call arrives. Free, unsigned, and
+possible before any upkeep box exists. What it certifies is narrow and stated
+on the page:
+
+- the method exists on the target,
+- the target accepts a call arriving from the keeper app's account,
+- it stays inside the opcode budget a single call gets (a real execution is
+  handed more, never less).
+
+It deliberately **never shows a flat pass**, because a standalone simulate has
+all 8 of the AVM's references to itself while a real execution has already
+spent two on the upkeep box and the target app. A target needing seven
+references passes a naive simulate and is then permanently unexecutable, after
+the creator has escrowed. So resource use is graded instead:
+
+| Extra references | Reading |
+|---|---|
+| 0 | any keeper can service it |
+| 1 to 4 | inside what `scripts/keeper_bot.py` attaches today |
+| 5 to 6 | allowed by the protocol; refused by the reference bot |
+| more than 6 | can never execute; use [the pull pattern](../docs/integrating.md#the-pull-pattern) |
+
+The recipe is measured, not reasoned about: `scripts/spike_simulate_test_button.py`
+against `smart_contracts/sim_probe/`. Three details are load-bearing and are
+commented as such in `../js/src/target-test.ts`. In particular
+`extraOpcodeBudget` stays at **zero**: raising it makes a budget-exhausting
+target pass here and fail on chain.
+
+The **attestation checkbox** beside the submit button is a separate thing. It
+records the person taking the risk, not the console granting permission, so it
+gates submitting and never gates on the test having run or passed.
 
 ## Units and time
 

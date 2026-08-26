@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@a
 
 import { ArcronService } from '../core/arcron.service';
 import { algos, dueLabel, intervalLabel, runwayLabel, shortAddress } from '@corvidlabs/arcron/format';
+import { ExplorerLink } from './explorer-link';
 import { KeeperService } from '../core/keeper.service';
 import { WalletService } from '../core/wallet.service';
 import {
@@ -44,6 +45,7 @@ interface Row {
 @Component({
   selector: 'arcron-registry-table',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [ExplorerLink],
   template: `
     <section class="panel">
       <header>
@@ -90,7 +92,7 @@ interface Row {
                     }
                   </th>
                   <td>
-                    <span class="mono">app {{ row.target }}</span>
+                    <span class="mono">app <arcron-explorer-link kind="app" [value]="row.target" /></span>
                     <span class="sub mono">{{ row.selector }}</span>
                   </td>
                   <td>

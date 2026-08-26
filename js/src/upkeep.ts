@@ -89,6 +89,50 @@ export function boxMbr(callArgs: readonly Uint8Array[]): number {
   return BOX_MBR_FIXED + 400 * encodeCallArgs(callArgs).length;
 }
 
+/**
+ * Transactions in the group `register` builds: the box deposit, the escrow
+ * funding, and the app call itself (`keeper-txns.ts::register`). Each pays its
+ * own fee, because the group is built on unmodified suggested params.
+ */
+export const REGISTER_GROUP_SIZE = 3;
+
+/**
+ * What registering actually debits, split into lines that mean different
+ * things to the person paying.
+ *
+ * The console quoted the box MBR plus the funding and nothing else, so it was
+ * short by exactly the group's own fees on every configuration of the form.
+ * The three parts are not interchangeable: the deposit comes back whole on
+ * cancel, the escrow comes back minus whatever has been spent a run at a time,
+ * and the fees are gone whether the registration succeeds or fails.
+ */
+export interface RegistrationCost {
+  /** Held by the app account for the box; returned in full on cancel. */
+  readonly boxDeposit: bigint;
+  /** Escrow: spent one execution at a time, and the remainder returns on cancel. */
+  readonly escrow: bigint;
+  /** The group's own fees. Never refunded, including on a failed group. */
+  readonly networkFees: bigint;
+  readonly total: bigint;
+}
+
+export function registrationCost(params: {
+  callArgs: readonly Uint8Array[];
+  /** The escrow funding, in microALGO. */
+  funding: bigint;
+  /** The node's current minimum fee, read from its suggested parameters. */
+  minFee: bigint;
+}): RegistrationCost {
+  const boxDeposit = BigInt(boxMbr(params.callArgs));
+  const networkFees = params.minFee * BigInt(REGISTER_GROUP_SIZE);
+  return {
+    boxDeposit,
+    escrow: params.funding,
+    networkFees,
+    total: boxDeposit + params.funding + networkFees,
+  };
+}
+
 export function upkeepBoxName(id: bigint | number): Uint8Array {
   const name = new Uint8Array(BOX_NAME_BYTES);
   name[0] = BOX_NAME_PREFIX.charCodeAt(0);

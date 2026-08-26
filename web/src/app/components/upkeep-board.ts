@@ -3,6 +3,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@a
 import { ArcronService } from '../core/arcron.service';
 import { type BoardEntry, type SortKey, sortEntries, summarise, toEntry } from '@corvidlabs/arcron/board';
 import { algos, dueLabel, intervalLabel, rounds, runwayLabel } from '@corvidlabs/arcron/format';
+import { ExplorerLink } from './explorer-link';
 import { KeeperService } from '../core/keeper.service';
 import { roundsUntilDue, toHex } from '@corvidlabs/arcron/upkeep';
 import { WalletService } from '../core/wallet.service';
@@ -34,6 +35,7 @@ const SORTS: readonly { key: SortKey; label: string }[] = [
 @Component({
   selector: 'arcron-upkeep-board',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [ExplorerLink],
   template: `
     <section class="panel">
       <header>
@@ -71,7 +73,7 @@ const SORTS: readonly { key: SortKey; label: string }[] = [
               <li class="job">
                 <div class="what">
                   <span class="mono id">#{{ row.id }}</span>
-                  <span class="mono">app {{ row.target }}</span>
+                  <span class="mono">app <arcron-explorer-link kind="app" [value]="row.target" /></span>
                   <span class="sub mono">{{ row.selector }}</span>
                 </div>
                 <div class="pay">
@@ -113,7 +115,7 @@ const SORTS: readonly { key: SortKey; label: string }[] = [
               <li class="job stuck">
                 <div class="what">
                   <span class="mono id">#{{ row.id }}</span>
-                  <span class="mono">app {{ row.target }}</span>
+                  <span class="mono">app <arcron-explorer-link kind="app" [value]="row.target" /></span>
                 </div>
                 <div class="pay">
                   <span class="sub">
@@ -135,7 +137,7 @@ const SORTS: readonly { key: SortKey; label: string }[] = [
               <li class="job">
                 <div class="what">
                   <span class="mono id">#{{ row.id }}</span>
-                  <span class="mono">app {{ row.target }}</span>
+                  <span class="mono">app <arcron-explorer-link kind="app" [value]="row.target" /></span>
                 </div>
                 <div class="pay"><span class="sub">{{ row.netReward }} net</span></div>
                 <div class="when">

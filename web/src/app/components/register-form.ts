@@ -6,7 +6,11 @@ import { map } from 'rxjs';
 import { ArcronService } from '../core/arcron.service';
 import { algos, duration, runwayLabel } from '@corvidlabs/arcron/format';
 import { encodeCall, PULSE_TICK_SIGNATURE } from '@corvidlabs/arcron/keeper-abi';
+import { ExplorerLink } from './explorer-link';
 import { KeeperService } from '../core/keeper.service';
+import { affordability } from '../core/affordability';
+import { PayerService } from '../core/payer.service';
+import { subjectOf, TargetTestService } from '../core/target-test.service';
 import {
   boxMbr,
   CATCH_UP,
@@ -15,9 +19,11 @@ import {
   MAX_UPKEEP_FEE,
   MIN_INTERVAL_ROUNDS,
   MIN_UPKEEP_FEE,
+  registrationCost,
   SKIP_AHEAD,
   toHex,
 } from '@corvidlabs/arcron';
+import { PULL_PATTERN_URL } from '@corvidlabs/arcron/target-test';
 
 const CADENCES = [
   { label: '30 s', seconds: 30 },
@@ -26,10 +32,13 @@ const CADENCES = [
   { label: '1 day', seconds: 86_400 },
 ] as const;
 
+const INTEGRATION_GUIDE_URL =
+  'https://github.com/CorvidLabs/arcron/blob/main/docs/integrating.md';
+
 @Component({
   selector: 'arcron-register-form',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, ExplorerLink],
   template: `
     <section class="panel">
       <header>
@@ -41,6 +50,20 @@ const CADENCES = [
           though only competing keepers hold the price below it. Leave it at zero unless an upkeep
           is actually going unserviced.
         </p>
+        <p class="paying">
+          Paying into keeper app
+          @if (keeperAppText(); as appId) {
+            <arcron-explorer-link kind="app" [value]="appId" />
+          } @else {
+            <span class="mono">none selected</span>
+          }
+          @if (arcron.appAccount(); as account) {
+            <span class="account">
+              at account
+              <arcron-explorer-link kind="account" [value]="account.address" />
+            </span>
+          }
+        </p>
       </header>
 
       <form [formGroup]="form" (ngSubmit)="submit()">
@@ -48,6 +71,12 @@ const CADENCES = [
           <label>
             <span class="eyebrow">Target app id</span>
             <input type="number" formControlName="targetApp" required />
+            <small>{{ targetHint() }}</small>
+            @if (targetAppText(); as targetApp) {
+              <small>
+                <arcron-explorer-link kind="app" [value]="targetApp" label="check this app id" />
+              </small>
+            }
           </label>
 
           <label>
@@ -119,12 +148,6 @@ const CADENCES = [
               </span>
             </label>
           </fieldset>
-
-          <div class="cost">
-            <span class="eyebrow">Up-front cost</span>
-            <strong class="mono">{{ upFront() }}</strong>
-            <small>{{ mbrNote() }}</small>
-          </div>
         </div>
 
         <div class="cadences">
@@ -136,14 +159,150 @@ const CADENCES = [
           }
         </div>
 
+        <section class="tester" aria-labelledby="test-heading">
+          <div class="tester-head">
+            <div>
+              <h3 id="test-heading">Test this call first</h3>
+              <p class="note">
+                Simulates the exact inner call a keeper would make, from the keeper app's own
+                account, against the chain as it is now. Signs nothing, sends nothing, costs
+                nothing, and needs no wallet. If you have nothing to schedule yet, the
+                <a [href]="guideUrl" target="_blank" rel="noopener noreferrer">integration guide</a>
+                is where a target contract starts.
+              </p>
+            </div>
+            <button
+              type="button"
+              class="ghost"
+              [disabled]="!canTest() || test.running()"
+              (click)="runTest()"
+            >
+              {{ test.running() ? 'Simulating…' : 'Test the call' }}
+            </button>
+          </div>
+
+          @if (!canTest()) {
+            <p class="note">{{ testBlocked() }}</p>
+          }
+
+          <div aria-live="polite">
+            @if (report(); as found) {
+              @if (found.unreachable; as message) {
+                <div class="verdict unknown">
+                  <p class="verdict-line"><span class="mark" aria-hidden="true">?</span> No answer</p>
+                  <p class="note">
+                    The node did not answer, so this says nothing about your target: {{ message }}
+                  </p>
+                </div>
+              } @else if (found.outcome; as outcome) {
+                @if (outcome.accepted) {
+                  <div class="verdict pass">
+                    <p class="verdict-line">
+                      <span class="mark" aria-hidden="true">✓</span> Accepted the call
+                    </p>
+                    <p class="note">{{ claims() }}</p>
+                    @if (outcome.grade; as grade) {
+                      <div class="grade" [class]="grade.key">
+                        <p class="grade-line">
+                          <span class="badge">{{ gradeLabel(grade.key) }}</span>
+                          {{ grade.headline }}
+                        </p>
+                        <p class="note">{{ grade.detail }}</p>
+                        @if (grade.key === 'unexecutable') {
+                          <p class="note">
+                            <a [href]="pullPatternUrl" target="_blank" rel="noopener noreferrer">
+                              Read the pull pattern
+                            </a>
+                          </p>
+                        }
+                        @if (outcome.counts; as counts) {
+                          <p class="note mono">{{ composition(counts) }}</p>
+                        }
+                      </div>
+                    }
+                    <p class="note">{{ refusals }}</p>
+                  </div>
+                } @else {
+                  <div class="verdict fail">
+                    <p class="verdict-line">
+                      <span class="mark" aria-hidden="true">✕</span> Refused the call
+                    </p>
+                    <p class="note">{{ refusalReason(outcome.failureKind) }}</p>
+                    <p class="note mono failure">{{ outcome.failure }}</p>
+                    <p class="note">
+                      An upkeep whose target refuses is never serviced. It still holds its box
+                      deposit and its escrow, and the only way to get either back is to cancel it.
+                    </p>
+                  </div>
+                }
+              }
+            }
+          </div>
+        </section>
+
+        <section class="cost" aria-labelledby="cost-heading">
+          <div class="cost-head">
+            <div>
+              <h3 id="cost-heading" class="eyebrow">Up-front cost</h3>
+              <strong class="mono total">{{ totalLabel() }}</strong>
+            </div>
+            <p class="note">{{ pricedNote() }}</p>
+          </div>
+
+          @if (cost(); as breakdown) {
+            <dl class="lines">
+              <div>
+                <dt>Box deposit</dt>
+                <dd class="mono">{{ algo(breakdown.boxDeposit) }}</dd>
+                <dd class="note">Held for the upkeep's box. Returned in full when you cancel.</dd>
+              </div>
+              <div>
+                <dt>Escrow</dt>
+                <dd class="mono">{{ algo(breakdown.escrow) }}</dd>
+                <dd class="note">
+                  Spent one execution at a time. Whatever is left returns when you cancel.
+                </dd>
+              </div>
+              <div>
+                <dt>Network fees</dt>
+                <dd class="mono">{{ algo(breakdown.networkFees) }}</dd>
+                <dd class="note">
+                  Three transactions at this node's current minimum fee. Gone either way,
+                  including if the group fails.
+                </dd>
+              </div>
+            </dl>
+          }
+
+          <div class="balance">
+            <p class="note">{{ balanceLine() }}</p>
+            <button type="button" class="ghost small" [disabled]="payer.reading()" (click)="recheck()">
+              {{ payer.reading() ? 'Reading…' : 'Re-check balance' }}
+            </button>
+          </div>
+        </section>
+
+        <label class="attest">
+          <input type="checkbox" formControlName="attested" />
+          <span>
+            <strong>I have tested this call against my own app and accept the risk.</strong>
+            <small>
+              Arcron cannot know whether calling this method on a schedule is what you want. A
+              keeper will make this call, over and over, whatever it does. The Test button above
+              helps and is not a substitute for you: it reads the chain as it is now, and it can
+              be skipped entirely.
+            </small>
+          </span>
+        </label>
+
         <div class="submit">
           <button type="submit" class="primary" [disabled]="!canSubmit()">
             {{ keeper.busy() === 'register' ? 'Registering…' : 'Register upkeep' }}
           </button>
           @if (!keeper.canSign()) {
             <p class="hint">Connect an account to register.</p>
-          } @else if (status() !== 'VALID') {
-            <p class="hint">{{ problem() }}</p>
+          } @else if (problem(); as reason) {
+            <p class="hint">{{ reason }}</p>
           }
         </div>
       </form>
@@ -153,12 +312,14 @@ const CADENCES = [
     .panel { display: grid; gap: 1.1rem; }
     header h2 { margin: 0; font-size: 1.1rem; }
     .subtitle { margin: 0.2rem 0 0; color: var(--text-faint); font-size: 0.85rem; max-width: 52ch; }
+    .paying { margin: 0.5rem 0 0; font-size: 0.78rem; color: var(--text-faint); }
+    .paying .account { margin-left: 0.35rem; }
     form { display: grid; gap: 1rem; }
     .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(12.5rem, 1fr)); gap: 0.9rem; }
     textarea { font-family: var(--font-mono); font-size: 0.8rem; resize: vertical; }
-    label, .cost { display: grid; gap: 0.3rem; align-content: start; }
-    small { color: var(--text-faint); font-size: 0.72rem; }
-    .cost strong { font-size: 1.1rem; }
+    label { display: grid; gap: 0.3rem; align-content: start; }
+    small, .note { color: var(--text-faint); font-size: 0.72rem; }
+    .note { margin: 0.25rem 0 0; max-width: 68ch; }
     .policy { grid-column: 1 / -1; display: grid; gap: 0.5rem; margin: 0; padding: 0.7rem 0.85rem; border: 1px solid var(--hairline); }
     .policy legend { padding: 0 0.35rem; }
     .choice { display: flex; align-items: start; gap: 0.55rem; }
@@ -167,14 +328,95 @@ const CADENCES = [
     .choice strong { font-size: 0.85rem; font-weight: 600; }
     .cadences { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
     .cadences .eyebrow { margin-right: 0.3rem; }
+
+    .tester, .cost {
+      display: grid;
+      gap: 0.6rem;
+      padding: 0.8rem 0.9rem;
+      border: 1px solid var(--hairline);
+      border-radius: 2px;
+    }
+    .tester-head, .cost-head {
+      display: flex;
+      gap: 0.9rem;
+      align-items: start;
+      justify-content: space-between;
+      flex-wrap: wrap;
+    }
+    .tester h3 { margin: 0; font-size: 0.92rem; }
+
+    /* Every verdict carries a word and a mark as well as a rule colour, so the
+       result survives being read without colour at all. */
+    .verdict {
+      border-left: 3px solid var(--hairline);
+      padding: 0.5rem 0 0.5rem 0.7rem;
+    }
+    .verdict.pass { border-left-color: var(--success); }
+    .verdict.fail { border-left-color: var(--danger); }
+    .verdict.unknown { border-left-color: var(--warning); }
+    .verdict-line { margin: 0; font-size: 0.88rem; font-weight: 600; }
+    .mark { font-family: var(--font-mono); margin-right: 0.35rem; }
+    .failure { overflow-wrap: anywhere; }
+
+    .grade { margin-top: 0.55rem; }
+    .grade-line { margin: 0; font-size: 0.82rem; }
+    .badge {
+      font-family: var(--font-mono);
+      font-size: 0.66rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      border: 1px solid var(--hairline);
+      border-radius: 2px;
+      padding: 0.05rem 0.35rem;
+      margin-right: 0.45rem;
+    }
+    .grade.none .badge, .grade.servable .badge { border-color: var(--success); color: var(--success); }
+    .grade.protocol-only .badge { border-color: var(--warning); color: var(--warning); }
+    .grade.unexecutable .badge { border-color: var(--danger); color: var(--danger); }
+
+    .total { font-size: 1.25rem; display: block; margin-top: 0.15rem; }
+    .lines { margin: 0; display: grid; gap: 0.5rem; }
+    .lines > div {
+      display: grid;
+      grid-template-columns: minmax(7rem, auto) 1fr;
+      column-gap: 0.8rem;
+    }
+    .lines dt { font-size: 0.8rem; }
+    .lines dd { margin: 0; font-size: 0.8rem; }
+    .lines dd.note { grid-column: 1 / -1; margin-top: 0.1rem; }
+    .balance {
+      display: flex;
+      gap: 0.75rem;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      border-top: 1px solid var(--hairline);
+      padding-top: 0.55rem;
+    }
+    .balance .note { margin: 0; }
+
+    .attest {
+      display: flex;
+      align-items: start;
+      gap: 0.55rem;
+      padding: 0.7rem 0.85rem;
+      border: 1px solid var(--hairline);
+      border-radius: 2px;
+    }
+    .attest input { margin-top: 0.2rem; }
+    .attest span { display: grid; gap: 0.2rem; }
+    .attest strong { font-size: 0.85rem; font-weight: 600; }
+
     .submit { display: flex; align-items: center; gap: 0.85rem; flex-wrap: wrap; }
-    .hint { margin: 0; color: var(--text-faint); font-size: 0.8rem; }
+    .hint { margin: 0; color: var(--text-faint); font-size: 0.8rem; max-width: 68ch; }
     input.ng-invalid.ng-touched { border-color: var(--danger); }
   `,
 })
 export class RegisterForm {
   protected readonly keeper = inject(KeeperService);
-  private readonly arcron = inject(ArcronService);
+  protected readonly arcron = inject(ArcronService);
+  protected readonly payer = inject(PayerService);
+  protected readonly test = inject(TargetTestService);
   private readonly builder = inject(FormBuilder);
 
   protected readonly minInterval = MIN_INTERVAL_ROUNDS;
@@ -182,6 +424,21 @@ export class RegisterForm {
   protected readonly cadences = CADENCES;
   protected readonly catchUp = Number(CATCH_UP);
   protected readonly skipAhead = Number(SKIP_AHEAD);
+  protected readonly pullPatternUrl = PULL_PATTERN_URL;
+  protected readonly guideUrl = INTEGRATION_GUIDE_URL;
+
+  /**
+   * What the Test button will not certify, stated next to every pass.
+   *
+   * The plan's word for this is that the button grades and never shows a flat
+   * PASS. These are the two things a simulation genuinely cannot see: whether
+   * anybody turns up, and whether the same call will still touch the same
+   * things once the target's own state has moved.
+   */
+  protected readonly refusals =
+    'What this cannot tell you: whether a keeper will turn up, and whether this call will ' +
+    'still need the same resources later. A simulation reports what it touched against the ' +
+    'chain as it is now, and a target whose needs grow with its own state can touch more.';
 
   protected readonly form = this.builder.nonNullable.group({
     targetApp: [0, [Validators.required, Validators.min(1)]],
@@ -205,6 +462,10 @@ export class RegisterForm {
     // Zero is off: the fee never moves. Opt in, rather than surprising a
     // creator with an escrow that drains three times faster than the headline.
     feeCap: [0, [Validators.required, Validators.min(0), Validators.max(MAX_UPKEEP_FEE / 1e6)]],
+    // Deliberately carries no validator. Submitting is gated on it separately,
+    // with a reason of its own, so an unticked box never falls through to
+    // "check the highlighted fields" as though it were a mistyped number.
+    attested: [false],
   }, {
     // Cross-field rules the chain enforces too. Catching them here turns a
     // rejected transaction into a disabled button.
@@ -277,6 +538,25 @@ export class RegisterForm {
     return `selector 0x${toHex(built.args[0])}${built.args.length > 1 ? ` + ${built.args.length - 1} argument(s)` : ''}`;
   });
 
+  /** Null when there is no app to link to, which the template branches on. */
+  protected readonly keeperAppText = computed(() => {
+    const appId = this.arcron.appId();
+    return appId === null ? null : String(appId);
+  });
+
+  protected readonly targetAppText = computed(() => {
+    const { targetApp } = this.value();
+    return targetApp > 0 ? String(targetApp) : null;
+  });
+
+  protected readonly targetHint = computed(() => {
+    const { targetApp } = this.value();
+    if (targetApp <= 0) {
+      return 'The app Arcron will call. You fix what is called here; a keeper only ever chooses when.';
+    }
+    return 'You fix what is called; a keeper only ever chooses when. Nothing here checks that this app exists, so test the call below.';
+  });
+
   protected readonly argumentHint = computed(() => {
     const types = this.argumentTypes();
     const built = this.encoded();
@@ -308,6 +588,172 @@ export class RegisterForm {
     return worstCase === feePerExecution ? label : `${label}, at the ceiling`;
   });
 
+  protected readonly capHint = computed(() => {
+    const { feeCap, feePerExecution } = this.value();
+    if (feeCap === 0) return 'off, so the fee never changes';
+    if (feePerExecution <= 0) return 'set a fee per execution first';
+    if (feeCap < feePerExecution) return 'must be at least the fee, or zero';
+    const multiple = (feeCap / feePerExecution).toFixed(1);
+    // Not a worst case: a keeper with no competition is better off waiting for
+    // the ceiling, so a creator should expect to pay it rather than hope not to.
+    return `rises to ${multiple}× over one missed interval, so expect to pay it`;
+  });
+
+  // ---- The Test button ---------------------------------------------------
+
+  /** What a test would be a test of: the app, the target, and the exact call. */
+  private readonly subject = computed(() => {
+    const appId = this.arcron.appId();
+    const callArgs = this.callArgs();
+    const { targetApp } = this.value();
+    if (appId === null || callArgs === null || targetApp <= 0) return null;
+    return subjectOf(appId, targetApp, callArgs);
+  });
+
+  protected readonly canTest = computed(() => this.subject() !== null);
+
+  protected readonly testBlocked = computed(() => {
+    if (this.arcron.appId() === null) return 'Set a keeper app id before testing.';
+    if (this.value().targetApp <= 0) return 'Enter the app id you want called.';
+    return 'Fix the method signature before testing.';
+  });
+
+  /** The last answer, but only while it is still an answer about this call. */
+  protected readonly report = computed(() => {
+    const subject = this.subject();
+    return subject === null ? null : this.test.resultFor(subject);
+  });
+
+  protected readonly claims = computed(() => {
+    const { targetApp } = this.value();
+    return (
+      `App ${targetApp} has this method, it accepts a call arriving from the keeper app's own ` +
+      `account, and it stays inside the opcode budget a single call gets. A real execution is ` +
+      `handed more budget than this test allowed it, never less.`
+    );
+  });
+
+  protected gradeLabel(key: string): string {
+    switch (key) {
+      case 'none':
+        return 'resources: none';
+      case 'servable':
+        return 'resources: servable';
+      case 'protocol-only':
+        return 'resources: protocol only';
+      default:
+        return 'resources: never runs';
+    }
+  }
+
+  protected composition(counts: {
+    accounts: number;
+    apps: number;
+    assets: number;
+    boxes: number;
+  }): string {
+    return (
+      `A real execution would carry ${counts.accounts} account, ${counts.apps} app, ` +
+      `${counts.assets} asset and ${counts.boxes} box references, two of which ` +
+      `(the upkeep box and your app) Arcron always pays for.`
+    );
+  }
+
+  protected refusalReason(kind: string | null): string {
+    switch (kind) {
+      case 'no-such-app':
+        return 'There is no application with that id on this network. Check the app id.';
+      case 'budget':
+        return 'The call ran out of opcode budget. An Arcron execution grants more than this test did, so a call only just over the line may still run, but this one is over it.';
+      case 'unavailable':
+        return 'The call reached for a resource that could not be made available even with everything a keeper could attach.';
+      default:
+        return 'The target refused this call. Either it has no such method, or its own checks said no. Its words:';
+    }
+  }
+
+  protected runTest(): void {
+    const subject = this.subject();
+    const callArgs = this.callArgs();
+    if (subject === null || callArgs === null) return;
+    void this.test.run(subject, callArgs);
+  }
+
+  // ---- What this costs, and whether it can be paid -----------------------
+
+  private readonly mbr = computed(() => {
+    const callArgs = this.callArgs();
+    return callArgs === null ? null : BigInt(boxMbr(callArgs));
+  });
+
+  /**
+   * The whole debit, not two thirds of it.
+   *
+   * The old quote was the box MBR plus the funding, and `register` builds a
+   * three transaction group on unmodified suggested params, so it was short by
+   * exactly those three fees on every configuration of the form: it said
+   * 0.0741 and 0.0771 left the account.
+   */
+  protected readonly cost = computed(() => {
+    const callArgs = this.callArgs();
+    if (callArgs === null) return null;
+    return registrationCost({
+      callArgs,
+      funding: BigInt(Math.round(this.value().funding * 1e6)),
+      minFee: this.payer.minFee(),
+    });
+  });
+
+  protected readonly totalLabel = computed(() => {
+    const cost = this.cost();
+    return cost === null ? '-' : algos(cost.total);
+  });
+
+  protected readonly pricedNote = computed(() => {
+    if (this.mbr() === null) return 'fix the signature to price the box';
+    return "Everything that leaves your account if you sign, at this node's current fee.";
+  });
+
+  private readonly afford = computed(() => {
+    const cost = this.cost();
+    if (cost === null) return null;
+    return affordability(cost.total, this.payer.spendable());
+  });
+
+  protected readonly balanceLine = computed(() => {
+    if (!this.keeper.canSign()) return 'Connect an account to see whether it can cover this.';
+    const state = this.afford();
+    if (state === null) return 'Fix the signature before this can be priced.';
+    if (state.state === 'unknown') {
+      const error = this.payer.error();
+      return error === null
+        ? 'Reading what this account can spend…'
+        : `This account's balance could not be read, so nothing will be sent: ${error}`;
+    }
+    const held = `This account can spend ${algos(state.spendable)}`;
+    return state.state === 'enough'
+      ? `${held}, leaving ${algos(state.left)} after this.`
+      : `${held}, which is ${algos(state.shortfall)} short of this.`;
+  });
+
+  protected readonly canSubmit = computed(
+    () =>
+      this.keeper.canSign() &&
+      this.status() === 'VALID' &&
+      this.callArgs() !== null &&
+      this.keeper.busy() === null &&
+      // Nothing on the write path used to ask whether the read path was
+      // working. A failed read leaves every warning on the page unrendered
+      // and the last-good figures still on screen, which is the moment this
+      // button should be least available rather than most.
+      this.arcron.canWrite() &&
+      // Blocking rather than warning, for the same reason as the line above:
+      // an unread balance is not evidence that there is one. There is a
+      // re-check control beside the figure so a funded account is never stuck.
+      this.afford()?.state === 'enough' &&
+      this.value().attested,
+  );
+
   /** The specific reason the form will not submit, when there is one. */
   protected readonly problem = computed(() => {
     this.status();
@@ -325,49 +771,40 @@ export class RegisterForm {
       const worst = Math.max(feePerExecution, feeCap);
       return `Funding must cover ${worst} ALGO, the price this upkeep can be charged for one execution.`;
     }
-    return 'Check the highlighted fields. Every value has an on-chain minimum.';
+    if (this.status() !== 'VALID') {
+      return 'Check the highlighted fields. Every value has an on-chain minimum.';
+    }
+    const afford = this.afford();
+    const cost = this.cost();
+    if (afford?.state === 'short' && cost !== null) {
+      return (
+        `This costs ${algos(cost.total)} and the connected account can spend ` +
+        `${algos(afford.spendable)}, which is ${algos(afford.shortfall)} short. An account ` +
+        `also has to keep its own minimum balance on top of what it spends.`
+      );
+    }
+    if (afford?.state === 'unknown') {
+      return (
+        "The connected account's balance has not been read, so the console cannot tell " +
+        'whether you can afford this. Re-check it beside the cost.'
+      );
+    }
+    if (!this.value().attested) {
+      return 'Confirm that you have tested this call against your own app.';
+    }
+    if (!this.arcron.canWrite()) {
+      return 'The console cannot currently read this app, so nothing will be sent until it recovers.';
+    }
+    return null;
   });
 
-  protected readonly capHint = computed(() => {
-    const { feeCap, feePerExecution } = this.value();
-    if (feeCap === 0) return 'off, so the fee never changes';
-    if (feePerExecution <= 0) return 'set a fee per execution first';
-    if (feeCap < feePerExecution) return 'must be at least the fee, or zero';
-    const multiple = (feeCap / feePerExecution).toFixed(1);
-    // Not a worst case: a keeper with no competition is better off waiting for
-    // the ceiling, so a creator should expect to pay it rather than hope not to.
-    return `rises to ${multiple}× over one missed interval, so expect to pay it`;
-  });
+  protected algo(microAlgo: bigint): string {
+    return algos(microAlgo);
+  }
 
-  private readonly mbr = computed(() => {
-    const callArgs = this.callArgs();
-    return callArgs === null ? null : BigInt(boxMbr(callArgs));
-  });
-
-  protected readonly upFront = computed(() => {
-    const mbr = this.mbr();
-    if (mbr === null) return '-';
-    return algos(mbr + BigInt(Math.round(this.value().funding * 1e6)));
-  });
-
-  protected readonly mbrNote = computed(() => {
-    const mbr = this.mbr();
-    if (mbr === null) return 'fix the signature to price the box';
-    return `${algos(mbr)} box MBR, refunded in full on cancel`;
-  });
-
-  protected readonly canSubmit = computed(
-    () =>
-      this.keeper.canSign() &&
-      this.status() === 'VALID' &&
-      this.callArgs() !== null &&
-      this.keeper.busy() === null &&
-      // Nothing on the write path used to ask whether the read path was
-      // working. A failed read leaves every warning on the page unrendered
-      // and the last-good figures still on screen, which is the moment this
-      // button should be least available rather than most.
-      this.arcron.canWrite(),
-  );
+  protected recheck(): void {
+    void this.payer.refresh();
+  }
 
   protected useCadence(seconds: number): void {
     const rounds = Math.max(MIN_INTERVAL_ROUNDS, Math.round(seconds / this.pace()));

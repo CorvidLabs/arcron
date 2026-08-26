@@ -14,6 +14,8 @@ import {
   SKIP_AHEAD,
   boxMbr,
   decodeUpkeep,
+  REGISTER_GROUP_SIZE,
+  registrationCost,
   encodeCallArgs,
   effectiveFee,
   escalates,
@@ -183,4 +185,42 @@ test('a box whose tail offset is not the head size is refused', () => {
     const raw = fromHex(LIVE_BOX_HEX);
     new DataView(raw.buffer, raw.byteOffset, raw.byteLength).setUint16(40, 82);
     expect(() => decodeUpkeep(1n, raw)).toThrow('not this contract');
+});
+
+describe('what registering actually debits', () => {
+  // The console quoted the box MBR plus the funding and nothing else, so it
+  // said 0.0741 ALGO and 0.0771 left the account, on every configuration of
+  // the form. The gap is exactly the three minimum fees of the group
+  // `keeper-txns.ts::register` builds on unmodified suggested params.
+  const DEFAULTS = { callArgs: [new Uint8Array(4)], funding: 12_000n, minFee: 1_000n };
+
+  test('the total is the deposit, the escrow and the group fees', () => {
+    const cost = registrationCost(DEFAULTS);
+    expect(cost.boxDeposit).toBe(62_100n);
+    expect(cost.escrow).toBe(12_000n);
+    expect(cost.networkFees).toBe(3_000n);
+    expect(cost.total).toBe(77_100n);
+  });
+
+  test('the parts sum to the total, whatever the configuration', () => {
+    const cost = registrationCost({ callArgs: [new Uint8Array(4), new Uint8Array(8)], funding: 5_000_000n, minFee: 1_000n });
+    expect(cost.boxDeposit + cost.escrow + cost.networkFees).toBe(cost.total);
+  });
+
+  test("the fee line follows the node's minimum fee rather than assuming 1,000", () => {
+    // A chain charging something else must move the figure on screen instead
+    // of leaving the console quietly wrong about it.
+    expect(registrationCost({ ...DEFAULTS, minFee: 2_000n }).networkFees).toBe(6_000n);
+  });
+
+  test('the group is three transactions, and the fee line prices all three', () => {
+    expect(REGISTER_GROUP_SIZE).toBe(3);
+    expect(registrationCost(DEFAULTS).networkFees).toBe(1_000n * BigInt(REGISTER_GROUP_SIZE));
+  });
+
+  test('the box deposit is the same figure the group actually pays', () => {
+    // Both sides of the group are priced from `boxMbr`, so a drift here would
+    // be a quote that does not match the transaction built from it.
+    expect(registrationCost(DEFAULTS).boxDeposit).toBe(BigInt(boxMbr(DEFAULTS.callArgs)));
+  });
 });

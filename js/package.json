@@ -15,6 +15,7 @@
     "./upkeep": "./src/upkeep.ts",
     "./keeper-abi": "./src/keeper-abi.ts",
     "./keeper-txns": "./src/keeper-txns.ts",
+    "./target-test": "./src/target-test.ts",
     "./board": "./src/board.ts",
     "./format": "./src/format.ts",
     "./networks": "./src/networks.ts"
