@@ -351,6 +351,12 @@ Three things to know:
   on cancel. Your bonus reaches the keepers who want it and costs you nothing
   with the ones who do not.
 
+Verified on TestNet with a real, freshly created account that had never opted
+into a live bonus asset, not just in the LocalNet mocks: the execution went
+through, paid only the ALGO fee, and the escrowed bonus was untouched. See
+[docs/security.md](security.md#an-unopted-keeper-still-executes-and-the-bonus-stays-in-escrow)
+for the transaction ids.
+
 ## Funding and operations
 
 An upkeep is funded escrow. Executions are paid from it:

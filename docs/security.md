@@ -256,6 +256,30 @@ floor is worth running only to a keeper that values the asset, so if none do,
 it goes unserviced: funded, due, and ignored. A creator who wants generic
 keepers to take it as well should set an ALGO fee above the floor.
 
+### An unopted keeper still executes, and the bonus stays in escrow
+
+`execute` checks `Txn.sender.is_opted_in(Asset(bonus_asset))` before it builds
+the bonus transfer. When the sender has never opted in, `pays_bonus` is false,
+the inner group drops from three transactions to two (the target call and the
+ALGO payment), and the execution still succeeds. Nothing is stranded: the
+bonus stays at rest in `asset_balance`, available to the next keeper who can
+receive it, and refunded in full on `cancel`.
+
+Confirmed on TestNet against a freshly created account that had never opted
+into a live bonus asset, not reasoned about from the LocalNet mocks alone.
+Upkeep 74 on app 769891898, bonus asset 769987591, execution
+`ANSUPUK6VSXZ72IVP76ZDICGJ7NVVVV7BBKLNF25S3ZSFRDTTMWQ`. The confirmation shows
+exactly two inner transactions (an `appl` call to Pulse and a 4,000 µALGO
+`pay` to the unopted account, no `axfer`), the account never gained a holding
+of the asset (it cannot appear in `account_info`'s asset list without an
+opt-in), and the upkeep's `asset_balance` read 4,000,000 base units both
+before and after. The same upkeep, executed moments earlier by an opted-in
+keeper (tx `QQXW5G2OEJS5FXMA7M73YAEQFBOTR2RB3A7WUWAHVQ4YT6FTTYNA`), shows the
+third `axfer` inner transaction and the escrow falling by exactly the bonus.
+This matches [the ASA bonus section of integrating.md](integrating.md#an-asa-bonus)
+and `keeper_e2e.py` stage 19; nothing about a real network changed the
+outcome.
+
 ### Post-quantum keepers are covered only while bytes are free
 
 A Falcon-1024-signed `execute` is about 13× the size of an ed25519 one
