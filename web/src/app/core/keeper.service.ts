@@ -120,7 +120,7 @@ export class KeeperService {
     // A failed read leaves last-good figures on screen and the trust warnings
     // unrendered, which is when this should be least available rather than
     // most.
-    if (this.arcron.status() !== 'ready') {
+    if (!this.arcron.canWrite()) {
       this.error.set(
         'The last read of the chain failed, so what is on screen may be stale. ' +
           'Nothing will be sent until it recovers.',

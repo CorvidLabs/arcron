@@ -134,6 +134,26 @@ export class ArcronService {
     const genesis = this.genesisId();
     return genesis === null ? null : this.config().genesisIds.includes(genesis);
   });
+  /**
+   * Whether it is safe to commit money right now.
+   *
+   * Every write guard used to key on `status() === 'ready'` alone, and
+   * `refresh()` sets that on any read it completed without throwing. A node
+   * answering for the wrong chain answers perfectly well, so the console
+   * showed "wrong chain" in the header, raised a red banner, and left every
+   * money button live underneath it. An app id of null did the same, which is
+   * the default state of the front door.
+   *
+   * Two independent reviewers found this in the same pass, which is usually
+   * what it takes to notice that a red page and a working button are not
+   * contradictory to the code.
+   */
+  readonly canWrite = computed(
+    () =>
+      this.status() === 'ready' &&
+      this.genesisMatches() !== false &&
+      this.appId() !== null,
+  );
   readonly totalEscrowed = computed(() =>
     this.upkeeps().reduce((total, upkeep) => total + upkeep.balance, 0n),
   );

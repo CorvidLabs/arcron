@@ -85,7 +85,7 @@ const SORTS: readonly { key: SortKey; label: string }[] = [
                 <button
                   type="button"
                   class="primary small"
-                  [disabled]="!row.canExecute || keeper.busy() !== null"
+                  [disabled]="!row.canExecute || keeper.busy() !== null || !arcron.canWrite()"
                   (click)="execute(row)"
                 >
                   Execute
@@ -202,7 +202,7 @@ const SORTS: readonly { key: SortKey; label: string }[] = [
   `,
 })
 export class UpkeepBoard {
-  private readonly arcron = inject(ArcronService);
+  protected readonly arcron = inject(ArcronService);
   protected readonly keeper = inject(KeeperService);
   protected readonly wallet = inject(WalletService);
 

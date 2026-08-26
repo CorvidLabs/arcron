@@ -270,7 +270,7 @@ export class RegistryTable {
    * rather than most. The register form gained this guard and these did not,
    * which is the same omission one level down.
    */
-  protected readonly reads = computed(() => this.arcron.status() === 'ready');
+  protected readonly reads = computed(() => this.arcron.canWrite());
   protected readonly keeper = inject(KeeperService);
   private readonly wallet = inject(WalletService);
 
