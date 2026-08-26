@@ -76,6 +76,14 @@ def main(argv: list[str] | None = None) -> None:
             min_rounds_per_period=UPKEEP_INTERVAL,
         )
     )
+    # The app account's own base minimum balance. Every Algorand account needs
+    # it before it can send anything, and this app pays out by inner payment,
+    # so without it the last party to leave cannot leave: the payment drops
+    # the account below its minimum and reverts after the contract has already
+    # booked the obligation. `deadman` had exactly that bug, hidden behind a
+    # payment like this one that nobody had explained, and it was found on a
+    # chain rather than by reading. Stated here so the next person to copy this
+    # contract knows the funding is load-bearing rather than incidental.
     algorand.send.payment(
         algokit_utils.PaymentParams(
             sender=founder.address,
