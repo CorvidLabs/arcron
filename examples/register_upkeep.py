@@ -4,9 +4,10 @@ Points the canonical TestNet keeper app at a method on YOUR app, escrowing
 ALGO to pay keepers for executions. After `interval_rounds` pass, any keeper
 bot (e.g. `poetry run python -m scripts.keeper_bot`) will execute it.
 
-Your method must fit the v1 call shape: a NoOp ABI method taking exactly one
-application argument — the standard "tick/settle/harvest" hook. No arg of its
-own? Give it a dummy like `tick()uint64`; the selector alone is the call data.
+Your method is a NoOp ABI method. The simplest shape is a no-argument hook
+like `tick()uint64`, where the selector is the whole call. A method taking
+arguments works too: put the selector first and each ARC-4 encoded argument
+after it, up to MAX_CALL_ARGS entries in total.
 
 Requires .env.testnet (ALGOD_SERVER etc. + DEPLOYER_MNEMONIC).
 Run:  poetry run python -m examples.register_upkeep
@@ -20,20 +21,27 @@ from dotenv import load_dotenv
 
 load_dotenv(".env.testnet")
 
+from algosdk import abi  # noqa: E402
+
 from smart_contracts.artifacts.keeper.keeper_client import (  # noqa: E402
     KeeperClient,
     RegisterArgs,
+)
+from smart_contracts.keeper.contract import (  # noqa: E402
+    BOX_MBR_FIXED,
+    MIN_UPKEEP_FEE,
+    SKIP_AHEAD,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 # --- Configure these -------------------------------------------------------
-KEEPER_APP_ID = 769891898  # canonical TestNet keeper app (alpha-1)
+KEEPER_APP_ID = 769891898  # canonical TestNet keeper app (alpha-2)
 TARGET_APP_ID = 769891902  # your app (Pulse demo target shown here)
 METHOD_SIGNATURE = "tick()uint64"  # your method
 INTERVAL_ROUNDS = 100  # execute at most every ~5 minutes
-FEE_PER_EXECUTION = 4_000  # µALGO paid to the keeper per execution (min 4,000)
+FEE_PER_EXECUTION = MIN_UPKEEP_FEE  # µALGO paid to the keeper per execution
 FUNDING = 40_000  # µALGO escrowed; here: 10 executions
 # ----------------------------------------------------------------------------
 
@@ -51,9 +59,13 @@ def main() -> None:
         default_signer=deployer.signer,
     )
 
-    call_data = hashlib.new("sha512_256", METHOD_SIGNATURE.encode()).digest()[:4]
-    # Box MBR: 9-byte name plus the 84-byte-plus-call-data encoded Upkeep.
-    mbr = 2_500 + 400 * (93 + len(call_data))
+    selector = hashlib.new("sha512_256", METHOD_SIGNATURE.encode()).digest()[:4]
+    # The contract stores the whole argument list, so the box grows with it.
+    # A no-argument hook is just the selector. Taking the constant from the
+    # contract rather than restating it here is what keeps the two in step.
+    call_args = [selector]
+    encoded = abi.ABIType.from_string("byte[][]").encode([list(a) for a in call_args])
+    mbr = BOX_MBR_FIXED + 400 * len(encoded)
 
     # Public TestNet endpoints can be slow enough that default validity
     # windows expire before simulate; pin an explicit, generous window.
@@ -76,9 +88,20 @@ def main() -> None:
             mbr_payment=payment(mbr),
             funding_payment=payment(FUNDING),
             target_app=TARGET_APP_ID,
-            call_data=call_data,
+            call_args=call_args,
             interval_rounds=INTERVAL_ROUNDS,
             fee_per_execution=FEE_PER_EXECUTION,
+            # SKIP_AHEAD drops a missed backlog and keeps the cadence. CATCH_UP
+            # replays every interval that was missed, one per call, which costs
+            # a fee each time. Pick deliberately: it is the difference between
+            # "run this hourly" and "never miss an hour".
+            policy=SKIP_AHEAD,
+            # No escalation: the fee never rises above fee_per_execution. Set a
+            # ceiling above it to let a late upkeep bid more for attention.
+            fee_cap=0,
+            # ALGO only. A non-zero fee_asset adds an ASA bonus on top.
+            fee_asset=0,
+            asset_fee=0,
         ),
         params=window,
     )

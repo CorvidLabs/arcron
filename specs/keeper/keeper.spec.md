@@ -45,7 +45,7 @@ contract class, the `Upkeep` struct, and its constants.
 
 | Type | Description |
 |------|-------------|
-| `Keeper` | ARC-4 contract class; global state `next_upkeep_id: uint64`; one `Upkeep` struct per box (`"u" \|\| id BE64`, 9-byte names). |
+| `Keeper` | ARC-4 contract class; global state `next_upkeep_id: uint64` and `frozen: uint64` (0 while the creator can still replace the programs, 1 once `freeze` has made that impossible); one `Upkeep` struct per box (`"u" \|\| id BE64`, 9-byte names). |
 | `Upkeep` | ARC-4 struct: `creator: Address`, `target_app: UInt64`, `call_args: DynamicArray[DynamicBytes]`, `interval_rounds: UInt64`, `next_execution_round: UInt64`, `fee_per_execution: UInt64`, `balance: UInt64`, `times_executed: UInt64`, `policy: UInt64`, `fee_cap: UInt64`, `last_serviced_round: UInt64`, `fee_asset: UInt64`, `asset_fee: UInt64`, `asset_balance: UInt64`. |
 
 #### Keeper Methods
@@ -80,7 +80,7 @@ contract class, the `Upkeep` struct, and its constants.
 15. Re-entrancy is impossible: the AVM refuses to re-enter an application from inside its own execution (`attempt to re-enter <app>`), so a target cannot call `execute` back. The contract's own ordering (state written before any inner transaction) is a second line rather than the only one. Measured in `scripts/spike_reentrancy.py`.
 16. `execute` sends every stored app arg, in order, as the inner call's app args. The selector and each ARC-4 argument travel in an app arg of their own, which is what an ARC-4 method requires. `register` bounds the count at `MAX_CALL_ARGS`, so `execute`'s fan-out is exhaustive.
 17. **The ALGO fee is never replaced.** An ASA bonus is paid *on top*, and only when there is one, the asset escrow covers it, and the caller is opted in to the asset. A keeper that cannot receive the bonus is not a failed execution: it takes the full ALGO fee and the bonus stays in escrow for the creator. This is what keeps the profitability floor enforceable on-chain without anyone pricing the asset.
-18. `cancel` returns the unspent asset balance along with the ALGO and the box MBR. If the creator cannot receive the asset it refuses, before refunding anything.
+18. `cancel` returns the unspent asset balance along with the ALGO and the box MBR. If the creator cannot receive the asset the bonus is forfeited and the ALGO refund is paid in full: refusing would let an asset the creator cannot receive hold their ALGO hostage. The forfeit is permanent, because the box is deleted in the same call.
 19. Under `CATCH_UP`, `next_execution_round += interval_rounds`, so a neglected upkeep stays due until it has replayed every missed interval. Under `SKIP_AHEAD` it advances to the first slot strictly greater than `Global.round` that is still a whole number of intervals from the original schedule, so one execution clears any backlog without the schedule drifting.
 
 ## Behavioral Examples

@@ -87,7 +87,7 @@ KEEPER_MNEMONIC=
 # Which app to service. Required: the bot has no default, because an older
 # deployment's boxes are a different shape and it would rather refuse than
 # misread them.
-KEEPER_APP_ID=769823086
+KEEPER_APP_ID=769891898
 
 ALGOD_SERVER=https://testnet-api.algonode.cloud
 ALGOD_PORT=
