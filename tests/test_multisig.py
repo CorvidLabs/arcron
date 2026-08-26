@@ -249,3 +249,23 @@ def test_mainnet_accepts_the_real_three_of_five(configured) -> None:
     configured(3, SIGNERS)
     assert ms.address() == net.MAINNET_CREATOR
     net.require_mainnet_multisig()
+
+
+# --- the beacon ids, recorded once -------------------------------------
+
+def test_the_foundation_beacon_ids_match_what_the_specs_record() -> None:
+    """One number, four prose copies, and now one importable source.
+
+    The beacon decides every rain draw and cannot be changed after
+    `configure`, so a copy of it that drifts is a copy that would tell a
+    participant a rigged draw looks fine.
+    """
+    import pathlib
+    import re
+
+    from scripts import network as net
+
+    spec = pathlib.Path("specs/rain/rain.spec.md").read_text()
+    testnet, mainnet = re.search(r"TestNet `(\d+)` and MainNet `(\d+)`", spec).groups()
+    assert int(testnet) == net.FOUNDATION_BEACON[net.TESTNET]
+    assert int(mainnet) == net.FOUNDATION_BEACON[net.MAINNET]

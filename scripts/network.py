@@ -31,6 +31,16 @@ _GENESIS_IDS = {
 }
 
 
+# The Algorand Foundation's randomness beacon, per network. Recorded once
+# here because the id was already written out in four other places, and a
+# fifth copy is how the number quietly becomes wrong somewhere. Any contract
+# naming a different beacon is one whose deployer chose who wins.
+FOUNDATION_BEACON = {
+    TESTNET: 600_011_887,
+    MAINNET: 1_615_566_206,
+}
+
+
 def genesis_ids(network: str) -> tuple[str, ...]:
     """Every genesis id that counts as this network.
 
