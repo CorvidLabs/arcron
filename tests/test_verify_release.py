@@ -14,7 +14,30 @@ import textwrap
 
 import pytest
 
-from scripts.verify_release import Release, changed_since, latest_release
+from scripts.verify_release import REPO, Release, changed_since, latest_release
+
+
+def _history_is_available(ref: str) -> bool:
+    """Whether git can resolve `ref` here.
+
+    A shallow clone, which is what actions/checkout does by default, cannot.
+    The tests below say so explicitly instead of failing on a confusing
+    assertion about commit subjects, because that is what happened the first
+    time this ran in CI and it read as a broken test rather than a missing
+    checkout option. They do NOT skip: a check that quietly opts out in CI is
+    the failure mode this whole file exists to prevent.
+    """
+    import subprocess
+
+    return (
+        subprocess.run(
+            ["git", "cat-file", "-t", ref], cwd=REPO, capture_output=True, text=True
+        ).returncode
+        == 0
+    )
+
+
+SHALLOW = "git history is not available here; CI needs `fetch-depth: 0` on actions/checkout"
 
 
 def test_the_newest_release_row_is_parsed(tmp_path, monkeypatch) -> None:
@@ -60,6 +83,8 @@ def test_the_alpha_2_drift_would_have_been_caught() -> None:
     fixes landed after it and were never deployed. If this ever returns empty
     for that range, the check has stopped working.
     """
+    assert _history_is_available("8b9bb05"), SHALLOW
+
     drift = changed_since("8b9bb05")
     assert drift, "no drift reported for a range that definitely has some"
 
@@ -80,24 +105,14 @@ def test_the_release_record_and_the_repo_agree_on_the_live_app() -> None:
     party at bytecode they cannot reproduce.
     """
     release = latest_release()
-    # `changed_since` shells out to git and warns rather than raising on a bad
-    # ref, so check the ref resolves by asking for a range git can only answer
-    # if it knows the commit.
-    import subprocess
-
-    from scripts.verify_release import REPO
-
-    result = subprocess.run(
-        ["git", "cat-file", "-t", release.commit],
-        cwd=REPO,
-        capture_output=True,
-        text=True,
+    # HEAD is always resolvable, even shallow; if it is not, git itself is the
+    # problem and every other assertion here is meaningless.
+    assert _history_is_available("HEAD"), SHALLOW
+    assert _history_is_available(release.commit), (
+        f"releases.md names {release.commit} for {release.stage}, which is not a "
+        f"commit in this repository. Either the row is wrong, the commit was "
+        f"rebased away, or {SHALLOW}"
     )
-    assert result.returncode == 0, (
-        f"releases.md names {release.commit} for {release.stage}, "
-        f"which is not a commit in this repository"
-    )
-    assert result.stdout.strip() == "commit"
 
 
 def test_release_str_names_what_an_operator_needs() -> None:
