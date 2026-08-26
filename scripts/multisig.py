@@ -226,6 +226,10 @@ def describe_transaction(path: pathlib.Path) -> list[str]:
         lines.append(f"!! REKEYS the sender to {txn.rekey_to}. Do not sign unless you meant this.")
     if getattr(txn, "close_remainder_to", None):
         lines.append(f"!! CLOSES the sender to {txn.close_remainder_to}. Do not sign unless you meant this.")
+    if getattr(txn, "close_assets_to", None):
+        lines.append(
+            f"!! CLOSES an asset holding to {txn.close_assets_to}. Do not sign unless you meant this."
+        )
     return lines
 
 
@@ -352,6 +356,21 @@ def refusals(
         reasons.append(
             f"This CLOSES the sender to {txn.close_remainder_to}, emptying the account. "
             "Pass --i-mean-to-rekey if that is genuinely what you want."
+        )
+    if getattr(txn, "close_assets_to", None) and not allow_rekey:
+        reasons.append(
+            f"This CLOSES an asset holding to {txn.close_assets_to}, sending the whole "
+            "balance there and opting the sender out. Pass --i-mean-to-rekey if that is "
+            "genuinely what you want."
+        )
+    # A signing machine with no multisig configured cannot compare the blob
+    # against anything, and saying nothing looks identical to having checked.
+    if expected_address is None:
+        reasons.append(
+            "No multisig is configured on this machine, so nothing checked which account "
+            "this file spends from. Set ARCRON_MULTISIG_ADDRESSES and "
+            "ARCRON_MULTISIG_THRESHOLD to the group you believe you are part of, then "
+            "read the members this file actually names."
         )
     if expected_digest is not None:
         carried = carried_programs(path)

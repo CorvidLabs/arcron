@@ -350,7 +350,7 @@ def main(argv: list[str] | None = None) -> int:
         "command", choices=("status", "create", "update", "freeze", "show", "sign", "submit")
     )
     net.add_network_argument(parser)
-    parser.add_argument("--app-id", type=int, default=0, help="the keeper app to act on")
+    parser.add_argument("--app-id", type=int, default=None, help="the keeper app to act on; 0 means a create")
     parser.add_argument(
         "--expect-creator",
         help="create: the multisig address you intend to be the creator, typed out in full",
@@ -389,8 +389,12 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 1
         return create(algorand, args.expect_creator, args.yes, args.allow_dirty, args.out)
-    if args.command in ("update", "freeze", "status") and not args.app_id:
-        logger.error(f"{args.command} needs --app-id")
+    if args.command in ("update", "freeze", "status", "sign", "submit", "show") and args.app_id is None:
+        logger.error(
+            f"{args.command} needs --app-id. It has no default: 0 means \"this is a create\", "
+            "and a forgotten flag must not be able to look like the one transaction that "
+            "cannot be undone. Pass --app-id 0 deliberately when signing a create."
+        )
         return 1
     if args.command == "status":
         return status(algorand, args.app_id)

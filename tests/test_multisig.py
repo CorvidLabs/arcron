@@ -338,3 +338,46 @@ def test_the_extra_pages_formula_holds_at_the_page_boundary() -> None:
     assert pages(4_097) == 2
     # The live keeper: 2104 approval + 4 clear.
     assert pages(2_108) == 1
+
+
+def test_a_machine_with_no_multisig_configured_is_told_it_checked_nothing(
+    monkeypatch, tmp_path
+) -> None:
+    """Silence looks identical to having checked.
+
+    The blob decides which account a signature binds. A signing machine with
+    nothing configured cannot compare it against anything, and the refusal
+    list going quiet reads like the comparison passed.
+    """
+    from algosdk import transaction
+
+    monkeypatch.setenv(ms.THRESHOLD_VAR, "3")
+    monkeypatch.setenv(ms.ADDRESSES_VAR, ",".join(SIGNERS))
+    path = _write(tmp_path, transaction.PaymentTxn(
+        sender=ms.address(), sp=_params(), receiver=HOT, amt=0
+    ))
+    monkeypatch.delenv(ms.ADDRESSES_VAR, raising=False)
+    monkeypatch.delenv(ms.THRESHOLD_VAR, raising=False)
+
+    reasons = ms.refusals(
+        path, app_id=0, genesis_ids=TESTNET_GENESIS, expected_address=None,
+        expected_digest=None, max_fee=10_000, allow_account_txn=True,
+    )
+    assert any("nothing checked which account" in r for r in reasons), reasons
+
+
+def test_an_asset_close_is_refused_like_a_rekey(configured, tmp_path) -> None:
+    """Closing an asset holding empties it and opts the sender out.
+
+    The payment close was checked and this one was not, and neither
+    `describe_transaction` nor the refusals mentioned it.
+    """
+    from algosdk import transaction
+
+    configured(3, SIGNERS)
+    path = _write(tmp_path, transaction.AssetTransferTxn(
+        sender=ms.address(), sp=_params(), receiver=HOT, amt=0, index=42,
+        close_assets_to=HOT,
+    ))
+    reasons = _refusals(path, app_id=0, allow_account_txn=True)
+    assert any("CLOSES an asset holding" in r for r in reasons), reasons
