@@ -311,10 +311,26 @@ async function discoverResources(
     }),
   );
 
+  // A failed simulation resolves normally rather than throwing, and algosdk
+  // does not inspect this either, so without reading it the discovery quietly
+  // returns nothing, the call proceeds, and a wallet is asked to sign a
+  // transaction already known to fail. On the keeper board that is the common
+  // case rather than an edge one, because losing a race is the ordinary
+  // outcome there, so the routine experience was a prompt followed by a raw
+  // AVM string. Blind signing is the habit that makes every other attack on
+  // this surface land.
+  const group = simulateResponse.txnGroups[0];
+  if (group?.failureMessage) {
+    throw new Error(
+      `This execution would fail, so it was not sent: ${group.failureMessage}. ` +
+        `Another keeper may have taken it, or it may not be due yet.`,
+    );
+  }
+
   // Group-level, not per-transaction: this group is one transaction, and the
   // API's own distinction is that only the group-level object qualifies for
   // group resource sharing, which is what a single-transaction group needs.
-  const unnamed = simulateResponse.txnGroups[0]?.unnamedResourcesAccessed;
+  const unnamed = group?.unnamedResourcesAccessed;
   return foldUnnamedResources(known, unnamed, appId);
 }
 

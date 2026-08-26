@@ -160,7 +160,7 @@ interface Row {
                             required
                           />
                         </label>
-                        <button type="submit" class="primary small" [disabled]="keeper.busy() !== null">
+                        <button type="submit" class="primary small" [disabled]="keeper.busy() !== null || !reads()">
                           Fund upkeep {{ row.id }}
                         </button>
                         <p class="hint">

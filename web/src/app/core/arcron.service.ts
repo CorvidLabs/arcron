@@ -204,8 +204,15 @@ export class ArcronService {
     const current = () => generation === this.generation;
     try {
       const params = await algod.getTransactionParams().do();
-      this.genesisId.set(params.genesisID ?? null);
       const status = await algod.status().do();
+      // Guarded like everything else below. `algod` was captured from the
+      // config as it was when this refresh started, so a slow read from the
+      // previous network or the previous app id used to land here and write
+      // both fields anyway. `round` decides which Execute buttons are live
+      // and what they claim to pay, and `genesisId` drives the wrong-chain
+      // banner, so these two were the worst pair to leave outside the guard.
+      if (!current()) return;
+      this.genesisId.set(params.genesisID ?? null);
       this.round.set(status.lastRound);
       if (this.config().devMode !== true) this.sampleRate(status.lastRound);
 
