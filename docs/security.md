@@ -11,11 +11,22 @@ If you escrow ALGO in this contract you are relying on that analysis. Read
 ## The shape of the thing
 
 Arcron holds escrow for other people and pays it out to whoever does the work.
-There is no owner, no rake, and no admin key over anyone's escrow. The
-upgrade path is temporary and readable on-chain, and is given up before the
-network asks anyone to rely on it. That last
-one is the load-bearing design decision: it means nobody can change the rules
-after you have escrowed funds, and that a bug cannot be patched in place.
+There is no owner and no rake.
+
+Whether there is an admin key over your escrow depends on one flag. Until a
+deployment's creator calls `freeze`, they can replace its programs and reach
+every upkeep in it. That power is readable on-chain and `govern status`
+prints it, but while it exists, "no admin key" describes the deployment you
+are heading towards rather than the one in front of you. Check before you
+escrow:
+
+```sh
+poetry run python -m scripts.govern status --network N --app-id N
+```
+
+Once frozen, nobody can change the rules after you have escrowed funds, and a
+bug cannot be patched in place either. That is the trade, and it is the
+load-bearing design decision here.
 
 Three parties can act:
 

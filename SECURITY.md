@@ -91,9 +91,15 @@ Out of scope:
 
 ## Key handling
 
-**`DEPLOYER_MNEMONIC` is the one that matters.** It creates the app, and
-while that app is unfrozen it can replace the app's programs, which means it
-can rewrite the rules and reach every escrow. `poetry run python -m
+**The creator's key is the one that matters.** It creates the app, and while
+that app is unfrozen it can replace the app's programs, which means it can
+rewrite the rules and reach every escrow.
+
+On TestNet that key is `DEPLOYER_MNEMONIC`, a throwaway. **On MainNet it is
+the 3-of-5 multisig** `NHQU7QBDTUC4Q5I7LV3A35GGG36QUK5EL6PM4ZVBJKZ7AS6EDOU7BCRDWA`,
+and no single mnemonic can act for it. A MainNet deployment created from a
+single key would be the admin-key problem this whole section exists to avoid,
+permanently, because an app's creator cannot be changed afterwards. `poetry run python -m
 scripts.govern status` reports whether a deployment is still in that state.
 Everything below is less valuable than that key. For anything holding real
 money it should be a multisig rather than one mnemonic: see

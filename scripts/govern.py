@@ -181,6 +181,34 @@ def _spec_json():
     return algokit_utils.Arc56Contract.from_json(json.dumps(_spec("keeper")))
 
 
+# A fee is spent whether or not the transaction accomplishes anything, so an
+# inflated one is a way to drain the account it is signed from without ever
+# looking like theft. Ten times the minimum leaves room for real congestion.
+MAX_SIGNABLE_FEE = 10_000
+
+
+def _refuse(args, verb: str) -> bool:
+    """Print every reason not to act on this file. True means do not.
+
+    Collected rather than short-circuited so a holder sees all of what is
+    wrong at once, and phrased as refusals so the default is inaction.
+    """
+    reasons = ms.refusals(
+        args.file,
+        app_id=args.app_id,
+        genesis_ids=net.genesis_ids(args.network),
+        expected_address=ms.address() if ms.configured() else None,
+        max_fee=MAX_SIGNABLE_FEE if not args.allow_high_fee else 2**63,
+        allow_account_txn=args.account_txn,
+        allow_rekey=args.i_mean_to_rekey,
+    )
+    for reason in reasons:
+        logger.error(f"  REFUSING: {reason}")
+    if reasons:
+        logger.error(f"Not {verb}ing. Check where this file came from before overriding anything.")
+    return bool(reasons)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -192,6 +220,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--app-id", type=int, required=True, help="the keeper app to act on")
     parser.add_argument("--no-rebuild", action="store_true", help="update: trust the built artifacts")
     parser.add_argument("--yes", action="store_true", help="freeze: skip the confirmation")
+    parser.add_argument(
+        "--account-txn", action="store_true",
+        help="sign/submit: allow a transaction that is not an application call",
+    )
+    parser.add_argument(
+        "--i-mean-to-rekey", action="store_true",
+        help="sign/submit: allow a transaction that rekeys or closes the sender",
+    )
+    parser.add_argument(
+        "--allow-high-fee", action="store_true",
+        help=f"sign/submit: allow a fee above {MAX_SIGNABLE_FEE} microAlgos",
+    )
     parser.add_argument(
         "--out", type=pathlib.Path,
         help="update/freeze under a multisig: where to write the unsigned transaction",
@@ -210,7 +250,19 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         for line in ms.describe_transaction(args.file):
             logger.info(f"  {line}")
-        logger.info(f"  signatures    {ms.collected(args.file)} of {ms.threshold()}")
+        # Read from the blob, not from this machine's environment. The
+        # environment is whatever the person running `show` has configured,
+        # and a file that spends from a different account entirely would
+        # otherwise be described using your threshold and your member list.
+        logger.info(f"  spends from   {ms.blob_address(args.file)}")
+        logger.info(f"  signatures    {ms.collected(args.file)} of {ms.blob_threshold(args.file)}")
+        for index, member in enumerate(ms.blob_signers(args.file), start=1):
+            logger.info(f"    member {index}     {member}")
+        if ms.configured() and ms.blob_address(args.file) != ms.address():
+            logger.warning(
+                f"  !! This is NOT your configured multisig ({ms.address()}). "
+                "Signing it binds an account you were not asked about."
+            )
         return 0
     if args.command in ("sign", "submit"):
         if args.file is None:
@@ -226,26 +278,25 @@ def main(argv: list[str] | None = None) -> int:
                     "It is read from the environment and never written anywhere."
                 )
                 return 1
-            # Show it before signing, always, and refuse if it is not the
-            # app the signer was told about. Signing base64 nobody reads is
-            # how a multisig becomes one person who clicked several times,
-            # and this is the last point at which that can be caught.
-            in_file = ms.app_id(args.file)
-            if in_file and in_file != args.app_id:
-                logger.error(
-                    f"This file acts on app {in_file}, not {args.app_id}. "
-                    "Refusing. Check where the file came from."
-                )
-                return 1
             logger.info("About to sign:")
             for line in ms.describe_transaction(args.file):
                 logger.info(f"  {line}")
+            if _refuse(args, "sign"):
+                return 1
+            # A signature is the irreversible half: submitting is mechanical
+            # once enough exist. Freeze already asks for the app id to be
+            # typed back, and signing deserves the same pause, because a
+            # holder who runs this from a script is not a second signer.
+            if not args.yes:
+                expected = str(ms.blob_address(args.file))
+                answer = input(f"  Type the sending account ({expected[:8]}...) to sign: ").strip()
+                if not expected.startswith(answer) or len(answer) < 8:
+                    logger.info("Not signed.")
+                    return 1
             have = ms.sign(args.file, secret)
             logger.info(f"Signed. {have} of {ms.blob_threshold(args.file)} collected.")
             return 0
-        in_file = ms.app_id(args.file)
-        if in_file and in_file != args.app_id:
-            logger.error(f"This file acts on app {in_file}, not {args.app_id}. Refusing.")
+        if _refuse(args, "submit"):
             return 1
         txid = ms.submit(algorand.client.algod, args.file)
         logger.info(f"Submitted {txid}")

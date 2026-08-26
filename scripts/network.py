@@ -31,6 +31,15 @@ _GENESIS_IDS = {
 }
 
 
+def genesis_ids(network: str) -> tuple[str, ...]:
+    """Every genesis id that counts as this network.
+
+    LocalNet answers to several depending on how it was started, which is why
+    this is a tuple rather than a single string.
+    """
+    return _GENESIS_IDS[network]
+
+
 def default_network() -> str:
     """The network to use when no flag is given (`ARCRON_NETWORK`, else TestNet)."""
     return os.environ.get("ARCRON_NETWORK", TESTNET)

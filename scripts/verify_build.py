@@ -1,9 +1,15 @@
 """Check that a deployed app is running the source in this repository.
 
-Arcron's contract has no update path, so what is deployed is what was
-deployed — but that is only reassuring if you can confirm *which* source it
-was. This rebuilds from the working tree and compares the compiled programs
+This rebuilds from the working tree and compares the compiled programs
 against what algod reports for an app id.
+
+Read the answer narrowly. A match proves the deployed programs are the ones
+this tree compiles to, right now. It does not prove the app will keep running
+them: that is `frozen`, which `govern status` reports and this does not. On an
+unfrozen app a match means "matches today" and nothing more. It also says
+nothing about who the creator is, how many program pages or state slots the
+app was created with, or whether the working tree is the release tag you
+think it is.
 
     poetry run python -m scripts.verify_build --network testnet --app-id N
 

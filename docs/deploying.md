@@ -208,7 +208,7 @@ which is worse than not checking.
 **Which holders, and how many.** Three keys with a threshold of two is the
 usual shape: any one can be lost without losing control, and any one can be
 compromised without losing the contract. Keep them on different devices held by
-different people; three keys in one drawer is one key.
+different people; keys in one drawer are one key. MainNet uses five keys with a threshold of three (`NHQU7QBDTUC4Q5I7LV3A35GGG36QUK5EL6PM4ZVBJKZ7AS6EDOU7BCRDWA`); the LocalNet smoke test uses three with a threshold of two because it only has to prove the mechanism. Member order is part of the address, so the same keys in a different order are a different account holding nothing.
 
 ## Checking a deployment you did not make
 

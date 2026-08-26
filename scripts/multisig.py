@@ -182,8 +182,18 @@ def describe_transaction(path: pathlib.Path) -> list[str]:
             approval = getattr(txn, "approval_program", b"") or b""
             clear = getattr(txn, "clear_program", b"") or b""
             lines.append(f"REPLACES THE PROGRAMS with {len(approval)} + {len(clear)} bytes")
+            # The combined digest is what `verify_build` records, and it is the
+            # only one that pins both programs. An approval-only hash lets an
+            # honest approval be shipped alongside a hostile clear program,
+            # which matches on inspection and cannot be replaced after freeze.
+            lines.append(f"  combined sha256 {combined_digest(approval, clear)}")
             lines.append(f"  approval sha256 {hashlib.sha256(approval).hexdigest()}")
-            lines.append("  Compare that against `fledge run verify` on the commit you expect.")
+            lines.append(f"  clear    sha256 {hashlib.sha256(clear).hexdigest()}")
+            lines.append(
+                "  Compare the combined digest against "
+                "`poetry run python -m scripts.verify_build` on the commit you expect. "
+                "Do not compare against `fledge run verify`, which does not rebuild."
+            )
         args = getattr(txn, "app_args", None) or []
         if args:
             lines.append("app args      " + ", ".join(a.hex() for a in args))
@@ -228,3 +238,94 @@ def submit(algod, path: pathlib.Path) -> str:
     txid = algod.send_transaction(signed)
     transaction.wait_for_confirmation(algod, txid, 6)
     return txid
+
+
+def combined_digest(approval: bytes, clear: bytes) -> str:
+    """The digest `scripts/verify_build.py` records, byte for byte.
+
+    Kept identical on purpose: a holder comparing a hash before signing and a
+    reviewer checking a deployment afterwards have to be looking at the same
+    number, or the comparison proves nothing.
+    """
+    return hashlib.sha256(approval + b"\x00" + clear).hexdigest()
+
+
+def blob_address(path: pathlib.Path) -> str:
+    """The account this file actually spends from, read from the blob.
+
+    The JSON fields beside a signing file are decoration. Only the multisig
+    embedded in the signed blob decides which account a signature binds, and
+    for a create transaction the sender *is* whatever that blob says, with no
+    later check to catch it.
+    """
+    return _load(path).multisig.address()
+
+
+def blob_signers(path: pathlib.Path) -> list[str]:
+    """The member addresses in the blob, in the order that forms the address."""
+    return [encoding.encode_address(sub.public_key) for sub in _load(path).multisig.subsigs]
+
+
+def refusals(
+    path: pathlib.Path,
+    *,
+    app_id: int,
+    genesis_ids: tuple[str, ...],
+    expected_address: str | None,
+    max_fee: int,
+    allow_account_txn: bool = False,
+    allow_rekey: bool = False,
+) -> list[str]:
+    """Every reason this file must not be signed. Empty means it may be.
+
+    Written as refusals rather than a boolean so a holder is told all of what
+    is wrong at once. The previous guard was `if in_file and in_file != app_id`,
+    and `app_id()` is 0 for anything that is not an app call, so the whole
+    check short-circuited away for exactly the transactions that can steal the
+    account outright: a rekey, a close, and a create.
+    """
+    signed = _load(path)
+    txn = signed.transaction
+    reasons: list[str] = []
+
+    in_file = int(getattr(txn, "index", 0) or 0)
+    is_app_call = txn.type == "appl"
+
+    if not is_app_call and not allow_account_txn:
+        reasons.append(
+            f"This is a {txn.type} transaction, not an application call. Governance never "
+            "produces one. Pass --account-txn only if you know why this exists."
+        )
+    if is_app_call and in_file != app_id:
+        reasons.append(
+            f"This file acts on app {in_file}, not the {app_id} you named. "
+            "Use --app-id 0 only when creating an app."
+        )
+    if txn.genesis_id not in genesis_ids:
+        reasons.append(
+            f"This file is for network {txn.genesis_id}, and you are signing as "
+            f"{'/'.join(genesis_ids)}. Signing is the irreversible half; a wrong network "
+            "here means signing away an account on a chain you did not mean to touch."
+        )
+    if expected_address is not None and blob_address(path) != expected_address:
+        reasons.append(
+            f"This file spends from {blob_address(path)}, not the configured "
+            f"{expected_address}. The blob decides the account, not the JSON beside it."
+        )
+    if getattr(txn, "rekey_to", None) and not allow_rekey:
+        reasons.append(
+            f"This REKEYS the sender to {txn.rekey_to}, handing the account to that key "
+            "permanently. Pass --i-mean-to-rekey if that is genuinely what you want."
+        )
+    if getattr(txn, "close_remainder_to", None) and not allow_rekey:
+        reasons.append(
+            f"This CLOSES the sender to {txn.close_remainder_to}, emptying the account. "
+            "Pass --i-mean-to-rekey if that is genuinely what you want."
+        )
+    if int(txn.fee) > max_fee:
+        reasons.append(
+            f"The fee is {txn.fee} microAlgos, above the {max_fee} ceiling. A fee is spent "
+            "whether or not the transaction does anything, so an inflated one drains the "
+            "account it is signed from. Pass --allow-high-fee if this is deliberate."
+        )
+    return reasons
