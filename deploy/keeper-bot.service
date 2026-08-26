@@ -30,6 +30,15 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
+# Somewhere to keep the backoff state. Without this the bot cannot write it at
+# all: ProtectSystem=strict makes the filesystem read-only and ProtectHome
+# hides the home directory the default path lives under, so every restart
+# forgot which upkeeps were failing and went straight back to retrying them.
+# Nothing logged, because the bot treats an unwritable state file as "no state
+# yet". XDG_STATE_HOME points the default path at the directory systemd
+# creates, rather than teaching the bot about systemd.
+StateDirectory=arcron
+Environment=XDG_STATE_HOME=/var/lib
 
 [Install]
 WantedBy=multi-user.target
