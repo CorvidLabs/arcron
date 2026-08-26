@@ -29,6 +29,7 @@ from scripts import network as net
 from scripts.keeper_e2e import _box_mbr, _encode_args, _quiet, _selector
 from smart_contracts.artifacts.keeper.keeper_client import (
     CancelArgs,
+    TopUpArgs,
     KeeperClient,
     RegisterArgs,
 )
@@ -184,6 +185,63 @@ def main(argv: list[str] | None = None) -> None:
     # were exactly that, and one of them passed with the guard it existed to
     # test deleted from the contract. So these are left out rather than left
     # in and believed.
+
+    logger.info("")
+    logger.info("── keeper: who pays, at every site that takes a payment ──")
+
+    # Fable proved the register version, it was fixed there, and three sibling
+    # methods that also accept a payment were left unbound. Each of those is
+    # the same attack with a different method name, so each gets its own
+    # attempt rather than a comment saying the class is handled.
+    first_valid = algod.status()["last-round"]
+    owner_client = KeeperClient(
+        algorand=algorand, app_id=keeper.app_id,
+        default_sender=deployer.address, default_signer=deployer.signer,
+    )
+    victim_upkeep = owner_client.send.register(
+        args=RegisterArgs(
+            mbr_payment=_signed_payment(algorand, deployer, keeper.app_address, mbr, first_valid),
+            funding_payment=_signed_payment(
+                algorand, deployer, keeper.app_address, FUNDING, first_valid
+            ),
+            target_app=pulse.app_id, call_args=call_args,
+            interval_rounds=MIN_INTERVAL_ROUNDS, fee_per_execution=MIN_UPKEEP_FEE,
+            policy=0, fee_cap=0, fee_asset=0, asset_fee=0,
+        )
+    ).abi_return
+
+    def victim_tops_up_attackers_upkeep() -> None:
+        # The stranger owns nothing here, so they name the deployer's upkeep
+        # and let the deployer pay. The shape is what matters: the caller and
+        # the payer are different accounts.
+        first = algod.status()["last-round"]
+        KeeperClient(
+            algorand=algorand, app_id=keeper.app_id,
+            default_sender=stranger.address, default_signer=stranger.signer,
+        ).send.top_up(
+            args=TopUpArgs(
+                upkeep_id=victim_upkeep,
+                funding_payment=_signed_payment(
+                    algorand, deployer, keeper.app_address, FUNDING, first
+                ),
+            )
+        )
+
+    failures.append(
+        _attempt(
+            "a victim's payment topping up an upkeep the caller does not own",
+            "Fable 5, on chain, after the register fix missed three siblings",
+            "must come from the caller",
+            victim_tops_up_attackers_upkeep,
+        )
+    )
+
+    owner_client.send.cancel(
+        args=CancelArgs(upkeep_id=victim_upkeep),
+        params=algokit_utils.CommonAppCallParams(
+            extra_fee=algokit_utils.AlgoAmount(micro_algo=1_000)
+        ),
+    )
 
     logger.info("")
     logger.info("── keeper: whose escrow is it ──")

@@ -31,3 +31,46 @@ describe('reading the freeze flag', () => {
         expect(isFrozen([{ key: key('next_upkeep_id'), value: { uint: 23 } }])).toBe(true);
     });
 });
+
+// --- what makes it safe to commit money ---------------------------------
+//
+// Every write guard used to key on `status === 'ready'` alone, and a read
+// that completes without throwing sets that. A node answering for the wrong
+// chain answers perfectly well, so the page showed "wrong chain" in red and
+// left every money button live underneath it. Two reviewers found that in the
+// same pass.
+
+/** The predicate `ArcronService.canWrite` computes, isolated from signals. */
+function canWrite(state: {
+    status: string;
+    genesisMatches: boolean | null;
+    appId: number | null;
+}): boolean {
+    return state.status === 'ready' && state.genesisMatches !== false && state.appId !== null;
+}
+
+describe('when it is safe to commit money', () => {
+    const ok = { status: 'ready', genesisMatches: true, appId: 769_891_898 };
+
+    test('a healthy read on the right chain with an app selected', () => {
+        expect(canWrite(ok)).toBe(true);
+    });
+
+    test('a node answering for another chain blocks writes, however healthy the read', () => {
+        expect(canWrite({ ...ok, genesisMatches: false })).toBe(false);
+    });
+
+    test('no app selected blocks writes, which is the front door default', () => {
+        expect(canWrite({ ...ok, appId: null })).toBe(false);
+    });
+
+    test('a failed read blocks writes', () => {
+        expect(canWrite({ ...ok, status: 'error' })).toBe(false);
+    });
+
+    test('an unknown genesis does not block, because it is not yet a mismatch', () => {
+        // null means the first read has not returned. Blocking on that would
+        // make every page load briefly unusable rather than briefly unknown.
+        expect(canWrite({ ...ok, genesisMatches: null })).toBe(true);
+    });
+});

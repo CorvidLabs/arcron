@@ -159,10 +159,35 @@ def main(argv: list[str] | None = None) -> None:
             ["--once", "--network", args.network, "--app-id", str(keeper_client.app_id)]
         )
 
+    def bill_until(period: int) -> None:
+        """Drive the keeper until the subscription has billed `period` periods.
+
+        Not "run the keeper N times". An execution does not necessarily bill:
+        `charge` returns rather than asserts when no period has elapsed, which
+        is deliberate and is what stops a catch-up keeper tripping backoff.
+
+        `last_charged_round` records the round a charge landed in, not the
+        round it was due, so every late landing drifts it forward. Once the
+        drift exceeds a round, an execution arrives before
+        `last_charged_round + min_rounds_per_period` and correctly bills
+        nothing. Asserting that four executions bill four periods was
+        asserting a coincidence, and it held only while every execution landed
+        exactly on its due round. On a freshly reset chain they do not, which
+        made this demo fail intermittently for a reason that looked like a
+        contract bug and was the contract working as designed.
+        """
+        for _ in range(period * 3):  # generous bound; the loop exits on the state
+            if subscription.state.global_state.period >= period:
+                return
+            run_keeper()
+        raise AssertionError(
+            f"the keeper ran {period * 3} times and billed only "
+            f"{subscription.state.global_state.period} of {period} periods"
+        )
+
     # ------------------------------------------------------------------
     logger.info("── 4. Four periods pass, driven by a keeper ──")
-    for _ in range(4):
-        run_keeper()
+    bill_until(4)
     _assert("periods billed", subscription.state.global_state.period, 4)
     _assert("moved by the scheduled call", subscription.state.global_state.provider_accrued, 0)
     logger.info("   The hook advanced the period four times and moved nothing. That is the design.")
@@ -184,7 +209,7 @@ def main(argv: list[str] | None = None) -> None:
 
     # ------------------------------------------------------------------
     logger.info("── 6. A lapsed subscriber does not wedge anybody ──")
-    run_keeper()
+    bill_until(5)
     _assert("periods billed", subscription.state.global_state.period, 5)
     logger.info("   Ada is out of funds and the schedule did not notice.")
 

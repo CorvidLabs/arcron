@@ -111,6 +111,22 @@ export class KeeperService {
       this.error.set('Connect an account before sending transactions');
       return;
     }
+    // One backstop rather than a guard per button. The stale-read check was
+    // added to the register form and to three of the registry's four money
+    // buttons, and missed the keeper board's Execute and the top-up drawer's
+    // submit. Every call that moves money passes through here, so the next
+    // button somebody adds inherits it instead of needing to remember.
+    //
+    // A failed read leaves last-good figures on screen and the trust warnings
+    // unrendered, which is when this should be least available rather than
+    // most.
+    if (!this.arcron.canWrite()) {
+      this.error.set(
+        'The last read of the chain failed, so what is on screen may be stale. ' +
+          'Nothing will be sent until it recovers.',
+      );
+      return;
+    }
     this.busy.set(operation);
     this.error.set(null);
     try {

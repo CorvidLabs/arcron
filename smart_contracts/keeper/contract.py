@@ -268,6 +268,16 @@ class Keeper(ARC4Contract):
         assert (
             funding_payment.receiver == Global.current_application_address
         ), "Funding must go to the app account"
+        # Bound to the caller, like `register`. Topping up is deliberately
+        # permissionless and stays so: a well-wisher can still fund somebody
+        # else's upkeep, they simply have to pay for it themselves. What this
+        # stops is the group where a victim signs the payment and an attacker
+        # signs the call naming their own upkeep, which only they can cancel.
+        # `register` got this assert and these three did not, which is the
+        # same fix-one-site failure three reviewers have now named.
+        assert (
+            funding_payment.sender == Txn.sender
+        ), "Funding payment must come from the caller"
         assert funding_payment.rekey_to == Global.zero_address, "Funding must not rekey"
         assert (
             funding_payment.close_remainder_to == Global.zero_address
@@ -498,6 +508,9 @@ class Keeper(ARC4Contract):
         assert (
             mbr_payment.receiver == Global.current_application_address
         ), "MBR payment must fund the app account"
+        # The deposit is not refundable, so a payment somebody else signed is
+        # money taken from them and kept, with nothing crediting them for it.
+        assert mbr_payment.sender == Txn.sender, "MBR payment must come from the caller"
         assert mbr_payment.rekey_to == Global.zero_address, "MBR payment must not rekey"
         assert (
             mbr_payment.close_remainder_to == Global.zero_address
@@ -527,6 +540,11 @@ class Keeper(ARC4Contract):
         assert (
             asset_funding.asset_receiver == Global.current_application_address
         ), "Asset funding must go to the app account"
+        # Same reason as `top_up`: a bonus somebody else's transfer paid for
+        # becomes the upkeep creator's to spend, and only they can cancel.
+        assert (
+            asset_funding.sender == Txn.sender
+        ), "Asset funding must come from the caller"
         assert asset_funding.rekey_to == Global.zero_address, "Asset funding must not rekey"
         assert (
             asset_funding.asset_close_to == Global.zero_address
