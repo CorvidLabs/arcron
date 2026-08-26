@@ -214,3 +214,38 @@ def test_a_genuine_update_of_the_named_app_is_allowed(configured, tmp_path) -> N
         approval_program=b"\x0a\x81\x01", clear_program=b"\x0a\x81\x01",
     )
     assert _refusals(_write(tmp_path, txn)) == []
+
+
+# --- the MainNet gate --------------------------------------------------
+#
+# ARCRON_ALLOW_MAINNET=1 was the entire gate. It stops a typo in --network and
+# does nothing about which account signs, and a shell that exports it once
+# turns --network mainnet back into an ordinary argument. An app's creator is
+# fixed at creation, so a MainNet app made from a single key carries an admin
+# key over every escrow in it forever.
+
+def test_mainnet_refuses_without_a_multisig(monkeypatch) -> None:
+    from scripts import network as net
+
+    monkeypatch.delenv(ms.ADDRESSES_VAR, raising=False)
+    monkeypatch.delenv(ms.THRESHOLD_VAR, raising=False)
+    with pytest.raises(RuntimeError, match="without a configured multisig"):
+        net.require_mainnet_multisig()
+
+
+def test_mainnet_refuses_a_multisig_that_is_not_the_expected_one(configured) -> None:
+    """Member order is part of the address, so this catches a permutation too."""
+    from scripts import network as net
+
+    configured(3, [CORVID, LEDGER, HOT, KYN, GASPAR])  # LEDGER and CORVID swapped
+    with pytest.raises(RuntimeError, match="not the expected"):
+        net.require_mainnet_multisig()
+
+
+def test_mainnet_accepts_the_real_three_of_five(configured) -> None:
+    """A gate that refuses the intended creator is an outage, not a gate."""
+    from scripts import network as net
+
+    configured(3, SIGNERS)
+    assert ms.address() == net.MAINNET_CREATOR
+    net.require_mainnet_multisig()

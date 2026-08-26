@@ -56,16 +56,23 @@ def _register(algorand, keeper_client, deployer, target_app: int, policy: int) -
             )
         )
 
+    # `call_data` became `call_args`, a list, when #8 landed, and four more
+    # fields became required. This spike kept the old shape and so raised
+    # TypeError before reaching a chain, which meant the reentrancy claim it
+    # is cited for had not actually been measured for some time.
+    call_args = [call_data]
     return keeper_client.send.register(
         args=RegisterArgs(
-            mbr_payment=payment(_box_mbr(call_data)),
+            mbr_payment=payment(_box_mbr(call_args)),
             funding_payment=payment(FEE * 10),
             target_app=target_app,
-            call_data=call_data,
+            call_args=call_args,
             interval_rounds=INTERVAL,
             fee_per_execution=FEE,
             policy=policy,
             fee_cap=0,
+            fee_asset=0,
+            asset_fee=0,
         )
     ).abi_return
 
@@ -104,6 +111,12 @@ def main(argv: list[str] | None = None) -> None:
     probe = deploy_probe()
     app_id = keeper_client.app_id
 
+    # Every variant here is a target trying to call `execute` back while the
+    # keeper is still inside it. The claim this spike is cited for is that
+    # each one is refused, so the run has to assert that rather than print it:
+    # a measurement nobody checks is a measurement that can silently invert.
+    escapes: list[str] = []
+
     for label, policy, neglect in (
         ("SKIP_AHEAD, three intervals of backlog", keeper_bot.SKIP_AHEAD, 3),
         ("CATCH_UP, no backlog", keeper_bot.CATCH_UP, 0),
@@ -129,18 +142,36 @@ def main(argv: list[str] | None = None) -> None:
         else:
             after, _ = _read_upkeep(algorand, app_id, upkeep_id)
             drained = before.balance - after.balance
+            executed = after.times_executed - before.times_executed
             to_probe = _balance(algorand, probe.app_address) - probe_before
             logger.info(
                 f"{label:<40} accepted — escrow -{drained} µALGO, "
-                f"executions +{after.times_executed - before.times_executed}, "
-                f"target received {to_probe} µALGO"
+                f"executions +{executed} , target received {to_probe} µALGO"
             )
+            # An accepted call is not itself a failure: a re-entering target
+            # whose inner call is refused still completes its own execution
+            # normally. What must never happen is a second execution, or an
+            # escrow drain larger than the one fee that execution earns.
+            if executed > 1:
+                escapes.append(f"{label}: {executed} executions from one call")
+            if drained > upkeep.fee_cap or drained > FEE * executed:
+                escapes.append(f"{label}: escrow fell {drained} µALGO for {executed} execution(s)")
         keeper_client.send.cancel(
             args=CancelArgs(upkeep_id=upkeep_id),
             params=algokit_utils.CommonAppCallParams(
                 extra_fee=algokit_utils.AlgoAmount(micro_algo=1_000)
             ),
         )
+
+    if escapes:
+        for escape in escapes:
+            logger.error(f"  {escape}")
+        raise SystemExit(
+            "A re-entering target got more than one execution or more escrow than it "
+            "earned. That is the property this spike exists to check."
+        )
+    logger.info("")
+    logger.info("No variant re-entered: each got one execution and one fee, or was refused.")
 
 
 if __name__ == "__main__":

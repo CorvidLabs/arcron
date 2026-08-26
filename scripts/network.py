@@ -54,6 +54,43 @@ def add_network_argument(parser: argparse.ArgumentParser) -> None:
     )
 
 
+# The account the MainNet deployment is created from, and therefore the only
+# account that can ever replace its programs. An app's creator is fixed at
+# creation, so a MainNet app made from anything else is the admin-key problem
+# permanently, with no way back.
+MAINNET_CREATOR = "NHQU7QBDTUC4Q5I7LV3A35GGG36QUK5EL6PM4ZVBJKZ7AS6EDOU7BCRDWA"
+
+
+def require_mainnet_multisig() -> None:
+    """Refuse MainNet unless the configured signer is the 3-of-5.
+
+    `ARCRON_ALLOW_MAINNET=1` was the entire gate, and a shell that exports it
+    once turns `--network mainnet` back into an ordinary argument. The flag
+    stops a typo; it does nothing about the thing that actually matters, which
+    is which account signs.
+
+    Checked here rather than in each script so it applies to every entry point
+    at once, including ones written later. Read lazily to avoid a circular
+    import: `scripts.multisig` imports this module.
+    """
+    from scripts import multisig as ms
+
+    if not ms.configured():
+        raise RuntimeError(
+            "Refusing MainNet without a configured multisig. An app's creator cannot be "
+            "changed after creation, so a MainNet app deployed from a single key holds "
+            "an admin key over every escrow in it for as long as it exists. Set "
+            "ARCRON_MULTISIG_ADDRESSES and ARCRON_MULTISIG_THRESHOLD."
+        )
+    if ms.address() != MAINNET_CREATOR:
+        raise RuntimeError(
+            f"Refusing MainNet: the configured multisig is {ms.address()}, not the "
+            f"expected {MAINNET_CREATOR}. Member order is part of a multisig address, "
+            "so the same five keys in a different order are a different account holding "
+            "nothing. Check ARCRON_MULTISIG_ADDRESSES against docs/security.md."
+        )
+
+
 def load_network(network: str) -> str:
     """Load `.env.<network>`; returns the network name.
 
@@ -74,6 +111,8 @@ def load_network(network: str) -> str:
         )
     env_file = f".env.{network}"
     loaded = load_dotenv(env_file)
+    if network == MAINNET:
+        require_mainnet_multisig()
     if not loaded and network != LOCALNET and not os.environ.get("ALGOD_SERVER"):
         raise FileNotFoundError(
             f"{env_file} not found and ALGOD_SERVER is not set — copy "
