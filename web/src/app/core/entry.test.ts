@@ -1,8 +1,14 @@
 /**
- * A hosted console has to show the same registry to everyone who follows the
- * same link. That is only true if the link beats whatever the visitor's
- * browser remembers, and if a linked app id never escapes the chain it
- * belongs to.
+ * Two behaviours, and the difference between them is the point.
+ *
+ * **Outside dev mode** the console opens on one deployment and no parameter
+ * changes it. That is what makes a link carrying a look-alike `?app=` inert
+ * for a stranger, rather than merely warned about.
+ *
+ * **In dev mode** the link beats what the browser remembers, because someone
+ * working on the console needs to point it somewhere, and a linked app id must
+ * never escape the chain it belongs to. Every case below that passes `true` is
+ * asserting dev behaviour.
  */
 
 import { describe, expect, test } from 'bun:test';
@@ -23,12 +29,12 @@ const LINKED_APP = 1234567;
 
 describe('opening from a link', () => {
     test('the link beats what the browser remembers', () => {
-        const entry = entryFrom(`?network=testnet&app=${LINKED_APP}`, 'localnet', () => '42');
+        const entry = entryFrom(`?network=testnet&app=${LINKED_APP}`, 'localnet', () => '42', true);
         expect(entry).toEqual({ network: 'testnet', appId: LINKED_APP });
     });
 
     test('memory is used when the link says nothing', () => {
-        const entry = entryFrom('', 'testnet', () => '4242');
+        const entry = entryFrom('', 'testnet', () => '4242', true);
         expect(entry).toEqual({ network: 'testnet', appId: 4242 });
     });
 
@@ -38,31 +44,31 @@ describe('opening from a link', () => {
         // than with the intent, so it held the bug in place instead of
         // catching it. A stranger opening a published console would have been
         // pointed at http://localhost:4001.
-        const entry = entryFrom('', null, nothingStored);
+        const entry = entryFrom('', null, nothingStored, true);
         expect(entry.network).toBe(DEFAULT_NETWORK);
         expect(entry.network).toBe('testnet');
         expect(entry.appId).toBe(NETWORKS.testnet.defaultAppId);
     });
 
     test('a linked app inherits the network the link opens on', () => {
-        const entry = entryFrom(`?app=${LINKED_APP}`, 'testnet', nothingStored);
+        const entry = entryFrom(`?app=${LINKED_APP}`, 'testnet', nothingStored, true);
         expect(entry).toEqual({ network: 'testnet', appId: LINKED_APP });
     });
 
     test('?app=none opens the chain with no registry', () => {
-        expect(entryFrom('?network=testnet&app=none', null, () => '42').appId).toBeNull();
-        expect(entryFrom('?network=testnet&app=0', null, () => '42').appId).toBeNull();
+        expect(entryFrom('?network=testnet&app=none', null, () => '42', true).appId).toBeNull();
+        expect(entryFrom('?network=testnet&app=0', null, () => '42', true).appId).toBeNull();
     });
 
     test('a nonsense app id falls back rather than opening on NaN', () => {
         for (const bad of ['abc', '-1', '1.5', '99999999999999999999', '']) {
-            const entry = entryFrom(`?network=testnet&app=${bad}`, null, () => '4242');
+            const entry = entryFrom(`?network=testnet&app=${bad}`, null, () => '4242', true);
             expect(entry.appId).toBe(4242);
         }
     });
 
     test('a nonsense network falls back rather than opening on an unknown chain', () => {
-        expect(entryFrom('?network=mainnet', 'testnet', nothingStored).network).toBe('testnet');
+        expect(entryFrom('?network=mainnet', 'testnet', nothingStored, true).network).toBe('testnet');
     });
 });
 
@@ -114,13 +120,53 @@ describe('the parameters the address bar carries', () => {
 
     test('round-trip through entryFrom', () => {
         expect(search('testnet', LINKED_APP)).toBe(`?network=testnet&app=${LINKED_APP}`);
-        expect(entryFrom(search('testnet', LINKED_APP), 'localnet', () => '42')).toEqual({
+        expect(entryFrom(search('testnet', LINKED_APP), 'localnet', () => '42', true)).toEqual({
             network: 'testnet',
             appId: LINKED_APP,
         });
     });
 
     test('an empty registry round-trips as empty, not as the canonical app', () => {
-        expect(entryFrom(search('testnet', null), null, () => '42').appId).toBeNull();
+        expect(entryFrom(search('testnet', null), null, () => '42', true).appId).toBeNull();
+    });
+});
+
+describe('the published console shows one deployment and nothing else', () => {
+    test('a link naming another app is ignored, not merely warned about', () => {
+        // The only attack this project has: anyone can deploy a contract with
+        // this ABI and box layout, and a look-alike shows the same registry and
+        // accepts the same register form. quarantine.ts warns about it. Not
+        // reading the parameter removes it.
+        const entry = entryFrom(`?app=${LINKED_APP}`, null, nothingStored);
+        expect(entry.appId).toBe(NETWORKS[DEFAULT_NETWORK].defaultAppId ?? null);
+        expect(entry.appId).not.toBe(LINKED_APP);
+    });
+
+    test('a link naming another network is ignored', () => {
+        expect(entryFrom('?network=localnet', null, nothingStored).network).toBe(DEFAULT_NETWORK);
+    });
+
+    test('?app=none cannot empty the registry either', () => {
+        // Otherwise a link still has a way to make the console look dead.
+        expect(entryFrom('?app=none', null, nothingStored).appId).not.toBeNull();
+    });
+
+    test('nothing remembered can override it', () => {
+        // A visitor who once opened a dev link must not carry that deployment
+        // into the published console afterwards.
+        const entry = entryFrom('', 'localnet', () => String(LINKED_APP));
+        expect(entry.network).toBe(DEFAULT_NETWORK);
+        expect(entry.appId).toBe(NETWORKS[DEFAULT_NETWORK].defaultAppId ?? null);
+    });
+
+    test('the same URL opens the same registry for everyone', () => {
+        const strangers = [
+            entryFrom('', null, nothingStored),
+            entryFrom('?app=999', 'localnet', () => '42'),
+            entryFrom('?network=localnet&app=none', 'testnet', () => '7'),
+        ];
+        for (const entry of strangers) {
+            expect(entry).toEqual(strangers[0]);
+        }
     });
 });

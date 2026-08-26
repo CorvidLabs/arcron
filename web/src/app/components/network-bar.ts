@@ -1,6 +1,6 @@
 import { afterNextRender, ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 
-import { ArcronService } from '../core/arcron.service';
+import { ArcronService, DEV_MODE } from '../core/arcron.service';
 import { duration } from '@corvidlabs/arcron/format';
 import type { NetworkKey } from '@corvidlabs/arcron/networks';
 
@@ -20,7 +20,8 @@ import type { NetworkKey } from '@corvidlabs/arcron/networks';
       </div>
 
       <div class="controls">
-        <fieldset class="networks">
+        @if (devMode) {
+          <fieldset class="networks">
           <legend class="sr-only">Network</legend>
           @for (option of networks; track option.key) {
             <label class="network" [class.active]="arcron.network() === option.key">
@@ -35,9 +36,9 @@ import type { NetworkKey } from '@corvidlabs/arcron/networks';
               {{ option.label }}
             </label>
           }
-        </fieldset>
+          </fieldset>
 
-        <label class="app-id">
+          <label class="app-id">
           <span class="eyebrow">App</span>
           <input
             type="number"
@@ -47,7 +48,8 @@ import type { NetworkKey } from '@corvidlabs/arcron/networks';
             aria-label="Keeper app id"
             (change)="setAppId($event)"
           />
-        </label>
+          </label>
+        }
 
         <p class="status" [class]="statusClass()" role="status">
           <span class="dot" aria-hidden="true"></span>
@@ -142,6 +144,16 @@ import type { NetworkKey } from '@corvidlabs/arcron/networks';
 })
 export class NetworkBar {
   protected readonly arcron = inject(ArcronService);
+
+  /**
+   * The network picker and the app id field are developer controls.
+   *
+   * The published console serves one deployment, so a stranger has nothing
+   * to choose and no way to be sent somewhere else. Turn them on with
+   * `?dev=1`. See `core/dev-mode.ts` for why this is a security boundary
+   * and not a preference.
+   */
+  protected readonly devMode = DEV_MODE;
 
   constructor() {
     // brand/theme.js wires every [data-corvid-theme-toggle] once, when it

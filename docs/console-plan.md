@@ -563,3 +563,31 @@ was being written, the other agent removed that cap. Because the grade was built
 behind one constant with a comment naming the condition, the collapse was a
 one line change and a test now asserts the two numbers are equal, so the band
 returns if the keeper ever falls behind the protocol again.
+
+### One deployment by default (2026-08-26)
+
+The console now opens on the canonical deployment and no query parameter
+changes it. `?network=` and `?app=` are read only in dev mode, which `?dev=1`
+turns on and remembers; the network picker and the app id field are hidden
+without it.
+
+This supersedes the quarantine decision taken earlier the same day, and it is
+the option that was offered and declined in that interview: "drop link-sharing
+from the plan instead". It was declined because it would stop the console
+working against LocalNet without a rebuild. A dev flag answers that, and the
+maintainer reopened it after actually using the console.
+
+Quarantine stays and is not dead code. Dev mode still honours `?app=`, so a
+developer pointed at the wrong app is still told, which is exactly when that
+mistake is most likely.
+
+The argument for the change is that quarantine mitigates an attack and this
+removes it. Anyone can deploy a contract with this ABI and box layout: a
+look-alike shows the same registry, accepts the same register form, and keeps
+whatever is escrowed in it. Quarantine warned, disabled the money buttons, and
+refused to remember the id, which is a good mitigation and still a mitigation. A
+parameter that is not read cannot be poisoned.
+
+What it costs: the console can no longer be pointed at a superseded app to see
+what it holds, or at somebody else's deployment, without `?dev=1`. That is a
+maintainer's need rather than a visitor's, and it now looks like one.
