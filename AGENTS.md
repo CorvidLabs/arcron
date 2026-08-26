@@ -42,8 +42,9 @@ because these are easy to get wrong from memory:
   *resources* a call may touch is safe because the creator still fixes what is
   called, while letting a keeper supply *data* is a different product. Do not
   reopen either without reading that first.
-- **Dogfood** is a recurring treasury distribution on TestNet, serviced by a
-  keeper we run and watched by the notifier.
+- **Dogfood** is a recurring `rain` draw on TestNet, serviced by a keeper we
+  run and watched by the notifier, with `pulse` as the heartbeat target for
+  the uptime clock.
 - **MainNet gate** is self-review plus sustained TestNet time. No paid audit.
   Any struct change restarts that clock.
 - **Public release** waits until the deployment is one we are not about to

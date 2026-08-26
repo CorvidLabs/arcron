@@ -50,13 +50,17 @@ creator cannot have modelled.
 ## The demos already disagree about catch-up
 
 This is the strongest argument that the policy must be per-upkeep rather than a
-protocol constant. Three shipped demos, three different right answers:
+protocol constant. At the time this was written, three shipped demos gave
+three different right answers; `treasury` and `deadman` were later cut from
+the repository ([2026-08-26](../status.md)) as example contracts whose review
+findings outweighed their purpose, but the disagreement they illustrated is
+unchanged:
 
 | Demo | Missed a week. What should happen? |
 |------|-----------------------------------|
 | [`rain`](../../smart_contracts/rain/) (daily draw) | **Skip.** Replaying seven draws in one burst is absurd; only the latest matters. |
-| [`treasury`](../../smart_contracts/treasury/) (scheduled distribution) | **Catch up.** Every period's deposits must be distributed; skipping silently loses a week of allocations. |
-| [`deadman`](../../smart_contracts/deadman/) (dead man's switch) | **Skip.** It fires once and goes inert; replays are pure waste. |
+| `treasury` (scheduled distribution, no longer in the repo) | **Catch up.** Every period's deposits must be distributed; skipping silently loses a week of allocations. |
+| `deadman` (dead man's switch, no longer in the repo) | **Skip.** It fires once and goes inert; replays are pure waste. |
 
 A protocol-wide constant would be wrong for two of the three whichever way it
 was set.

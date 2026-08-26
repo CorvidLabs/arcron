@@ -35,19 +35,22 @@ Three earlier deployments are superseded and must not be used: `769823086`,
 
 ## The contracts
 
-Four independent audits covered all seven in August 2026. "Ships" below means
-whether it is ready to hold value belonging to someone other than us.
+Four independent audits plus three re-scores covered seven contracts in
+August 2026, and most of their findings landed in four of them: `treasury`
+had two validation gaps, `deadman` had a total-loss trap on its default
+deploy path, `embargo` let a stranger hijack a fresh instance, and `watchdog`
+documented an error its own assert ordering made unreachable. None of that
+was the product. Those four were cut from the repository on 2026-08-26 so
+review attention concentrates on the contract that actually holds other
+people's money; see the commit for the reasoning. "Ships" below means whether
+it is ready to hold value belonging to someone other than us.
 
 | Contract | What it is | Ships | Notes |
 |---|---|---|---|
 | `keeper` | the network itself: escrow, scheduling, keeper payment, governance | **yes** | five review rounds plus an audit; no unresolved findings |
-| `subscription` | recurring payments, an example target | **yes** | audited clean; the better of the two examples to copy |
-| `watchdog` | flags a data feed that has gone quiet | **yes** | custodies no funds; [#97](../../issues/97) is a spec correction |
-| `rain` | community giveaway, winner drawn from a randomness beacon | **yes** | one blocker found and fixed: a prize asset created `default_frozen` could be received and never sent |
-| `embargo` | commits content to a future release round | **yes** | one blocker found and fixed: `schedule` had no caller check, so a stranger could hijack a fresh instance |
-| `treasury` | scheduled distributions, an example target | **not yet** | two validation gaps, [#96](../../issues/96). Distribution maths is exact |
-| `deadman` | escrow that passes to a beneficiary if the owner goes quiet | **not yet** | [#95](../../issues/95): `claim` can fire and then fail to pay |
-| `pulse` | trivial demo target | n/a | exists to be called |
+| `subscription` | recurring payments, an example target | **yes** | audited clean; the integration example the docs recommend copying |
+| `rain` | community giveaway, winner drawn from a randomness beacon | **yes** | one blocker found and fixed: a prize asset created `default_frozen` could be received and never sent; becoming the first public use, and part of the dogfood |
+| `pulse` | trivial demo target | n/a | exists to be called; the heartbeat target for the dogfood's uptime clock |
 
 The audits also refuted one reported blocker. An extra program page is charged
 to the creator account, not the app account; measured against both live

@@ -13,14 +13,10 @@ and a write-up of the design decision it exists to make.
 | Demo | The question it answers |
 |------|-------------------------|
 | [Recurring subscriptions](subscription.md) | How do you bill many subscribers when the scheduled call cannot open their boxes? |
-| [Timed release](embargo.md) | How do you publish something at a moment nobody can bring forward? |
 | [Daily rain](rain.md) | How do you draw a winner fairly when the keeper picks the moment? |
 | [A draw for your holders](community-rain.md) | How do you run that draw for one project, gated on its NFTs and paid in its token? |
-| [Dead man's switch](deadman.md) | What does it cost to have somebody watching, and what happens when the escrow runs dry? |
 
-`smart_contracts/watchdog/` and `smart_contracts/treasury/` have scripts
-(`watchdog_demo.py`, `treasury_demo.py`) but no write-up yet. `fledge lanes run
-local` runs all seven.
+`fledge lanes run local` runs all three.
 
 ## Automate your app (register an upkeep)
 
