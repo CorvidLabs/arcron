@@ -10,6 +10,7 @@ spec: keeper.spec.md
 | `scripts/keeper_e2e.py` | e2e (LocalNet, and TestNet with `--network testnet`) | 20 stages of real-AVM behaviour mocks cannot show: the inner call firing and moving Pulse's state, a *stranger* being paid from escrow atomically, bot decoder parity against real box bytes, the bot executing a due upkeep, top-up, creator-only cancel with refund, not-due / insufficient-funding rejections, app-account solvency, a fresh base-MBR-only app paying out its last execution, `CATCH_UP` replaying a missed window and `SKIP_AHEAD` clearing one in a single run on the schedule's phase, an escalated execution paying the ceiling with the replay behind it paying base (with the bot's `effective_fee` checked against every fee the contract actually charged), and the bot ranking a neglected minimum-fee upkeep above a richer one |
 | `scripts/clawback_e2e.py` | e2e (LocalNet) | An ASA bonus really funded, really clawed back by its issuer, and the ALGO really recovered. The mock runs no inner transactions and enforces no minimum balances, so it cannot show that a failed asset transfer would take the ALGO refund with it. Reverting the guard turns this red with `underflow on subtracting 1000 from sender amount 0`. |
 | `tests/test_keeper_bot.py` | unit | `_decode_upkeep` against recorded box bytes, the recorded box's length against the MBR formula, and `effective_fee` against the contract's curve |
+| `scripts/reference_boundary.py` | e2e (LocalNet) | Pins the bot's resource-reference ceiling through the real `scripts.keeper_bot.main` entry point, against `smart_contracts/sim_probe/`'s `needs_six`/`needs_seven` targets: a six-reference target is serviced in one scan, a seven-reference one is refused by the AVM itself (`tx references exceed MaxAppTotalTxnReferences = 8`), not by the bot falling short of what the protocol allows. Regresses loudly if `scripts.keeper_bot._resolve_execute_references` stops attaching references directly and falls back to algokit-utils' four-account-capped populator. |
 | `js/test/upkeep.test.ts` | unit (`bun test`) | the TypeScript decoder and `effectiveFee` against the *same* recorded box bytes, so the two decoders cannot drift |
 
 Fixtures: `context` (fresh mock context), `keeper`, `pulse` (contract instances); rounds controlled via `patch_global_fields`.
@@ -24,6 +25,7 @@ call, or on the app account's spendable balance, belongs in `keeper_e2e.py`.
 - [ ] `poetry run python -m scripts.keeper_e2e --network localnet` (the e2e on its own)
 - [ ] `poetry run python -m scripts.keeper_e2e --network testnet` (same flow against TestNet)
 - [ ] `poetry run python -m scripts.keeper_bot --once --network localnet --app-id <id>` (one bot scan)
+- [ ] `poetry run python -m scripts.reference_boundary --network localnet` (six references served, seven refused)
 
 ## Edge Cases & Boundary Conditions
 
