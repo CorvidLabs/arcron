@@ -225,3 +225,19 @@ def test_an_app_with_no_frozen_key_predates_governance_and_is_immutable() -> Non
     refuse the fallback on precisely the apps that cannot be rewritten.
     """
     assert is_frozen(_FakeAlgod([_entry("next_upkeep_id", 23)]), 1) is True
+
+
+def test_the_recorded_box_names_its_creator() -> None:
+    """The box always carried the creator and the decoder dropped it.
+
+    Nothing downstream could tell one creator's upkeep from another's, which
+    is the detector the pre-freeze MainNet window depends on: the plan is to
+    freeze the moment an upkeep appears that is not ours, and until now
+    nothing could say which those were.
+
+    Pinned against the same recorded box as the rest of the decoder, so the
+    offset is checked against real bytes rather than against the docstring.
+    """
+    upkeep = _decode_upkeep(1, bytes.fromhex(LIVE_BOX_HEX))
+    assert len(upkeep.creator) == 58, "an Algorand address is 58 characters"
+    assert upkeep.creator.isupper() or any(c.isdigit() for c in upkeep.creator)

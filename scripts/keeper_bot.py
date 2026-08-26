@@ -24,6 +24,7 @@ from pathlib import Path
 from types import FrameType
 
 import algokit_utils
+from algosdk import encoding
 
 from scripts import network as net
 from scripts.keeper_backoff import Backoff, default_state_path
@@ -125,6 +126,11 @@ class Shutdown:
 @dataclass
 class Upkeep:
     upkeep_id: int
+    # The account that registered it, and the only one that can cancel it.
+    # Decoded but long unused: the box always carried it and this dropped it,
+    # so nothing downstream could tell one creator's upkeep from another's.
+    # The notifier needs exactly that to say "this one is not ours".
+    creator: str
     target_app: int
     interval_rounds: int
     next_execution_round: int
@@ -202,8 +208,8 @@ def _decode_upkeep(upkeep_id: int, raw: bytes) -> Upkeep:
     ABI head/tail layout (see smart_contracts/keeper/contract.py): a 32-byte
     creator, then the static fields inline, with the dynamic argument list in
     the tail (the offset at bytes [40:42] points to it; the bot doesn't need
-    it, since the contract stores and sends it itself). The head is 130 bytes; its
-    TypeScript twin is `web/src/app/core/upkeep.ts`.
+    it, since the contract stores and sends it itself). The head is 130 bytes;
+    its TypeScript twin is `js/src/upkeep.ts`.
 
     Rejects anything that is not this struct rather than decoding it. A box
     from an older deployment is shorter, and reading past its end silently
@@ -223,6 +229,7 @@ def _decode_upkeep(upkeep_id: int, raw: bytes) -> Upkeep:
         )
     return Upkeep(
         upkeep_id=upkeep_id,
+        creator=encoding.encode_address(raw[0:32]),
         target_app=int.from_bytes(raw[32:40], "big"),
         interval_rounds=int.from_bytes(raw[42:50], "big"),
         next_execution_round=int.from_bytes(raw[50:58], "big"),
