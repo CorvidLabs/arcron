@@ -844,7 +844,7 @@ resolve:
     //     Global.round <= self.commit_round.value + BEACON_WINDOW
     // ), "Beacon window has closed; abandon the draw"
     assert // Beacon window has closed; abandon the draw
-    // smart_contracts/rain/contract.py:439-449
+    // smart_contracts/rain/contract.py:455-465
     // result = itxn.ApplicationCall(
     //     fee=0,
     //     app_id=Application(self.beacon_app.value),
@@ -857,26 +857,26 @@ resolve:
     //     on_completion=OnCompleteAction.NoOp,
     // ).submit()
     itxn_begin
-    // smart_contracts/rain/contract.py:441
+    // smart_contracts/rain/contract.py:457
     // app_id=Application(self.beacon_app.value),
     intc_0 // 0
     bytec 5 // "beacon_app"
     app_global_get_ex
     assert // check self.beacon_app exists
-    // smart_contracts/rain/contract.py:444
+    // smart_contracts/rain/contract.py:460
     // op.itob(round_number),
     swap
     itob
-    // smart_contracts/rain/contract.py:445-446
+    // smart_contracts/rain/contract.py:461-462
     // # An empty user_data argument, ARC-4 encoded.
     // op.bzero(2),
     pushint 2
     bzero
-    // smart_contracts/rain/contract.py:448
+    // smart_contracts/rain/contract.py:464
     // on_completion=OnCompleteAction.NoOp,
     intc_0 // NoOp
     itxn_field OnCompletion
-    // smart_contracts/rain/contract.py:443
+    // smart_contracts/rain/contract.py:459
     // arc4.arc4_signature("must_get(uint64,byte[])byte[]"),
     pushbytes 0x47c20c23 // method "must_get(uint64,byte[])byte[]"
     itxn_field ApplicationArgs
@@ -884,15 +884,15 @@ resolve:
     itxn_field ApplicationArgs
     itxn_field ApplicationArgs
     itxn_field ApplicationID
-    // smart_contracts/rain/contract.py:439
+    // smart_contracts/rain/contract.py:455
     // result = itxn.ApplicationCall(
     pushint 6 // appl
     itxn_field TypeEnum
-    // smart_contracts/rain/contract.py:440
+    // smart_contracts/rain/contract.py:456
     // fee=0,
     intc_0 // 0
     itxn_field Fee
-    // smart_contracts/rain/contract.py:439-449
+    // smart_contracts/rain/contract.py:455-465
     // result = itxn.ApplicationCall(
     //     fee=0,
     //     app_id=Application(self.beacon_app.value),
@@ -906,7 +906,7 @@ resolve:
     // ).submit()
     itxn_submit
     itxn LastLog
-    // smart_contracts/rain/contract.py:450-451
+    // smart_contracts/rain/contract.py:466-467
     // # ARC-4 return: 4-byte log prefix, then a byte[] as uint16 length + data.
     // return op.extract(result.last_log, 6, 32)
     extract 6 32
@@ -1079,18 +1079,18 @@ claim:
     ==
     assert // invalid number of bytes for arc4.uint64
     btoi
-    // smart_contracts/rain/contract.py:370
+    // smart_contracts/rain/contract.py:380
     // allocation = Box(UInt64, key=op.concat(ALLOCATION_PREFIX, Txn.sender.bytes))
     bytec 12 // 0x61
     txn Sender
     concat
     dup
-    // smart_contracts/rain/contract.py:371
+    // smart_contracts/rain/contract.py:381
     // assert allocation, "Nothing allocated to you"
     box_len
     bury 1
     assert // Nothing allocated to you
-    // smart_contracts/rain/contract.py:373
+    // smart_contracts/rain/contract.py:383
     // gate = self.gate_creator.value
     intc_0 // 0
     bytec 10 // "gate_creator"
@@ -1100,12 +1100,12 @@ claim:
     cover 2
     cover 3
     assert // check self.gate_creator exists
-    // smart_contracts/rain/contract.py:374
+    // smart_contracts/rain/contract.py:384
     // if gate != Global.zero_address:
     global ZeroAddress
     !=
     bz claim_after_if_else@3
-    // smart_contracts/rain/contract.py:375
+    // smart_contracts/rain/contract.py:385
     // assert Txn.sender.is_opted_in(gate_asset), "Hold a token from the collection"
     txn Sender
     dig 3
@@ -1114,34 +1114,48 @@ claim:
     asset_holding_get AssetBalance
     bury 1
     assert // Hold a token from the collection
-    // smart_contracts/rain/contract.py:376
+    // smart_contracts/rain/contract.py:386
     // assert gate_asset.balance(Txn.sender) > 0, "Hold a token from the collection"
     txn Sender
     dig 1
     asset_holding_get AssetBalance
     assert // account opted into asset
     assert // Hold a token from the collection
-    // smart_contracts/rain/contract.py:377
+    // smart_contracts/rain/contract.py:387
     // assert gate_asset.creator == gate, "That asset is not from the collection"
+    dup
     asset_params_get AssetCreator
     assert // asset exists
-    dig 2
+    dig 3
     ==
     assert // That asset is not from the collection
+    // smart_contracts/rain/contract.py:388-393
+    // # `enter` refuses the prize as a ticket, and `claim` has to refuse
+    // # it for the same reason: a project usually mints its prize from
+    // # the same account as its collection, so a past winner holding
+    // # nothing but prize tokens would otherwise satisfy this gate while
+    // # holding no collection token at all.
+    // assert gate_asset.id != self.prize_asset.value, "The prize is not a ticket"
+    intc_0 // 0
+    bytec_1 // "prize_asset"
+    app_global_get_ex
+    assert // check self.prize_asset exists
+    !=
+    assert // The prize is not a ticket
 
 claim_after_if_else@3:
-    // smart_contracts/rain/contract.py:379
+    // smart_contracts/rain/contract.py:395
     // amount = allocation.value
     dup
     box_get
     assert // check Box exists
     btoi
     swap
-    // smart_contracts/rain/contract.py:380
+    // smart_contracts/rain/contract.py:396
     // del allocation.value
     box_del
     pop
-    // smart_contracts/rain/contract.py:381
+    // smart_contracts/rain/contract.py:397
     // asset = self.prize_asset.value
     intc_0 // 0
     bytec_1 // "prize_asset"
@@ -1150,11 +1164,11 @@ claim_after_if_else@3:
     dup
     uncover 2
     assert // check self.prize_asset exists
-    // smart_contracts/rain/contract.py:382
+    // smart_contracts/rain/contract.py:398
     // if asset == 0:
     bnz claim_else_body@6
     pop
-    // smart_contracts/rain/contract.py:383-385
+    // smart_contracts/rain/contract.py:399-401
     // # Deleting the box releases its minimum balance back to the pot,
     // # where it pays for the next winner's allocation.
     // self.pot.value += ALLOCATION_MBR
@@ -1167,7 +1181,7 @@ claim_after_if_else@3:
     bytec_0 // "pot"
     swap
     app_global_put
-    // smart_contracts/rain/contract.py:386
+    // smart_contracts/rain/contract.py:402
     // itxn.Payment(receiver=Txn.sender, amount=amount, fee=0).submit()
     itxn_begin
     txn Sender
@@ -1192,7 +1206,7 @@ claim_after_if_else@8:
     return
 
 claim_else_body@6:
-    // smart_contracts/rain/contract.py:388-392
+    // smart_contracts/rain/contract.py:404-408
     // # The freed minimum balance is ALGO and the pot is not, so it
     // # cannot be recycled into it. It stays in the app account, which is
     // # where the next allocation box's minimum balance comes from
@@ -1203,7 +1217,7 @@ claim_else_body@6:
     asset_holding_get AssetBalance
     bury 1
     assert // Opt in to the prize asset first
-    // smart_contracts/rain/contract.py:393-398
+    // smart_contracts/rain/contract.py:409-414
     // itxn.AssetTransfer(
     //     xfer_asset=Asset(asset),
     //     asset_receiver=Txn.sender,
@@ -1211,22 +1225,22 @@ claim_else_body@6:
     //     fee=0,
     // ).submit()
     itxn_begin
-    // smart_contracts/rain/contract.py:395
+    // smart_contracts/rain/contract.py:411
     // asset_receiver=Txn.sender,
     txn Sender
     dig 2
     itxn_field AssetAmount
     itxn_field AssetReceiver
     itxn_field XferAsset
-    // smart_contracts/rain/contract.py:393
+    // smart_contracts/rain/contract.py:409
     // itxn.AssetTransfer(
     pushint 4 // axfer
     itxn_field TypeEnum
-    // smart_contracts/rain/contract.py:397
+    // smart_contracts/rain/contract.py:413
     // fee=0,
     intc_0 // 0
     itxn_field Fee
-    // smart_contracts/rain/contract.py:393-398
+    // smart_contracts/rain/contract.py:409-414
     // itxn.AssetTransfer(
     //     xfer_asset=Asset(asset),
     //     asset_receiver=Txn.sender,
@@ -1239,7 +1253,7 @@ claim_else_body@6:
 
 // smart_contracts.rain.contract.Rain.abandon[routing]() -> void:
 abandon:
-    // smart_contracts/rain/contract.py:414
+    // smart_contracts/rain/contract.py:430
     // assert self.draw_open.value == 1, "No draw is open"
     intc_0 // 0
     bytec_3 // "draw_open"
@@ -1248,7 +1262,7 @@ abandon:
     intc_1 // 1
     ==
     assert // No draw is open
-    // smart_contracts/rain/contract.py:416
+    // smart_contracts/rain/contract.py:432
     // Global.round > self.commit_round.value + BEACON_WINDOW
     global Round
     intc_0 // 0
@@ -1258,12 +1272,12 @@ abandon:
     pushint 1000
     +
     >
-    // smart_contracts/rain/contract.py:415-417
+    // smart_contracts/rain/contract.py:431-433
     // assert (
     //     Global.round > self.commit_round.value + BEACON_WINDOW
     // ), "The beacon can still answer; resolve it"
     assert // The beacon can still answer; resolve it
-    // smart_contracts/rain/contract.py:422
+    // smart_contracts/rain/contract.py:438
     // UInt64(ALLOCATION_MBR) if self.prize_asset.value == 0 else UInt64(0)
     intc_0 // 0
     bytec_1 // "prize_asset"
@@ -1272,14 +1286,14 @@ abandon:
     !
     intc_3 // 18900
     *
-    // smart_contracts/rain/contract.py:424
+    // smart_contracts/rain/contract.py:440
     // returned: UInt64 = self.prize.value + reserve
     intc_0 // 0
     bytec 4 // "prize"
     app_global_get_ex
     assert // check self.prize exists
     +
-    // smart_contracts/rain/contract.py:425
+    // smart_contracts/rain/contract.py:441
     // self.pot.value += returned
     intc_0 // 0
     bytec_0 // "pot"
@@ -1290,17 +1304,17 @@ abandon:
     bytec_0 // "pot"
     swap
     app_global_put
-    // smart_contracts/rain/contract.py:426
+    // smart_contracts/rain/contract.py:442
     // self.prize.value = UInt64(0)
     bytec 4 // "prize"
     intc_0 // 0
     app_global_put
-    // smart_contracts/rain/contract.py:427
+    // smart_contracts/rain/contract.py:443
     // self.draw_open.value = UInt64(0)
     bytec_3 // "draw_open"
     intc_0 // 0
     app_global_put
-    // smart_contracts/rain/contract.py:401
+    // smart_contracts/rain/contract.py:417
     // @abimethod()
     itob
     bytec_2 // 0x151f7c75
@@ -1313,7 +1327,7 @@ abandon:
 
 // smart_contracts.rain.contract.Rain.allocation_of[routing]() -> void:
 allocation_of:
-    // smart_contracts/rain/contract.py:430
+    // smart_contracts/rain/contract.py:446
     // @abimethod(readonly=True)
     txna ApplicationArgs 1
     dup
@@ -1321,13 +1335,13 @@ allocation_of:
     pushint 32
     ==
     assert // invalid number of bytes for arc4.static_array<arc4.uint8, 32>
-    // smart_contracts/rain/contract.py:433
+    // smart_contracts/rain/contract.py:449
     // allocation = Box(UInt64, key=op.concat(ALLOCATION_PREFIX, who.bytes))
     bytec 12 // 0x61
     swap
     concat
     dup
-    // smart_contracts/rain/contract.py:434
+    // smart_contracts/rain/contract.py:450
     // return allocation.value if allocation else UInt64(0)
     box_len
     bury 1
@@ -1337,7 +1351,7 @@ allocation_of:
     btoi
 
 allocation_of_ternary_merge@4:
-    // smart_contracts/rain/contract.py:430
+    // smart_contracts/rain/contract.py:446
     // @abimethod(readonly=True)
     itob
     bytec_2 // 0x151f7c75
@@ -1349,7 +1363,7 @@ allocation_of_ternary_merge@4:
 
 allocation_of_ternary_false@3:
     pop
-    // smart_contracts/rain/contract.py:434
+    // smart_contracts/rain/contract.py:450
     // return allocation.value if allocation else UInt64(0)
     intc_0 // 0
     b allocation_of_ternary_merge@4

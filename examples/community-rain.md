@@ -95,10 +95,18 @@ which is what this said before and what the contract never enforced. A ticket
 is a box that never expires, and the gate is only asked when the ticket is
 bought, so **one NFT walked through ten accounts buys ten permanent tickets**.
 
-What stops that being worth anything is that the gate is asked a second time
-at `claim`: the winner has to still hold a token from the collection. Whoever
-walked the NFT through ten accounts only holds it in the last one, so the
-other nine tickets cannot be collected on.
+The gate is asked a second time at `claim`: the winner has to still hold a
+token from the collection. Be clear about what that does and does not buy.
+
+It does **not** stop the walk. Whoever walked the NFT through ten accounts
+holds all ten and the NFT, so when one of those tickets wins they move the
+NFT into that account and collect. The walk costs them one extra transfer.
+
+What it closes is the account that no longer holds a collection token at all:
+a ticket sold on, given away, or left behind by someone who has left the
+community. Closing the walk itself needs one ticket per asset id, which is new
+box semantics and so a new app id, since rain has no update path. That is a
+decision taken deliberately, not an oversight.
 
 The rule that follows is worth stating to your community up front, because it
 is a real one: **you must still hold a token from the collection when you

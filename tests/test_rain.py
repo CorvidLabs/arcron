@@ -261,6 +261,31 @@ def test_a_ticket_is_worthless_once_the_token_has_moved_on(
             gated.claim(assets[0])
 
 
+def test_the_prize_asset_is_not_a_gate_token_at_claim_either(
+    context: AlgopyTestContext, gated: Rain, collection
+) -> None:
+    """`enter` refuses the prize as a ticket, so `claim` has to as well.
+
+    A project usually mints its prize from the same account as its collection,
+    which is exactly the case the gate is checked against. Without this, a
+    past winner holding nothing but prize tokens satisfies the claim gate
+    while holding no collection token at all, which is a permanent exemption
+    for the one group the rule is aimed at.
+    """
+    creator, assets = collection
+    prize = context.any.asset(creator=creator)
+    contract = Rain()
+    context.ledger.patch_global_fields(round=UInt64(START_ROUND))
+    contract.configure(UInt64(BEACON_APP), arc4.Address(creator), prize.id)
+
+    holder = context.any.account(opted_asset_balances={prize.id: UInt64(5)})
+    context.ledger.set_box(contract, ALLOCATION_PREFIX + holder.bytes, op.itob(UInt64(1_000)))
+
+    with context.txn.create_group(active_txn_overrides={"sender": holder}):
+        with pytest.raises(AssertionError, match="The prize is not a ticket"):
+            contract.claim(prize)
+
+
 def test_a_winner_still_holding_the_token_can_collect(
     context: AlgopyTestContext, gated: Rain, collection
 ) -> None:

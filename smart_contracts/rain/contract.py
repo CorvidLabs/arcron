@@ -354,18 +354,28 @@ class Rain(ARC4Contract):
         is ignored on an ungated draw, and it is checked the same way `enter`
         checks it on a gated one, because the gate has to be asked twice.
 
-        A ticket is a box that never expires, and `enter` only ever asked
-        whether the buyer held a collection token at that moment. One token
-        walked through ten accounts therefore bought ten permanent tickets and
-        diluted every honest holder. Asking again here does not un-buy those
-        tickets, but only the account actually holding the token now can
-        collect on one, so the other nine stop being worth anything.
+        Be precise about what this buys, because an earlier version of this
+        docstring was not. A ticket is a box that never expires, and `enter`
+        only ever asked whether the buyer held a collection token at that
+        moment, so one token walked through ten accounts buys ten permanent
+        tickets. Asking again here does **not** neutralise that walk: the
+        walker holds all ten accounts and the token, so when a walked ticket
+        wins they move the token into that account and this check passes. The
+        walk costs one extra transfer, not nine dead tickets.
 
-        The cost is a real rule, and it should be stated as one rather than
-        discovered: **you must still hold a token from the collection when you
-        collect.** A winner who sells between the draw and the claim forfeits,
-        and that is the same answer whether they sold innocently or to a buyer
-        who was never entitled to the draw at all.
+        What it does close is narrower and still worth having: an account that
+        no longer holds a collection token at all cannot collect. That covers
+        the ticket sold or given away, and the holder who left the community
+        between the draw and the claim.
+
+        Closing the walk itself needs one ticket per asset id, which is new box
+        semantics and therefore a new app id, since this contract has no update
+        path. That is a deliberate deferral, not an oversight.
+
+        The cost is a real rule and should be stated as one: **you must still
+        hold a token from the collection when you collect.** A winner who sells
+        between the draw and the claim forfeits, and the contract cannot tell
+        that apart from someone selling to dodge the gate.
         """
         allocation = Box(UInt64, key=op.concat(ALLOCATION_PREFIX, Txn.sender.bytes))
         assert allocation, "Nothing allocated to you"
@@ -375,6 +385,12 @@ class Rain(ARC4Contract):
             assert Txn.sender.is_opted_in(gate_asset), "Hold a token from the collection"
             assert gate_asset.balance(Txn.sender) > 0, "Hold a token from the collection"
             assert gate_asset.creator == gate, "That asset is not from the collection"
+            # `enter` refuses the prize as a ticket, and `claim` has to refuse
+            # it for the same reason: a project usually mints its prize from
+            # the same account as its collection, so a past winner holding
+            # nothing but prize tokens would otherwise satisfy this gate while
+            # holding no collection token at all.
+            assert gate_asset.id != self.prize_asset.value, "The prize is not a ticket"
 
         amount = allocation.value
         del allocation.value

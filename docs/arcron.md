@@ -634,8 +634,10 @@ out, the dogfood plan and the mainnet gate are in
   [docs/design/scheduling-and-fees.md](design/scheduling-and-fees.md), which
   also explains why the two features had to be designed together.
 - A creator may also set a fee ceiling, and a late upkeep's fee climbs towards
-  it, which means an upkeep with a ceiling can go dormant at a balance that
-  would have covered several runs at its base fee.
+  it. That raises what a late run can consume, so budget runway against the
+  ceiling, but it does not raise the balance at which an upkeep goes dormant:
+  when the escalated fee is more than the escrow holds, the fee falls back to
+  the base and the upkeep stays executable.
 - Unaudited. TestNet throwaway deployer; redeploy fresh for mainnet.
 
 ## CI

@@ -23,6 +23,7 @@ from smart_contracts.artifacts.deadman.dead_man_client import (
     DeadManFactory,
 )
 from smart_contracts.artifacts.keeper.keeper_client import CancelArgs, RegisterArgs
+from smart_contracts.deadman.contract import APP_BASE_MBR
 from smart_contracts.keeper.contract import SKIP_AHEAD
 from smart_contracts.keeper.deploy_config import deploy as deploy_keeper
 
@@ -33,7 +34,11 @@ SWEEP_SIGNATURE = "sweep()uint64"
 CHECK_IN_INTERVAL = 30
 UPKEEP_INTERVAL = 10
 FEE = 4_000
-ESCROW = 1_000_000
+DEPOSIT = 1_000_000
+# What the beneficiary actually receives. `arm` holds the app account's own
+# minimum balance back out of the deposit, because `claim` pays by inner
+# payment and an account cannot send itself below its floor.
+ESCROW = DEPOSIT - APP_BASE_MBR
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -74,7 +79,7 @@ def main(argv: list[str] | None = None) -> None:
                 algokit_utils.PaymentParams(
                     sender=owner.address,
                     receiver=switch.app_address,
-                    amount=algokit_utils.AlgoAmount(micro_algo=ESCROW),
+                    amount=algokit_utils.AlgoAmount(micro_algo=DEPOSIT),
                 )
             ),
             beneficiary=beneficiary.address,

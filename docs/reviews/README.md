@@ -36,3 +36,13 @@ example contracts, and the off-chain tooling.
 ## What was fixed as a result
 
 See the commits following this date, and issues #95 through #102.
+
+## Follow-ups
+
+Follow-ups are separate files, so the three passes above stay what they were
+on the day. They are not independent reviews: each one re-reads a fix by the
+reviewer who found the thing it fixes, and knows what the fix was trying to do.
+
+- [`2026-08-26-fable-5-console.md`](2026-08-26-fable-5-console.md) — does the
+  trust banner close M1? **Partial.** It closes the plain case; a hostile app
+  can still switch it off for the price of one box.
