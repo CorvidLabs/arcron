@@ -101,15 +101,20 @@ a.primary {
   color: var(--paper);
 }
 
-:root[data-theme='dark'] button.primary,
-:root:not([data-theme='light']) button.primary,
+/* Dark text, because in dark mode the primary fill is bright. `:not(:disabled)`
+   is load-bearing: without it this rule outranks `button.primary:disabled`
+   below, which removes the fill but could not remove this colour, leaving
+   #10201e text on the panel at a contrast ratio of 1.02:1. Every disabled
+   Register and Execute button in the console was invisible. */
+:root[data-theme='dark'] button.primary:not(:disabled),
+:root:not([data-theme='light']) button.primary:not(:disabled),
 :root[data-theme='dark'] a.primary,
 :root:not([data-theme='light']) a.primary {
   color: #10201e;
 }
 
 @media (prefers-color-scheme: light) {
-  :root:not([data-theme='dark']) button.primary,
+  :root:not([data-theme='dark']) button.primary:not(:disabled),
   :root:not([data-theme='dark']) a.primary {
     color: var(--paper);
   }
