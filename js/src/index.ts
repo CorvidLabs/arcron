@@ -15,6 +15,7 @@
 export * from './upkeep';
 export * from './keeper-abi';
 export * from './keeper-txns';
+export * from './target-test';
 export * from './board';
 export * from './format';
 export * from './networks';

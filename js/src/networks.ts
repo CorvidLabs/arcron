@@ -22,7 +22,17 @@ export interface NetworkConfig {
   /** KMD is LocalNet-only: it is how the browser signs without a wallet extension. */
   readonly kmd?: NodeConfig;
   readonly genesisIds: readonly string[];
+  /**
+   * Links out to a block explorer, where the network has one.
+   *
+   * Absent on LocalNet, which nothing outside the machine can see, so every
+   * caller has to handle "no link" rather than assuming one exists. That is
+   * the whole reason these are optional: a dead link to a chain that is not
+   * public is worse than plain text.
+   */
   readonly explorerApp?: (appId: number | bigint) => string;
+  readonly explorerAccount?: (address: string) => string;
+  readonly explorerTx?: (txId: string) => string;
   /** Canonical app id, where one exists. */
   readonly defaultAppId?: number;
   /**
@@ -57,6 +67,8 @@ export const NETWORKS: Readonly<Record<NetworkKey, NetworkConfig>> = {
     genesisIds: ['testnet-v1.0'],
     nominalRoundSeconds: 2.8,
     explorerApp: (appId) => `https://testnet.explorer.perawallet.app/application/${appId}`,
+    explorerAccount: (address) => `https://testnet.explorer.perawallet.app/address/${address}`,
+    explorerTx: (txId) => `https://testnet.explorer.perawallet.app/tx/${txId}`,
     defaultAppId: 769891898,
   },
 };

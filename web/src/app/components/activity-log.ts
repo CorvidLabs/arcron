@@ -1,10 +1,12 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 
+import { ExplorerLink } from './explorer-link';
 import { KeeperService } from '../core/keeper.service';
 
 @Component({
   selector: 'arcron-activity-log',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [ExplorerLink],
   template: `
     <section class="panel">
       <header>
@@ -27,7 +29,10 @@ import { KeeperService } from '../core/keeper.service';
             <li>
               <span class="op">{{ entry.operation }}</span>
               <span class="message">{{ entry.message }}</span>
-              <span class="meta">round {{ entry.round }} · {{ entry.txId }}</span>
+              <span class="meta">
+                round {{ entry.round }} ·
+                <arcron-explorer-link kind="transaction" [value]="entry.txId" />
+              </span>
             </li>
           }
         </ol>
