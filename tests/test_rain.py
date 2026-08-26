@@ -12,10 +12,11 @@ executing. That half lives in scripts/rain_demo.py on LocalNet.
 from collections.abc import Iterator
 
 import pytest
-from algopy import Asset, UInt64, arc4
+from algopy import Asset, UInt64, arc4, op
 from algopy_testing import AlgopyTestContext, algopy_testing_context
 
 from smart_contracts.rain.contract import (
+    ALLOCATION_PREFIX,
     ASSET_OPT_IN_MBR,
     BEACON_WINDOW,
     ALLOCATION_MBR,
@@ -48,16 +49,23 @@ def _enter(
     rain: Rain,
     amount: int = TICKET_MBR,
     gate_asset=None,
+    payment_fields: dict | None = None,
 ) -> int:
     payment = context.any.txn.payment(
-        receiver=context.ledger.get_app(rain).address, amount=amount
+        receiver=context.ledger.get_app(rain).address,
+        amount=amount,
+        **(payment_fields or {}),
     )
     return rain.enter(payment, gate_asset if gate_asset is not None else Asset(0))
 
 
-def _deposit(context: AlgopyTestContext, rain: Rain, amount: int) -> int:
+def _deposit(
+    context: AlgopyTestContext, rain: Rain, amount: int, *, payment_fields: dict | None = None
+) -> int:
     payment = context.any.txn.payment(
-        receiver=context.ledger.get_app(rain).address, amount=amount
+        receiver=context.ledger.get_app(rain).address,
+        amount=amount,
+        **(payment_fields or {}),
     )
     return rain.deposit(payment)
 
@@ -177,7 +185,8 @@ def test_resolve_waits_for_the_beacon_round(context: AlgopyTestContext, rain: Ra
 
 def test_claiming_nothing_is_rejected(context: AlgopyTestContext, rain: Rain) -> None:
     with pytest.raises(AssertionError, match="Nothing allocated to you"):
-        rain.claim()
+        # Ungated draw, so the gate asset is not consulted.
+        rain.claim(context.any.asset())
 
 
 def test_allocation_of_an_unknown_account_is_zero(
@@ -229,6 +238,78 @@ def test_open_entry_ignores_whatever_asset_is_supplied(
     """An ungated draw must not start caring what you hold."""
     unrelated = context.any.asset()
     assert _enter(context, rain, gate_asset=unrelated) == 0
+
+
+def test_a_ticket_is_worthless_once_the_token_has_moved_on(
+    context: AlgopyTestContext, gated: Rain, collection
+) -> None:
+    """The whole point of asking the gate a second time.
+
+    A ticket is a box that never expires, and `enter` only ever asked whether
+    the buyer held a collection token at that moment. Walking one token
+    through ten accounts therefore bought ten permanent tickets, each of which
+    diluted every honest holder, and `examples/community-rain.md` promised one
+    entry per NFT held. Asking again at `claim` does not un-buy those tickets;
+    it makes them uncollectable by anyone who no longer holds the token, which
+    is nine of those ten accounts.
+    """
+    creator, assets = collection
+    # Entered while holding the token, then passed it on: opted in, zero held.
+    passed_through = context.any.account(opted_asset_balances={assets[0].id: UInt64(0)})
+    # A won-but-unclaimed allocation. `resolve` cannot produce one here,
+    # because the beacon call is recorded rather than executed under the
+    # mocks, so the state is written directly.
+    context.ledger.set_box(
+        gated, ALLOCATION_PREFIX + passed_through.bytes, op.itob(UInt64(1_000))
+    )
+
+    with context.txn.create_group(active_txn_overrides={"sender": passed_through}):
+        with pytest.raises(AssertionError, match="Hold a token from the collection"):
+            gated.claim(assets[0])
+
+
+def test_the_prize_asset_is_not_a_gate_token_at_claim_either(
+    context: AlgopyTestContext, gated: Rain, collection
+) -> None:
+    """`enter` refuses the prize as a ticket, so `claim` has to as well.
+
+    A project usually mints its prize from the same account as its collection,
+    which is exactly the case the gate is checked against. Without this, a
+    past winner holding nothing but prize tokens satisfies the claim gate
+    while holding no collection token at all, which is a permanent exemption
+    for the one group the rule is aimed at.
+    """
+    creator, assets = collection
+    prize = context.any.asset(creator=creator)
+    contract = Rain()
+    context.ledger.patch_global_fields(round=UInt64(START_ROUND))
+    contract.configure(UInt64(BEACON_APP), arc4.Address(creator), prize.id)
+
+    holder = context.any.account(opted_asset_balances={prize.id: UInt64(5)})
+    context.ledger.set_box(contract, ALLOCATION_PREFIX + holder.bytes, op.itob(UInt64(1_000)))
+
+    with context.txn.create_group(active_txn_overrides={"sender": holder}):
+        with pytest.raises(AssertionError, match="The prize is not a ticket"):
+            contract.claim(prize)
+
+
+def test_a_winner_still_holding_the_token_can_collect(
+    context: AlgopyTestContext, gated: Rain, collection
+) -> None:
+    """The other half: the check must not lock out an honest winner.
+
+    A gate that refuses everybody is not a gate, and this is the case that
+    proves the refusal above is about the token having moved rather than about
+    the check being unpassable.
+    """
+    creator, assets = collection
+    winner = context.any.account(opted_asset_balances={assets[0].id: UInt64(1)})
+    context.ledger.set_box(
+        gated, ALLOCATION_PREFIX + winner.bytes, op.itob(UInt64(1_000))
+    )
+
+    with context.txn.create_group(active_txn_overrides={"sender": winner}):
+        assert gated.claim(assets[0]) == 1_000
 
 
 def test_a_holder_of_the_collection_may_enter(
@@ -459,6 +540,28 @@ def test_a_rugable_prize_asset_is_refused(context: AlgopyTestContext) -> None:
             contract.opt_in_prize_asset(asset, payment)
 
 
+def test_a_prize_asset_frozen_by_default_is_refused(context: AlgopyTestContext) -> None:
+    """A frozen holding can receive tokens but can never send them.
+
+    `default_frozen` is fixed when the asset is created and no address can
+    change it afterwards, so an asset that starts frozen with its freeze
+    address already renounced passes every other check here and still traps
+    the prize: the pot opts in, accepts the tokens, and can never pay a
+    winner. That combination looks like the safest possible asset from the
+    outside, having renounced clawback, freeze and manager, which is exactly
+    what makes it worth refusing on its own.
+    """
+    context.ledger.patch_global_fields(round=UInt64(START_ROUND))
+    asset = context.any.asset(default_frozen=True)
+    contract = Rain()
+    contract.configure(UInt64(BEACON_APP), arc4.Address(), asset.id)
+    payment = context.any.txn.payment(
+        receiver=context.ledger.get_app(contract).address, amount=ASSET_OPT_IN_MBR
+    )
+    with pytest.raises(Exception, match="frozen by default"):
+        contract.opt_in_prize_asset(asset, payment)
+
+
 def test_a_clean_prize_asset_is_accepted(context: AlgopyTestContext) -> None:
     """The check must not reject an ordinary immutable token."""
     context.ledger.patch_global_fields(round=UInt64(START_ROUND))
@@ -526,3 +629,90 @@ def test_tick_with_refuses_an_increment_that_could_wedge_the_counter(
     assert int(pulse.tick_with(UInt64(MAX_BEATS_PER_TICK), arc4.String("ok"))) == MAX_BEATS_PER_TICK
     with pytest.raises(Exception, match="Too many beats"):
         pulse.tick_with(UInt64(MAX_BEATS_PER_TICK + 1), arc4.String("no"))
+
+
+# --- #102: rekey and close must not reach an escrowing transaction ----
+#
+# Neither harms the contract; both harm only the sender who signed them. What
+# this guards against is a malicious front end slipping either into a group a
+# user signs without reading closely.
+
+def test_enter_rejects_a_rekeyed_mbr_payment(context: AlgopyTestContext, rain: Rain) -> None:
+    with pytest.raises(AssertionError, match="MBR payment must not rekey"):
+        _enter(context, rain, payment_fields={"rekey_to": context.any.account()})
+
+
+def test_enter_rejects_a_closing_mbr_payment(context: AlgopyTestContext, rain: Rain) -> None:
+    with pytest.raises(AssertionError, match="MBR payment must not close"):
+        _enter(context, rain, payment_fields={"close_remainder_to": context.any.account()})
+
+
+def test_deposit_rejects_a_rekeyed_payment(context: AlgopyTestContext, rain: Rain) -> None:
+    with pytest.raises(AssertionError, match="Deposit must not rekey"):
+        _deposit(context, rain, 1_000, payment_fields={"rekey_to": context.any.account()})
+
+
+def test_deposit_rejects_a_closing_payment(context: AlgopyTestContext, rain: Rain) -> None:
+    with pytest.raises(AssertionError, match="Deposit must not close"):
+        _deposit(
+            context, rain, 1_000,
+            payment_fields={"close_remainder_to": context.any.account()},
+        )
+
+
+def test_deposit_asset_rejects_a_rekeyed_transfer(context: AlgopyTestContext) -> None:
+    asset = context.any.asset()
+    context.ledger.patch_global_fields(round=UInt64(START_ROUND))
+    contract = Rain()
+    contract.configure(UInt64(BEACON_APP), arc4.Address(), asset.id)
+    transfer = context.any.txn.asset_transfer(
+        xfer_asset=asset,
+        asset_receiver=context.ledger.get_app(contract).address,
+        asset_amount=250,
+        rekey_to=context.any.account(),
+    )
+    with pytest.raises(AssertionError, match="Deposit must not rekey"):
+        contract.deposit_asset(transfer)
+
+
+def test_deposit_asset_rejects_a_closing_transfer(context: AlgopyTestContext) -> None:
+    asset = context.any.asset()
+    context.ledger.patch_global_fields(round=UInt64(START_ROUND))
+    contract = Rain()
+    contract.configure(UInt64(BEACON_APP), arc4.Address(), asset.id)
+    transfer = context.any.txn.asset_transfer(
+        xfer_asset=asset,
+        asset_receiver=context.ledger.get_app(contract).address,
+        asset_amount=250,
+        asset_close_to=context.any.account(),
+    )
+    with pytest.raises(AssertionError, match="Deposit must not close the asset"):
+        contract.deposit_asset(transfer)
+
+
+def test_opt_in_prize_asset_rejects_a_rekeyed_mbr_payment(context: AlgopyTestContext) -> None:
+    context.ledger.patch_global_fields(round=UInt64(START_ROUND))
+    clean = context.any.asset()
+    contract = Rain()
+    contract.configure(UInt64(BEACON_APP), arc4.Address(), clean.id)
+    payment = context.any.txn.payment(
+        receiver=context.ledger.get_app(contract).address,
+        amount=ASSET_OPT_IN_MBR,
+        rekey_to=context.any.account(),
+    )
+    with pytest.raises(AssertionError, match="MBR payment must not rekey"):
+        contract.opt_in_prize_asset(clean, payment)
+
+
+def test_opt_in_prize_asset_rejects_a_closing_mbr_payment(context: AlgopyTestContext) -> None:
+    context.ledger.patch_global_fields(round=UInt64(START_ROUND))
+    clean = context.any.asset()
+    contract = Rain()
+    contract.configure(UInt64(BEACON_APP), arc4.Address(), clean.id)
+    payment = context.any.txn.payment(
+        receiver=context.ledger.get_app(contract).address,
+        amount=ASSET_OPT_IN_MBR,
+        close_remainder_to=context.any.account(),
+    )
+    with pytest.raises(AssertionError, match="MBR payment must not close"):
+        contract.opt_in_prize_asset(clean, payment)

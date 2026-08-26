@@ -58,13 +58,13 @@ everyone.
 | Method | Parameters | Returns | Description |
 |--------|-----------|---------|-------------|
 | `configure` | `beacon_app: uint64, gate_creator: address, prize_asset: uint64` | `void` | Creator-only, once. Points at the beacon, decides who may enter, and decides what they win. A zero `gate_creator` leaves entry open; a zero `prize_asset` keeps the pot in ALGO. |
-| `opt_in_prize_asset` | `prize: asset, mbr_payment: pay` | `uint64` | Opts the app into the prize asset so it can be funded. Anyone may pay for it, once. Refuses an asset with a clawback, freeze or manager address, which is why `prize` is passed: this is the first call that has the asset available and so the first that can read its parameters. |
+| `opt_in_prize_asset` | `prize: asset, mbr_payment: pay` | `uint64` | Opts the app into the prize asset so it can be funded. Anyone may pay for it, once. Refuses an asset with a clawback, freeze or manager address, or one that is frozen by default, which is why `prize` is passed: this is the first call that has the asset available and so the first that can read its parameters. |
 | `enter` | `mbr_payment: pay, gate_asset: asset` | `uint64` | Buys one ticket for the sender; returns its index. Tickets persist across draws. When gated, `gate_asset` is an asset the sender holds, and the contract checks the collection minted it. Ignored when entry is open. |
 | `deposit` | `payment: pay` | `uint64` | Adds ALGO to the pot, from anyone; returns the new pot. Rejected when the prize is an asset. |
 | `deposit_asset` | `transfer: axfer` | `uint64` | Adds the prize asset to the pot, from anyone; returns the new pot. Rejected when the prize is ALGO. |
 | `draw` | — | `uint64` | Zero-argument, the shape Arcron calls. Opens a draw and returns its id, or `0` when there is nothing to draw for. |
 | `resolve` | — | `address` | Permissionless. Reads the beacon for the committed round, picks the winning ticket, credits the allocation. |
-| `claim` | — | `uint64` | The winner pulls their prize; returns the amount. |
+| `claim` | `gate_asset: asset` | `uint64` | The winner pulls their prize; returns the amount. On a gated draw the winner must still hold a token from the collection, checked exactly as `enter` checks it. Ignored when `gate_creator` is the zero address. |
 | `abandon` | — | `uint64` | Reopens a draw whose beacon window has closed, returning the prize and the unused reservation to the pot. Permissionless, and only available once the outcome is unknowable to everyone. |
 | `allocation_of` | `who: address` | `uint64` | Readonly. What `who` can claim right now. |
 
@@ -90,6 +90,12 @@ everyone.
     the opt-in, so an unchecked draw cannot be funded.
 14. The prize asset can never buy a ticket, even when the same account minted both it and the collection, which is the natural thing for a project to do.
 15. Deposits arriving after a draw opens belong to the next draw.
+16. Every payment and asset transfer the contract accepts (`opt_in_prize_asset`,
+    `enter`, `deposit`, `deposit_asset`) is checked for `rekey_to`,
+    `close_remainder_to` and `asset_close_to`, all of which must be the zero
+    address. Neither harms the contract, since a rekey or a close only ever
+    harms the sender; this protects an entrant or depositor whose front end
+    slipped either into the group they signed.
 
 ## Behavioral Examples
 
@@ -119,17 +125,24 @@ everyone.
 | `enter` with an MBR payment below the ticket box cost | Fails with "MBR payment too small" |
 | `enter` or `deposit` paying anyone but the app account | Fails with "must fund the app account" / "must go to the app account" |
 | `deposit` of zero | Fails with "Amount must be positive" |
+| Any accepted payment carries a rekey | Fails with "... must not rekey" |
+| Any accepted payment carries a close-remainder-to | Fails with "... must not close" |
+| `deposit_asset` carries a rekey | Fails with "Deposit must not rekey" |
+| `deposit_asset` carries an asset-close-to | Fails with "Deposit must not close the asset" |
 | `resolve` with no draw open | Fails with "No draw is open" |
 | `resolve` at or before the committed round | Fails with "Beacon round has not passed" |
 | `resolve` without the beacon app referenced by the caller | Fails: the inner call cannot reach an unavailable app |
 | `claim` by an account with no allocation | Fails with "Nothing allocated to you" |
 | `claim` of an asset prize without opting in | Fails with "Opt in to the prize asset first" |
+| `claim` on a gated draw by a winner who no longer holds a collection token | Fails with "Hold a token from the collection". The allocation stays in place, so it becomes collectable again if they reacquire one. This does **not** neutralise tickets bought by walking one token through several accounts: the walker holds both the accounts and the token, so a winning walked ticket is collected by moving the token there first, at the cost of one transfer. What it closes is the account that no longer holds a collection token at all. It also means an honest winner who sells before claiming forfeits, which the contract cannot distinguish. |
+| `claim` on a gated draw using the prize asset as the gate token | Fails with "The prize is not a ticket", mirroring `enter`. A project usually mints its prize from the same account as its collection, so without this a past winner holding only prize tokens would satisfy the gate while holding no collection token. |
 | `enter` on a gated draw without holding the asset | Fails with "Hold a token from the collection" |
 | `enter` on a gated draw with another creator's asset | Fails with "That asset is not from the collection" |
 | `deposit_asset` with the wrong asset | Fails with "Wrong asset" |
 | `opt_in_prize_asset` twice, or on an ALGO draw | Fails with "Already opted in" / "Prize is ALGO" |
 | `opt_in_prize_asset` naming an asset other than the prize | Fails with "Wrong asset" |
 | `opt_in_prize_asset` with a clawback, freeze or manager address set | Fails with "Prize asset has a clawback/freeze/manager address" |
+| `opt_in_prize_asset` with an asset created `default_frozen` | Fails with "Prize asset is frozen by default". A frozen holding can receive but never send, and `default_frozen` is fixed at creation, so an asset that starts frozen with its freeze address already renounced would pass every other check here and still trap the prize forever. |
 
 ## Dependencies
 
@@ -151,4 +164,5 @@ everyone.
 
 | Date | Author | Change |
 |------|--------|--------|
+| 2026-08-25 | CorvidLabs | #102: `opt_in_prize_asset`, `enter`, `deposit` and `deposit_asset` now assert `rekey_to`, `close_remainder_to` and `asset_close_to` are the zero address on every payment or asset transfer they accept. Not a struct change; a mechanical hygiene sweep across every contract that accepts a gtxn. |
 | 2026-08-24 | CorvidLabs | Initial scheduled draw (issue #25). Two-phase by necessity: `draw` is accounting-only because an Arcron inner call cannot reach the beacon, so `resolve` is sent by a participant who can. |

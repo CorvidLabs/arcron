@@ -20,6 +20,7 @@ from smart_contracts.artifacts.beacon_stub.beacon_stub_client import BeaconStubF
 from smart_contracts.artifacts.keeper.keeper_client import CancelArgs, RegisterArgs
 from smart_contracts.artifacts.rain.rain_client import (
     AllocationOfArgs,
+    ClaimArgs,
     ConfigureArgs,
     DepositArgs,
     EnterArgs,
@@ -53,10 +54,52 @@ def _expected_ticket(commit_round: int, tickets: int) -> int:
     return int.from_bytes(digest[:8], "big") % tickets
 
 
+def show(algorand, app_id: int, network: str) -> int:
+    """Print what a rain deployment's fairness actually rests on.
+
+    `configure` accepts any non-zero `beacon_app`, runs once, and rain has no
+    update path, so that one value decides every draw the instance will ever
+    run. A deployer who points it at a contract they control picks every
+    winner. Participants can check, and could not before: nothing surfaced the
+    value anywhere they would look.
+    """
+    import base64
+
+    state = algorand.client.algod.application_info(app_id)["params"].get("global-state", [])
+    read = {}
+    for entry in state:
+        key = base64.b64decode(entry["key"]).decode(errors="replace")
+        value = entry["value"]
+        read[key] = value.get("uint", 0) if value.get("type") == 2 else value.get("bytes", "")
+
+    beacon = int(read.get("beacon_app", 0))
+    expected = net.FOUNDATION_BEACON.get(network)
+    logger.info(f"rain app {app_id} on {network}")
+    logger.info(f"  beacon_app    {beacon}")
+    if expected is not None and beacon == expected:
+        logger.info("                The Algorand Foundation randomness beacon.")
+    else:
+        logger.warning("                NOT a beacon this tool recognises.")
+        logger.warning("                Whoever deployed this chose it, it cannot be changed,")
+        logger.warning("                and it decides every draw. Ask them why before entering.")
+    logger.info(f"  prize_asset   {int(read.get('prize_asset', 0)) or 'ALGO'}")
+    logger.info(f"  tickets       {int(read.get('tickets', 0))}")
+    return 0 if expected is not None and beacon == expected else 1
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     net.add_network_argument(parser)
+    parser.add_argument(
+        "--show",
+        type=int,
+        metavar="APP_ID",
+        help="inspect a deployed rain app's beacon and gate instead of running the demo",
+    )
     args = parser.parse_args(argv)
+
+    if args.show:
+        raise SystemExit(show(net.connect(args.network), args.show, args.network))
 
     algorand = net.connect(args.network)
     host = algorand.account.from_environment("DEPLOYER")
@@ -202,6 +245,9 @@ def main(argv: list[str] | None = None) -> None:
     )
     before = algod.account_info(winner)["amount"]
     claimed = winning_client.send.claim(
+        # Ungated draw: `gate_creator` is the zero address, so `claim` never
+        # reads this. Asset 0 is the conventional "no asset" reference.
+        args=ClaimArgs(gate_asset=0),
         params=algokit_utils.CommonAppCallParams(
             extra_fee=algokit_utils.AlgoAmount(micro_algo=1_000)
         )

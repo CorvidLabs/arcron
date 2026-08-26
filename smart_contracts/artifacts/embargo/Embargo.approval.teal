@@ -85,7 +85,18 @@ schedule:
     btoi
     dup
     cover 2
-    // smart_contracts/embargo/contract.py:77
+    // smart_contracts/embargo/contract.py:77-82
+    // # The author is the creator, fixed when the app was made. Creation and
+    // # scheduling are separate transactions in every path there is, so
+    // # leaving this open lets a stranger front-run the author's own first
+    // # call, take authorship of the instance, and bury it behind a round
+    // # that never arrives. Scheduling runs once, so there is no second try.
+    // assert Txn.sender == Global.creator_address, "Only the creator can schedule"
+    txn Sender
+    global CreatorAddress
+    ==
+    assert // Only the creator can schedule
+    // smart_contracts/embargo/contract.py:83
     // assert self.release_round.value == 0, "Already scheduled"
     intc_0 // 0
     bytec_0 // "release_round"
@@ -93,18 +104,18 @@ schedule:
     assert // check self.release_round exists
     !
     assert // Already scheduled
-    // smart_contracts/embargo/contract.py:78
+    // smart_contracts/embargo/contract.py:84
     // assert release_round > Global.round, "Release round is in the past"
     global Round
     >
     assert // Release round is in the past
-    // smart_contracts/embargo/contract.py:79
+    // smart_contracts/embargo/contract.py:85
     // size = content.native.length
     extract 2 0
     dup
     len
     dup
-    // smart_contracts/embargo/contract.py:80
+    // smart_contracts/embargo/contract.py:86
     // assert UInt64(0) < size <= MAX_CONTENT, "Content size out of bounds"
     bz schedule_bool_false@4
     dup
@@ -114,58 +125,81 @@ schedule:
     intc_1 // 1
 
 schedule_bool_merge@5:
-    // smart_contracts/embargo/contract.py:80
+    // smart_contracts/embargo/contract.py:86
     // assert UInt64(0) < size <= MAX_CONTENT, "Content size out of bounds"
     assert // Content size out of bounds
-    // smart_contracts/embargo/contract.py:82
+    // smart_contracts/embargo/contract.py:88
     // required_mbr = BOX_MBR_FIXED + 400 * size
     pushint 400
     dig 1
     *
     pushint 5300
     +
-    // smart_contracts/embargo/contract.py:84
+    // smart_contracts/embargo/contract.py:90
     // mbr_payment.receiver == Global.current_application_address
     uncover 4
     dup
     gtxns Receiver
     global CurrentApplicationAddress
     ==
-    // smart_contracts/embargo/contract.py:83-85
+    // smart_contracts/embargo/contract.py:89-91
     // assert (
     //     mbr_payment.receiver == Global.current_application_address
     // ), "MBR payment must fund the app account"
     assert // MBR payment must fund the app account
-    // smart_contracts/embargo/contract.py:86
+    // smart_contracts/embargo/contract.py:92-97
+    // # A rekey hands control of the sender's account to whoever the group
+    // # names, and a close sweeps it empty to whoever the group names.
+    // # Both harm only the sender, so the contract loses nothing by
+    // # refusing them. The exposure is a front end putting either into a
+    // # group a user signs without reading it closely.
+    // assert mbr_payment.rekey_to == Global.zero_address, "MBR payment must not rekey"
+    dup
+    gtxns RekeyTo
+    global ZeroAddress
+    ==
+    assert // MBR payment must not rekey
+    // smart_contracts/embargo/contract.py:99
+    // mbr_payment.close_remainder_to == Global.zero_address
+    dup
+    gtxns CloseRemainderTo
+    global ZeroAddress
+    ==
+    // smart_contracts/embargo/contract.py:98-100
+    // assert (
+    //     mbr_payment.close_remainder_to == Global.zero_address
+    // ), "MBR payment must not close"
+    assert // MBR payment must not close
+    // smart_contracts/embargo/contract.py:101
     // assert mbr_payment.amount >= required_mbr, "MBR payment too small"
     gtxns Amount
     <=
     assert // MBR payment too small
-    // smart_contracts/embargo/contract.py:88
+    // smart_contracts/embargo/contract.py:103
     // box = Box(Bytes, key=CONTENT_KEY)
     bytec 5 // 0x636f6e74656e74
-    // smart_contracts/embargo/contract.py:89
+    // smart_contracts/embargo/contract.py:104
     // box.value = content.native
     box_del
     pop
-    // smart_contracts/embargo/contract.py:88
+    // smart_contracts/embargo/contract.py:103
     // box = Box(Bytes, key=CONTENT_KEY)
     bytec 5 // 0x636f6e74656e74
-    // smart_contracts/embargo/contract.py:89
+    // smart_contracts/embargo/contract.py:104
     // box.value = content.native
     uncover 2
     box_put
-    // smart_contracts/embargo/contract.py:90
+    // smart_contracts/embargo/contract.py:105
     // self.author.value = Txn.sender
     bytec_3 // "author"
     txn Sender
     app_global_put
-    // smart_contracts/embargo/contract.py:91
+    // smart_contracts/embargo/contract.py:106
     // self.release_round.value = release_round
     bytec_0 // "release_round"
     uncover 2
     app_global_put
-    // smart_contracts/embargo/contract.py:92
+    // smart_contracts/embargo/contract.py:107
     // self.content_length.value = size
     bytec 4 // "content_length"
     swap
@@ -186,7 +220,7 @@ schedule_bool_false@4:
 
 // smart_contracts.embargo.contract.Embargo.publish[routing]() -> void:
 publish:
-    // smart_contracts/embargo/contract.py:103
+    // smart_contracts/embargo/contract.py:118
     // assert self.release_round.value > 0, "Nothing scheduled"
     intc_0 // 0
     bytec_0 // "release_round"
@@ -194,7 +228,7 @@ publish:
     assert // check self.release_round exists
     dup
     assert // Nothing scheduled
-    // smart_contracts/embargo/contract.py:104
+    // smart_contracts/embargo/contract.py:119
     // assert self.published_round.value == 0, "Already published"
     intc_0 // 0
     bytec_1 // "published_round"
@@ -202,31 +236,31 @@ publish:
     assert // check self.published_round exists
     !
     assert // Already published
-    // smart_contracts/embargo/contract.py:105
+    // smart_contracts/embargo/contract.py:120
     // assert Global.round >= self.release_round.value, "Embargo has not lifted"
     global Round
     <=
     assert // Embargo has not lifted
-    // smart_contracts/embargo/contract.py:107
+    // smart_contracts/embargo/contract.py:122
     // self.published_round.value = Global.round
     bytec_1 // "published_round"
     global Round
     app_global_put
-    // smart_contracts/embargo/contract.py:110
+    // smart_contracts/embargo/contract.py:125
     // release_round=arc4.UInt64(self.release_round.value),
     intc_0 // 0
     bytec_0 // "release_round"
     app_global_get_ex
     assert // check self.release_round exists
     itob
-    // smart_contracts/embargo/contract.py:111
+    // smart_contracts/embargo/contract.py:126
     // published_round=arc4.UInt64(Global.round),
     global Round
     itob
-    // smart_contracts/embargo/contract.py:112
+    // smart_contracts/embargo/contract.py:127
     // publisher=arc4.Address(Txn.sender),
     txn Sender
-    // smart_contracts/embargo/contract.py:109-113
+    // smart_contracts/embargo/contract.py:124-128
     // Published(
     //     release_round=arc4.UInt64(self.release_round.value),
     //     published_round=arc4.UInt64(Global.round),
@@ -236,7 +270,7 @@ publish:
     concat
     swap
     concat
-    // smart_contracts/embargo/contract.py:108-114
+    // smart_contracts/embargo/contract.py:123-129
     // arc4.emit(
     //     Published(
     //         release_round=arc4.UInt64(self.release_round.value),
@@ -248,10 +282,10 @@ publish:
     swap
     concat
     log
-    // smart_contracts/embargo/contract.py:115
+    // smart_contracts/embargo/contract.py:130
     // return Global.round
     global Round
-    // smart_contracts/embargo/contract.py:95
+    // smart_contracts/embargo/contract.py:110
     // @abimethod()
     itob
     bytec_2 // 0x151f7c75
@@ -264,7 +298,7 @@ publish:
 
 // smart_contracts.embargo.contract.Embargo.is_published[routing]() -> void:
 is_published:
-    // smart_contracts/embargo/contract.py:120
+    // smart_contracts/embargo/contract.py:135
     // return self.published_round.value > 0
     intc_0 // 0
     bytec_1 // "published_round"
@@ -272,7 +306,7 @@ is_published:
     assert // check self.published_round exists
     intc_0 // 0
     >
-    // smart_contracts/embargo/contract.py:117
+    // smart_contracts/embargo/contract.py:132
     // @abimethod(readonly=True)
     pushbytes 0x00
     intc_0 // 0
@@ -288,7 +322,7 @@ is_published:
 
 // smart_contracts.embargo.contract.Embargo.rounds_remaining[routing]() -> void:
 rounds_remaining:
-    // smart_contracts/embargo/contract.py:125
+    // smart_contracts/embargo/contract.py:140
     // if Global.round >= self.release_round.value:
     global Round
     intc_0 // 0
@@ -297,12 +331,12 @@ rounds_remaining:
     assert // check self.release_round exists
     >=
     bz rounds_remaining_after_if_else@3
-    // smart_contracts/embargo/contract.py:126
+    // smart_contracts/embargo/contract.py:141
     // return UInt64(0)
     intc_0 // 0
 
 rounds_remaining_after_inlined_smart_contracts.embargo.contract.Embargo.rounds_remaining@4:
-    // smart_contracts/embargo/contract.py:122
+    // smart_contracts/embargo/contract.py:137
     // @abimethod(readonly=True)
     itob
     bytec_2 // 0x151f7c75
@@ -313,7 +347,7 @@ rounds_remaining_after_inlined_smart_contracts.embargo.contract.Embargo.rounds_r
     return
 
 rounds_remaining_after_if_else@3:
-    // smart_contracts/embargo/contract.py:127
+    // smart_contracts/embargo/contract.py:142
     // return self.release_round.value - Global.round
     intc_0 // 0
     bytec_0 // "release_round"
@@ -321,6 +355,6 @@ rounds_remaining_after_if_else@3:
     assert // check self.release_round exists
     global Round
     -
-    // smart_contracts/embargo/contract.py:122
+    // smart_contracts/embargo/contract.py:137
     // @abimethod(readonly=True)
     b rounds_remaining_after_inlined_smart_contracts.embargo.contract.Embargo.rounds_remaining@4

@@ -26,6 +26,7 @@ from scripts.keeper_e2e import _box_mbr, _read_upkeep, _selector
 from smart_contracts.artifacts.keeper.keeper_client import CancelArgs, RegisterArgs
 from smart_contracts.artifacts.resource_probe.resource_probe_client import (
     ConfigureReentryArgs,
+    ResourceProbeFactory,
 )
 from smart_contracts.keeper.deploy_config import deploy as deploy_keeper
 from smart_contracts.resource_probe.deploy_config import deploy as deploy_probe
@@ -56,16 +57,23 @@ def _register(algorand, keeper_client, deployer, target_app: int, policy: int) -
             )
         )
 
+    # `call_data` became `call_args`, a list, when #8 landed, and four more
+    # fields became required. This spike kept the old shape and so raised
+    # TypeError before reaching a chain, which meant the reentrancy claim it
+    # is cited for had not actually been measured for some time.
+    call_args = [call_data]
     return keeper_client.send.register(
         args=RegisterArgs(
-            mbr_payment=payment(_box_mbr(call_data)),
+            mbr_payment=payment(_box_mbr(call_args)),
             funding_payment=payment(FEE * 10),
             target_app=target_app,
-            call_data=call_data,
+            call_args=call_args,
             interval_rounds=INTERVAL,
             fee_per_execution=FEE,
             policy=policy,
             fee_cap=0,
+            fee_asset=0,
+            asset_fee=0,
         )
     ).abi_return
 
@@ -101,8 +109,21 @@ def main(argv: list[str] | None = None) -> None:
     algorand = net.connect(args.network)
     deployer = algorand.account.from_environment("DEPLOYER")
     keeper_client = deploy_keeper()
-    probe = deploy_probe()
+    # A fresh probe per run, bare-created rather than deployed by config.
+    # `reenter` counts its own invocations and returns early once `probes_run`
+    # exceeds one, so a reused probe never attempts the reentry this spike
+    # exists to measure: the run goes green having tested nothing. The deadman
+    # demo already creates a fresh instance per run for the same reason.
+    probe = algorand.client.get_typed_app_factory(
+        ResourceProbeFactory, default_sender=deployer.address
+    ).send.create.bare()[0]
     app_id = keeper_client.app_id
+
+    # Every variant here is a target trying to call `execute` back while the
+    # keeper is still inside it. The claim this spike is cited for is that
+    # each one is refused, so the run has to assert that rather than print it:
+    # a measurement nobody checks is a measurement that can silently invert.
+    escapes: list[str] = []
 
     for label, policy, neglect in (
         ("SKIP_AHEAD, three intervals of backlog", keeper_bot.SKIP_AHEAD, 3),
@@ -129,18 +150,44 @@ def main(argv: list[str] | None = None) -> None:
         else:
             after, _ = _read_upkeep(algorand, app_id, upkeep_id)
             drained = before.balance - after.balance
+            executed = after.times_executed - before.times_executed
             to_probe = _balance(algorand, probe.app_address) - probe_before
             logger.info(
                 f"{label:<40} accepted — escrow -{drained} µALGO, "
-                f"executions +{after.times_executed - before.times_executed}, "
-                f"target received {to_probe} µALGO"
+                f"executions +{executed} , target received {to_probe} µALGO"
             )
+            # An accepted call means no reentry was attempted at all: a
+            # refused inner call fails the whole transaction, so a target that
+            # tries and is refused shows up in the branch above, not here. An
+            # earlier version of this comment said otherwise and the assertion
+            # under it was written to match, which was wrong twice over.
+            #
+            # What must never happen either way is a second execution from one
+            # call, or an escrow drain larger than the fees those executions
+            # earn. Not compared against `fee_cap`: `_register` sets it to 0,
+            # and 0 means escalation disabled, so `drained > fee_cap` is
+            # `drained > 0` and any healthy execution trips it. That assertion
+            # passed only because every variant was rejected.
+            if executed > 1:
+                escapes.append(f"{label}: {executed} executions from one call")
+            if drained > FEE * executed:
+                escapes.append(f"{label}: escrow fell {drained} µALGO for {executed} execution(s)")
         keeper_client.send.cancel(
             args=CancelArgs(upkeep_id=upkeep_id),
             params=algokit_utils.CommonAppCallParams(
                 extra_fee=algokit_utils.AlgoAmount(micro_algo=1_000)
             ),
         )
+
+    if escapes:
+        for escape in escapes:
+            logger.error(f"  {escape}")
+        raise SystemExit(
+            "A re-entering target got more than one execution or more escrow than it "
+            "earned. That is the property this spike exists to check."
+        )
+    logger.info("")
+    logger.info("No variant re-entered: each got one execution and one fee, or was refused.")
 
 
 if __name__ == "__main__":

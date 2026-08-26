@@ -31,6 +31,10 @@ HISTORICAL = {
     "CLAUDE.md",
     "docs/releases.md",
     "docs/arcron.md",
+    # Names the dead deployments precisely so that somebody holding an old
+    # link can tell it is dead. That is the opposite of a pointer to follow,
+    # but it is indistinguishable from one by grep.
+    "docs/status.md",
     "SECURITY.md",
     "tests/test_app_id_consistency.py",
 }

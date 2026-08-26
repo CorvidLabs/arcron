@@ -7,8 +7,8 @@ quick overview see `../README.md`; for runnable flows see `../examples/`.
 
 | Item | Value |
 |------|-------|
-| Keeper app | [`769823086`](https://testnet.explorer.perawallet.app/application/769823086) |
-| Pulse demo target | [`769823097`](https://testnet.explorer.perawallet.app/application/769823097) |
+| Keeper app | [`769891898`](https://testnet.explorer.perawallet.app/application/769891898) |
+| Pulse demo target | [`769891902`](https://testnet.explorer.perawallet.app/application/769891902) |
 | Reference bot | `scripts/keeper_bot.py` |
 | Proof | All 20 stages of `scripts/keeper_e2e.py` pass against it on-chain, including the box-MBR regression, the losing-keeper measurement, and the escalation-lockout and patient-keeper regressions. |
 | Stage | **alpha-1**, see [release stages](releases.md) |
@@ -42,7 +42,7 @@ returns to exactly its base MBR.
 ## Architecture
 
 ```
-creator                keeper app (769823086)               target app
+creator                keeper app (769891898)               target app
    | register + escrow ALGO  |                                    |
    |------------------------>|  box "u"+id: Upkeep struct         |
    |                         |                                    |
@@ -155,9 +155,12 @@ cannot drift apart.
   `extra_fee` covering the two inner transactions (fee pooling). Paid fee is
   the effective fee (≥ 4,000), so net ≥ 1,000 µALGO per execution, and more
   when the upkeep is late and its creator set a ceiling.
-- An upkeep is executable while `balance ≥ effective fee`; it goes dormant
-  when underfunded and resumes after a `top_up`. A ceiling raises that
-  threshold, so budget runway against `fee_cap` rather than the base fee.
+- An upkeep is executable while `balance ≥ fee_per_execution`; it goes dormant
+  when underfunded and resumes after a `top_up`. A ceiling does not raise that
+  threshold: when the escalated fee is more than the escrow holds, the fee
+  falls back to the base, so the upkeep stays executable by anyone rather than
+  stranding a ceiling's worth of escrow nobody can spend. Budget runway
+  against `fee_cap` anyway, since a late run can consume that much.
 
 ## Liveness
 
@@ -170,7 +173,7 @@ an external entry point that anyone may call once an upkeep is due.
 
 | | |
 |---|---|
-| Keeper app | `769823086` (TestNet) |
+| Keeper app | `769891898` (TestNet) |
 | Upkeeps registered | none; the e2e cancels everything it creates |
 | Always-on keeper | **none running** |
 | Last executions | rounds 66629036 to 66629138, from the deployment verification |
@@ -310,7 +313,7 @@ and the mnemonic lives in repository secrets.
 `--log-format json` (the container default) emits one object per line:
 
 ```json
-{"event": "started", "keeper": "E5M2…FJZQ3E", "app_id": 769823086, "network": "testnet"}
+{"event": "started", "keeper": "E5M2…FJZQ3E", "app_id": 769891898, "network": "testnet"}
 {"event": "scan", "round": 66629378, "upkeeps": 3, "due": 1, "skipped": 0}
 {"event": "executed", "round": 66629379, "upkeep_id": 9, "target_app": 1043,
  "fee_collected": 4000, "escrow_remaining": 8000, "next_due_round": 66629389,
@@ -614,9 +617,15 @@ out, the dogfood plan and the mainnet gate are in
 - Three app args per execution, counting the selector. Foreign arrays are
   supplied by the keeper rather than stored, and there is no on-chain way for
   an upkeep to declare which resources it needs. It does not need one: a
-  keeper simulates the call first and algod reports what it touched. A
-  `resources()` declaration convention was proposed and then withdrawn for
-  exactly that reason. See [Reaching resources your hook cannot name](integrating.md#reaching-resources-your-hook-cannot-name)
+  keeper that simulates the call first has algod report what it touched, and
+  attaches those references. That is a property of the keeper, not of the
+  network: the Python bot inherits it from algokit-utils, and
+  `js/src/keeper-txns.ts` (which the console also imports) does the same
+  thing itself, against raw algosdk, so an upkeep reaching an account, asset
+  or app beyond the target itself is servable from either. A `resources()`
+  declaration convention was proposed and then withdrawn, because simulation
+  already answers the same question for every target, including ones written
+  before the convention existed. See [Reaching resources your hook cannot name](integrating.md#reaching-resources-your-hook-cannot-name)
   and [docs/design/call-shapes.md](design/call-shapes.md).
 - The console shows ASA bonuses in base units, not the asset's decimals.
 - Catch-up is now a choice, not a limitation: a creator picks `CATCH_UP`
@@ -625,8 +634,10 @@ out, the dogfood plan and the mainnet gate are in
   [docs/design/scheduling-and-fees.md](design/scheduling-and-fees.md), which
   also explains why the two features had to be designed together.
 - A creator may also set a fee ceiling, and a late upkeep's fee climbs towards
-  it, which means an upkeep with a ceiling can go dormant at a balance that
-  would have covered several runs at its base fee.
+  it. That raises what a late run can consume, so budget runway against the
+  ceiling, but it does not raise the balance at which an upkeep goes dormant:
+  when the escalated fee is more than the escrow holds, the fee falls back to
+  the base and the upkeep stays executable.
 - Unaudited. TestNet throwaway deployer; redeploy fresh for mainnet.
 
 ## CI

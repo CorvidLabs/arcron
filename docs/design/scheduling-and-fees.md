@@ -182,11 +182,17 @@ Beyond the struct:
 2. **Cap as an absolute fee or a multiple of base?** Absolute is proposed:
    it is what the creator's escrow arithmetic is denominated in. A multiple
    would be one field either way.
-3. **Should escalation also raise the dormancy threshold?** As specified, yes:
-   `balance >= effective_fee`. An upkeep with 5,000 µALGO left and a 12,000
-   µALGO effective fee cannot be executed by anyone and shows as *starved*.
-   The alternative is to let a final execution happen at the base fee, which is
-   friendlier but means the fee is not always what it says.
+3. **Should escalation also raise the dormancy threshold?** ~~As specified,
+   yes.~~ **Resolved: no.** The alternative in this entry is what shipped. The
+   fee falls back to `fee_per_execution` when the escrow cannot cover the
+   escalated one, because the version specified here is a one-way door:
+   lateness only grows, so an escrow that once fell below the escalated price
+   could never reach it again, and the upkeep would hold up to a full ceiling
+   of escrow that no keeper could spend. The cost is that the fee is not always
+   what it says, which is the trade that was taken. See Invariant 12 in
+   `specs/keeper/keeper.spec.md`. This entry is left in place because
+   `docs/integrating.md`, `docs/arcron.md` and `specs/keeper/requirements.md`
+   all repeated the un-taken answer as fact for months.
 4. **Is a linear curve right?** It is easy to reason about and easy to verify.
    Anything steeper is harder to defend without evidence that keepers ignore
    linearly-escalating work, which nobody has yet.

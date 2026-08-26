@@ -140,6 +140,7 @@ is rather than how it compares to another.
 | Stage | Date | Commit | Contract sha256 | App id | Notes |
 |---|---|---|---|---|---|
 | alpha-1 | 2026-08-24 | `0e4de44` | `bb466d63…` | TestNet [`769823086`](https://testnet.explorer.perawallet.app/application/769823086) | First 1.0 deployment; 20-stage e2e green on chain |
+| alpha-2 | 2026-08-25 | `10ecd54` | `0afab368…` | TestNet [`769891898`](https://testnet.explorer.perawallet.app/application/769891898) | First deployment with governance: upgradeable until frozen, two program pages, and every fix from five review rounds. Pulse target [`769891902`](https://testnet.explorer.perawallet.app/application/769891902). |
 
 ## Going back
 

@@ -71,7 +71,7 @@ A new deployment starts **unfrozen**: its creator can replace the programs.
 That is deliberate, and temporary.
 
 ```bash
-fledge run govern -- status --network testnet --app-id 769823086
+fledge run govern -- status --network testnet --app-id 769891898
 fledge run govern -- update --network testnet --app-id <id>
 fledge run govern -- freeze --network testnet --app-id <id>
 ```
@@ -80,11 +80,17 @@ fledge run govern -- freeze --network testnet --app-id <id>
 trusting anyone:
 
 ```
-app 769823086
-  approval   1932 bytes
-  combined  sha256 bb466d637cc9441f408e8af29cc68398ab2d4320a02629e22c95cf057ce6d0fb
-  frozen    absent: this app predates the freeze flag and has no update path
+app 769891898
+  creator   E5M2OH5XNDMNABJ6VOFOUVR2IKRPCGQH43PVC5P3DWQQ2LV2VJV2FJZQ3E
+  approval   2104 bytes
+  combined  sha256 0afab3686aedeb990a46ad519a4bf0bf6a04394672ec3dd24990761be660bf49
+  frozen    0: the creator can still replace the programs
+            Anyone escrowing here is trusting that they will not.
 ```
+
+An app deployed before governance shipped prints `frozen absent` instead,
+which means it has no update path at all and nobody can replace its programs.
+Absent is the stronger guarantee, not a missing one.
 
 `update` compiles this tree, refuses if the deployment is frozen, replaces the
 programs, and then re-reads them to confirm what landed is what was sent.
@@ -158,10 +164,39 @@ decodes it:
 
 ```
 on complete   UpdateApplication
-REPLACES THE PROGRAMS with 2008 + 4 bytes
-  approval sha256 481ac7e4c927f4ac2a9e3f36cfa8483dfe093ec0f5fd0d214e606b3001266bbd
-  Compare that against `fledge run verify` on the commit you expect.
+REPLACES THE PROGRAMS with 2104 + 4 bytes
+  combined sha256 0afab3686aedeb990a46ad519a4bf0bf6a04394672ec3dd24990761be660bf49
+  approval sha256 433a0418cf37e97376258a79277f05636400fa153c1fa3a0b86aba049071896a
+  clear    sha256 ed90f0d2da1f1d1abd773c45230651a292a90edbc12a7bf859a493a12a640ce7
+  Compare the combined digest against `poetry run python -m scripts.verify_build`
+  on the commit you expect. Do not compare against `fledge run verify`, which
+  does not rebuild.
 ```
+
+The **combined** digest is the one to compare, and it is what `verify_build`
+records. An approval-only hash lets an honest approval ship beside a hostile
+clear program: it matches on inspection, and after `freeze` it cannot be
+replaced. This guide told you to compare the approval hash against a task
+that does not rebuild, which hashed committed artifacts rather than a compile
+of the tag you thought you had.
+
+For a **create**, `show` names every field that is fixed forever, because none
+of them can be corrected by an update:
+
+```
+CREATES A NEW APPLICATION. Every field below is permanent:
+  the creator is this sender and can never be changed
+  extra pages   1
+  global state  2 uints, 0 byte slices
+  local state   0 uints, 0 byte slices
+  Extra pages and schema cannot be changed by `update`, ever.
+CARRIES PROGRAMS of 2104 + 4 bytes
+```
+
+`sign` does not stop at printing the digest. It rebuilds this tree and refuses
+a file whose programs are not the ones the tree compiles to, because printing
+a hash asks somebody to compare it and this is the comparison. Pass
+`--no-rebuild` to skip that, and know what you are skipping.
 
 and shouts about the two things that would otherwise pass as routine:
 
@@ -176,6 +211,32 @@ transaction somebody would wave through.
 A signature is not a secret, so the file can be emailed, committed to a private
 gist, or carried on a stick. Only the mnemonics stay put. Submitting below the
 threshold is refused locally, and would be refused by the network anyway.
+
+## Creating a MainNet app from the multisig
+
+Use `govern create`. Everything an application-create sets is permanent: the
+creator cannot be changed, the state schema cannot be resized, and extra
+program pages can be neither added nor removed. `update` replaces code and
+nothing else, so none of it has a way back.
+
+```sh
+poetry run python -m scripts.govern create --network mainnet \
+  --expect-creator NHQU7QBDTUC4Q5I7LV3A35GGG36QUK5EL6PM4ZVBJKZ7AS6EDOU7BCRDWA
+```
+
+It refuses unless a multisig is configured and hashes to exactly the address
+you typed, refuses an uncommitted working tree, rebuilds from source, reads
+the state schema out of the compiled spec rather than trusting a hand-typed
+number, computes the extra pages from the real program sizes, prints the
+whole permanent checklist, and asks you to type the creator address back
+before it writes anything. Then it writes an unsigned transaction, which
+carries app id 0, so holders sign it with `--app-id 0`.
+
+**Do not use `scripts/multisig_e2e.py` to create anything you intend to keep.**
+It is a LocalNet proof, and it generates three throwaway keys, funds them, and
+drops them when the process exits. Run against a real network it produces an
+app whose creator nobody holds, while `govern status` goes on reporting that
+the creator can still replace the programs.
 
 `fledge run smoke-multisig` proves the whole flow on LocalNet: a 2 of 3 creates
 the app, one signature is rejected by the network, two are accepted, one holder
@@ -202,7 +263,7 @@ which is worse than not checking.
 **Which holders, and how many.** Three keys with a threshold of two is the
 usual shape: any one can be lost without losing control, and any one can be
 compromised without losing the contract. Keep them on different devices held by
-different people; three keys in one drawer is one key.
+different people; keys in one drawer are one key. MainNet uses five keys with a threshold of three (`NHQU7QBDTUC4Q5I7LV3A35GGG36QUK5EL6PM4ZVBJKZ7AS6EDOU7BCRDWA`); the LocalNet smoke test uses three with a threshold of two because it only has to prove the mechanism. Member order is part of the address, so the same keys in a different order are a different account holding nothing.
 
 ## Checking a deployment you did not make
 

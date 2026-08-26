@@ -7,15 +7,24 @@
 
 import { describe, expect, test } from 'bun:test';
 
+import { NETWORKS } from '@corvidlabs/arcron/networks';
+
 import { entryFrom, entryLink, rememberedAppId } from './entry';
 
 /** Nothing remembered for any network. */
 const nothingStored = () => null;
 
+/**
+ * Not a real deployment. A link carries whatever app id it carries, so these
+ * cases only need a number, and using a real one invites the reader to think
+ * the canonical app is asserted here rather than derived below.
+ */
+const LINKED_APP = 1234567;
+
 describe('opening from a link', () => {
     test('the link beats what the browser remembers', () => {
-        const entry = entryFrom('?network=testnet&app=769823086', 'localnet', () => '42');
-        expect(entry).toEqual({ network: 'testnet', appId: 769823086 });
+        const entry = entryFrom(`?network=testnet&app=${LINKED_APP}`, 'localnet', () => '42');
+        expect(entry).toEqual({ network: 'testnet', appId: LINKED_APP });
     });
 
     test('memory is used when the link says nothing', () => {
@@ -29,8 +38,8 @@ describe('opening from a link', () => {
     });
 
     test('a linked app inherits the network the link opens on', () => {
-        const entry = entryFrom('?app=769823086', 'testnet', nothingStored);
-        expect(entry).toEqual({ network: 'testnet', appId: 769823086 });
+        const entry = entryFrom(`?app=${LINKED_APP}`, 'testnet', nothingStored);
+        expect(entry).toEqual({ network: 'testnet', appId: LINKED_APP });
     });
 
     test('?app=none opens the chain with no registry', () => {
@@ -53,7 +62,7 @@ describe('opening from a link', () => {
 describe('switching network in the picker', () => {
     test('uses memory, then the network canonical app, never the link', () => {
         expect(rememberedAppId('testnet', '4242')).toBe(4242);
-        expect(rememberedAppId('testnet', null)).toBe(769823086);
+        expect(rememberedAppId('testnet', null)).toBe(NETWORKS.testnet.defaultAppId);
         // LocalNet has no canonical deployment: it is whatever you just deployed.
         expect(rememberedAppId('localnet', null)).toBeNull();
     });
@@ -61,12 +70,12 @@ describe('switching network in the picker', () => {
 
 describe('producing a link', () => {
     test('round-trips through entryFrom', () => {
-        const link = entryLink('/arcron/console/', 'testnet', 769823086);
-        expect(link).toBe('/arcron/console/?network=testnet&app=769823086');
+        const link = entryLink('/arcron/console/', 'testnet', LINKED_APP);
+        expect(link).toBe(`/arcron/console/?network=testnet&app=${LINKED_APP}`);
         const search = link.slice(link.indexOf('?'));
         expect(entryFrom(search, 'localnet', () => '42')).toEqual({
             network: 'testnet',
-            appId: 769823086,
+            appId: LINKED_APP,
         });
     });
 

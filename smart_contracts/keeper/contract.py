@@ -193,10 +193,23 @@ class Keeper(ARC4Contract):
         assert (
             mbr_payment.receiver == Global.current_application_address
         ), "MBR payment must fund the app account"
+        # A rekey hands control of the sender's account to whoever the group
+        # names, and a close sweeps it empty to whoever the group names.
+        # Both harm only the sender, so the contract loses nothing by
+        # refusing them. The exposure is a front end putting either into a
+        # group a user signs without reading it closely.
+        assert mbr_payment.rekey_to == Global.zero_address, "MBR payment must not rekey"
+        assert (
+            mbr_payment.close_remainder_to == Global.zero_address
+        ), "MBR payment must not close"
         assert mbr_payment.amount >= required_mbr, "MBR payment too small"
         assert (
             funding_payment.receiver == Global.current_application_address
         ), "Funding must go to the app account"
+        assert funding_payment.rekey_to == Global.zero_address, "Funding must not rekey"
+        assert (
+            funding_payment.close_remainder_to == Global.zero_address
+        ), "Funding must not close"
         # "One execution" means one at the price this upkeep can actually be
         # charged. An upkeep escrowed for one run at the base fee but carrying
         # a higher cap would work until the first time it fell behind and then
@@ -240,6 +253,10 @@ class Keeper(ARC4Contract):
         assert (
             funding_payment.receiver == Global.current_application_address
         ), "Funding must go to the app account"
+        assert funding_payment.rekey_to == Global.zero_address, "Funding must not rekey"
+        assert (
+            funding_payment.close_remainder_to == Global.zero_address
+        ), "Funding must not close"
         assert funding_payment.amount > 0, "Amount must be positive"
 
         box = Box(Upkeep, key=op.concat(b"u", op.itob(upkeep_id)))
@@ -466,6 +483,10 @@ class Keeper(ARC4Contract):
         assert (
             mbr_payment.receiver == Global.current_application_address
         ), "MBR payment must fund the app account"
+        assert mbr_payment.rekey_to == Global.zero_address, "MBR payment must not rekey"
+        assert (
+            mbr_payment.close_remainder_to == Global.zero_address
+        ), "MBR payment must not close"
         assert mbr_payment.amount >= ASSET_OPT_IN_MBR, "MBR payment too small"
         itxn.AssetTransfer(
             xfer_asset=asset,
@@ -491,6 +512,10 @@ class Keeper(ARC4Contract):
         assert (
             asset_funding.asset_receiver == Global.current_application_address
         ), "Asset funding must go to the app account"
+        assert asset_funding.rekey_to == Global.zero_address, "Asset funding must not rekey"
+        assert (
+            asset_funding.asset_close_to == Global.zero_address
+        ), "Asset funding must not close the asset"
         assert (
             asset_funding.xfer_asset.id == upkeep.fee_asset.as_uint64()
         ), "Wrong asset for this upkeep"

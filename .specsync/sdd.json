@@ -34,7 +34,7 @@
     "specs/"
   ],
   "verification_commands": [
-    "pytest"
+    "poetry run pytest tests/ -q"
   ],
   "custom_artifacts": {},
   "principles_file": null

@@ -39,6 +39,14 @@ from algopy.arc4 import abimethod
 # keeper can possibly deliver.
 MIN_INTERVAL_ROUNDS = 30
 
+# Every Algorand account must hold this much before it can send anything, and
+# an app account is no exception. The switch promises the beneficiary the
+# whole escrow, so the escrow has to be what is left after the floor rather
+# than everything that arrived: paying out the full deposit would drop the app
+# below its own minimum and the AVM would reject the payment. There is no
+# delete path here, so this is locked up for as long as the app exists.
+APP_BASE_MBR = 100_000
+
 
 class Fired(arc4.Struct):
     """Emitted once, when the owner has gone quiet for too long."""
@@ -76,7 +84,18 @@ class DeadMan(ARC4Contract):
         assert (
             deposit.receiver == Global.current_application_address
         ), "Deposit must go to the app account"
-        assert deposit.amount > 0, "Nothing to release"
+        # A rekey hands control of the sender's account to whoever the group
+        # names, and a close sweeps it empty to whoever the group names.
+        # Both harm only the sender, so the contract loses nothing by
+        # refusing them. The exposure is a front end putting either into a
+        # group a user signs without reading it closely.
+        assert deposit.rekey_to == Global.zero_address, "Deposit must not rekey"
+        assert (
+            deposit.close_remainder_to == Global.zero_address
+        ), "Deposit must not close"
+        assert (
+            deposit.amount > APP_BASE_MBR
+        ), "Deposit must cover the app minimum balance and leave something to release"
         assert beneficiary.native != self.owner.value, "Beneficiary must not be the owner"
         # An address nobody can send from can never claim, so the escrow
         # would be stranded on a contract with no delete path. Same trap the
@@ -85,10 +104,15 @@ class DeadMan(ARC4Contract):
 
         self.beneficiary.value = beneficiary.native
         self.interval_rounds.value = interval_rounds
-        # Arithmetic rather than assignment: a payment's amount arrives as a
-        # plain int under algorand-python-testing, and += coerces it the same
-        # way Puya would.
-        self.escrow.value += deposit.amount
+        # Reserve the account floor out of the deposit rather than trusting
+        # somebody to have pre-funded it. The demo did exactly that pre-fund,
+        # silently, which is what hid this: a switch armed through the repo's
+        # own deploy config held no floor at all, so `claim` would have fired
+        # and then failed to pay, permanently, on a contract with no update
+        # path. Arithmetic rather than assignment: a payment's amount arrives
+        # as a plain int under algorand-python-testing, and += coerces it the
+        # same way Puya would.
+        self.escrow.value += deposit.amount - APP_BASE_MBR
         self.deadline.value = Global.round + interval_rounds
         return self.deadline.value
 

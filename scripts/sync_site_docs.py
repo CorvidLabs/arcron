@@ -29,6 +29,9 @@ REPO = pathlib.Path(__file__).resolve().parent.parent
 
 # source, slug, title, one-line description, section
 PAGES = [
+    ("docs/status.md", "status", "Where it stands",
+     "What exists, what state each contract is in, what is proven, what is still unknown, and what happens next.",
+     "Start here"),
     ("docs/integrating.md", "integrating", "Integrating",
      "Hooking your contract into Arcron: the hook shape, authorization, and the failure modes that stop an upkeep being serviced.",
      "Building on it"),
@@ -62,6 +65,12 @@ def _rewrite_links(body: str, base: str) -> str:
         if "#" in target:
             target, anchor = target.split("#", 1)
             anchor = "#" + anchor
+        # A link to an anchor on this same page, which every table of contents
+        # is made of. Splitting the anchor off leaves an empty target, and an
+        # earlier version of this then treated it as an unpublished file and
+        # stripped the link, turning every contents list into dead text.
+        if not target:
+            return f"[{label}]({anchor})"
         name = target.split("/")[-1]
         if name in PUBLISHED:
             return f"[{label}]({base}{PUBLISHED[name]}/{anchor})"

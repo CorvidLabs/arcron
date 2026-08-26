@@ -55,6 +55,17 @@ export function classify(upkeep: Upkeep, currentRound: bigint): Availability {
   return currentRound >= upkeep.nextExecutionRound ? 'due' : 'scheduled';
 }
 
+/**
+ * What one execution costs the keeper, in microalgo.
+ *
+ * The contract only pays an ASA bonus to a keeper opted in to the asset, but
+ * the fee has to be committed before that is known, so an upkeep offering one
+ * is quoted at the higher cost.
+ */
+export function executionCost(upkeep: Pick<Upkeep, 'feeAsset'>): number {
+  return (upkeep.feeAsset ?? 0n) > 0n ? EXECUTE_FEE + 1_000 : EXECUTE_FEE;
+}
+
 export function toEntry(upkeep: Upkeep, currentRound: bigint): BoardEntry {
   const overdue = currentRound - upkeep.nextExecutionRound;
   const fee = effectiveFee(upkeep, currentRound);
@@ -62,8 +73,12 @@ export function toEntry(upkeep: Upkeep, currentRound: bigint): BoardEntry {
     upkeep,
     availability: classify(upkeep, currentRound),
     overdueRounds: overdue > 0n ? overdue : 0n,
-    // A keeper pays the outer fee plus the pooled extra out of its own pocket.
-    netReward: fee - BigInt(EXECUTE_FEE),
+    // A keeper pays the outer fee plus the pooled extra out of its own
+    // pocket, and an upkeep offering an ASA bonus costs a further 1,000 for
+    // the transfer. Quoting the ALGO-only cost against an asset upkeep
+    // overstated its net reward by exactly that, which is worst on the
+    // upkeeps a keeper is most likely to chase.
+    netReward: fee - BigInt(executionCost(upkeep)),
     currentFee: fee,
     escalated: escalates(upkeep) && fee > upkeep.feePerExecution,
     runsRemaining: executionsRemaining(upkeep),

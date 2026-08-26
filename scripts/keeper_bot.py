@@ -44,6 +44,13 @@ EXTRA_FEE_MICROALGO = 2_000
 # The bonus transfer, when an upkeep pays one and this keeper can receive
 # it. Overpaying is harmless: an unused fee is simply not charged.
 BONUS_FEE_MICROALGO = 1_000
+# A ceiling on the outer fee. Suggested params come from whatever node the
+# operator pointed at, and verifying the genesis id proves which network that
+# node speaks for, not that it is honest or healthy. An endpoint returning an
+# inflated per-byte fee would otherwise be signed on the next execution. Ten
+# times the minimum leaves room for genuine congestion pricing and still
+# refuses a number that could only be wrong.
+MAX_OUTER_FEE_MICROALGO = 10_000
 # First delay after an algod/endpoint error; it doubles up to the cap, so a
 # node that is down does not get hammered and a blip costs almost nothing.
 ERROR_RETRY_SECONDS = 5
@@ -267,6 +274,19 @@ def resolve_app_id(parser: argparse.ArgumentParser, app_id: int | None, network:
     )
 
 
+def is_frozen(algod, app_id: int) -> bool:
+    """Whether this app's creator has given up the power to replace its programs.
+
+    An app deployed before governance carries no `frozen` key at all and has
+    no update path, so a missing flag reads as frozen rather than unknown.
+    """
+    state = algod.application_info(app_id)["params"].get("global-state", [])
+    for entry in state:
+        if base64.b64decode(entry["key"]) == b"frozen":
+            return int(entry["value"].get("uint", 0)) != 0
+    return True
+
+
 def check_registry(algod, app_id: int) -> int:
     """Report how healthy a registry looks. Returns a process exit code.
 
@@ -426,6 +446,21 @@ def main(argv: list[str] | None = None) -> None:
     try:
         keeper = algorand.account.from_environment("KEEPER")
     except Exception:
+        # While an app is unfrozen its creator can replace the programs and
+        # reach every escrow in it. DEPLOYER is usually that creator, so
+        # falling back to it here would put the key that can rewrite the
+        # contract on a hot machine polling a public endpoint around the
+        # clock, to save an operator one environment variable. The fallback
+        # exists for a developer against their own throwaway LocalNet app;
+        # it has no business on a deployment holding somebody else's money.
+        if not is_frozen(algod, app_id):
+            raise UnrecoverableError(
+                f"Refusing to fall back to DEPLOYER on app {app_id}, which is not frozen. "
+                "Its creator can still replace the programs and reach every escrow in it, "
+                "so that key must not sign routine executions from a long-running bot. "
+                "Set KEEPER_MNEMONIC to a separate account "
+                "(deploy/keeper.env.example shows the file this belongs in)."
+            )
         try:
             keeper = algorand.account.from_environment("DEPLOYER")
         except Exception as cause:
@@ -484,6 +519,13 @@ def main(argv: list[str] | None = None) -> None:
         try:
             current = algod.status()["last-round"]
             upkeeps = scan_upkeeps(algod, app_id)
+            # Re-read every scan rather than caching: an operator can opt in
+            # to a new bonus asset while the bot is running, and should not
+            # have to restart it to start earning that bonus.
+            opted_in_assets = {
+                holding["asset-id"]
+                for holding in algod.account_info(keeper.address).get("assets", [])
+            }
             due = select_due(
                 upkeeps, current, lambda upkeep_id: backoff.blocked(upkeep_id, current)
             )
@@ -508,13 +550,29 @@ def main(argv: list[str] | None = None) -> None:
                     # microAlgos short, so the keeper best placed to earn the
                     # bonus is the one whose call fails, and the upkeep paying
                     # the most is the one that goes unserviced.
+                    # The contract pays the bonus only to a keeper opted in
+                    # to the asset, so this has to ask the same question the
+                    # contract does. Adding the surcharge without checking
+                    # meant a keeper that could never receive a bonus paid for
+                    # its transfer anyway: Algorand pools fees and does not
+                    # refund the unused part, so those executions netted
+                    # nothing instead of the full fee.
                     extra_fee = EXTRA_FEE_MICROALGO
-                    if upkeep.fee_asset > 0 and upkeep.asset_balance >= upkeep.asset_fee:
+                    if (
+                        upkeep.fee_asset > 0
+                        and upkeep.asset_balance >= upkeep.asset_fee
+                        and upkeep.fee_asset in opted_in_assets
+                    ):
                         extra_fee += BONUS_FEE_MICROALGO
                     response = client.send.execute(
                         args=ExecuteArgs(upkeep_id=upkeep.upkeep_id),
                         params=algokit_utils.CommonAppCallParams(
-                            extra_fee=algokit_utils.AlgoAmount(micro_algo=extra_fee)
+                            extra_fee=algokit_utils.AlgoAmount(micro_algo=extra_fee),
+                            # A ceiling on what this will sign, rather than
+                            # trusting the node's suggested per-byte fee.
+                            max_fee=algokit_utils.AlgoAmount(
+                                micro_algo=MAX_OUTER_FEE_MICROALGO + extra_fee
+                            ),
                         ),
                     )
                     executed_count += 1

@@ -52,6 +52,16 @@ describe('what a keeper is offered', () => {
     expect(toEntry(upkeep({ feePerExecution: 10_000n }), 1_000n).netReward).toBe(7_000n);
   });
 
+  test('an ASA-bonus upkeep nets a thousand less, because the transfer is not free', () => {
+    // The contract sends a third inner transaction when it pays a bonus, and
+    // the keeper funds it. Quoting the ALGO-only cost overstated the net
+    // reward on exactly the upkeeps paying most, so a keeper working down the
+    // top of the board was working from a number that was wrong.
+    const plain = toEntry(upkeep({ feeAsset: 0n }), 1_000n);
+    const bonus = toEntry(upkeep({ feeAsset: 42n }), 1_000n);
+    expect(plain.netReward - bonus.netReward).toBe(1_000n);
+  });
+
   test('overdue is zero before the due round, never negative', () => {
     expect(toEntry(upkeep(), 900n).overdueRounds).toBe(0n);
     expect(toEntry(upkeep(), 1_050n).overdueRounds).toBe(50n);

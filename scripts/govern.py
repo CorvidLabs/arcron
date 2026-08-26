@@ -1,10 +1,16 @@
-"""Replace a keeper deployment's programs, or give up the ability to.
+"""Create a keeper deployment, replace its programs, or give up the ability to.
 
-Two commands, one of which cannot be undone.
+Two of these cannot be undone, and they are not the same two.
 
+    poetry run python -m scripts.govern create --network mainnet --expect-creator ADDR
     poetry run python -m scripts.govern update --network testnet --app-id N
     poetry run python -m scripts.govern freeze --network testnet --app-id N
     poetry run python -m scripts.govern status --network testnet --app-id N
+
+`create` writes an unsigned application-create for a multisig to sign. Every
+field it sets is permanent: the creator, the state schema, and the number of
+extra program pages. `update` replaces code and nothing else, so none of them
+has a way back.
 
 `update` compiles this tree and replaces the deployed programs with it. It
 works only while the app is unfrozen and only for the account that created it.
@@ -14,8 +20,21 @@ call that could restore an update path is an update, which is refused. Read
 `docs/releases.md` for when this is supposed to happen: freezing is the rc
 gate, not something to do early.
 
-Both refuse to guess. `--app-id` is required, the network is checked against
-the node's genesis id, and `freeze` asks for confirmation unless `--yes`.
+Under a multisig these write a file instead of sending, and the holders sign
+it wherever their keys are:
+
+    govern show --file F --app-id N     read it before signing, always
+    govern sign --file F --app-id N     refuses on any of several grounds
+    govern submit --file F --app-id N
+
+`show` describes what the file does, including every permanent field when it
+is a create. `sign` refuses a file that is not an app call, names a different
+app, is for another network, spends from an account that is not the configured
+multisig, rekeys or closes the sender, carries a fee above the ceiling, or
+carries programs that are not the ones this tree compiles to. Then it asks for
+the sending account to be typed in full, with no flag to skip it: a signature
+produced without a human reading the description is the thing a multisig
+exists to prevent.
 """
 
 import argparse
@@ -23,6 +42,7 @@ import base64
 import hashlib
 import logging
 import pathlib
+import subprocess
 import sys
 
 import algokit_utils
@@ -129,6 +149,110 @@ def update(algorand, app_id: int, no_rebuild: bool, out: 'pathlib.Path | None' =
     return 0
 
 
+# Program pages are 2,048 bytes and are shared by approval and clear. Extra
+# pages are create-only: they cannot be added later by `update`, and they
+# cannot be removed either, so asking for one too many costs the creator
+# 100,000 microAlgos of minimum balance for as long as the app exists.
+PROGRAM_PAGE = 2_048
+
+
+def create(algorand, expect_creator: str, assume_yes: bool, allow_dirty: bool,
+           out: 'pathlib.Path | None' = None) -> int:
+    """Write an unsigned create for the multisig to sign.
+
+    Everything an `ApplicationCreateTxn` sets is permanent. The creator cannot
+    be changed, the schema cannot be resized, and extra pages can be neither
+    added nor removed. There is no update path back from any of them, because
+    `update` replaces code and nothing else.
+
+    Before this existed the only worked create in the repository was
+    `scripts/multisig_e2e.py`, which generates three throwaway keys, funds
+    them, and drops them when the process exits. Run against MainNet it would
+    produce an app whose creator nobody holds, and `govern status` would go on
+    reporting that the creator can still replace the programs.
+    """
+    algod = algorand.client.algod
+
+    if not ms.configured():
+        logger.error(
+            "Refusing: no multisig is configured, and a single-key creator is the "
+            "admin-key problem this command exists to avoid. An app's creator cannot "
+            "be changed afterwards. Set ARCRON_MULTISIG_ADDRESSES and "
+            "ARCRON_MULTISIG_THRESHOLD."
+        )
+        return 1
+    if ms.address() != expect_creator:
+        logger.error(
+            f"Refusing: the configured multisig is {ms.address()}, not the "
+            f"{expect_creator} you named. Member order is part of the address, so the "
+            "same keys in a different order are a different account."
+        )
+        return 1
+
+    if not allow_dirty:
+        dirty = subprocess.run(
+            ["git", "status", "--porcelain"], capture_output=True, text=True
+        ).stdout.strip()
+        if dirty:
+            logger.error(
+                "Refusing: the working tree has uncommitted changes, so the digest below "
+                "would not correspond to any commit anyone can check out. Commit and tag "
+                "first, or pass --allow-dirty if you truly mean to."
+            )
+            return 1
+
+    rebuild()
+    spec = _spec("keeper")
+    approval, clear = _programs(spec)
+
+    # Read the schema rather than typing it: too small fails the create when
+    # __init__ writes its second global, and too large costs the creator
+    # minimum balance forever for state that is never used.
+    schema = spec.get("state", {}).get("schema", {})
+    g, l = schema.get("global", {}), schema.get("local", {})
+    extra_pages = (len(approval) + len(clear) - 1) // PROGRAM_PAGE
+
+    logger.info("This create is permanent in every field below.")
+    logger.info(f"  creator       {ms.address()}")
+    logger.info(f"  threshold     {ms.threshold()} of {len(ms.signers())}")
+    for index, member in enumerate(ms.signers(), start=1):
+        logger.info(f"    member {index}     {member}")
+    logger.info("  Member order is part of the address. A permutation is a different account.")
+    logger.info(f"  programs      {len(approval)} + {len(clear)} bytes")
+    logger.info(f"  combined      sha256 {_digest(approval, clear)}")
+    logger.info(f"  extra pages   {extra_pages}  (capacity {PROGRAM_PAGE * (1 + extra_pages)} bytes)")
+    logger.info(f"  global state  {g.get('ints', 0)} uints, {g.get('bytes', 0)} byte slices")
+    logger.info(f"  local state   {l.get('ints', 0)} uints, {l.get('bytes', 0)} byte slices")
+    logger.info("  None of these can be changed later. `update` replaces code, nothing else.")
+
+    if not assume_yes:
+        answer = input(f"  Type the creator address to continue: ").strip()
+        if answer != ms.address():
+            logger.info("Not created.")
+            return 1
+
+    unsigned = transaction.ApplicationCreateTxn(
+        sender=ms.address(),
+        sp=algod.suggested_params(),
+        on_complete=transaction.OnComplete.NoOpOC,
+        approval_program=approval,
+        clear_program=clear,
+        global_schema=transaction.StateSchema(g.get("ints", 0), g.get("bytes", 0)),
+        local_schema=transaction.StateSchema(l.get("ints", 0), l.get("bytes", 0)),
+        extra_pages=extra_pages,
+    )
+    target = out or pathlib.Path("arcron-create.json")
+    ms.export_unsigned(unsigned, target)
+    logger.info(f"Wrote {target} for {ms.describe()} to sign.")
+    logger.info("  A create carries app id 0, so sign it with --app-id 0.")
+    logger.info("  Each holder: govern show --file <that> --app-id 0")
+    logger.info("               SIGNER_MNEMONIC=... govern sign --file <that> --app-id 0")
+    logger.info("  Then anyone: govern submit --file <that> --app-id 0")
+    logger.info("  Afterwards:  fund the app account's base minimum balance, then")
+    logger.info("               verify_build against the new app id before anything else.")
+    return 0
+
+
 def freeze(algorand, app_id: int, assume_yes: bool, out: 'pathlib.Path | None' = None) -> int:
     algod = algorand.client.algod
     frozen = _frozen(algod, app_id)
@@ -181,17 +305,71 @@ def _spec_json():
     return algokit_utils.Arc56Contract.from_json(json.dumps(_spec("keeper")))
 
 
+# A fee is spent whether or not the transaction accomplishes anything, so an
+# inflated one is a way to drain the account it is signed from without ever
+# looking like theft. Ten times the minimum leaves room for real congestion.
+MAX_SIGNABLE_FEE = 10_000
+
+
+def _refuse(args, verb: str) -> bool:
+    """Print every reason not to act on this file. True means do not.
+
+    Collected rather than short-circuited so a holder sees all of what is
+    wrong at once, and phrased as refusals so the default is inaction.
+    """
+    # Recompute from this tree so a file carrying programs is checked rather
+    # than merely described. Skipped when the file carries none, and when the
+    # signer explicitly opted out of rebuilding.
+    expected_digest = None
+    if ms.carried_programs(args.file) is not None and not args.no_rebuild:
+        rebuild()
+        expected_digest = _digest(*_programs(_spec("keeper")))
+
+    reasons = ms.refusals(
+        args.file,
+        app_id=args.app_id,
+        genesis_ids=net.genesis_ids(args.network),
+        expected_address=ms.address() if ms.configured() else None,
+        expected_digest=expected_digest,
+        max_fee=MAX_SIGNABLE_FEE if not args.allow_high_fee else 2**63,
+        allow_account_txn=args.account_txn,
+        allow_rekey=args.i_mean_to_rekey,
+    )
+    for reason in reasons:
+        logger.error(f"  REFUSING: {reason}")
+    if reasons:
+        logger.error(f"Not {verb}ing. Check where this file came from before overriding anything.")
+    return bool(reasons)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument(
-        "command", choices=("status", "update", "freeze", "show", "sign", "submit")
+        "command", choices=("status", "create", "update", "freeze", "show", "sign", "submit")
     )
     net.add_network_argument(parser)
-    parser.add_argument("--app-id", type=int, required=True, help="the keeper app to act on")
+    parser.add_argument("--app-id", type=int, default=None, help="the keeper app to act on; 0 means a create")
+    parser.add_argument(
+        "--expect-creator",
+        help="create: the multisig address you intend to be the creator, typed out in full",
+    )
+    parser.add_argument("--allow-dirty", action="store_true", help="create: allow an uncommitted tree")
     parser.add_argument("--no-rebuild", action="store_true", help="update: trust the built artifacts")
     parser.add_argument("--yes", action="store_true", help="freeze: skip the confirmation")
+    parser.add_argument(
+        "--account-txn", action="store_true",
+        help="sign/submit: allow a transaction that is not an application call",
+    )
+    parser.add_argument(
+        "--i-mean-to-rekey", action="store_true",
+        help="sign/submit: allow a transaction that rekeys or closes the sender",
+    )
+    parser.add_argument(
+        "--allow-high-fee", action="store_true",
+        help=f"sign/submit: allow a fee above {MAX_SIGNABLE_FEE} microAlgos",
+    )
     parser.add_argument(
         "--out", type=pathlib.Path,
         help="update/freeze under a multisig: where to write the unsigned transaction",
@@ -202,6 +380,22 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     algorand = net.connect(args.network)
+    if args.command == "create":
+        if not args.expect_creator:
+            logger.error(
+                "create needs --expect-creator: the multisig address you intend to own this "
+                "app, typed out in full. It is checked against the configured multisig, "
+                "because an app's creator cannot be changed afterwards."
+            )
+            return 1
+        return create(algorand, args.expect_creator, args.yes, args.allow_dirty, args.out)
+    if args.command in ("update", "freeze", "status", "sign", "submit", "show") and args.app_id is None:
+        logger.error(
+            f"{args.command} needs --app-id. It has no default: 0 means \"this is a create\", "
+            "and a forgotten flag must not be able to look like the one transaction that "
+            "cannot be undone. Pass --app-id 0 deliberately when signing a create."
+        )
+        return 1
     if args.command == "status":
         return status(algorand, args.app_id)
     if args.command == "show":
@@ -210,7 +404,19 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         for line in ms.describe_transaction(args.file):
             logger.info(f"  {line}")
-        logger.info(f"  signatures    {ms.collected(args.file)} of {ms.threshold()}")
+        # Read from the blob, not from this machine's environment. The
+        # environment is whatever the person running `show` has configured,
+        # and a file that spends from a different account entirely would
+        # otherwise be described using your threshold and your member list.
+        logger.info(f"  spends from   {ms.blob_address(args.file)}")
+        logger.info(f"  signatures    {ms.collected(args.file)} of {ms.blob_threshold(args.file)}")
+        for index, member in enumerate(ms.blob_signers(args.file), start=1):
+            logger.info(f"    member {index}     {member}")
+        if ms.configured() and ms.blob_address(args.file) != ms.address():
+            logger.warning(
+                f"  !! This is NOT your configured multisig ({ms.address()}). "
+                "Signing it binds an account you were not asked about."
+            )
         return 0
     if args.command in ("sign", "submit"):
         if args.file is None:
@@ -226,26 +432,29 @@ def main(argv: list[str] | None = None) -> int:
                     "It is read from the environment and never written anywhere."
                 )
                 return 1
-            # Show it before signing, always, and refuse if it is not the
-            # app the signer was told about. Signing base64 nobody reads is
-            # how a multisig becomes one person who clicked several times,
-            # and this is the last point at which that can be caught.
-            in_file = ms.app_id(args.file)
-            if in_file and in_file != args.app_id:
-                logger.error(
-                    f"This file acts on app {in_file}, not {args.app_id}. "
-                    "Refusing. Check where the file came from."
-                )
-                return 1
             logger.info("About to sign:")
             for line in ms.describe_transaction(args.file):
                 logger.info(f"  {line}")
+            if _refuse(args, "sign"):
+                return 1
+            # A signature is the irreversible half: submitting is mechanical
+            # once enough exist. Freeze already asks for the app id to be
+            # typed back, and signing deserves the same pause, because a
+            # holder who runs this from a script is not a second signer.
+            # No --yes escape here. `freeze` has one because the coordinator
+            # runs it after the holders have already signed; this is the
+            # holders' own step, and a signature produced without a human
+            # reading the description is the failure the multisig exists to
+            # prevent. A holder who scripts past this is not a second signer.
+            expected = str(ms.blob_address(args.file))
+            answer = input("  Type the full sending account to sign: ").strip()
+            if answer != expected:
+                logger.info("Not signed. The account typed did not match the file's sender.")
+                return 1
             have = ms.sign(args.file, secret)
             logger.info(f"Signed. {have} of {ms.blob_threshold(args.file)} collected.")
             return 0
-        in_file = ms.app_id(args.file)
-        if in_file and in_file != args.app_id:
-            logger.error(f"This file acts on app {in_file}, not {args.app_id}. Refusing.")
+        if _refuse(args, "submit"):
             return 1
         txid = ms.submit(algorand.client.algod, args.file)
         logger.info(f"Submitted {txid}")

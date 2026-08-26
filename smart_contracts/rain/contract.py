@@ -158,12 +158,26 @@ class Rain(ARC4Contract):
         # checking only the other two would be checking a promise rather than
         # a property.
         assert prize.manager == Global.zero_address, "Prize asset has a manager address"
+        # default_frozen is fixed at creation and no address can ever change
+        # it, so an asset that starts frozen with no freeze address to thaw it
+        # can be received but never sent. The pot would take a prize in and
+        # hold it forever, which is the exact failure these checks exist for.
+        assert not prize.default_frozen, "Prize asset is frozen by default"
         assert not Global.current_application_address.is_opted_in(
             Asset(asset)
         ), "Already opted in"
         assert (
             mbr_payment.receiver == Global.current_application_address
         ), "MBR payment must fund the app account"
+        # A rekey hands control of the sender's account to whoever the group
+        # names, and a close sweeps it empty to whoever the group names.
+        # Both harm only the sender, so the contract loses nothing by
+        # refusing them. The exposure is a front end putting either into a
+        # group a user signs without reading it closely.
+        assert mbr_payment.rekey_to == Global.zero_address, "MBR payment must not rekey"
+        assert (
+            mbr_payment.close_remainder_to == Global.zero_address
+        ), "MBR payment must not close"
         assert mbr_payment.amount >= ASSET_OPT_IN_MBR, "MBR payment too small"
         itxn.AssetTransfer(
             xfer_asset=Asset(asset),
@@ -186,6 +200,10 @@ class Rain(ARC4Contract):
         assert (
             mbr_payment.receiver == Global.current_application_address
         ), "MBR payment must fund the app account"
+        assert mbr_payment.rekey_to == Global.zero_address, "MBR payment must not rekey"
+        assert (
+            mbr_payment.close_remainder_to == Global.zero_address
+        ), "MBR payment must not close"
         assert mbr_payment.amount >= TICKET_MBR, "MBR payment too small"
 
         # The entrant supplies the asset they are claiming membership with,
@@ -214,6 +232,10 @@ class Rain(ARC4Contract):
         assert (
             payment.receiver == Global.current_application_address
         ), "Deposit must go to the app account"
+        assert payment.rekey_to == Global.zero_address, "Deposit must not rekey"
+        assert (
+            payment.close_remainder_to == Global.zero_address
+        ), "Deposit must not close"
         assert payment.amount > 0, "Amount must be positive"
         self.pot.value += payment.amount
         return self.pot.value
@@ -231,6 +253,10 @@ class Rain(ARC4Contract):
         assert (
             transfer.asset_receiver == Global.current_application_address
         ), "Deposit must go to the app account"
+        assert transfer.rekey_to == Global.zero_address, "Deposit must not rekey"
+        assert (
+            transfer.asset_close_to == Global.zero_address
+        ), "Deposit must not close the asset"
         assert transfer.xfer_asset.id == asset, "Wrong asset"
         assert transfer.asset_amount > 0, "Amount must be positive"
         self.pot.value += transfer.asset_amount
@@ -342,10 +368,51 @@ class Rain(ARC4Contract):
         return arc4.Address(winner)
 
     @abimethod()
-    def claim(self) -> UInt64:
-        """Pull your prize. Only the winner can, and only for themselves."""
+    def claim(self, gate_asset: Asset) -> UInt64:
+        """Pull your prize. Only the winner can, and only for themselves.
+
+        `gate_asset` is the token you are still claiming membership with. It
+        is ignored on an ungated draw, and it is checked the same way `enter`
+        checks it on a gated one, because the gate has to be asked twice.
+
+        Be precise about what this buys, because an earlier version of this
+        docstring was not. A ticket is a box that never expires, and `enter`
+        only ever asked whether the buyer held a collection token at that
+        moment, so one token walked through ten accounts buys ten permanent
+        tickets. Asking again here does **not** neutralise that walk: the
+        walker holds all ten accounts and the token, so when a walked ticket
+        wins they move the token into that account and this check passes. The
+        walk costs one extra transfer, not nine dead tickets.
+
+        What it does close is narrower and still worth having: an account that
+        no longer holds a collection token at all cannot collect. That covers
+        the ticket sold or given away, and the holder who left the community
+        between the draw and the claim.
+
+        Closing the walk itself needs one ticket per asset id, which is new box
+        semantics and therefore a new app id, since this contract has no update
+        path. That is a deliberate deferral, not an oversight.
+
+        The cost is a real rule and should be stated as one: **you must still
+        hold a token from the collection when you collect.** A winner who sells
+        between the draw and the claim forfeits, and the contract cannot tell
+        that apart from someone selling to dodge the gate.
+        """
         allocation = Box(UInt64, key=op.concat(ALLOCATION_PREFIX, Txn.sender.bytes))
         assert allocation, "Nothing allocated to you"
+
+        gate = self.gate_creator.value
+        if gate != Global.zero_address:
+            assert Txn.sender.is_opted_in(gate_asset), "Hold a token from the collection"
+            assert gate_asset.balance(Txn.sender) > 0, "Hold a token from the collection"
+            assert gate_asset.creator == gate, "That asset is not from the collection"
+            # `enter` refuses the prize as a ticket, and `claim` has to refuse
+            # it for the same reason: a project usually mints its prize from
+            # the same account as its collection, so a past winner holding
+            # nothing but prize tokens would otherwise satisfy this gate while
+            # holding no collection token at all.
+            assert gate_asset.id != self.prize_asset.value, "The prize is not a ticket"
+
         amount = allocation.value
         del allocation.value
         asset = self.prize_asset.value

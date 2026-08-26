@@ -43,9 +43,19 @@ def app(context: AlgopyTestContext, provider, keeper) -> Subscription:
     return contract
 
 
-def _subscribe(context: AlgopyTestContext, app: Subscription, who, amount: int) -> None:
+def _subscribe(
+    context: AlgopyTestContext,
+    app: Subscription,
+    who,
+    amount: int,
+    *,
+    payment_fields: dict | None = None,
+) -> None:
     payment = context.any.txn.payment(
-        sender=who, receiver=context.ledger.get_app(app).address, amount=amount
+        sender=who,
+        receiver=context.ledger.get_app(app).address,
+        amount=amount,
+        **(payment_fields or {}),
     )
     # The payment is an argument, not a declared group member: the mock rejects
     # gtxns and active_txn_overrides together, and the contract's check is that
@@ -344,4 +354,32 @@ def test_create_refuses_settings_that_cannot_be_undone(
     with pytest.raises(Exception, match="A period must span some rounds"):
         Subscription().create(
             arc4.Address(provider), arc4.UInt64(PRICE), arc4.UInt64(0)
+        )
+
+
+# --- #102: rekey and close must not reach an escrowing transaction ----
+#
+# Neither harms the contract; both harm only the sender who signed them. What
+# this guards against is a malicious front end slipping either into a group a
+# user signs without reading closely.
+
+def test_subscribe_rejects_a_rekeyed_deposit(
+    context: AlgopyTestContext, app: Subscription
+) -> None:
+    who = context.any.account()
+    with pytest.raises(AssertionError, match="Deposit must not rekey"):
+        _subscribe(
+            context, app, who, SUBSCRIBER_BOX_MBR + 1,
+            payment_fields={"rekey_to": context.any.account()},
+        )
+
+
+def test_subscribe_rejects_a_closing_deposit(
+    context: AlgopyTestContext, app: Subscription
+) -> None:
+    who = context.any.account()
+    with pytest.raises(AssertionError, match="Deposit must not close"):
+        _subscribe(
+            context, app, who, SUBSCRIBER_BOX_MBR + 1,
+            payment_fields={"close_remainder_to": context.any.account()},
         )

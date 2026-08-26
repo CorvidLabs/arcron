@@ -45,7 +45,7 @@ contract class, the `Upkeep` struct, and its constants.
 
 | Type | Description |
 |------|-------------|
-| `Keeper` | ARC-4 contract class; global state `next_upkeep_id: uint64`; one `Upkeep` struct per box (`"u" \|\| id BE64`, 9-byte names). |
+| `Keeper` | ARC-4 contract class; global state `next_upkeep_id: uint64` and `frozen: uint64` (0 while the creator can still replace the programs, 1 once `freeze` has made that impossible); one `Upkeep` struct per box (`"u" \|\| id BE64`, 9-byte names). |
 | `Upkeep` | ARC-4 struct: `creator: Address`, `target_app: UInt64`, `call_args: DynamicArray[DynamicBytes]`, `interval_rounds: UInt64`, `next_execution_round: UInt64`, `fee_per_execution: UInt64`, `balance: UInt64`, `times_executed: UInt64`, `policy: UInt64`, `fee_cap: UInt64`, `last_serviced_round: UInt64`, `fee_asset: UInt64`, `asset_fee: UInt64`, `asset_balance: UInt64`. |
 
 #### Keeper Methods
@@ -80,8 +80,9 @@ contract class, the `Upkeep` struct, and its constants.
 15. Re-entrancy is impossible: the AVM refuses to re-enter an application from inside its own execution (`attempt to re-enter <app>`), so a target cannot call `execute` back. The contract's own ordering (state written before any inner transaction) is a second line rather than the only one. Measured in `scripts/spike_reentrancy.py`.
 16. `execute` sends every stored app arg, in order, as the inner call's app args. The selector and each ARC-4 argument travel in an app arg of their own, which is what an ARC-4 method requires. `register` bounds the count at `MAX_CALL_ARGS`, so `execute`'s fan-out is exhaustive.
 17. **The ALGO fee is never replaced.** An ASA bonus is paid *on top*, and only when there is one, the asset escrow covers it, and the caller is opted in to the asset. A keeper that cannot receive the bonus is not a failed execution: it takes the full ALGO fee and the bonus stays in escrow for the creator. This is what keeps the profitability floor enforceable on-chain without anyone pricing the asset.
-18. `cancel` returns the unspent asset balance along with the ALGO and the box MBR. If the creator cannot receive the asset it refuses, before refunding anything.
+18. `cancel` returns the unspent asset balance along with the ALGO and the box MBR. If the creator cannot receive the asset the bonus is forfeited and the ALGO refund is paid in full: refusing would let an asset the creator cannot receive hold their ALGO hostage. The forfeit is permanent, because the box is deleted in the same call.
 19. Under `CATCH_UP`, `next_execution_round += interval_rounds`, so a neglected upkeep stays due until it has replayed every missed interval. Under `SKIP_AHEAD` it advances to the first slot strictly greater than `Global.round` that is still a whole number of intervals from the original schedule, so one execution clears any backlog without the schedule drifting.
+20. Every payment and asset transfer the contract accepts (`register`'s two payments, `top_up`, `opt_in_asset`, `top_up_asset`) is checked for `rekey_to`, `close_remainder_to` and `asset_close_to`, all of which must be the zero address. A rekey or a close only ever harms the sender, never the contract, so this protects a user of a front end that slipped either into a group they signed, not the escrow itself.
 
 ## Behavioral Examples
 
@@ -154,7 +155,7 @@ contract class, the `Upkeep` struct, and its constants.
 | `fee_asset` set with `asset_fee` of zero | Fails with "Asset fee must be positive" |
 | `top_up_asset` with an asset the upkeep does not use | Fails with "Wrong asset for this upkeep" |
 | `opt_in_asset` naming an upkeep that does not use the asset | Fails with "That upkeep does not use this asset" |
-| `cancel` with an unspent bonus, by a creator not opted in | Fails with "Opt in to the fee asset before cancelling" |
+| `cancel` with an unspent bonus, by a creator not opted in | Succeeds. The ALGO refund is paid in full and the bonus is forfeited, because failing here would let an asset the creator cannot receive hold their ALGO hostage. The bonus is unrecoverable once the box is deleted, so opt in before cancelling if you want it. |
 | MBR payment below computed box MBR | Fails with "MBR payment too small" |
 | Funding below one execution at the effective worst case (`fee_cap` when set, else `fee_per_execution`) | Fails with "Funding must cover at least one execution" |
 | `execute` before the due round | Fails with "Not due" |
@@ -162,6 +163,9 @@ contract class, the `Upkeep` struct, and its constants.
 | `execute`/`cancel`/`top_up` for a missing id | Fails with "Upkeep not found" |
 | `cancel` by a non-creator | Fails with "Only the creator can cancel" |
 | Registered target app call fails | Whole group fails; no fee paid, no state change |
+| Any accepted payment or asset transfer carries a rekey | Fails with "... must not rekey" |
+| Any accepted payment carries a close-remainder-to | Fails with "... must not close" |
+| Any accepted asset transfer carries an asset-close-to | Fails with "... must not close the asset" |
 
 ## Dependencies
 
@@ -183,6 +187,7 @@ contract class, the `Upkeep` struct, and its constants.
 
 | Date | Author | Change |
 |------|--------|--------|
+| 2026-08-25 | CorvidLabs | #102: `register` (both payments), `top_up`, `opt_in_asset` and `top_up_asset` now assert `rekey_to`, `close_remainder_to` and `asset_close_to` are the zero address on every payment or asset transfer they accept. Not a struct change; a mechanical hygiene sweep across every contract that accepts a gtxn, closing the exposure of a front end slipping a rekey or a close into a group a user signs. |
 | 2026-08-23 | CorvidLabs | Initial keeper network: register, top_up, cancel, execute; Upkeep struct in boxes |
 | 2026-08-24 | CorvidLabs | #8 and #9: `call_data: byte[]` becomes `call_args: byte[][]`, so an execution carries the selector and up to two ARC-4 arguments. Before this only zero-argument hooks were reachable. `fee_asset`, `asset_fee` and `asset_balance` add an optional ASA bonus paid on top of the ALGO fee, never instead of it, with `opt_in_asset` and `top_up_asset` to fund it. The fan-out ceiling is 3, chosen because it is what keeps the whole batch inside one program page. `BOX_MBR_FIXED` is now `2_500 + 400 * 139`; the head grew from 106 to 130 bytes and every decoder moved with it. Designs: `docs/design/call-shapes.md`, `docs/design/asa-fees.md`. |
 | 2026-08-24 | CorvidLabs | Review hardening for #7/#14: a replay never escalates (`next_execution_round <= last_serviced_round`), because measuring lateness from the last service alone let a patient keeper collect the ceiling on every `CATCH_UP` replay while the backlog grew without bound, measured at 100% of a 400,000 µALGO escrow across 34 runs. An upkeep also never bids more than it holds, so an escrow below the escalated fee falls back to base instead of being locked out permanently. `MAX_INTERVAL_ROUNDS` added so the escalation multiply is bounded by the inputs rather than by the age of the chain. |

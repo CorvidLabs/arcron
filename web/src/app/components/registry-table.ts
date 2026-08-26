@@ -120,7 +120,7 @@ interface Row {
                     <button
                       type="button"
                       class="primary small"
-                      [disabled]="!row.canExecute || keeper.busy() !== null"
+                      [disabled]="!row.canExecute || keeper.busy() !== null || !reads()"
                       (click)="execute(row)"
                     >
                       Execute
@@ -128,7 +128,7 @@ interface Row {
                     <button
                       type="button"
                       class="ghost small"
-                      [disabled]="!row.canFund"
+                      [disabled]="!row.canFund || !reads()"
                       (click)="toggle(row)"
                     >
                       Top up
@@ -137,7 +137,7 @@ interface Row {
                       <button
                         type="button"
                         class="ghost small danger"
-                        [disabled]="keeper.busy() !== null"
+                        [disabled]="keeper.busy() !== null || !reads()"
                         (click)="cancel(row)"
                       >
                         Cancel
@@ -260,6 +260,17 @@ interface Row {
 })
 export class RegistryTable {
   protected readonly arcron = inject(ArcronService);
+
+  /**
+   * Whether the page is showing the current state of the app.
+   *
+   * Every one of these buttons commits money against figures read from the
+   * chain. A failed read leaves the last-good figures on screen and the
+   * trust warnings unrendered, which is when they should be least available
+   * rather than most. The register form gained this guard and these did not,
+   * which is the same omission one level down.
+   */
+  protected readonly reads = computed(() => this.arcron.status() === 'ready');
   protected readonly keeper = inject(KeeperService);
   private readonly wallet = inject(WalletService);
 

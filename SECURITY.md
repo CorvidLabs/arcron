@@ -17,12 +17,26 @@ script involved, the network, and a transaction id or test that shows it.
 TestNet as a demonstration and do not put value on it that you would mind
 losing.
 
-**The contracts cannot be patched in place.** They are deployed with no update
-or delete path. That is deliberate: an upgradeable keeper contract is one where
-somebody can change the rules after you have escrowed funds. The consequence is
-that a bug cannot be fixed on a live deployment. The remedy is
-always the same: `cancel` your upkeep, recover your escrow and box MBR, and
-move to a corrected deployment.
+**The contracts can be patched in place until their creator freezes them.**
+The keeper contract ships an `update` method only its creator can call, and a
+one-way `freeze` that removes it permanently. Until `freeze` is called, the
+creator can replace the programs and reach every escrow in that deployment.
+That is a real power over your money, and nothing but `freeze` ends it.
+
+Check which you are dealing with before you escrow anything:
+
+```sh
+poetry run python -m scripts.govern status --network testnet --app-id 769891898
+```
+
+It prints `frozen 0`, meaning the creator can still replace the programs, or
+`frozen 1`, meaning nobody can. **The live TestNet deployment `769891898` is
+unfrozen.** That is deliberate: alpha is the stage where a bug is fixed in
+place instead of by asking every creator to cancel and re-register by hand.
+
+Once a deployment is frozen, a bug in it cannot be fixed. The remedy is then
+the one it always was: `cancel` your upkeep, recover your escrow and box MBR,
+and move to a corrected deployment.
 
 That has already happened twice. The first TestNet keeper app
 ([`769772891`](https://testnet.explorer.perawallet.app/application/769772891))
@@ -34,12 +48,12 @@ was in turn superseded by the 1.0 contract, whose `Upkeep` struct is a
 different shape; its registry is empty. `docs/arcron.md` records the migration.
 
 The live deployment is
-[`769823086`](https://testnet.explorer.perawallet.app/application/769823086).
+[`769891898`](https://testnet.explorer.perawallet.app/application/769891898).
 Check that any app really is the code you think it is, comparing compiled
 bytecode rather than source text:
 
 ```bash
-poetry run python -m scripts.verify_build --network testnet --app-id 769823086
+poetry run python -m scripts.verify_build --network testnet --app-id 769891898
 ```
 
 ## What stage this is at
@@ -77,9 +91,15 @@ Out of scope:
 
 ## Key handling
 
-**`DEPLOYER_MNEMONIC` is the one that matters.** It creates the app, and
-while that app is unfrozen it can replace the app's programs, which means it
-can rewrite the rules and reach every escrow. `poetry run python -m
+**The creator's key is the one that matters.** It creates the app, and while
+that app is unfrozen it can replace the app's programs, which means it can
+rewrite the rules and reach every escrow.
+
+On TestNet that key is `DEPLOYER_MNEMONIC`, a throwaway. **On MainNet it is
+the 3-of-5 multisig** `NHQU7QBDTUC4Q5I7LV3A35GGG36QUK5EL6PM4ZVBJKZ7AS6EDOU7BCRDWA`,
+and no single mnemonic can act for it. A MainNet deployment created from a
+single key would be the admin-key problem this whole section exists to avoid,
+permanently, because an app's creator cannot be changed afterwards. `poetry run python -m
 scripts.govern status` reports whether a deployment is still in that state.
 Everything below is less valuable than that key. For anything holding real
 money it should be a multisig rather than one mnemonic: see

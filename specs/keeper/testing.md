@@ -39,4 +39,4 @@ call, or on the app account's spendable balance, belongs in `keeper_e2e.py`.
 | A `SKIP_AHEAD` upkeep executed exactly on its due round | Behaves like `CATCH_UP`: nothing was missed, so the next slot is one interval on |
 | Escalation on an upkeep executed the moment it became due | No escalation: one interval since the last service is on time, not late |
 | A ceiling equal to the base fee | No escalation; the same as a zero ceiling |
-| A ceiling set, escrow between the base fee and the ceiling | Executable while on time, dormant once late |
+| A ceiling set, escrow between the base fee and the ceiling | Executable throughout. Once late, the escalated fee exceeds the escrow and the fee falls back to `fee_per_execution` (Invariant 12), so it stays executable rather than going dormant. |

@@ -296,29 +296,52 @@ subscribe:
     global CurrentApplicationAddress
     ==
     assert // Pay this app
-    // smart_contracts/subscription/contract.py:153
+    // smart_contracts/subscription/contract.py:153-158
+    // # A rekey hands control of the sender's account to whoever the group
+    // # names, and a close sweeps it empty to whoever the group names.
+    // # Both harm only the sender, so the contract loses nothing by
+    // # refusing them. The exposure is a front end putting either into a
+    // # group a user signs without reading it closely.
+    // assert deposit.rekey_to == Global.zero_address, "Deposit must not rekey"
+    dup
+    gtxns RekeyTo
+    global ZeroAddress
+    ==
+    assert // Deposit must not rekey
+    // smart_contracts/subscription/contract.py:160
+    // deposit.close_remainder_to == Global.zero_address
+    dup
+    gtxns CloseRemainderTo
+    global ZeroAddress
+    ==
+    // smart_contracts/subscription/contract.py:159-161
+    // assert (
+    //     deposit.close_remainder_to == Global.zero_address
+    // ), "Deposit must not close"
+    assert // Deposit must not close
+    // smart_contracts/subscription/contract.py:162
     // assert deposit.sender == Txn.sender, "Deposit must come from the caller"
     gtxns Sender
     txn Sender
     ==
     assert // Deposit must come from the caller
-    // smart_contracts/subscription/contract.py:155
+    // smart_contracts/subscription/contract.py:164
     // box = Box(Subscriber, key=op.concat(BOX_PREFIX, Txn.sender.bytes))
     bytec 8 // 0x73
     txn Sender
     concat
     dup
-    // smart_contracts/subscription/contract.py:156
+    // smart_contracts/subscription/contract.py:165
     // if box:
     box_len
     bury 1
     bz subscribe_else_body@3
-    // smart_contracts/subscription/contract.py:157
+    // smart_contracts/subscription/contract.py:166
     // existing = box.value.copy()
     dupn 2
     box_get
     assert // check Box exists
-    // smart_contracts/subscription/contract.py:159
+    // smart_contracts/subscription/contract.py:168
     // balance=arc4.UInt64(existing.balance.native + deposit.amount),
     dup
     intc_0 // 0
@@ -327,11 +350,11 @@ subscribe:
     gtxns Amount
     +
     itob
-    // smart_contracts/subscription/contract.py:160
+    // smart_contracts/subscription/contract.py:169
     // paid_through_period=existing.paid_through_period,
     swap
     extract 8 8
-    // smart_contracts/subscription/contract.py:158-161
+    // smart_contracts/subscription/contract.py:167-170
     // box.value = Subscriber(
     //     balance=arc4.UInt64(existing.balance.native + deposit.amount),
     //     paid_through_period=existing.paid_through_period,
@@ -340,7 +363,7 @@ subscribe:
     box_put
 
 subscribe_after_if_else@4:
-    // smart_contracts/subscription/contract.py:170
+    // smart_contracts/subscription/contract.py:179
     // balance: UInt64 = box.value.balance.native
     box_get
     assert // check Box exists
@@ -355,7 +378,7 @@ subscribe_after_if_else@4:
     return
 
 subscribe_else_body@3:
-    // smart_contracts/subscription/contract.py:163-165
+    // smart_contracts/subscription/contract.py:172-174
     // # The box costs the app account minimum balance, so the first
     // # deposit has to cover it or the app becomes insolvent.
     // assert deposit.amount > SUBSCRIBER_BOX_MBR, "First deposit must cover the box"
@@ -365,19 +388,19 @@ subscribe_else_body@3:
     intc_3 // 22100
     >
     assert // First deposit must cover the box
-    // smart_contracts/subscription/contract.py:167
+    // smart_contracts/subscription/contract.py:176
     // balance=arc4.UInt64(deposit.amount - SUBSCRIBER_BOX_MBR),
     intc_3 // 22100
     -
     itob
-    // smart_contracts/subscription/contract.py:168
+    // smart_contracts/subscription/contract.py:177
     // paid_through_period=arc4.UInt64(self.period.value),
     intc_0 // 0
     bytec_0 // "period"
     app_global_get_ex
     assert // check self.period exists
     itob
-    // smart_contracts/subscription/contract.py:166-169
+    // smart_contracts/subscription/contract.py:175-178
     // box.value = Subscriber(
     //     balance=arc4.UInt64(deposit.amount - SUBSCRIBER_BOX_MBR),
     //     paid_through_period=arc4.UInt64(self.period.value),
@@ -391,7 +414,7 @@ subscribe_else_body@3:
 
 // smart_contracts.subscription.contract.Subscription.settle[routing]() -> void:
 settle:
-    // smart_contracts/subscription/contract.py:173
+    // smart_contracts/subscription/contract.py:182
     // @abimethod()
     txna ApplicationArgs 1
     dup
@@ -399,23 +422,23 @@ settle:
     pushint 32
     ==
     assert // invalid number of bytes for arc4.static_array<arc4.uint8, 32>
-    // smart_contracts/subscription/contract.py:185
+    // smart_contracts/subscription/contract.py:194
     // box = Box(Subscriber, key=op.concat(BOX_PREFIX, subscriber.native.bytes))
     bytec 8 // 0x73
     swap
     concat
     dupn 2
-    // smart_contracts/subscription/contract.py:186
+    // smart_contracts/subscription/contract.py:195
     // assert box, "No such subscriber"
     box_len
     bury 1
     assert // No such subscriber
-    // smart_contracts/subscription/contract.py:187
+    // smart_contracts/subscription/contract.py:196
     // record = box.value.copy()
     box_get
     pop
     dup
-    // smart_contracts/subscription/contract.py:189
+    // smart_contracts/subscription/contract.py:198
     // periods = self.period.value - record.paid_through_period.native
     intc_0 // 0
     bytec_0 // "period"
@@ -428,17 +451,17 @@ settle:
     cover 4
     -
     dup
-    // smart_contracts/subscription/contract.py:190
+    // smart_contracts/subscription/contract.py:199
     // if periods == 0:
     bnz settle_after_if_else@3
     popn 3
-    // smart_contracts/subscription/contract.py:191
+    // smart_contracts/subscription/contract.py:200
     // return UInt64(0)
     intc_0 // 0
     bury 1
 
 settle_after_inlined_smart_contracts.subscription.contract.Subscription.settle@4:
-    // smart_contracts/subscription/contract.py:173
+    // smart_contracts/subscription/contract.py:182
     // @abimethod()
     dup
     itob
@@ -450,7 +473,7 @@ settle_after_inlined_smart_contracts.subscription.contract.Subscription.settle@4
     return
 
 settle_after_if_else@3:
-    // smart_contracts/subscription/contract.py:193-197
+    // smart_contracts/subscription/contract.py:202-206
     // # Take the smaller count first and multiply once. Computing
     // # `periods * price` up front overflows for a large price, and the AVM
     // # panics on overflow rather than saturating, which would leave the box
@@ -465,7 +488,7 @@ settle_after_if_else@3:
     assert // check self.price_per_period exists
     dup2
     /
-    // smart_contracts/subscription/contract.py:198-200
+    // smart_contracts/subscription/contract.py:207-209
     // # Only credit periods actually paid for, so a partial payment does not
     // # forgive the rest: the subscriber still owes from where they stopped.
     // periods_paid: UInt64 = periods if periods <= affordable else affordable
@@ -477,7 +500,7 @@ settle_after_if_else@3:
     swap
     cover 2
     select
-    // smart_contracts/subscription/contract.py:203
+    // smart_contracts/subscription/contract.py:212
     // balance=arc4.UInt64(record.balance.native - periods_paid * self.price_per_period.value),
     dup
     uncover 2
@@ -486,13 +509,13 @@ settle_after_if_else@3:
     dig 1
     -
     itob
-    // smart_contracts/subscription/contract.py:204
+    // smart_contracts/subscription/contract.py:213
     // paid_through_period=arc4.UInt64(record.paid_through_period.native + periods_paid),
     dig 4
     dig 3
     +
     itob
-    // smart_contracts/subscription/contract.py:202-205
+    // smart_contracts/subscription/contract.py:211-214
     // box.value = Subscriber(
     //     balance=arc4.UInt64(record.balance.native - periods_paid * self.price_per_period.value),
     //     paid_through_period=arc4.UInt64(record.paid_through_period.native + periods_paid),
@@ -501,7 +524,7 @@ settle_after_if_else@3:
     uncover 3
     swap
     box_put
-    // smart_contracts/subscription/contract.py:206
+    // smart_contracts/subscription/contract.py:215
     // self.provider_accrued.value += periods_paid * self.price_per_period.value
     intc_0 // 0
     bytec_1 // "provider_accrued"
@@ -512,30 +535,30 @@ settle_after_if_else@3:
     swap
     app_global_put
     bury 1
-    // smart_contracts/subscription/contract.py:173
+    // smart_contracts/subscription/contract.py:182
     // @abimethod()
     b settle_after_inlined_smart_contracts.subscription.contract.Subscription.settle@4
 
 
 // smart_contracts.subscription.contract.Subscription.withdraw[routing]() -> void:
 withdraw:
-    // smart_contracts/subscription/contract.py:216
+    // smart_contracts/subscription/contract.py:225
     // box = Box(Subscriber, key=op.concat(BOX_PREFIX, Txn.sender.bytes))
     bytec 8 // 0x73
     txn Sender
     concat
     dupn 2
-    // smart_contracts/subscription/contract.py:217
+    // smart_contracts/subscription/contract.py:226
     // assert box, "Not subscribed"
     box_len
     bury 1
     assert // Not subscribed
-    // smart_contracts/subscription/contract.py:218
+    // smart_contracts/subscription/contract.py:227
     // record = box.value.copy()
     box_get
     pop
     dup
-    // smart_contracts/subscription/contract.py:220-226
+    // smart_contracts/subscription/contract.py:229-235
     // # Settle as far as the balance reaches, rather than demanding the
     // # subscriber be fully caught up. Requiring that trapped anyone who ran
     // # out: they could never afford the periods they owed, so they could
@@ -555,10 +578,10 @@ withdraw:
     -
     dup
     cover 3
-    // smart_contracts/subscription/contract.py:227
+    // smart_contracts/subscription/contract.py:236
     // if periods > 0:
     bz withdraw_after_if_else@3
-    // smart_contracts/subscription/contract.py:228
+    // smart_contracts/subscription/contract.py:237
     // affordable: UInt64 = record.balance.native // self.price_per_period.value
     intc_0 // 0
     extract_uint64
@@ -568,7 +591,7 @@ withdraw:
     assert // check self.price_per_period exists
     dup2
     /
-    // smart_contracts/subscription/contract.py:229
+    // smart_contracts/subscription/contract.py:238
     // periods_paid: UInt64 = periods if periods <= affordable else affordable
     dig 4
     dup
@@ -578,12 +601,12 @@ withdraw:
     swap
     cover 2
     select
-    // smart_contracts/subscription/contract.py:230
+    // smart_contracts/subscription/contract.py:239
     // settled: UInt64 = periods_paid * self.price_per_period.value
     dup
     uncover 2
     *
-    // smart_contracts/subscription/contract.py:231
+    // smart_contracts/subscription/contract.py:240
     // self.provider_accrued.value += settled
     intc_0 // 0
     bytec_1 // "provider_accrued"
@@ -594,23 +617,23 @@ withdraw:
     bytec_1 // "provider_accrued"
     swap
     app_global_put
-    // smart_contracts/subscription/contract.py:233
+    // smart_contracts/subscription/contract.py:242
     // balance=arc4.UInt64(record.balance.native - settled),
     uncover 2
     swap
     -
     itob
-    // smart_contracts/subscription/contract.py:235
+    // smart_contracts/subscription/contract.py:244
     // record.paid_through_period.native + periods_paid
     dig 4
     uncover 2
     +
-    // smart_contracts/subscription/contract.py:234-236
+    // smart_contracts/subscription/contract.py:243-245
     // paid_through_period=arc4.UInt64(
     //     record.paid_through_period.native + periods_paid
     // ),
     itob
-    // smart_contracts/subscription/contract.py:232-237
+    // smart_contracts/subscription/contract.py:241-246
     // record = Subscriber(
     //     balance=arc4.UInt64(record.balance.native - settled),
     //     paid_through_period=arc4.UInt64(
@@ -620,18 +643,18 @@ withdraw:
     concat
 
 withdraw_after_if_else@3:
-    // smart_contracts/subscription/contract.py:239
+    // smart_contracts/subscription/contract.py:248
     // refund: UInt64 = record.balance.native + SUBSCRIBER_BOX_MBR
     intc_0 // 0
     extract_uint64
     intc_3 // 22100
     +
-    // smart_contracts/subscription/contract.py:240
+    // smart_contracts/subscription/contract.py:249
     // del box.value
     swap
     box_del
     pop
-    // smart_contracts/subscription/contract.py:241
+    // smart_contracts/subscription/contract.py:250
     // itxn.Payment(receiver=Txn.sender, amount=refund, fee=0).submit()
     itxn_begin
     txn Sender
@@ -643,7 +666,7 @@ withdraw_after_if_else@3:
     intc_0 // 0
     itxn_field Fee
     itxn_submit
-    // smart_contracts/subscription/contract.py:209
+    // smart_contracts/subscription/contract.py:218
     // @abimethod()
     itob
     bytec_2 // 0x151f7c75
@@ -656,7 +679,7 @@ withdraw_after_if_else@3:
 
 // smart_contracts.subscription.contract.Subscription.claim[routing]() -> void:
 claim:
-    // smart_contracts/subscription/contract.py:254
+    // smart_contracts/subscription/contract.py:263
     // assert Txn.sender == self.provider.value, "Only the provider may claim"
     txn Sender
     intc_0 // 0
@@ -665,22 +688,22 @@ claim:
     assert // check self.provider exists
     ==
     assert // Only the provider may claim
-    // smart_contracts/subscription/contract.py:255
+    // smart_contracts/subscription/contract.py:264
     // amount = self.provider_accrued.value
     intc_0 // 0
     bytec_1 // "provider_accrued"
     app_global_get_ex
     assert // check self.provider_accrued exists
-    // smart_contracts/subscription/contract.py:256
+    // smart_contracts/subscription/contract.py:265
     // assert amount > 0, "Nothing accrued"
     dup
     assert // Nothing accrued
-    // smart_contracts/subscription/contract.py:257
+    // smart_contracts/subscription/contract.py:266
     // self.provider_accrued.value = UInt64(0)
     bytec_1 // "provider_accrued"
     intc_0 // 0
     app_global_put
-    // smart_contracts/subscription/contract.py:258
+    // smart_contracts/subscription/contract.py:267
     // itxn.Payment(receiver=self.provider.value, amount=amount, fee=0).submit()
     itxn_begin
     intc_0 // 0
@@ -695,7 +718,7 @@ claim:
     intc_0 // 0
     itxn_field Fee
     itxn_submit
-    // smart_contracts/subscription/contract.py:246
+    // smart_contracts/subscription/contract.py:255
     // @abimethod()
     itob
     bytec_2 // 0x151f7c75

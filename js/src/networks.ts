@@ -57,7 +57,7 @@ export const NETWORKS: Readonly<Record<NetworkKey, NetworkConfig>> = {
     genesisIds: ['testnet-v1.0'],
     nominalRoundSeconds: 2.8,
     explorerApp: (appId) => `https://testnet.explorer.perawallet.app/application/${appId}`,
-    defaultAppId: 769823086,
+    defaultAppId: 769891898,
   },
 };
 

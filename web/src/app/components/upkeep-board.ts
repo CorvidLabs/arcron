@@ -208,6 +208,9 @@ export class UpkeepBoard {
 
   protected readonly sorts = SORTS;
   protected readonly sort = signal<SortKey>('reward');
+  // The ALGO-only cost. An upkeep offering an ASA bonus costs a further
+  // 1,000 for the transfer, which `netReward` accounts for per upkeep; this
+  // is the headline figure for the common case.
   protected readonly executionCost = algos(3_000n);
 
   private readonly entries = computed(() => {

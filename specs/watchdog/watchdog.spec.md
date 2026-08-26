@@ -1,6 +1,6 @@
 ---
 module: watchdog
-version: 1
+version: 2
 status: active
 files:
   - smart_contracts/watchdog/contract.py
@@ -107,8 +107,9 @@ permission or cooperation.
 |-----------|----------|
 | `configure` by a non-creator, or twice | Fails with "Only the creator can configure" / "Already configured" |
 | `configure` with a threshold below the minimum | Fails with "Threshold below minimum" |
+| `configure` with the zero address as reporter | Fails with "Reporter cannot be the zero address". Nobody can sign as the zero address, so such a feed could only ever be flagged stale and never recover, and `configure` runs once so there is no undo. |
 | `update` by anyone but the reporter | Fails with "Only the reporter can update" |
-| `update` before configuration | Fails with "Not configured" |
+| `update` before configuration | Fails with "Not configured". `update` checks the threshold before the sender deliberately: `reporter` is the zero address until `configure` runs and no real sender equals it, so checking the sender first would answer "Only the reporter can update" to somebody whose actual problem is that nobody is the reporter yet. |
 | `check_freshness` in any state | Never fails; returns `0` when there is nothing to do |
 
 ## Known limitation: the flag is only as fresh as the last sweep
@@ -139,3 +140,4 @@ off-chain monitor can alert on.
 | Date | Author | Change |
 |------|--------|--------|
 | 2026-08-24 | CorvidLabs | Initial staleness watchdog (issue #21). Auto-clearing flag with recorded episodes, chosen over one-way flagging because one-way needs an authority to clear it. |
+| 2026-08-26 | SpecSync | make-watchdog-s-not-configured-error-reachable-and-reject-a-zero-address-reporter: Make watchdog's Not configured error reachable and reject a zero-address reporter |

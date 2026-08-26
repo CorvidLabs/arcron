@@ -66,6 +66,8 @@ def _register(
     call_args: list[bytes] | None = None,
     fee_asset: int = 0,
     asset_fee: int = 0,
+    mbr_payment_fields: dict | None = None,
+    funding_payment_fields: dict | None = None,
 ) -> int:
     app_address = context.ledger.get_app(keeper).address
     if call_args is None:
@@ -74,8 +76,12 @@ def _register(
         mbr = BOX_MBR_FIXED + 400 * len(_encode_args(call_args))
     if funding is None:
         funding = fee * 5
-    mbr_payment = context.any.txn.payment(receiver=app_address, amount=mbr)
-    funding_payment = context.any.txn.payment(receiver=app_address, amount=funding)
+    mbr_payment = context.any.txn.payment(
+        receiver=app_address, amount=mbr, **(mbr_payment_fields or {})
+    )
+    funding_payment = context.any.txn.payment(
+        receiver=app_address, amount=funding, **(funding_payment_fields or {})
+    )
     return keeper.register(
         mbr_payment,
         funding_payment,
@@ -877,6 +883,126 @@ def test_opt_in_asset_must_name_an_upkeep_that_uses_it(
     assert keeper.opt_in_asset(mbr, upkeep_id, asset) == 100_000
 
 
+# --- rekey and close: a poisoned front end must not reach escrow -------
+#
+# Nothing here protects the contract; a rekey or a close only ever harms the
+# sender who signed it. What it protects is a user of a malicious front end
+# that slips either into a group otherwise built to look like an ordinary
+# register or top-up.
+
+
+def test_register_rejects_a_rekeyed_mbr_payment(
+    context: AlgopyTestContext, keeper: Keeper, pulse: Pulse
+) -> None:
+    with pytest.raises(AssertionError, match="MBR payment must not rekey"):
+        _register(
+            context, keeper, pulse, _selector("tick()uint64"),
+            mbr_payment_fields={"rekey_to": context.any.account()},
+        )
+
+
+def test_register_rejects_a_closing_mbr_payment(
+    context: AlgopyTestContext, keeper: Keeper, pulse: Pulse
+) -> None:
+    with pytest.raises(AssertionError, match="MBR payment must not close"):
+        _register(
+            context, keeper, pulse, _selector("tick()uint64"),
+            mbr_payment_fields={"close_remainder_to": context.any.account()},
+        )
+
+
+def test_register_rejects_a_rekeyed_funding_payment(
+    context: AlgopyTestContext, keeper: Keeper, pulse: Pulse
+) -> None:
+    with pytest.raises(AssertionError, match="Funding must not rekey"):
+        _register(
+            context, keeper, pulse, _selector("tick()uint64"),
+            funding_payment_fields={"rekey_to": context.any.account()},
+        )
+
+
+def test_register_rejects_a_closing_funding_payment(
+    context: AlgopyTestContext, keeper: Keeper, pulse: Pulse
+) -> None:
+    with pytest.raises(AssertionError, match="Funding must not close"):
+        _register(
+            context, keeper, pulse, _selector("tick()uint64"),
+            funding_payment_fields={"close_remainder_to": context.any.account()},
+        )
+
+
+def test_top_up_rejects_a_rekeyed_payment(
+    context: AlgopyTestContext, keeper: Keeper, pulse: Pulse
+) -> None:
+    upkeep_id = _register(context, keeper, pulse, _selector("tick()uint64"))
+    app_address = context.ledger.get_app(keeper).address
+    payment = context.any.txn.payment(
+        receiver=app_address, amount=5_000, rekey_to=context.any.account()
+    )
+    with pytest.raises(AssertionError, match="Funding must not rekey"):
+        keeper.top_up(upkeep_id, payment)
+
+
+def test_top_up_rejects_a_closing_payment(
+    context: AlgopyTestContext, keeper: Keeper, pulse: Pulse
+) -> None:
+    upkeep_id = _register(context, keeper, pulse, _selector("tick()uint64"))
+    app_address = context.ledger.get_app(keeper).address
+    payment = context.any.txn.payment(
+        receiver=app_address, amount=5_000, close_remainder_to=context.any.account()
+    )
+    with pytest.raises(AssertionError, match="Funding must not close"):
+        keeper.top_up(upkeep_id, payment)
+
+
+def test_opt_in_asset_rejects_a_rekeyed_or_closing_payment(
+    context: AlgopyTestContext, keeper: Keeper, pulse: Pulse
+) -> None:
+    asset = context.any.asset()
+    upkeep_id = _register(
+        context, keeper, pulse, b"\x01", fee_asset=int(asset.id), asset_fee=500
+    )
+    app_address = context.ledger.get_app(keeper).address
+    rekeyed = context.any.txn.payment(
+        receiver=app_address, amount=100_000, rekey_to=context.any.account()
+    )
+    with pytest.raises(AssertionError, match="MBR payment must not rekey"):
+        keeper.opt_in_asset(rekeyed, upkeep_id, asset)
+
+    closing = context.any.txn.payment(
+        receiver=app_address, amount=100_000, close_remainder_to=context.any.account()
+    )
+    with pytest.raises(AssertionError, match="MBR payment must not close"):
+        keeper.opt_in_asset(closing, upkeep_id, asset)
+
+
+def test_top_up_asset_rejects_a_rekeyed_or_closing_transfer(
+    context: AlgopyTestContext, keeper: Keeper, pulse: Pulse
+) -> None:
+    asset = context.any.asset()
+    upkeep_id = _register(
+        context, keeper, pulse, b"\x01", fee_asset=int(asset.id), asset_fee=500
+    )
+    app_address = context.ledger.get_app(keeper).address
+    rekeyed = context.any.txn.asset_transfer(
+        asset_receiver=app_address,
+        xfer_asset=asset,
+        asset_amount=1_000,
+        rekey_to=context.any.account(),
+    )
+    with pytest.raises(AssertionError, match="Asset funding must not rekey"):
+        keeper.top_up_asset(upkeep_id, rekeyed)
+
+    closing = context.any.txn.asset_transfer(
+        asset_receiver=app_address,
+        xfer_asset=asset,
+        asset_amount=1_000,
+        asset_close_to=context.any.account(),
+    )
+    with pytest.raises(AssertionError, match="Asset funding must not close"):
+        keeper.top_up_asset(upkeep_id, closing)
+
+
 # --- governance: upgradeable until frozen ------------------------------
 
 
@@ -956,6 +1082,39 @@ def test_cancel_returns_algo_even_when_the_bonus_cannot_be_paid(
 
     refund = int(keeper.cancel(upkeep_id))
     assert refund > 0, "the ALGO came back regardless of the asset"
+
+
+def test_cancel_forfeits_a_funded_bonus_rather_than_holding_the_algo_hostage(
+    context: AlgopyTestContext, keeper: Keeper, pulse: Pulse
+) -> None:
+    """A creator who never opted in still gets every microalgo back.
+
+    This is the path the spec once described as a hard failure, and the one
+    the code deliberately moved away from: reading a balance or a freeze flag
+    for an account that never opted in fails rather than answering, so a
+    creator who cannot receive the asset would have had their ALGO refund
+    fail with the bonus transfer and lose escrow and box minimum balance both.
+    Forfeiting the bonus is the lesser loss, and it is silent, so the ordering
+    of the opt-in check ahead of any balance read is what makes it work.
+    """
+    asset = context.any.asset()
+    upkeep_id = _register(
+        context, keeper, pulse, _selector("tick()uint64"),
+        fee_asset=int(asset.id), asset_fee=500,
+    )
+    app_address = context.ledger.get_app(keeper).address
+    keeper.top_up_asset(
+        upkeep_id,
+        context.any.txn.asset_transfer(
+            asset_receiver=app_address, xfer_asset=asset, asset_amount=5_000
+        ),
+    )
+    upkeep = _read_upkeep(context, keeper, int(upkeep_id))
+    assert upkeep.asset_balance == 5_000, "the bonus is genuinely funded"
+
+    # The creator never opted in, so the asset cannot be sent to them.
+    refund = int(keeper.cancel(upkeep_id))
+    assert refund > 0, "the escrow and box MBR came back in full"
 
 
 def test_an_execution_is_not_blocked_by_a_bonus_the_app_cannot_send(

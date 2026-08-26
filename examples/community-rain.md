@@ -69,6 +69,33 @@ A draw only its creator can fund stops the day they lose interest, and a
 schedule that depends on one person is the thing this is supposed to replace.
 In the demo, a passer-by pays for the opt-in **and** fills the pot.
 
+## Trusting a rain deployment means trusting its beacon
+
+`configure` takes a `beacon_app` and checks only that it is not zero. It runs
+once, and rain has no update path, so whatever is set there decides every draw
+this instance will ever run.
+
+A deployer who points it at a contract they control picks every winner and
+takes every pot, and nothing about the draw would look wrong from the outside.
+A mistyped id is the other failure: resolution can never complete, and a pot
+that has already been deposited has no exit except a winner's claim that will
+never happen.
+
+**So check it before you enter a draw somebody else deployed.** The beacon id
+is in the app's global state:
+
+```sh
+poetry run python -m scripts.rain_demo --network testnet --show <app id>
+```
+
+Compare it against the Algorand Foundation's randomness beacon for that
+network. If a draw's organiser cannot tell you which beacon it uses, that is
+the answer.
+
+This is not a flaw in the contract so much as a property of deploying one per
+community: the fairness of the draw rests on one value that only the deployer
+chose. Say which beacon yours uses, where people running it will see it.
+
 ## The one asymmetry worth knowing
 
 An ALGO pot pays for its own bookkeeping. Each draw reserves one allocation
@@ -88,6 +115,27 @@ comparing 5,000 tokens against 18,900 microAlgos and quietly declining to draw.
 
 No per-holder entry limit. Buying two tickets doubles your odds and costs two
 box minimum balances, which is the honest version of "one entry per person" on
-a chain where making another account is free. Gating on a collection narrows
-that to "one entry per NFT you hold", which is usually what a project wants
-anyway.
+a chain where making another account is free.
+
+Gating on a collection narrows that, but not to "one entry per NFT you hold",
+which is what this said before and what the contract never enforced. A ticket
+is a box that never expires, and the gate is only asked when the ticket is
+bought, so **one NFT walked through ten accounts buys ten permanent tickets**.
+
+The gate is asked a second time at `claim`: the winner has to still hold a
+token from the collection. Be clear about what that does and does not buy.
+
+It does **not** stop the walk. Whoever walked the NFT through ten accounts
+holds all ten and the NFT, so when one of those tickets wins they move the
+NFT into that account and collect. The walk costs them one extra transfer.
+
+What it closes is the account that no longer holds a collection token at all:
+a ticket sold on, given away, or left behind by someone who has left the
+community. Closing the walk itself needs one ticket per asset id, which is new
+box semantics and so a new app id, since rain has no update path. That is a
+decision taken deliberately, not an oversight.
+
+The rule that follows is worth stating to your community up front, because it
+is a real one: **you must still hold a token from the collection when you
+collect.** Someone who wins and then sells before claiming forfeits, and the
+contract cannot tell that from someone who sold to dodge the gate.

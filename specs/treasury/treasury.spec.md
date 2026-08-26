@@ -34,6 +34,7 @@ execution and stall the schedule for everyone else.
 | `TOTAL_SHARE_BPS` | `10_000` | Shares are basis points and must total exactly this. |
 | `MAX_RECIPIENTS` | `8` | `distribute` walks every recipient on every scheduled call, and that call must never fail; the bound keeps it cheap. |
 | `RECIPIENTS_KEY` | `b"recipients"` | Box holding the recipient list. |
+| `BOX_MBR_FIXED` | `2_500 + 400 * 10` (`6_500`) | Box minimum balance less the recipient list. A box costs `BOX_MBR_FIXED + 400 * len(encoded recipients)` µALGO: 2,500 per box plus 400 per byte of the 10-byte `RECIPIENTS_KEY` and the ARC-4 encoded value, which carries its own length prefix. |
 
 ### Exported Types
 
@@ -64,6 +65,19 @@ execution and stall the schedule for everyone else.
 7. Funds leave only to a recipient claiming their own allocation.
 8. Deposits arriving after a snapshot belong to the next distribution.
 9. An unclaimed allocation never blocks a later distribution.
+10. `configure`'s MBR payment must cover what the recipient box actually
+    costs, checked the same way every sibling contract checks its own box
+    MBR. An underfunded payment fails at `configure` rather than reaching the
+    box write with a confusing revert.
+11. `deposit` requires `configured`. Before `configure` runs there is no
+    recipient to credit and no withdraw path, so an uncredited deposit would
+    strand into a pooled `balance` nobody could ever pull back out if
+    `configure` were never called at all.
+12. `configure`'s MBR payment and `deposit`'s payment are both checked for
+    `rekey_to` and `close_remainder_to`, which must be the zero address.
+    Neither harms the contract, since a rekey or a close only ever harms the
+    sender; this protects a depositor whose front end slipped either into
+    the group they signed.
 
 ## Why the recipient set is immutable
 
@@ -102,6 +116,10 @@ stays intact and auditable.
 | Shares not totalling 10,000 | Fails with "Shares must total 10,000 basis points" |
 | A zero share, or a non-zero starting `owed` | Fails with "A share must be positive" / "Owed must start at zero" |
 | More than `MAX_RECIPIENTS`, or none | Fails with "Recipient count out of bounds" |
+| `configure`'s MBR payment below the box's cost | Fails with "MBR payment too small" |
+| `configure`'s or `deposit`'s payment carries a rekey | Fails with "... must not rekey" |
+| `configure`'s or `deposit`'s payment carries a close-remainder-to | Fails with "... must not close" |
+| `deposit` before `configure` | Fails with "Not configured" |
 | `deposit` of zero, or to another receiver | Fails with "Amount must be positive" / "must go to the app account" |
 | `claim` by a non-recipient | Fails with "Not a recipient" |
 | `claim` with nothing owed | Fails with "Nothing owed to you" |
@@ -142,4 +160,5 @@ on.
 
 | Date | Author | Change |
 |------|--------|--------|
+| 2026-08-25 | CorvidLabs | #96: `configure` now checks its MBR payment's amount, matching every sibling contract, and `deposit` now requires `configured`, closing the path where deposits could land before `configure` is ever called and strand permanently. `BOX_MBR_FIXED` exported. #102 in the same pass: `configure` and `deposit` assert `rekey_to` and `close_remainder_to` are the zero address on their payments. Neither is a struct change. |
 | 2026-08-24 | CorvidLabs | Initial accumulate-and-distribute treasury (issue #28). Buy step deferred: reachable in principle per the #24 spike, blocked in practice on reference discovery (#8). |

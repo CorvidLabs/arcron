@@ -67,6 +67,10 @@ someone to act, which is precisely what a keeper network cannot do for you.
 5. A release round must be in the future at scheduling time.
 6. The MBR collected at scheduling is exactly what the content box costs the app account.
 7. Content is public from the moment it is scheduled; the contract makes no secrecy claim.
+8. `schedule`'s MBR payment is checked for `rekey_to` and `close_remainder_to`,
+   both of which must be the zero address. Neither harms the contract, since
+   a rekey or a close only ever harms the sender; this protects an author
+   whose front end slipped either into the group they signed.
 
 ## Behavioral Examples
 
@@ -97,6 +101,8 @@ someone to act, which is precisely what a keeper network cannot do for you.
 | Empty or over-2048-byte content | Fails with "Content size out of bounds" |
 | MBR payment below the box's cost | Fails with "MBR payment too small" |
 | MBR payment to any other receiver | Fails with "MBR payment must fund the app account" |
+| MBR payment carries a rekey | Fails with "MBR payment must not rekey" |
+| MBR payment carries a close-remainder-to | Fails with "MBR payment must not close" |
 | `publish` before the release round | Fails with "Embargo has not lifted" |
 | `publish` twice | Fails with "Already published" |
 | `publish` with nothing scheduled | Fails with "Nothing scheduled" |
@@ -125,4 +131,5 @@ app. Match on the failing app id when asserting against it.
 
 | Date | Author | Change |
 |------|--------|--------|
+| 2026-08-25 | CorvidLabs | #102: `schedule` now asserts `rekey_to` and `close_remainder_to` are the zero address on its MBR payment. Not a struct change; a mechanical hygiene sweep across every contract that accepts a gtxn. |
 | 2026-08-24 | CorvidLabs | Initial timed-release demo (issue #18): schedule-once, permissionless publish, no author lever. |
