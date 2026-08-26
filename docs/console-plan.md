@@ -193,8 +193,14 @@ routes and not five, in the AC files' favour.
 
 0. Fix `keeper_bot.py`'s reference cap, and pin the boundary on LocalNet.
    Nothing above it in this list is honest until the bot matches the protocol.
-1. ~~Default to TestNet.~~ Done; `js/src/networks.ts` now mirrors
-   `scripts/network.py`.
+1. ~~Default to TestNet.~~ Done 2026-08-26, and **this line claimed it was
+   done before it was**. `js/src/networks.ts` still read `'localnet'` when it
+   was written. Nothing pinned the value, so the document and the code
+   disagreed silently until an agent building the hosted bundle found it
+   rewriting its own address to `?network=localnet&app=none`: a published page
+   would have opened every stranger against `http://localhost:4001`, which
+   HTTPS blocks as mixed content. `js/test/networks.test.ts` now pins it, so
+   the claim is falsifiable rather than merely written down.
 2. Router and a page per upkeep. Registering ends there. Three routes: `/`,
    `/u/:id`, `/register`.
 3. Quarantine non-canonical app ids, and stop persisting them. Before publish,

@@ -188,3 +188,10 @@ debug_traces/
 
 # spec-sync hash cache (regenerated locally)
 .specsync/hashes.json
+
+# Angular build cache. Regenerated on every build; 150k lines if committed.
+.angular/
+
+# Agent worktrees. Real git checkouts, which `git add -A` records as embedded
+# repositories: a clone gets an empty directory and no way to fill it.
+.claude/worktrees/

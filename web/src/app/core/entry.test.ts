@@ -7,7 +7,7 @@
 
 import { describe, expect, test } from 'bun:test';
 
-import { NETWORKS } from '@corvidlabs/arcron/networks';
+import { DEFAULT_NETWORK, NETWORKS } from '@corvidlabs/arcron/networks';
 
 import { entryFrom, entryLink, rememberedAppId } from './entry';
 
@@ -33,8 +33,15 @@ describe('opening from a link', () => {
     });
 
     test('with neither, it opens on the default network and its canonical app', () => {
+        // Named the canonical app in its title and asserted only the network,
+        // and asserted the wrong one: 'localnet' agreed with the code rather
+        // than with the intent, so it held the bug in place instead of
+        // catching it. A stranger opening a published console would have been
+        // pointed at http://localhost:4001.
         const entry = entryFrom('', null, nothingStored);
-        expect(entry.network).toBe('localnet');
+        expect(entry.network).toBe(DEFAULT_NETWORK);
+        expect(entry.network).toBe('testnet');
+        expect(entry.appId).toBe(NETWORKS.testnet.defaultAppId);
     });
 
     test('a linked app inherits the network the link opens on', () => {

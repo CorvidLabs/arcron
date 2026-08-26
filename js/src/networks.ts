@@ -61,7 +61,12 @@ export const NETWORKS: Readonly<Record<NetworkKey, NetworkConfig>> = {
   },
 };
 
-export const DEFAULT_NETWORK: NetworkKey = 'localnet';
+// TestNet, matching `scripts/network.py::default_network`. This was 'localnet'
+// until 2026-08-26, and nothing pinned it, so docs/console-plan.md could
+// record "default to TestNet" as done while the published bundle rewrote its
+// own address to ?network=localnet and pointed every stranger at
+// http://localhost:4001, which HTTPS blocks as mixed content.
+export const DEFAULT_NETWORK: NetworkKey = 'testnet';
 
 export function isNetworkKey(value: string | null): value is NetworkKey {
   return value === 'localnet' || value === 'testnet';
