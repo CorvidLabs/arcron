@@ -82,8 +82,8 @@ trusting anyone:
 ```
 app 769891898
   creator   E5M2OH5XNDMNABJ6VOFOUVR2IKRPCGQH43PVC5P3DWQQ2LV2VJV2FJZQ3E
-  approval   2104 bytes
-  combined  sha256 0afab3686aedeb990a46ad519a4bf0bf6a04394672ec3dd24990761be660bf49
+  approval   2219 bytes
+  combined  sha256 c94c6e0cc561c028eeb3ccdd8c462c509ee106a28ba2e1d61469adbb62ffe124
   frozen    0: the creator can still replace the programs
             Anyone escrowing here is trusting that they will not.
 ```
@@ -164,8 +164,8 @@ decodes it:
 
 ```
 on complete   UpdateApplication
-REPLACES THE PROGRAMS with 2104 + 4 bytes
-  combined sha256 0afab3686aedeb990a46ad519a4bf0bf6a04394672ec3dd24990761be660bf49
+REPLACES THE PROGRAMS with 2219 + 4 bytes
+  combined sha256 c94c6e0cc561c028eeb3ccdd8c462c509ee106a28ba2e1d61469adbb62ffe124
   approval sha256 433a0418cf37e97376258a79277f05636400fa153c1fa3a0b86aba049071896a
   clear    sha256 ed90f0d2da1f1d1abd773c45230651a292a90edbc12a7bf859a493a12a640ce7
   Compare the combined digest against `poetry run python -m scripts.verify_build`

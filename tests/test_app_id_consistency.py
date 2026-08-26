@@ -108,7 +108,11 @@ def test_superseded_apps_appear_only_where_history_is_recorded() -> None:
             relative in HISTORICAL
             or relative.startswith(HISTORICAL_PREFIXES)
             or "node_modules" in relative
-            or relative.startswith(".")
+            # `.github/` was hidden by a blanket dot-prefix skip. Issue
+            # templates and workflows point humans and machines at deployments
+            # as effectively as source does, and `bug_report.yml` was naming a
+            # superseded app while this test reported everything clean.
+            or (relative.startswith(".") and not relative.startswith(".github/"))
         ):
             continue
         if relative.endswith(".example") or "/workflows/" in relative:

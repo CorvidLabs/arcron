@@ -12,7 +12,7 @@ The job matters; whoever runs it does not, and nobody owns it.*
 |----------|-----------|--------|
 | [`smart_contracts/keeper`](smart_contracts/keeper/contract.py) | The Arcron network: upkeep scheduling with ALGO escrow and keeper rewards | **Live on TestNet**, app [`769891898`](https://testnet.explorer.perawallet.app/application/769891898) |
 | [`smart_contracts/pulse`](smart_contracts/pulse/contract.py) | Demo upkeep target: a heartbeat counter, with and without arguments | Live on TestNet, app [`769891902`](https://testnet.explorer.perawallet.app/application/769891902) |
-| [`web`](web/) | The console: registry dashboard + keeper controls | [`corvidlabs.xyz/arcron/console/`](https://corvidlabs.xyz/arcron/console/), first publish pending |
+| [`web`](web/) | The console: registry dashboard + keeper controls | Live at [`corvidlabs.xyz/arcron/console/`](https://corvidlabs.xyz/arcron/console/) |
 
 > [!WARNING]
 > **Unaudited, and TestNet only.** No third party has reviewed this contract.
@@ -149,7 +149,7 @@ you). This surprises everyone once.
 ```bash
 poetry install
 
-fledge lanes run ci         # contracts + console: build, 15 + 45 tests, spec check
+fledge lanes run ci         # contracts + console: build, tests, spec check
 fledge lanes run local      # ci + the LocalNet end-to-end test
 fledge lanes run endurance  # local + a soak: many consecutive executions, no drift
 ```

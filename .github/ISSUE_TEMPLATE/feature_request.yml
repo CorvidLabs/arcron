@@ -20,8 +20,10 @@ body:
     attributes:
       label: Does this change the contract?
       description: >
-        Changes to the keeper contract cannot be deployed to an existing app — it has
-        no update path — so they mean a new deployment and a migration.
+        A deployment is upgradeable until its creator calls `freeze`. While it is
+        unfrozen, a change that leaves the `Upkeep` struct and the ABI alone can be
+        deployed in place and every box survives. A change to the struct or the
+        surface means a new app id and a migration either way.
       options:
         - "No — scripts, console or docs only"
         - "Yes — the keeper contract's behaviour or surface"

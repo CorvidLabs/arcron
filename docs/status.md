@@ -23,10 +23,10 @@ already knew how it worked.
 |---|---|
 | Keeper | TestNet app [`769891898`](https://testnet.explorer.perawallet.app/application/769891898) |
 | Demo target | Pulse [`769891902`](https://testnet.explorer.perawallet.app/application/769891902) |
-| Programs | 2,104 bytes across two pages, sha256 `0afab368…` |
+| Programs | 2,219 bytes across two pages, sha256 `c94c6e0c…` (alpha-3) |
 | Governance | **not frozen**: the creator can still replace the programs |
-| Registry | five upkeeps, one firing about every 70 seconds |
-| Console | [corvidlabs.xyz/arcron/console/](https://corvidlabs.xyz/arcron/console/), first publish pending |
+| Registry | ten upkeeps, the fastest firing about every ten minutes |
+| Console | [corvidlabs.xyz/arcron/console/](https://corvidlabs.xyz/arcron/console/), **live, and running a build older than this tree** |
 
 `poetry run python -m scripts.verify_build --network testnet --app-id 769891898`
 proves the deployed programs are this source, byte for byte. Anyone can run it.

@@ -346,7 +346,18 @@ secret in the project, not as a funding account.
 
 ## If a bug is found
 
-There is no upgrade path, so the playbook is short:
+A deployment is upgradeable until its creator calls `freeze`, so the first
+question is which kind it is. `govern status` answers it, and the console shows
+it on every page.
+
+**While it is unfrozen**, a bug that does not change the `Upkeep` struct or the
+ABI can be fixed in place with `govern update`, and every box survives. alpha-3
+did exactly that on 2026-08-26. A change to the struct or the surface is still a
+new app id and a migration, because an update replaces code and not the shape of
+boxes that already exist.
+
+**Once it is frozen**, or for any struct change, there is no upgrade path and
+the playbook below is all there is:
 
 1. **Say so publicly and immediately.** An unfixable bug that nobody knows
    about is worse than one everybody knows about.
@@ -362,7 +373,14 @@ consequence of having no owner. That trade is the point.
 
 ## Reporting
 
-Open an issue on [CorvidLabs/arcron](https://github.com/CorvidLabs/arcron/issues)
-for anything that is already public. For anything that is not, and while there
-is no published contact, do not open an issue. The repository is private and
-the deployment holds test funds only.
+Private reports go to a **[draft security advisory](https://github.com/CorvidLabs/arcron/security/advisories/new)**,
+not to a public issue. [`SECURITY.md`](../SECURITY.md) is the authoritative
+policy and carries the response times we hold ourselves to.
+
+Anything already public can be a normal issue on
+[CorvidLabs/arcron](https://github.com/CorvidLabs/arcron/issues).
+
+This section previously said not to report at all, on the grounds that the
+repository was private and the deployment held only test funds. Both halves
+stopped being reasons the moment either changed, and a security policy that
+tells a reporter to stay quiet is worse than none.
