@@ -338,3 +338,28 @@ is one option on the dev-server target, not the build target:
 
 Excluded from prebundling, the workspace package is compiled as source like the
 rest of the app. `ng build` never needed this, which is why CI never saw it.
+
+### alpha-3, and what the update proved (2026-08-26)
+
+`verify_build` was red against the live app and nobody had run it since the
+deploy. Two commits carrying the payer-binding asserts, `f980321` and
+`1499963`, landed after alpha-2 went up and were never deployed, so the
+deployment everyone was pointed at was missing the fix for the theft path Fable
+proved.
+
+alpha-3 corrects it as an **update in place**. The `Upkeep` struct and the ABI
+are unchanged, 33 added lines and no deletions, so the boxes survived: five
+upkeeps, escrows intact, solvent, no creator asked to cancel and re-register.
+`verify_build` is green and the TestNet e2e passes against the new bytecode,
+including the cross-upkeep isolation stage.
+
+That is the first exercise of the governance update path on a real chain, and
+it is the argument for staying unfrozen made concretely rather than in prose:
+the same change against a frozen app would have been a new app id and a
+migration for every creator.
+
+It is also a lesson about the evidence, not the contract. Nothing in
+`contract.py` was wrong. What was wrong was that the tree and the chain had
+drifted apart for a day and the one command that checks it was not run by
+anything. `verify_build` belongs in a scheduled job against the live app, not
+in a human's memory.

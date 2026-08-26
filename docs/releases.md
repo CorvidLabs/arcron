@@ -141,6 +141,7 @@ is rather than how it compares to another.
 |---|---|---|---|---|---|
 | alpha-1 | 2026-08-24 | `0e4de44` | `bb466d63…` | TestNet [`769823086`](https://testnet.explorer.perawallet.app/application/769823086) | First 1.0 deployment; 20-stage e2e green on chain |
 | alpha-2 | 2026-08-25 | `10ecd54` | `0afab368…` | TestNet [`769891898`](https://testnet.explorer.perawallet.app/application/769891898) | First deployment with governance: upgradeable until frozen, two program pages, and every fix from five review rounds. Pulse target [`769891902`](https://testnet.explorer.perawallet.app/application/769891902). |
+| alpha-3 | 2026-08-26 | `13d38bb` | `c94c6e0c…` | TestNet [`769891898`](https://testnet.explorer.perawallet.app/application/769891898) | **An update in place, not a new app id.** The `Upkeep` struct and the ABI are unchanged, so the boxes and all five upkeeps survived and no creator had to cancel and re-register. Carries the payer binding at all four payment sites, which alpha-2 was deployed without: `f980321` and `1499963` landed after alpha-2 went up and were never deployed, so `verify_build` had been red against the live app. It is green now. First exercise of the governance update path on a real chain. |
 
 ## Going back
 
