@@ -516,22 +516,28 @@ Build order items 0 through 5 have landed. Three things remain, and none of them
 can be finished from inside this repository.
 
 **The nginx fallback, and it is now load-bearing.** `web-build-hosted` copies
-`index.html` to `404.html`, which is the convention static hosts like GitHub
-Pages honour. **nginx does not.** Verified: serving the built bundle with a
-plain static server, `/arcron/console/u/19` returns 404 with the `404.html`
-sitting right there unused; serving it with `try_files` behaviour, the same URL
-returns the upkeep page with its query string intact. So `CorvidLabs/site`
-needs this in `deploy/vps/nginx.conf` before any `/u/:id` link is shared:
+`index.html` to `404.html`. nginx does not use that by default, and an earlier
+version of this section concluded from that it would not work here and proposed
+a bespoke `try_files` chain. That was wrong about this site. `CorvidLabs/site`
+already wires the fallback explicitly for every subpath application it hosts,
+and the console should follow that convention rather than invent one:
 
 ```nginx
 location ^~ /arcron/console/ {
-    try_files $uri $uri/index.html /arcron/console/index.html;
+    try_files $uri $uri/index.html $uri/ =404;
+    error_page 404 = /arcron/console/404.html;
 }
 ```
 
-Without it every deep link works when clicked inside the console and breaks on
-reload or when pasted, which is the worst version: it fails only for the person
-you sent it to.
+`error_page 404 = /uri` with the equals sign returns the status of the
+substituted page, so a deep link gets 200 and the console's router takes it from
+there. Verified against the built bundle: `/arcron/console/`, `/u/19`,
+`/u/71` and `/register` all return 200 under this rule and 404 without it.
+
+That block belongs in `deploy/vps/nginx.conf` in `CorvidLabs/site`, next to the
+`/arcsite/examples/*` blocks it copies. Without it, every deep link works when
+clicked inside the console and breaks when pasted or reloaded, which fails only
+for the person you sent it to.
 
 **The push itself.** `fledge run site-console -- --site ../../site` stages the
 bundle and prints the git commands. Nothing has been pushed. The repository is
