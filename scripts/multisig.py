@@ -125,7 +125,7 @@ def export_unsigned(txn: transaction.Transaction, path: pathlib.Path) -> pathlib
     path.write_text(
         json.dumps(
             {
-                "note": "Arcron multisig transaction. Sign with scripts.multisig sign.",
+                "note": "Arcron multisig transaction. Read it with `govern show --file <this>` and sign with `govern sign --file <this>`.",
                 "threshold": threshold(),
                 "signers": signers(),
                 "address": address(),

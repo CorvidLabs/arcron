@@ -26,6 +26,7 @@ from scripts.keeper_e2e import _box_mbr, _read_upkeep, _selector
 from smart_contracts.artifacts.keeper.keeper_client import CancelArgs, RegisterArgs
 from smart_contracts.artifacts.resource_probe.resource_probe_client import (
     ConfigureReentryArgs,
+    ResourceProbeFactory,
 )
 from smart_contracts.keeper.deploy_config import deploy as deploy_keeper
 from smart_contracts.resource_probe.deploy_config import deploy as deploy_probe
@@ -108,7 +109,14 @@ def main(argv: list[str] | None = None) -> None:
     algorand = net.connect(args.network)
     deployer = algorand.account.from_environment("DEPLOYER")
     keeper_client = deploy_keeper()
-    probe = deploy_probe()
+    # A fresh probe per run, bare-created rather than deployed by config.
+    # `reenter` counts its own invocations and returns early once `probes_run`
+    # exceeds one, so a reused probe never attempts the reentry this spike
+    # exists to measure: the run goes green having tested nothing. The deadman
+    # demo already creates a fresh instance per run for the same reason.
+    probe = algorand.client.get_typed_app_factory(
+        ResourceProbeFactory, default_sender=deployer.address
+    ).send.create.bare()[0]
     app_id = keeper_client.app_id
 
     # Every variant here is a target trying to call `execute` back while the
@@ -148,13 +156,21 @@ def main(argv: list[str] | None = None) -> None:
                 f"{label:<40} accepted — escrow -{drained} µALGO, "
                 f"executions +{executed} , target received {to_probe} µALGO"
             )
-            # An accepted call is not itself a failure: a re-entering target
-            # whose inner call is refused still completes its own execution
-            # normally. What must never happen is a second execution, or an
-            # escrow drain larger than the one fee that execution earns.
+            # An accepted call means no reentry was attempted at all: a
+            # refused inner call fails the whole transaction, so a target that
+            # tries and is refused shows up in the branch above, not here. An
+            # earlier version of this comment said otherwise and the assertion
+            # under it was written to match, which was wrong twice over.
+            #
+            # What must never happen either way is a second execution from one
+            # call, or an escrow drain larger than the fees those executions
+            # earn. Not compared against `fee_cap`: `_register` sets it to 0,
+            # and 0 means escalation disabled, so `drained > fee_cap` is
+            # `drained > 0` and any healthy execution trips it. That assertion
+            # passed only because every variant was rejected.
             if executed > 1:
                 escapes.append(f"{label}: {executed} executions from one call")
-            if drained > upkeep.fee_cap or drained > FEE * executed:
+            if drained > FEE * executed:
                 escapes.append(f"{label}: escrow fell {drained} µALGO for {executed} execution(s)")
         keeper_client.send.cancel(
             args=CancelArgs(upkeep_id=upkeep_id),

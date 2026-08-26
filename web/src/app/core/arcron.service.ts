@@ -215,7 +215,7 @@ export class ArcronService {
         this.nextUpkeepId.set(null);
         this.frozen.set(null);
       } else {
-        await this.refreshApp(algod, appId);
+        await this.refreshApp(algod, appId, current);
       }
       if (!current()) return;
       this.status.set('ready');
@@ -228,17 +228,23 @@ export class ArcronService {
     }
   }
 
-  private async refreshApp(algod: algosdk.Algodv2, appId: number): Promise<void> {
+  private async refreshApp(
+    algod: algosdk.Algodv2,
+    appId: number,
+    current: () => boolean,
+  ): Promise<void> {
     const application = await algod.getApplicationByID(appId).do();
     const counter = application.params?.globalState?.find(
       (entry) => new TextDecoder().decode(entry.key) === 'next_upkeep_id',
     );
+    if (!current()) return;
     this.nextUpkeepId.set(counter ? BigInt(counter.value.uint ?? 0) : null);
 
     this.frozen.set(isFrozen(application.params?.globalState ?? []));
 
     const address = algosdk.getApplicationAddress(appId);
     const account = await algod.accountInformation(address).do();
+    if (!current()) return;
     this.appAccount.set({
       address: address.toString(),
       amount: account.amount,
@@ -246,10 +252,16 @@ export class ArcronService {
       spendable: account.amount - account.minBalance,
     });
 
-    this.upkeeps.set(await this.readUpkeeps(algod, appId));
+    const upkeeps = await this.readUpkeeps(algod, appId, current);
+    if (!current()) return;
+    this.upkeeps.set(upkeeps);
   }
 
-  private async readUpkeeps(algod: algosdk.Algodv2, appId: number): Promise<Upkeep[]> {
+  private async readUpkeeps(
+    algod: algosdk.Algodv2,
+    appId: number,
+    current: () => boolean,
+  ): Promise<Upkeep[]> {
     const { boxes } = await algod.getApplicationBoxes(appId).do();
     let undecodable = 0;
     const upkeeps = await Promise.all(
@@ -271,7 +283,7 @@ export class ArcronService {
         }
       }),
     );
-    this.undecodableBoxes.set(undecodable);
+    if (current()) this.undecodableBoxes.set(undecodable);
     return upkeeps
       .filter((upkeep): upkeep is Upkeep => upkeep !== null)
       .sort((left, right) => (left.id < right.id ? -1 : 1));
@@ -291,6 +303,7 @@ export class ArcronService {
     this.appAccount.set(null);
     this.nextUpkeepId.set(null);
     this.frozen.set(null);
+    this.undecodableBoxes.set(0);
     this.genesisId.set(null);
     this.rateSamples.set([]);
   }
