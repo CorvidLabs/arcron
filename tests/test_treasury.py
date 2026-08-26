@@ -12,6 +12,7 @@ from algopy import UInt64, arc4
 from algopy_testing import AlgopyTestContext, algopy_testing_context
 
 from smart_contracts.treasury.contract import (
+    BOX_MBR_FIXED,
     MAX_RECIPIENTS,
     TOTAL_SHARE_BPS,
     Recipient,
@@ -32,7 +33,14 @@ def parties(context: AlgopyTestContext):
     return [context.any.account() for _ in range(3)]
 
 
-def _configure(context: AlgopyTestContext, treasury: Treasury, splits) -> int:
+def _configure(
+    context: AlgopyTestContext,
+    treasury: Treasury,
+    splits,
+    *,
+    amount: int = MBR,
+    payment_fields: dict | None = None,
+) -> int:
     recipients = arc4.DynamicArray[Recipient](
         *[
             Recipient(
@@ -42,7 +50,9 @@ def _configure(context: AlgopyTestContext, treasury: Treasury, splits) -> int:
         ]
     )
     payment = context.any.txn.payment(
-        receiver=context.ledger.get_app(treasury).address, amount=MBR
+        receiver=context.ledger.get_app(treasury).address,
+        amount=amount,
+        **(payment_fields or {}),
     )
     return treasury.configure(payment, recipients)
 
@@ -54,9 +64,13 @@ def treasury(context: AlgopyTestContext, parties) -> Treasury:
     return contract
 
 
-def _deposit(context: AlgopyTestContext, treasury: Treasury, amount: int) -> int:
+def _deposit(
+    context: AlgopyTestContext, treasury: Treasury, amount: int, *, payment_fields: dict | None = None
+) -> int:
     payment = context.any.txn.payment(
-        receiver=context.ledger.get_app(treasury).address, amount=amount
+        receiver=context.ledger.get_app(treasury).address,
+        amount=amount,
+        **(payment_fields or {}),
     )
     return treasury.deposit(payment)
 
@@ -242,3 +256,89 @@ def test_configure_refuses_the_same_recipient_twice(
     treasury = Treasury()
     with pytest.raises(Exception, match="appears twice"):
         _configure(context, treasury, [(parties[0], 5_000), (parties[0], 5_000)])
+
+
+# --- #96: configure must check the MBR amount, not just the receiver --
+
+def test_configure_rejects_an_mbr_payment_too_small_for_the_box(
+    context: AlgopyTestContext, parties
+) -> None:
+    """Every sibling contract checks the amount; treasury had not.
+
+    Grok rated the gap High and exploitable; Fable investigated the same code
+    and downgraded it, because the AVM's own minimum-balance enforcement
+    already makes the box write (and so `configure`) revert rather than
+    strand anything on a real chain. The assert belongs here regardless: it
+    turns an accident of AVM enforcement into a stated invariant, with an
+    error message that says what actually went wrong instead of a bare
+    "balance too low" from the box write two lines later.
+    """
+    treasury = Treasury()
+    splits = [(parties[0], 5_000), (parties[1], 3_000), (parties[2], 2_000)]
+    box_bytes = arc4.DynamicArray[Recipient](
+        *[
+            Recipient(who=arc4.Address(who), share_bps=arc4.UInt64(bps), owed=arc4.UInt64(0))
+            for who, bps in splits
+        ]
+    ).bytes.length
+    required = BOX_MBR_FIXED + 400 * box_bytes
+    with pytest.raises(AssertionError, match="MBR payment too small"):
+        _configure(context, treasury, splits, amount=required - 1)
+    # One µALGO more, and the same configuration succeeds.
+    assert _configure(context, treasury, splits, amount=required) == 3
+
+
+# --- #96: deposit before configure would strand into a pool with no split --
+
+def test_deposit_before_configure_is_refused(context: AlgopyTestContext) -> None:
+    """Depositing before `configure` has no recipient to credit.
+
+    `balance` tracks a pooled total, not who sent it, and there is no
+    withdraw path. A treasury never configured would strand every deposit
+    permanently. Rain and subscription both refuse the equivalent deposit
+    for the same reason.
+    """
+    treasury = Treasury()
+    with pytest.raises(AssertionError, match="Not configured"):
+        _deposit(context, treasury, 1_000_000)
+
+
+# --- #102: rekey and close must not reach an escrowing transaction ----
+#
+# Neither harms the contract; both harm only the sender who signed them. What
+# this guards against is a malicious front end slipping either into a group a
+# user signs without reading closely.
+
+def test_configure_rejects_a_rekeyed_mbr_payment(
+    context: AlgopyTestContext, parties
+) -> None:
+    treasury = Treasury()
+    with pytest.raises(AssertionError, match="MBR payment must not rekey"):
+        _configure(
+            context, treasury, [(parties[0], TOTAL_SHARE_BPS)],
+            payment_fields={"rekey_to": context.any.account()},
+        )
+
+
+def test_configure_rejects_a_closing_mbr_payment(
+    context: AlgopyTestContext, parties
+) -> None:
+    treasury = Treasury()
+    with pytest.raises(AssertionError, match="MBR payment must not close"):
+        _configure(
+            context, treasury, [(parties[0], TOTAL_SHARE_BPS)],
+            payment_fields={"close_remainder_to": context.any.account()},
+        )
+
+
+def test_deposit_rejects_a_rekeyed_payment(context: AlgopyTestContext, treasury) -> None:
+    with pytest.raises(AssertionError, match="Deposit must not rekey"):
+        _deposit(context, treasury, 1_000, payment_fields={"rekey_to": context.any.account()})
+
+
+def test_deposit_rejects_a_closing_payment(context: AlgopyTestContext, treasury) -> None:
+    with pytest.raises(AssertionError, match="Deposit must not close"):
+        _deposit(
+            context, treasury, 1_000,
+            payment_fields={"close_remainder_to": context.any.account()},
+        )

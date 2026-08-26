@@ -38,6 +38,13 @@ TOTAL_SHARE_BPS = 10_000
 # and that call must never fail.
 MAX_RECIPIENTS = 8
 RECIPIENTS_KEY = b"recipients"
+# Box minimum balance, less the recipient list: 2,500 µALGO per box plus 400
+# per byte of name and value. The name is RECIPIENTS_KEY, 10 bytes. The value
+# is the ARC-4 encoding of `recipients`, which carries its own length prefix
+# inside itself, so the whole value is `recipients.bytes.length`. A box
+# therefore costs BOX_MBR_FIXED + 400 * len(encoded recipients) µALGO.
+# (Spelled out rather than computed: Puya evaluates module level literally.)
+BOX_MBR_FIXED = 2_500 + 400 * 10
 
 
 class Recipient(arc4.Struct):
@@ -78,6 +85,17 @@ class Treasury(ARC4Contract):
         assert (
             mbr_payment.receiver == Global.current_application_address
         ), "MBR payment must fund the app account"
+        # A rekey hands control of the sender's account to whoever the group
+        # names, and a close sweeps it empty to whoever the group names.
+        # Both harm only the sender, so the contract loses nothing by
+        # refusing them. The exposure is a front end putting either into a
+        # group a user signs without reading it closely.
+        assert mbr_payment.rekey_to == Global.zero_address, "MBR payment must not rekey"
+        assert (
+            mbr_payment.close_remainder_to == Global.zero_address
+        ), "MBR payment must not close"
+        required_mbr = BOX_MBR_FIXED + 400 * recipients.bytes.length
+        assert mbr_payment.amount >= required_mbr, "MBR payment too small"
 
         total: UInt64 = UInt64(0)
         index = UInt64(0)
@@ -107,9 +125,20 @@ class Treasury(ARC4Contract):
     @abimethod()
     def deposit(self, payment: gtxn.PaymentTransaction) -> UInt64:
         """Contribute, from anywhere. Returns the balance awaiting distribution."""
+        # Deposits before `configure` would count towards a distribution split
+        # that does not exist yet, and the only place they could go is
+        # `balance`, which tracks a pooled total rather than crediting whoever
+        # sent it. If `configure` is never called, that pool has no recipient
+        # and no way back out: there is no withdraw path. Rain and subscription
+        # both refuse the equivalent deposit for the same reason.
+        assert self.configured.value == 1, "Not configured"
         assert (
             payment.receiver == Global.current_application_address
         ), "Deposit must go to the app account"
+        assert payment.rekey_to == Global.zero_address, "Deposit must not rekey"
+        assert (
+            payment.close_remainder_to == Global.zero_address
+        ), "Deposit must not close"
         assert payment.amount > 0, "Amount must be positive"
         self.balance.value += payment.amount
         return self.balance.value
