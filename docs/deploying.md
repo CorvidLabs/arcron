@@ -183,6 +183,32 @@ A signature is not a secret, so the file can be emailed, committed to a private
 gist, or carried on a stick. Only the mnemonics stay put. Submitting below the
 threshold is refused locally, and would be refused by the network anyway.
 
+## Creating a MainNet app from the multisig
+
+Use `govern create`. Everything an application-create sets is permanent: the
+creator cannot be changed, the state schema cannot be resized, and extra
+program pages can be neither added nor removed. `update` replaces code and
+nothing else, so none of it has a way back.
+
+```sh
+poetry run python -m scripts.govern create --network mainnet \
+  --expect-creator NHQU7QBDTUC4Q5I7LV3A35GGG36QUK5EL6PM4ZVBJKZ7AS6EDOU7BCRDWA
+```
+
+It refuses unless a multisig is configured and hashes to exactly the address
+you typed, refuses an uncommitted working tree, rebuilds from source, reads
+the state schema out of the compiled spec rather than trusting a hand-typed
+number, computes the extra pages from the real program sizes, prints the
+whole permanent checklist, and asks you to type the creator address back
+before it writes anything. Then it writes an unsigned transaction, which
+carries app id 0, so holders sign it with `--app-id 0`.
+
+**Do not use `scripts/multisig_e2e.py` to create anything you intend to keep.**
+It is a LocalNet proof, and it generates three throwaway keys, funds them, and
+drops them when the process exits. Run against a real network it produces an
+app whose creator nobody holds, while `govern status` goes on reporting that
+the creator can still replace the programs.
+
 `fledge run smoke-multisig` proves the whole flow on LocalNet: a 2 of 3 creates
 the app, one signature is rejected by the network, two are accepted, one holder
 alone cannot update, and a *different* pair can.

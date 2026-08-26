@@ -23,6 +23,7 @@ import base64
 import hashlib
 import logging
 import pathlib
+import subprocess
 import sys
 
 import algokit_utils
@@ -129,6 +130,110 @@ def update(algorand, app_id: int, no_rebuild: bool, out: 'pathlib.Path | None' =
     return 0
 
 
+# Program pages are 2,048 bytes and are shared by approval and clear. Extra
+# pages are create-only: they cannot be added later by `update`, and they
+# cannot be removed either, so asking for one too many costs the creator
+# 100,000 microAlgos of minimum balance for as long as the app exists.
+PROGRAM_PAGE = 2_048
+
+
+def create(algorand, expect_creator: str, assume_yes: bool, allow_dirty: bool,
+           out: 'pathlib.Path | None' = None) -> int:
+    """Write an unsigned create for the multisig to sign.
+
+    Everything an `ApplicationCreateTxn` sets is permanent. The creator cannot
+    be changed, the schema cannot be resized, and extra pages can be neither
+    added nor removed. There is no update path back from any of them, because
+    `update` replaces code and nothing else.
+
+    Before this existed the only worked create in the repository was
+    `scripts/multisig_e2e.py`, which generates three throwaway keys, funds
+    them, and drops them when the process exits. Run against MainNet it would
+    produce an app whose creator nobody holds, and `govern status` would go on
+    reporting that the creator can still replace the programs.
+    """
+    algod = algorand.client.algod
+
+    if not ms.configured():
+        logger.error(
+            "Refusing: no multisig is configured, and a single-key creator is the "
+            "admin-key problem this command exists to avoid. An app's creator cannot "
+            "be changed afterwards. Set ARCRON_MULTISIG_ADDRESSES and "
+            "ARCRON_MULTISIG_THRESHOLD."
+        )
+        return 1
+    if ms.address() != expect_creator:
+        logger.error(
+            f"Refusing: the configured multisig is {ms.address()}, not the "
+            f"{expect_creator} you named. Member order is part of the address, so the "
+            "same keys in a different order are a different account."
+        )
+        return 1
+
+    if not allow_dirty:
+        dirty = subprocess.run(
+            ["git", "status", "--porcelain"], capture_output=True, text=True
+        ).stdout.strip()
+        if dirty:
+            logger.error(
+                "Refusing: the working tree has uncommitted changes, so the digest below "
+                "would not correspond to any commit anyone can check out. Commit and tag "
+                "first, or pass --allow-dirty if you truly mean to."
+            )
+            return 1
+
+    rebuild()
+    spec = _spec("keeper")
+    approval, clear = _programs(spec)
+
+    # Read the schema rather than typing it: too small fails the create when
+    # __init__ writes its second global, and too large costs the creator
+    # minimum balance forever for state that is never used.
+    schema = spec.get("state", {}).get("schema", {})
+    g, l = schema.get("global", {}), schema.get("local", {})
+    extra_pages = (len(approval) + len(clear) - 1) // PROGRAM_PAGE
+
+    logger.info("This create is permanent in every field below.")
+    logger.info(f"  creator       {ms.address()}")
+    logger.info(f"  threshold     {ms.threshold()} of {len(ms.signers())}")
+    for index, member in enumerate(ms.signers(), start=1):
+        logger.info(f"    member {index}     {member}")
+    logger.info("  Member order is part of the address. A permutation is a different account.")
+    logger.info(f"  programs      {len(approval)} + {len(clear)} bytes")
+    logger.info(f"  combined      sha256 {_digest(approval, clear)}")
+    logger.info(f"  extra pages   {extra_pages}  (capacity {PROGRAM_PAGE * (1 + extra_pages)} bytes)")
+    logger.info(f"  global state  {g.get('ints', 0)} uints, {g.get('bytes', 0)} byte slices")
+    logger.info(f"  local state   {l.get('ints', 0)} uints, {l.get('bytes', 0)} byte slices")
+    logger.info("  None of these can be changed later. `update` replaces code, nothing else.")
+
+    if not assume_yes:
+        answer = input(f"  Type the creator address to continue: ").strip()
+        if answer != ms.address():
+            logger.info("Not created.")
+            return 1
+
+    unsigned = transaction.ApplicationCreateTxn(
+        sender=ms.address(),
+        sp=algod.suggested_params(),
+        on_complete=transaction.OnComplete.NoOpOC,
+        approval_program=approval,
+        clear_program=clear,
+        global_schema=transaction.StateSchema(g.get("ints", 0), g.get("bytes", 0)),
+        local_schema=transaction.StateSchema(l.get("ints", 0), l.get("bytes", 0)),
+        extra_pages=extra_pages,
+    )
+    target = out or pathlib.Path("arcron-create.json")
+    ms.export_unsigned(unsigned, target)
+    logger.info(f"Wrote {target} for {ms.describe()} to sign.")
+    logger.info("  A create carries app id 0, so sign it with --app-id 0.")
+    logger.info("  Each holder: govern show --file <that> --app-id 0")
+    logger.info("               SIGNER_MNEMONIC=... govern sign --file <that> --app-id 0")
+    logger.info("  Then anyone: govern submit --file <that> --app-id 0")
+    logger.info("  Afterwards:  fund the app account's base minimum balance, then")
+    logger.info("               verify_build against the new app id before anything else.")
+    return 0
+
+
 def freeze(algorand, app_id: int, assume_yes: bool, out: 'pathlib.Path | None' = None) -> int:
     algod = algorand.client.algod
     frozen = _frozen(algod, app_id)
@@ -214,10 +319,15 @@ def main(argv: list[str] | None = None) -> int:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument(
-        "command", choices=("status", "update", "freeze", "show", "sign", "submit")
+        "command", choices=("status", "create", "update", "freeze", "show", "sign", "submit")
     )
     net.add_network_argument(parser)
-    parser.add_argument("--app-id", type=int, required=True, help="the keeper app to act on")
+    parser.add_argument("--app-id", type=int, default=0, help="the keeper app to act on")
+    parser.add_argument(
+        "--expect-creator",
+        help="create: the multisig address you intend to be the creator, typed out in full",
+    )
+    parser.add_argument("--allow-dirty", action="store_true", help="create: allow an uncommitted tree")
     parser.add_argument("--no-rebuild", action="store_true", help="update: trust the built artifacts")
     parser.add_argument("--yes", action="store_true", help="freeze: skip the confirmation")
     parser.add_argument(
@@ -242,6 +352,18 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     algorand = net.connect(args.network)
+    if args.command == "create":
+        if not args.expect_creator:
+            logger.error(
+                "create needs --expect-creator: the multisig address you intend to own this "
+                "app, typed out in full. It is checked against the configured multisig, "
+                "because an app's creator cannot be changed afterwards."
+            )
+            return 1
+        return create(algorand, args.expect_creator, args.yes, args.allow_dirty, args.out)
+    if args.command in ("update", "freeze", "status") and not args.app_id:
+        logger.error(f"{args.command} needs --app-id")
+        return 1
     if args.command == "status":
         return status(algorand, args.app_id)
     if args.command == "show":
