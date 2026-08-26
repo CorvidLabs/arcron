@@ -12,11 +12,16 @@ import pytest
 from algopy import UInt64, arc4
 from algopy_testing import AlgopyTestContext, algopy_testing_context
 
-from smart_contracts.deadman.contract import MIN_INTERVAL_ROUNDS, DeadMan
+from smart_contracts.deadman.contract import APP_BASE_MBR, MIN_INTERVAL_ROUNDS, DeadMan
 
 START_ROUND = 1_000
 INTERVAL = 100
-ESCROW = 5_000_000
+DEPOSIT = 5_000_000
+# What the beneficiary actually gets. `arm` holds back the app account's own
+# floor, because paying out the whole deposit would drop the account below its
+# minimum balance and the AVM would reject the payment, after the switch had
+# already fired and promised it.
+ESCROW = DEPOSIT - APP_BASE_MBR
 
 
 @pytest.fixture()
@@ -41,7 +46,7 @@ def _arm(
     switch: DeadMan,
     beneficiary,
     *,
-    amount: int = ESCROW,
+    amount: int = DEPOSIT,
     interval: int = INTERVAL,
 ) -> int:
     payment = context.any.txn.payment(
@@ -77,8 +82,35 @@ def test_the_owner_cannot_be_their_own_beneficiary(context, switch) -> None:
 
 
 def test_arming_with_nothing_is_pointless_and_rejected(context, switch, beneficiary) -> None:
-    with pytest.raises(AssertionError, match="Nothing to release"):
+    with pytest.raises(AssertionError, match="must cover the app minimum balance"):
         _arm(context, switch, beneficiary, amount=0)
+
+
+def test_a_deposit_that_only_covers_the_floor_leaves_nothing_to_release(
+    context, switch, beneficiary
+) -> None:
+    """Exactly the floor is still an empty promise, so it is refused at arm.
+
+    Letting it through would arm a switch that fires correctly, allocates
+    zero, and tells a beneficiary there is nothing to claim, which is a worse
+    way to find out than a rejected transaction.
+    """
+    with pytest.raises(AssertionError, match="must cover the app minimum balance"):
+        _arm(context, switch, beneficiary, amount=APP_BASE_MBR)
+
+
+def test_the_app_keeps_its_floor_out_of_the_deposit(context, switch, beneficiary) -> None:
+    """The escrow is what is left after the account's own minimum balance.
+
+    `claim` pays the full allocated amount by inner payment, so the account
+    has to still hold its floor afterwards or the AVM rejects that payment.
+    Before this, `arm` booked the entire deposit and the only thing standing
+    between a beneficiary and an uncollectable promise was an unexplained
+    pre-funding step in the demo script that the deploy config never did.
+    """
+    _arm(context, switch, beneficiary, amount=DEPOSIT)
+    assert switch.escrow.value == DEPOSIT - APP_BASE_MBR
+    assert DEPOSIT - switch.escrow.value == APP_BASE_MBR, "the floor stays behind"
 
 
 # --- the quiet path, which is the common one --------------------------

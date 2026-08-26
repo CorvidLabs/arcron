@@ -3,53 +3,53 @@
 
 // algopy.arc4.ARC4Contract.approval_program() -> uint64:
 main:
-    intcblock 0 1
+    intcblock 0 1 100000
     bytecblock "deadline" "fired_round" 0x151f7c75 "interval_rounds" "escrow" "allocated" "beneficiary" "owner" "check_ins"
     txn ApplicationID
     bnz main_after_if_else@2
-    // smart_contracts/deadman/contract.py:56
+    // smart_contracts/deadman/contract.py:64
     // self.owner = GlobalState(Global.creator_address)
     bytec 7 // "owner"
     global CreatorAddress
     app_global_put
-    // smart_contracts/deadman/contract.py:57
+    // smart_contracts/deadman/contract.py:65
     // self.beneficiary = GlobalState(Account())
     bytec 6 // "beneficiary"
     global ZeroAddress
     app_global_put
-    // smart_contracts/deadman/contract.py:58
+    // smart_contracts/deadman/contract.py:66
     // self.interval_rounds = GlobalState(UInt64(0))
     bytec_3 // "interval_rounds"
     intc_0 // 0
     app_global_put
-    // smart_contracts/deadman/contract.py:59
+    // smart_contracts/deadman/contract.py:67
     // self.deadline = GlobalState(UInt64(0))
     bytec_0 // "deadline"
     intc_0 // 0
     app_global_put
-    // smart_contracts/deadman/contract.py:60
+    // smart_contracts/deadman/contract.py:68
     // self.escrow = GlobalState(UInt64(0))
     bytec 4 // "escrow"
     intc_0 // 0
     app_global_put
-    // smart_contracts/deadman/contract.py:61
+    // smart_contracts/deadman/contract.py:69
     // self.allocated = GlobalState(UInt64(0))
     bytec 5 // "allocated"
     intc_0 // 0
     app_global_put
-    // smart_contracts/deadman/contract.py:62
+    // smart_contracts/deadman/contract.py:70
     // self.fired_round = GlobalState(UInt64(0))
     bytec_1 // "fired_round"
     intc_0 // 0
     app_global_put
-    // smart_contracts/deadman/contract.py:63
+    // smart_contracts/deadman/contract.py:71
     // self.check_ins = GlobalState(UInt64(0))
     bytec 8 // "check_ins"
     intc_0 // 0
     app_global_put
 
 main_after_if_else@2:
-    // smart_contracts/deadman/contract.py:52
+    // smart_contracts/deadman/contract.py:60
     // class DeadMan(ARC4Contract):
     txn NumAppArgs
     bz main___algopy_default_create@15
@@ -74,7 +74,7 @@ main___algopy_default_create@15:
 
 // smart_contracts.deadman.contract.DeadMan.arm[routing]() -> void:
 arm:
-    // smart_contracts/deadman/contract.py:65
+    // smart_contracts/deadman/contract.py:73
     // @abimethod()
     txn GroupIndex
     intc_1 // 1
@@ -97,7 +97,7 @@ arm:
     ==
     assert // invalid number of bytes for arc4.uint64
     btoi
-    // smart_contracts/deadman/contract.py:73
+    // smart_contracts/deadman/contract.py:81
     // assert Txn.sender == self.owner.value, "Only the owner can arm it"
     txn Sender
     intc_0 // 0
@@ -108,7 +108,7 @@ arm:
     dig 1
     ==
     assert // Only the owner can arm it
-    // smart_contracts/deadman/contract.py:74
+    // smart_contracts/deadman/contract.py:82
     // assert self.interval_rounds.value == 0, "Already armed"
     intc_0 // 0
     bytec_3 // "interval_rounds"
@@ -116,36 +116,42 @@ arm:
     assert // check self.interval_rounds exists
     !
     assert // Already armed
-    // smart_contracts/deadman/contract.py:75
+    // smart_contracts/deadman/contract.py:83
     // assert interval_rounds >= MIN_INTERVAL_ROUNDS, "Interval below minimum"
     dig 1
     pushint 30
     >=
     assert // Interval below minimum
-    // smart_contracts/deadman/contract.py:77
+    // smart_contracts/deadman/contract.py:85
     // deposit.receiver == Global.current_application_address
     dig 3
     gtxns Receiver
     global CurrentApplicationAddress
     ==
-    // smart_contracts/deadman/contract.py:76-78
+    // smart_contracts/deadman/contract.py:84-86
     // assert (
     //     deposit.receiver == Global.current_application_address
     // ), "Deposit must go to the app account"
     assert // Deposit must go to the app account
-    // smart_contracts/deadman/contract.py:79
-    // assert deposit.amount > 0, "Nothing to release"
+    // smart_contracts/deadman/contract.py:88
+    // deposit.amount > APP_BASE_MBR
     uncover 3
     gtxns Amount
     dup
-    assert // Nothing to release
-    // smart_contracts/deadman/contract.py:80
+    intc_2 // 100000
+    >
+    // smart_contracts/deadman/contract.py:87-89
+    // assert (
+    //     deposit.amount > APP_BASE_MBR
+    // ), "Deposit must cover the app minimum balance and leave something to release"
+    assert // Deposit must cover the app minimum balance and leave something to release
+    // smart_contracts/deadman/contract.py:90
     // assert beneficiary.native != self.owner.value, "Beneficiary must not be the owner"
     dig 3
     uncover 2
     !=
     assert // Beneficiary must not be the owner
-    // smart_contracts/deadman/contract.py:81-84
+    // smart_contracts/deadman/contract.py:91-94
     // # An address nobody can send from can never claim, so the escrow
     // # would be stranded on a contract with no delete path. Same trap the
     // # subscription contract had with a zero-address provider.
@@ -154,37 +160,45 @@ arm:
     global ZeroAddress
     !=
     assert // Beneficiary required
-    // smart_contracts/deadman/contract.py:86
+    // smart_contracts/deadman/contract.py:96
     // self.beneficiary.value = beneficiary.native
     bytec 6 // "beneficiary"
     uncover 3
     app_global_put
-    // smart_contracts/deadman/contract.py:87
+    // smart_contracts/deadman/contract.py:97
     // self.interval_rounds.value = interval_rounds
     bytec_3 // "interval_rounds"
     dig 2
     app_global_put
-    // smart_contracts/deadman/contract.py:88-91
-    // # Arithmetic rather than assignment: a payment's amount arrives as a
-    // # plain int under algorand-python-testing, and += coerces it the same
-    // # way Puya would.
-    // self.escrow.value += deposit.amount
+    // smart_contracts/deadman/contract.py:98-106
+    // # Reserve the account floor out of the deposit rather than trusting
+    // # somebody to have pre-funded it. The demo did exactly that pre-fund,
+    // # silently, which is what hid this: a switch armed through the repo's
+    // # own deploy config held no floor at all, so `claim` would have fired
+    // # and then failed to pay, permanently, on a contract with no update
+    // # path. Arithmetic rather than assignment: a payment's amount arrives
+    // # as a plain int under algorand-python-testing, and += coerces it the
+    // # same way Puya would.
+    // self.escrow.value += deposit.amount - APP_BASE_MBR
     intc_0 // 0
     bytec 4 // "escrow"
     app_global_get_ex
     assert // check self.escrow exists
+    swap
+    intc_2 // 100000
+    -
     +
     bytec 4 // "escrow"
     swap
     app_global_put
-    // smart_contracts/deadman/contract.py:92
+    // smart_contracts/deadman/contract.py:107
     // self.deadline.value = Global.round + interval_rounds
     global Round
     +
     bytec_0 // "deadline"
     dig 1
     app_global_put
-    // smart_contracts/deadman/contract.py:65
+    // smart_contracts/deadman/contract.py:73
     // @abimethod()
     itob
     bytec_2 // 0x151f7c75
@@ -197,7 +211,7 @@ arm:
 
 // smart_contracts.deadman.contract.DeadMan.check_in[routing]() -> void:
 check_in:
-    // smart_contracts/deadman/contract.py:98
+    // smart_contracts/deadman/contract.py:113
     // assert Txn.sender == self.owner.value, "Only the owner can check in"
     txn Sender
     intc_0 // 0
@@ -206,7 +220,7 @@ check_in:
     assert // check self.owner exists
     ==
     assert // Only the owner can check in
-    // smart_contracts/deadman/contract.py:99
+    // smart_contracts/deadman/contract.py:114
     // assert self.interval_rounds.value > 0, "Not armed"
     intc_0 // 0
     bytec_3 // "interval_rounds"
@@ -214,7 +228,7 @@ check_in:
     assert // check self.interval_rounds exists
     dup
     assert // Not armed
-    // smart_contracts/deadman/contract.py:100
+    // smart_contracts/deadman/contract.py:115
     // assert self.fired_round.value == 0, "Already fired"
     intc_0 // 0
     bytec_1 // "fired_round"
@@ -222,14 +236,14 @@ check_in:
     assert // check self.fired_round exists
     !
     assert // Already fired
-    // smart_contracts/deadman/contract.py:102
+    // smart_contracts/deadman/contract.py:117
     // self.deadline.value = Global.round + self.interval_rounds.value
     global Round
     +
     bytec_0 // "deadline"
     swap
     app_global_put
-    // smart_contracts/deadman/contract.py:103
+    // smart_contracts/deadman/contract.py:118
     // self.check_ins.value += 1
     intc_0 // 0
     bytec 8 // "check_ins"
@@ -240,13 +254,13 @@ check_in:
     bytec 8 // "check_ins"
     swap
     app_global_put
-    // smart_contracts/deadman/contract.py:104
+    // smart_contracts/deadman/contract.py:119
     // return self.deadline.value
     intc_0 // 0
     bytec_0 // "deadline"
     app_global_get_ex
     assert // check self.deadline exists
-    // smart_contracts/deadman/contract.py:95
+    // smart_contracts/deadman/contract.py:110
     // @abimethod()
     itob
     bytec_2 // 0x151f7c75
@@ -259,29 +273,29 @@ check_in:
 
 // smart_contracts.deadman.contract.DeadMan.sweep[routing]() -> void:
 sweep:
-    // smart_contracts/deadman/contract.py:116
+    // smart_contracts/deadman/contract.py:131
     // self.interval_rounds.value == 0
     intc_0 // 0
     bytec_3 // "interval_rounds"
     app_global_get_ex
     assert // check self.interval_rounds exists
-    // smart_contracts/deadman/contract.py:116-118
+    // smart_contracts/deadman/contract.py:131-133
     // self.interval_rounds.value == 0
     // or self.fired_round.value > 0
     // or Global.round < self.deadline.value
     bz sweep_if_body@4
-    // smart_contracts/deadman/contract.py:117
+    // smart_contracts/deadman/contract.py:132
     // or self.fired_round.value > 0
     intc_0 // 0
     bytec_1 // "fired_round"
     app_global_get_ex
     assert // check self.fired_round exists
-    // smart_contracts/deadman/contract.py:116-118
+    // smart_contracts/deadman/contract.py:131-133
     // self.interval_rounds.value == 0
     // or self.fired_round.value > 0
     // or Global.round < self.deadline.value
     bnz sweep_if_body@4
-    // smart_contracts/deadman/contract.py:118
+    // smart_contracts/deadman/contract.py:133
     // or Global.round < self.deadline.value
     global Round
     intc_0 // 0
@@ -289,19 +303,19 @@ sweep:
     app_global_get_ex
     assert // check self.deadline exists
     <
-    // smart_contracts/deadman/contract.py:116-118
+    // smart_contracts/deadman/contract.py:131-133
     // self.interval_rounds.value == 0
     // or self.fired_round.value > 0
     // or Global.round < self.deadline.value
     bz sweep_after_if_else@5
 
 sweep_if_body@4:
-    // smart_contracts/deadman/contract.py:120
+    // smart_contracts/deadman/contract.py:135
     // return UInt64(0)
     intc_0 // 0
 
 sweep_after_inlined_smart_contracts.deadman.contract.DeadMan.sweep@6:
-    // smart_contracts/deadman/contract.py:106
+    // smart_contracts/deadman/contract.py:121
     // @abimethod()
     itob
     bytec_2 // 0x151f7c75
@@ -312,12 +326,12 @@ sweep_after_inlined_smart_contracts.deadman.contract.DeadMan.sweep@6:
     return
 
 sweep_after_if_else@5:
-    // smart_contracts/deadman/contract.py:122
+    // smart_contracts/deadman/contract.py:137
     // self.fired_round.value = Global.round
     bytec_1 // "fired_round"
     global Round
     app_global_put
-    // smart_contracts/deadman/contract.py:123
+    // smart_contracts/deadman/contract.py:138
     // self.allocated.value = self.escrow.value
     intc_0 // 0
     bytec 4 // "escrow"
@@ -326,36 +340,36 @@ sweep_after_if_else@5:
     bytec 5 // "allocated"
     swap
     app_global_put
-    // smart_contracts/deadman/contract.py:124
+    // smart_contracts/deadman/contract.py:139
     // self.escrow.value = UInt64(0)
     bytec 4 // "escrow"
     intc_0 // 0
     app_global_put
-    // smart_contracts/deadman/contract.py:127
+    // smart_contracts/deadman/contract.py:142
     // fired_round=arc4.UInt64(Global.round),
     global Round
     itob
-    // smart_contracts/deadman/contract.py:128
+    // smart_contracts/deadman/contract.py:143
     // deadline=arc4.UInt64(self.deadline.value),
     intc_0 // 0
     bytec_0 // "deadline"
     app_global_get_ex
     assert // check self.deadline exists
     itob
-    // smart_contracts/deadman/contract.py:129
+    // smart_contracts/deadman/contract.py:144
     // beneficiary=arc4.Address(self.beneficiary.value),
     intc_0 // 0
     bytec 6 // "beneficiary"
     app_global_get_ex
     assert // check self.beneficiary exists
-    // smart_contracts/deadman/contract.py:130
+    // smart_contracts/deadman/contract.py:145
     // amount=arc4.UInt64(self.allocated.value),
     intc_0 // 0
     bytec 5 // "allocated"
     app_global_get_ex
     assert // check self.allocated exists
     itob
-    // smart_contracts/deadman/contract.py:126-131
+    // smart_contracts/deadman/contract.py:141-146
     // Fired(
     //     fired_round=arc4.UInt64(Global.round),
     //     deadline=arc4.UInt64(self.deadline.value),
@@ -369,7 +383,7 @@ sweep_after_if_else@5:
     concat
     swap
     concat
-    // smart_contracts/deadman/contract.py:125-132
+    // smart_contracts/deadman/contract.py:140-147
     // arc4.emit(
     //     Fired(
     //         fired_round=arc4.UInt64(Global.round),
@@ -382,27 +396,27 @@ sweep_after_if_else@5:
     swap
     concat
     log
-    // smart_contracts/deadman/contract.py:133
+    // smart_contracts/deadman/contract.py:148
     // return self.fired_round.value
     intc_0 // 0
     bytec_1 // "fired_round"
     app_global_get_ex
     assert // check self.fired_round exists
-    // smart_contracts/deadman/contract.py:106
+    // smart_contracts/deadman/contract.py:121
     // @abimethod()
     b sweep_after_inlined_smart_contracts.deadman.contract.DeadMan.sweep@6
 
 
 // smart_contracts.deadman.contract.DeadMan.claim[routing]() -> void:
 claim:
-    // smart_contracts/deadman/contract.py:138
+    // smart_contracts/deadman/contract.py:153
     // assert self.fired_round.value > 0, "Switch has not fired"
     intc_0 // 0
     bytec_1 // "fired_round"
     app_global_get_ex
     assert // check self.fired_round exists
     assert // Switch has not fired
-    // smart_contracts/deadman/contract.py:139
+    // smart_contracts/deadman/contract.py:154
     // assert Txn.sender == self.beneficiary.value, "Only the beneficiary can claim"
     txn Sender
     intc_0 // 0
@@ -411,22 +425,22 @@ claim:
     assert // check self.beneficiary exists
     ==
     assert // Only the beneficiary can claim
-    // smart_contracts/deadman/contract.py:140
+    // smart_contracts/deadman/contract.py:155
     // amount = self.allocated.value
     intc_0 // 0
     bytec 5 // "allocated"
     app_global_get_ex
     assert // check self.allocated exists
-    // smart_contracts/deadman/contract.py:141
+    // smart_contracts/deadman/contract.py:156
     // assert amount > 0, "Nothing left to claim"
     dup
     assert // Nothing left to claim
-    // smart_contracts/deadman/contract.py:143
+    // smart_contracts/deadman/contract.py:158
     // self.allocated.value = UInt64(0)
     bytec 5 // "allocated"
     intc_0 // 0
     app_global_put
-    // smart_contracts/deadman/contract.py:144
+    // smart_contracts/deadman/contract.py:159
     // itxn.Payment(receiver=Txn.sender, amount=amount).submit()
     itxn_begin
     txn Sender
@@ -438,7 +452,7 @@ claim:
     intc_0 // 0
     itxn_field Fee
     itxn_submit
-    // smart_contracts/deadman/contract.py:135
+    // smart_contracts/deadman/contract.py:150
     // @abimethod()
     itob
     bytec_2 // 0x151f7c75
@@ -451,7 +465,7 @@ claim:
 
 // smart_contracts.deadman.contract.DeadMan.rounds_remaining[routing]() -> void:
 rounds_remaining:
-    // smart_contracts/deadman/contract.py:150
+    // smart_contracts/deadman/contract.py:165
     // if self.fired_round.value > 0 or Global.round >= self.deadline.value:
     intc_0 // 0
     bytec_1 // "fired_round"
@@ -467,12 +481,12 @@ rounds_remaining:
     bz rounds_remaining_after_if_else@4
 
 rounds_remaining_if_body@3:
-    // smart_contracts/deadman/contract.py:151
+    // smart_contracts/deadman/contract.py:166
     // return UInt64(0)
     intc_0 // 0
 
 rounds_remaining_after_inlined_smart_contracts.deadman.contract.DeadMan.rounds_remaining@5:
-    // smart_contracts/deadman/contract.py:147
+    // smart_contracts/deadman/contract.py:162
     // @abimethod(readonly=True)
     itob
     bytec_2 // 0x151f7c75
@@ -483,7 +497,7 @@ rounds_remaining_after_inlined_smart_contracts.deadman.contract.DeadMan.rounds_r
     return
 
 rounds_remaining_after_if_else@4:
-    // smart_contracts/deadman/contract.py:152
+    // smart_contracts/deadman/contract.py:167
     // return self.deadline.value - Global.round
     intc_0 // 0
     bytec_0 // "deadline"
@@ -491,14 +505,14 @@ rounds_remaining_after_if_else@4:
     assert // check self.deadline exists
     global Round
     -
-    // smart_contracts/deadman/contract.py:147
+    // smart_contracts/deadman/contract.py:162
     // @abimethod(readonly=True)
     b rounds_remaining_after_inlined_smart_contracts.deadman.contract.DeadMan.rounds_remaining@5
 
 
 // smart_contracts.deadman.contract.DeadMan.has_fired[routing]() -> void:
 has_fired:
-    // smart_contracts/deadman/contract.py:156
+    // smart_contracts/deadman/contract.py:171
     // return self.fired_round.value > 0
     intc_0 // 0
     bytec_1 // "fired_round"
@@ -506,7 +520,7 @@ has_fired:
     assert // check self.fired_round exists
     intc_0 // 0
     >
-    // smart_contracts/deadman/contract.py:154
+    // smart_contracts/deadman/contract.py:169
     // @abimethod(readonly=True)
     pushbytes 0x00
     intc_0 // 0

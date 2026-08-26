@@ -35,6 +35,7 @@ sees only what the keeper's own transaction makes available. Firing therefore
 | Constant | Value | Description |
 |----------|-------|-------------|
 | `MIN_INTERVAL_ROUNDS` | `30` | Shortest check-in interval. Arcron's own minimum cadence is 10 rounds, so a shorter interval could fire on a keeper's ordinary lateness rather than on the owner's absence. |
+| `APP_BASE_MBR` | `100_000` | The app account's own minimum balance, held back out of the deposit at `arm` and never escrowed. `claim` pays the escrow by inner payment, and an account cannot send itself below its floor, so anything booked above this line would be promised and then unpayable. There is no delete path, so it stays locked for the life of the app. |
 
 ### Exported Types
 
@@ -90,7 +91,7 @@ sees only what the keeper's own transaction makes available. Firing therefore
 | `arm` by a non-owner, or twice | Fails with "Only the owner can arm it" / "Already armed" |
 | `arm` with an interval below the minimum | Fails with "Interval below minimum" |
 | `arm` with the owner as beneficiary | Fails with "Beneficiary must not be the owner" |
-| `arm` with a zero deposit | Fails with "Nothing to release" |
+| `arm` with a deposit that does not exceed the app minimum balance | Fails with "Deposit must cover the app minimum balance and leave something to release". `arm` reserves `APP_BASE_MBR` out of the deposit and escrows only the remainder, because `claim` pays the escrow out by inner payment and an account cannot send itself below its own floor. Booking the whole deposit would let the switch fire, promise the beneficiary the full amount, and then fail every claim forever, on a contract with no update or delete path. |
 | `check_in` by anyone but the owner | Fails with "Only the owner can check in" |
 | `check_in` after firing | Fails with "Already fired" |
 | `claim` before firing | Fails with "Switch has not fired" |

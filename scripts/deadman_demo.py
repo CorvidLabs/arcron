@@ -52,13 +52,14 @@ def main(argv: list[str] | None = None) -> None:
     switch, _ = algorand.client.get_typed_app_factory(
         DeadManFactory, default_sender=owner.address
     ).send.create.bare()
-    algorand.send.payment(
-        algokit_utils.PaymentParams(
-            sender=owner.address,
-            receiver=switch.app_address,
-            amount=algokit_utils.AlgoAmount(micro_algo=200_000),
-        )
-    )
+    # No pre-funding. There used to be an unexplained 200,000 microalgo payment
+    # here, and it was the only thing keeping this demo working: `arm` booked
+    # the whole deposit as escrow while `claim` pays it out by inner payment,
+    # so without spare balance the account would drop below its own minimum and
+    # the payment would fail after the switch had already fired. `arm` now
+    # holds the floor back out of the deposit, and this demo running clean is
+    # the proof: if the reservation is ever removed, stage 4 fails here rather
+    # than in somebody's estate.
     beneficiary = algorand.account.random()
     algorand.send.payment(
         algokit_utils.PaymentParams(
