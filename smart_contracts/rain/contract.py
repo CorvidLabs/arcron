@@ -62,6 +62,13 @@ TICKET_MBR = 2_500 + 400 * 41
 ALLOCATION_MBR = 2_500 + 400 * 41
 # What holding one asset costs an account, permanently.
 ASSET_OPT_IN_MBR = 100_000
+# Every Algorand account must hold this much before it can send anything, and
+# an app account is no exception. This contract pays out by inner payment (the
+# whole pot can be won, and the whole prize claimed), so without a floor held
+# back from the pot, the last winner's payment would drop the account below
+# its minimum and revert after the draw had already booked the allocation.
+# `configure` collects this once, up front, and never credits it to the pot.
+APP_BASE_MBR = 100_000
 
 
 class Drawn(arc4.Struct):
@@ -106,7 +113,11 @@ class Rain(ARC4Contract):
 
     @abimethod()
     def configure(
-        self, beacon_app: UInt64, gate_creator: arc4.Address, prize_asset: UInt64
+        self,
+        mbr_payment: gtxn.PaymentTransaction,
+        beacon_app: UInt64,
+        gate_creator: arc4.Address,
+        prize_asset: UInt64,
     ) -> None:
         """Point at the beacon, and decide who may enter and what they win.
 
@@ -118,6 +129,14 @@ class Rain(ARC4Contract):
 
         `prize_asset` zero keeps the pot and the prize in ALGO. Set, both are
         that asset, and the app must opt in before it can be funded.
+
+        `mbr_payment` funds the app account's own base minimum balance, once,
+        up front. Every Algorand account needs it before it can send anything,
+        and this contract pays out by inner payment, so without it the last
+        winner to claim could not: the payment would drop the account below
+        its floor and revert, after `resolve` had already booked the
+        allocation. The payment is held aside here and never credited to the
+        pot, so the whole pot can still be won.
         """
         assert Txn.sender == Global.creator_address, "Only the creator can configure"
         assert self.beacon_app.value == 0, "Already configured"
@@ -128,6 +147,20 @@ class Rain(ARC4Contract):
         # updated or deleted.
         assert self.pot.value == 0, "Configure before the pot is funded"
         assert self.tickets.value == 0, "Configure before anyone enters"
+        assert (
+            mbr_payment.receiver == Global.current_application_address
+        ), "MBR payment must fund the app account"
+        assert mbr_payment.sender == Txn.sender, "MBR payment must come from the caller"
+        # A rekey hands control of the sender's account to whoever the group
+        # names, and a close sweeps it empty to whoever the group names.
+        # Both harm only the sender, so the contract loses nothing by
+        # refusing them. The exposure is a front end putting either into a
+        # group a user signs without reading it closely.
+        assert mbr_payment.rekey_to == Global.zero_address, "MBR payment must not rekey"
+        assert (
+            mbr_payment.close_remainder_to == Global.zero_address
+        ), "MBR payment must not close"
+        assert mbr_payment.amount >= APP_BASE_MBR, "MBR payment too small"
         self.beacon_app.value = beacon_app
         self.gate_creator.value = gate_creator.native
         self.prize_asset.value = prize_asset

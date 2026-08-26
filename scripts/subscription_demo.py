@@ -76,22 +76,30 @@ def main(argv: list[str] | None = None) -> None:
             min_rounds_per_period=UPKEEP_INTERVAL,
         )
     )
-    # The app account's own base minimum balance. Every Algorand account needs
+    # No separate pre-fund. `set_keeper` now requires an MBR payment covering
+    # the app account's own base minimum balance: every Algorand account needs
     # it before it can send anything, and this app pays out by inner payment,
-    # so without it the last party to leave cannot leave: the payment drops
-    # the account below its minimum and reverts after the contract has already
-    # booked the obligation. `deadman` had exactly that bug, hidden behind a
-    # payment like this one that nobody had explained, and it was found on a
-    # chain rather than by reading. Stated here so the next person to copy this
-    # contract knows the funding is load-bearing rather than incidental.
-    algorand.send.payment(
-        algokit_utils.PaymentParams(
-            sender=founder.address,
-            receiver=subscription.app_address,
-            amount=algokit_utils.AlgoAmount(micro_algo=300_000),
+    # so without it the last subscriber to leave could not: the refund would
+    # drop the account below its minimum and revert after `withdraw` had
+    # already booked it. `create` cannot take this payment itself, because the
+    # app's address is not known until the create transaction that assigns it
+    # has already been confirmed, so `set_keeper` is where it lives instead,
+    # and `subscribe` refuses to run before it. `deadman` had the underlying
+    # bug, hidden behind an unexplained bare payment, and it was found on a
+    # chain rather than by reading; the contract now enforces this instead of
+    # trusting whoever deploys to remember.
+    subscription.send.set_keeper(
+        args=SetKeeperArgs(
+            mbr_payment=algorand.create_transaction.payment(
+                algokit_utils.PaymentParams(
+                    sender=founder.address,
+                    receiver=subscription.app_address,
+                    amount=algokit_utils.AlgoAmount(micro_algo=300_000),
+                )
+            ),
+            keeper_app=keeper_client.app_id,
         )
     )
-    subscription.send.set_keeper(args=SetKeeperArgs(keeper_app=keeper_client.app_id))
     _assert("price per period", subscription.state.global_state.price_per_period, PRICE_PER_PERIOD)
 
     # ------------------------------------------------------------------

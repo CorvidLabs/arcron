@@ -46,6 +46,14 @@ SUBSCRIBER_BOX_MBR = 2_500 + 400 * (33 + 16)
 # The keeper's own interval ceiling. Beyond it nothing can be scheduled
 # anyway, and an unbounded value overflows the cadence comparison.
 MAX_ROUNDS_PER_PERIOD = 1_000_000_000
+# Every Algorand account must hold this much before it can send anything, and
+# an app account is no exception. `withdraw` refunds a subscriber's whole
+# deposit plus their box MBR, so without a floor held back separately, the
+# last subscriber to leave would drop the account below its minimum and the
+# refund would revert after `withdraw` had already booked it. `set_keeper`
+# collects this once, up front, and never credits it to any subscriber's
+# balance.
+APP_BASE_MBR = 100_000
 
 
 class Subscriber(arc4.Struct):
@@ -92,10 +100,43 @@ class Subscription(ARC4Contract):
         self.last_charged_round.value = Global.round
 
     @abimethod()
-    def set_keeper(self, keeper_app: arc4.UInt64) -> None:
-        """Name the keeper app whose calls advance the billing period."""
+    def set_keeper(
+        self, mbr_payment: gtxn.PaymentTransaction, keeper_app: arc4.UInt64
+    ) -> None:
+        """Name the keeper app whose calls advance the billing period.
+
+        Creator only, once. Also where the app account's own base minimum
+        balance is funded. `create` cannot take this payment itself: the app's
+        address is not known until the create transaction that assigns it has
+        already been confirmed, so nothing can pay it inside that same atomic
+        group. This is the first call the creator makes afterward, and
+        `subscribe` refuses to run before it, so the floor is always in place
+        before any subscriber's money arrives.
+
+        Every Algorand account needs this floor before it can send anything,
+        and `withdraw` refunds a subscriber's whole deposit plus their box MBR
+        by inner payment, so without it the last subscriber to leave could
+        not: the payment would drop the account below its minimum and revert,
+        after `withdraw` had already booked the refund. The payment is held
+        aside here and never credited to any subscriber's balance, so every
+        subscriber can still take back every microalgo they put in.
+        """
         assert Txn.sender == Global.creator_address, "Only the creator can set the keeper"
         assert self.keeper_app.value == 0, "Keeper already set"
+        assert (
+            mbr_payment.receiver == Global.current_application_address
+        ), "MBR payment must fund the app account"
+        assert mbr_payment.sender == Txn.sender, "MBR payment must come from the caller"
+        # A rekey hands control of the sender's account to whoever the group
+        # names, and a close sweeps it empty to whoever the group names.
+        # Both harm only the sender, so the contract loses nothing by
+        # refusing them. The exposure is a front end putting either into a
+        # group a user signs without reading it closely.
+        assert mbr_payment.rekey_to == Global.zero_address, "MBR payment must not rekey"
+        assert (
+            mbr_payment.close_remainder_to == Global.zero_address
+        ), "MBR payment must not close"
+        assert mbr_payment.amount >= APP_BASE_MBR, "MBR payment too small"
         self.keeper_app.value = keeper_app.native
 
     # MARK: - The hook
@@ -149,6 +190,7 @@ class Subscription(ARC4Contract):
         billed for periods that begin after they arrive rather than for the
         one already in progress.
         """
+        assert self.keeper_app.value > 0, "Not configured"
         assert deposit.receiver == Global.current_application_address, "Pay this app"
         # A rekey hands control of the sender's account to whoever the group
         # names, and a close sweeps it empty to whoever the group names.

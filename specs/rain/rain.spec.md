@@ -44,6 +44,7 @@ everyone.
 | `TICKET_MBR` | `2_500 + 400 * 41` (`18_900`) | What one ticket box costs; paid by its buyer. |
 | `ALLOCATION_MBR` | `2_500 + 400 * 41` (`18_900`) | What one allocation box costs. Reserved from the pot at draw time and returned on claim when the prize is ALGO; taken from the app account when it is an asset. |
 | `ASSET_OPT_IN_MBR` | `100_000` | What holding one asset costs an account, permanently. Paid by whoever calls `opt_in_prize_asset`, who need not be the creator. |
+| `APP_BASE_MBR` | `100_000` | The app account's own minimum balance, collected once at `configure` and never credited to the pot. This contract pays out by inner payment, and an account cannot send itself below its own floor, so without this the last winner to claim could not: `resolve` would already have booked the allocation. |
 
 ### Exported Types
 
@@ -57,7 +58,7 @@ everyone.
 
 | Method | Parameters | Returns | Description |
 |--------|-----------|---------|-------------|
-| `configure` | `beacon_app: uint64, gate_creator: address, prize_asset: uint64` | `void` | Creator-only, once. Points at the beacon, decides who may enter, and decides what they win. A zero `gate_creator` leaves entry open; a zero `prize_asset` keeps the pot in ALGO. |
+| `configure` | `mbr_payment: pay, beacon_app: uint64, gate_creator: address, prize_asset: uint64` | `void` | Creator-only, once. Points at the beacon, decides who may enter, and decides what they win. A zero `gate_creator` leaves entry open; a zero `prize_asset` keeps the pot in ALGO. `mbr_payment` funds the app account's own base minimum balance, held aside and never credited to the pot. |
 | `opt_in_prize_asset` | `prize: asset, mbr_payment: pay` | `uint64` | Opts the app into the prize asset so it can be funded. Anyone may pay for it, once. Refuses an asset with a clawback, freeze or manager address, or one that is frozen by default, which is why `prize` is passed: this is the first call that has the asset available and so the first that can read its parameters. |
 | `enter` | `mbr_payment: pay, gate_asset: asset` | `uint64` | Buys one ticket for the sender; returns its index. Tickets persist across draws. When gated, `gate_asset` is an asset the sender holds, and the contract checks the collection minted it. Ignored when entry is open. |
 | `deposit` | `payment: pay` | `uint64` | Adds ALGO to the pot, from anyone; returns the new pot. Rejected when the prize is an asset. |
@@ -96,6 +97,15 @@ everyone.
     address. Neither harms the contract, since a rekey or a close only ever
     harms the sender; this protects an entrant or depositor whose front end
     slipped either into the group they signed.
+17. `configure` requires a payment covering `APP_BASE_MBR`, funding the app
+    account's own minimum balance before anyone can enter or deposit. The
+    payment is held aside and never credited to the pot, so the whole pot can
+    still be won: without it, the last winner's `claim` would drop the account
+    below its floor and revert after `resolve` had already booked the
+    allocation. The payment must come from the caller, checked the same way
+    `keeper.register`'s theft path was closed: receiver, amount, rekey and
+    close all check out on a payment signed by someone other than the caller,
+    so the sender is checked explicitly.
 
 ## Behavioral Examples
 
@@ -122,6 +132,8 @@ everyone.
 | Condition | Behavior |
 |-----------|----------|
 | `configure` by a non-creator, or twice | Fails with "Only the creator can configure" / "Already configured" |
+| `configure`'s MBR payment below `APP_BASE_MBR` | Fails with "MBR payment too small" |
+| `configure`'s MBR payment not from the caller, or carrying a rekey or close-remainder-to | Fails with "MBR payment must come from the caller" / "MBR payment must not rekey" / "MBR payment must not close" |
 | `enter` with an MBR payment below the ticket box cost | Fails with "MBR payment too small" |
 | `enter` or `deposit` paying anyone but the app account | Fails with "must fund the app account" / "must go to the app account" |
 | `deposit` of zero | Fails with "Amount must be positive" |
@@ -164,21 +176,27 @@ everyone.
 
 This contract pays out by inner payment, and every Algorand account must hold
 the base account minimum balance (100,000 microalgo) before it can send
-anything. Nothing in the contract reserves it, so the deployer must send it
-once, before the first payout is owed.
+anything. `configure` now requires an `mbr_payment` argument covering
+`APP_BASE_MBR`, so this is enforced by the contract rather than left to
+whoever deploys to remember: `configure` cannot succeed without it, and
+`enter` and `deposit` cannot run before `configure` has.
 
-Skipping it does not fail at deploy or at deposit. It fails at the moment the
-last party tries to leave, after the contract has already booked what it owes
-them, and it fails as a reverted inner payment rather than as anything that
-names the cause.
+Before this, nothing reserved it, and skipping it did not fail at deploy or at
+deposit: it failed at the moment the last winner tried to claim, after
+`resolve` had already booked the allocation, and it failed as a reverted inner
+payment rather than as anything that named the cause. `deadman` had exactly
+this bug, and `rain` had the same shape without the same fix until now.
 
-`deadman` reserves this out of its deposit instead, because it has exactly one
-depositor. A contract with many cannot do that without deciding which one pays
-for the app and never gets it back, so this one asks the deployer.
+`deadman` reserves this out of its one deposit instead of taking a separate
+payment, because it has exactly one depositor. A contract like this one, where
+the pot is refilled by anyone, cannot do that without deciding which deposit
+pays for the app and never gets it back, so `configure` asks for it once,
+separately, up front.
 
 ## Change Log
 
 | Date | Author | Change |
 |------|--------|--------|
+| 2026-08-26 | CorvidLabs | #105: `configure` now takes an `mbr_payment` argument covering `APP_BASE_MBR`, funding the app account's own minimum balance before anyone can enter or deposit. Closes the same class of bug `deadman` was fixed for: the last winner's `claim` could drop the account below its floor and revert after `resolve` had already booked the allocation. Not a struct change; an ABI change on a contract nobody has deployed. |
 | 2026-08-25 | CorvidLabs | #102: `opt_in_prize_asset`, `enter`, `deposit` and `deposit_asset` now assert `rekey_to`, `close_remainder_to` and `asset_close_to` are the zero address on every payment or asset transfer they accept. Not a struct change; a mechanical hygiene sweep across every contract that accepts a gtxn. |
 | 2026-08-24 | CorvidLabs | Initial scheduled draw (issue #25). Two-phase by necessity: `draw` is accounting-only because an Arcron inner call cannot reach the beacon, so `resolve` is sent by a participant who can. |
