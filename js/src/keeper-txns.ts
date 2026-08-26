@@ -99,12 +99,19 @@ export async function register(
   const suggestedParams = await algod.getTransactionParams().do();
   const composer = new algosdk.AtomicTransactionComposer();
 
-  const payment = (amount: number) => ({
+  // The note is what keeps the two legs distinct. They share sender, receiver
+  // and suggested params, so when the box MBR happens to equal the funding
+  // amount they serialise to byte-identical transactions with the same txid,
+  // and the group is unsubmittable. The register form's whole stated aim is
+  // to turn a rejected transaction into a disabled button, and this got past
+  // it: every validator passes and the failure arrives from the network.
+  const payment = (amount: number, leg: string) => ({
     txn: algosdk.makePaymentTxnWithSuggestedParamsFromObject({
       sender: signing.sender,
       receiver: appAddress,
       amount,
       suggestedParams,
+      note: new TextEncoder().encode(`arcron:${leg}`),
     }),
     signer: signing.signer,
   });
@@ -116,8 +123,8 @@ export async function register(
     signer: signing.signer,
     suggestedParams,
     methodArgs: [
-      payment(boxMbr(params.callArgs)),
-      payment(params.funding),
+      payment(boxMbr(params.callArgs), 'mbr'),
+      payment(params.funding, 'funding'),
       params.targetApp,
       // algosdk encodes `byte[][]` from arrays of numbers, not Uint8Arrays.
       params.callArgs.map((arg) => Array.from(arg)),

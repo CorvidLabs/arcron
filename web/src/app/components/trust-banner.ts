@@ -1,7 +1,90 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 
 import { ArcronService } from '../core/arcron.service';
-import { NETWORKS } from '@corvidlabs/arcron/networks';
+import { NETWORKS, type NetworkKey } from '@corvidlabs/arcron/networks';
+
+interface Notice {
+  readonly tone: 'warn' | 'bad';
+  readonly headline: string;
+  readonly detail: string;
+  /** Present only on the not-the-published-app notice, to offer a way back. */
+  readonly canonical?: number;
+}
+
+export function noticesFor(state: {
+  appId: number | null;
+  network: NetworkKey;
+  networkLabel: string;
+  status: string;
+  frozen: boolean | null;
+  undecodableBoxes: number;
+}): Notice[] {
+  const { appId } = state;
+  if (appId === null) return [];
+  const found: Notice[] = [];
+
+  // Deliberately not gated on connection status. This comparison needs no
+  // chain data at all, and gating it on a successful read meant one
+  // malformed box in a hostile app switched the whole control off.
+  const canonical = NETWORKS[state.network].defaultAppId;
+  if (canonical === undefined) {
+    found.push({
+      tone: 'warn',
+      headline: `No published app is recorded for ${state.networkLabel}.`,
+      detail:
+        `Nothing here can tell you whether app ${appId} is the one you meant. That is ` +
+        `normal on a local network, where the app is whatever you just deployed. On any ` +
+        `network carrying real value, treat it as unverified.`,
+    });
+  } else if (appId !== canonical) {
+    found.push({
+      tone: 'bad',
+      canonical,
+      headline: `This is not the published app for ${state.networkLabel}.`,
+      detail:
+        `You are pointed at app ${appId}; the published one is ${canonical}. That is ` +
+        `expected if you deployed your own. If you followed a link, stop: anyone can ` +
+        `deploy a contract that looks exactly like this one, and anything you escrow ` +
+        `here goes to whoever deployed it.`,
+    });
+  }
+
+  if (state.status === 'error') {
+    found.push({
+      tone: 'bad',
+      headline: 'This page is not showing you the current state of the app.',
+      detail:
+        `The last read failed, so what is below is stale or incomplete, and the freeze ` +
+        `warning cannot be shown at all. Do not escrow anything until it recovers.`,
+    });
+  }
+
+  const undecodable = state.undecodableBoxes;
+  if (undecodable > 0) {
+    found.push({
+      tone: 'bad',
+      headline: `${undecodable} box here does not decode as an upkeep.`,
+      detail:
+        `An honest deployment has none. This app is holding data shaped like an upkeep ` +
+        `and is not one, which usually means it is a different contract wearing these ` +
+        `box names.`,
+    });
+  }
+
+  if (state.frozen === false) {
+    found.push({
+      tone: 'warn',
+      headline: 'This deployment is not frozen.',
+      detail:
+        `Its creator can still replace the programs, which means they can reach every ` +
+        `upkeep escrowed here, including yours. That is deliberate while the network is ` +
+        `in alpha, because it is what lets a bug be fixed without asking everyone to ` +
+        `cancel and re-register. It is still a power over your money, and only the ` +
+        `creator calling freeze ends it.`,
+    });
+  }
+  return found;
+}
 
 /**
  * What this app id is, and what its creator can still do to your money.
@@ -21,12 +104,19 @@ import { NETWORKS } from '@corvidlabs/arcron/networks';
   selector: 'arcron-trust-banner',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    @if (notice(); as notice) {
-      <aside class="banner" [class]="notice.tone" role="note">
-        <p class="headline">{{ notice.headline }}</p>
-        <p class="detail">{{ notice.detail }}</p>
-      </aside>
-    }
+    <div aria-live="assertive">
+      @for (notice of notices(); track notice.headline) {
+        <aside class="banner" [class]="notice.tone">
+          <h2 class="headline">{{ notice.headline }}</h2>
+          <p class="detail">{{ notice.detail }}</p>
+          @if (notice.canonical; as canonical) {
+            <button type="button" class="back" (click)="usePublished(canonical)">
+              Switch to the published app ({{ canonical }})
+            </button>
+          }
+        </aside>
+      }
+    </div>
   `,
   styles: `
     .banner {
@@ -37,7 +127,13 @@ import { NETWORKS } from '@corvidlabs/arcron/networks';
     }
     .banner.warn { border-left-color: var(--warning); }
     .banner.bad { border-left-color: var(--danger); }
+    .banner + .banner { margin-top: 0.6rem; }
     .headline { margin: 0; font-weight: 600; font-size: 0.9rem; }
+    .back {
+      margin-top: 0.55rem;
+      font-size: 0.78rem;
+      font-family: var(--font-mono);
+    }
     .headline::before { content: '\\26A0\\FE0E'; margin-right: 0.5rem; }
     .detail {
       margin: 0.3rem 0 0;
@@ -50,38 +146,25 @@ import { NETWORKS } from '@corvidlabs/arcron/networks';
 export class TrustBanner {
   private readonly arcron = inject(ArcronService);
 
-  protected readonly notice = computed(() => {
-    const appId = this.arcron.appId();
-    if (appId === null || this.arcron.status() !== 'ready') return null;
+  /**
+   * Every notice that applies, most severe first.
+   *
+   * Ranked rather than exclusive. The first version returned at most one, so
+   * an honest self-hoster saw the identity notice permanently and therefore
+   * never saw the freeze warning for their own unfrozen app.
+   */
+  protected readonly notices = computed(() =>
+    noticesFor({
+      appId: this.arcron.appId(),
+      network: this.arcron.network(),
+      networkLabel: this.arcron.config().label,
+      status: this.arcron.status(),
+      frozen: this.arcron.frozen(),
+      undecodableBoxes: this.arcron.undecodableBoxes(),
+    }),
+  );
 
-    // An unrecognised app id outranks the freeze flag: a look-alike contract
-    // can report whatever it likes about itself, so there is no point
-    // reassuring anyone that a stranger's app says it is frozen.
-    const canonical = NETWORKS[this.arcron.network()].defaultAppId;
-    if (canonical !== undefined && appId !== canonical) {
-      return {
-        tone: 'bad',
-        headline: `This is not the published app for ${this.arcron.config().label}.`,
-        detail:
-          `You are pointed at app ${appId}; the published one is ${canonical}. That is ` +
-          `expected if you deployed your own. If you followed a link, stop: anyone can ` +
-          `deploy a contract that looks exactly like this one, and anything you escrow ` +
-          `here goes to whoever deployed it.`,
-      };
-    }
-
-    if (this.arcron.frozen() === false) {
-      return {
-        tone: 'warn',
-        headline: 'This deployment is not frozen.',
-        detail:
-          `Its creator can still replace the programs, which means they can reach every ` +
-          `upkeep escrowed here, including yours. That is deliberate while the network is ` +
-          `in alpha, because it is what lets a bug be fixed without asking everyone to ` +
-          `cancel and re-register. It is still a power over your money, and only the ` +
-          `creator calling freeze ends it.`,
-      };
-    }
-    return null;
-  });
+  protected usePublished(appId: number): void {
+    this.arcron.setAppId(appId);
+  }
 }

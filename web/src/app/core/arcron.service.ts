@@ -33,6 +33,27 @@ export interface AppAccount {
 
 export type ConnectionStatus = 'connecting' | 'ready' | 'error';
 
+/**
+ * Whether this app's creator has given up the power to replace its programs.
+ *
+ * Exported so the test can exercise the code the console actually runs. The
+ * first version of this lived inline and its test declared a private copy, so
+ * reverting the coercion below left every test green.
+ *
+ * A missing `frozen` key means an app deployed before governance existed,
+ * which has no update path at all, so absent reads as frozen rather than
+ * unknown.
+ */
+export function isFrozen(
+  globalState: readonly { key: Uint8Array; value: { uint?: number | bigint } }[],
+): boolean {
+  const found = globalState.find((entry) => new TextDecoder().decode(entry.key) === 'frozen');
+  if (!found) return true;
+  // BigInt first: a strict compare between a number 0 and 0n is true, which
+  // would report an unfrozen app as frozen and hide the warning entirely.
+  return BigInt(found.value.uint ?? 0) !== 0n;
+}
+
 @Injectable({ providedIn: 'root' })
 export class ArcronService {
   private timer: ReturnType<typeof setInterval> | null = null;
@@ -55,6 +76,18 @@ export class ArcronService {
    * flag at all predates governance and is immutable, so it reads as frozen.
    */
   readonly frozen = signal<boolean | null>(null);
+  /**
+   * Boxes this app holds that do not decode as upkeeps.
+   *
+   * Zero on any honest deployment. A non-zero count means the app is holding
+   * data shaped like an upkeep box but is not one, which is either a
+   * different contract wearing this one's box names or a deliberate attempt
+   * to break the reader.
+   */
+  readonly undecodableBoxes = signal(0);
+
+  /** Which refresh is allowed to write. See `refresh`. */
+  private generation = 0;
   readonly lastRefreshed = signal<number | null>(null);
   /** Recent (wall clock, round) pairs, oldest first. */
   private readonly rateSamples = signal<readonly { at: number; round: bigint }[]>([]);
@@ -161,6 +194,14 @@ export class ArcronService {
   async refresh(): Promise<void> {
     const algod = this.algod();
     const appId = this.appId();
+    // Every write below is guarded by this. A victim who suspects the app id
+    // they were linked and types the canonical one gets a reset and a new
+    // refresh, and the attacker's slower in-flight read would otherwise land
+    // afterwards and repaint their registry under the canonical id, where no
+    // warning is shown. Whichever refresh started last is the only one
+    // allowed to finish.
+    const generation = ++this.generation;
+    const current = () => generation === this.generation;
     try {
       const params = await algod.getTransactionParams().do();
       this.genesisId.set(params.genesisID ?? null);
@@ -176,10 +217,12 @@ export class ArcronService {
       } else {
         await this.refreshApp(algod, appId);
       }
+      if (!current()) return;
       this.status.set('ready');
       this.error.set(null);
       this.lastRefreshed.set(Date.now());
     } catch (cause) {
+      if (!current()) return;
       this.status.set('error');
       this.error.set(describe(cause));
     }
@@ -192,14 +235,7 @@ export class ArcronService {
     );
     this.nextUpkeepId.set(counter ? BigInt(counter.value.uint ?? 0) : null);
 
-    // An app deployed before governance has no `frozen` key and cannot be
-    // updated at all, so a missing flag means frozen rather than unknown.
-    const frozen = application.params?.globalState?.find(
-      (entry) => new TextDecoder().decode(entry.key) === 'frozen',
-    );
-    // BigInt first: a strict compare between a number 0 and 0n is true, which
-    // would report an unfrozen app as frozen and hide the warning entirely.
-    this.frozen.set(frozen ? BigInt(frozen.value.uint ?? 0) !== 0n : true);
+    this.frozen.set(isFrozen(application.params?.globalState ?? []));
 
     const address = algosdk.getApplicationAddress(appId);
     const account = await algod.accountInformation(address).do();
@@ -215,14 +251,27 @@ export class ArcronService {
 
   private async readUpkeeps(algod: algosdk.Algodv2, appId: number): Promise<Upkeep[]> {
     const { boxes } = await algod.getApplicationBoxes(appId).do();
+    let undecodable = 0;
     const upkeeps = await Promise.all(
       boxes.map(async (box) => {
         const id = upkeepIdFromBoxName(box.name);
         if (id === null) return null;
-        const value = await algod.getApplicationBoxByName(appId, box.name).do();
-        return decodeUpkeep(id, value.value);
+        try {
+          const value = await algod.getApplicationBoxByName(appId, box.name).do();
+          return decodeUpkeep(id, value.value);
+        } catch {
+          // Box contents belong to whoever owns the app, and a decoder throw
+          // inside a bare Promise.all rejects the whole read. That pinned the
+          // connection at 'error' for one malformed box, which cost an
+          // attacker about 0.058 ALGO and switched off every warning on the
+          // page while the register button stayed live. One bad box now
+          // drops one row.
+          undecodable += 1;
+          return null;
+        }
       }),
     );
+    this.undecodableBoxes.set(undecodable);
     return upkeeps
       .filter((upkeep): upkeep is Upkeep => upkeep !== null)
       .sort((left, right) => (left.id < right.id ? -1 : 1));

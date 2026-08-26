@@ -361,7 +361,12 @@ export class RegisterForm {
       this.keeper.canSign() &&
       this.status() === 'VALID' &&
       this.callArgs() !== null &&
-      this.keeper.busy() === null,
+      this.keeper.busy() === null &&
+      // Nothing on the write path used to ask whether the read path was
+      // working. A failed read leaves every warning on the page unrendered
+      // and the last-good figures still on screen, which is the moment this
+      // button should be least available rather than most.
+      this.arcron.status() === 'ready',
   );
 
   protected useCadence(seconds: number): void {

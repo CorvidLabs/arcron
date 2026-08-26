@@ -44,7 +44,7 @@ export class KeeperService {
   async topUp(upkeep: Upkeep, amount: number): Promise<void> {
     await this.send('top_up', upkeep.id, async (algod, appId, signing) => {
       const result = await txns.topUp(algod, appId, signing, upkeep.id, amount);
-      return { result, message: `Escrow now ${algos(result.returnValue ?? 0n)}` };
+      return { result, message: `The contract returned an escrow of ${algos(result.returnValue ?? 0n)}` };
     });
   }
 
@@ -73,7 +73,7 @@ export class KeeperService {
       const result = await txns.cancel(algod, appId, signing, upkeep.id, upkeep.feeAsset);
       return {
         result,
-        message: `Refunded ${algos(result.returnValue ?? 0n)} (escrow plus box MBR)`,
+        message: `The contract returned a refund of ${algos(result.returnValue ?? 0n)}`,
       };
     });
   }

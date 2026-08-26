@@ -168,7 +168,13 @@ export class NetworkBar {
 
   protected readonly statusLabel = computed(() => {
     const genesis = this.arcron.genesisId();
-    if (this.arcron.status() === 'error') return 'node unreachable';
+    // Not necessarily the node. Everything before the box read can succeed
+    // and the read still fail on data the app itself controls, and blaming
+    // the connection sends someone to check their network while the actual
+    // cause is the app they are pointed at.
+    if (this.arcron.status() === 'error') {
+      return this.arcron.genesisId() === null ? 'node unreachable' : 'read failed';
+    }
     if (this.arcron.genesisMatches() === false) return `wrong chain: ${genesis}`;
     if (this.arcron.status() === 'connecting') return 'connecting…';
     const seconds = this.arcron.secondsPerRound();

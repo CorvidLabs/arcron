@@ -6,12 +6,10 @@
 
 import { describe, expect, test } from 'bun:test';
 
-/** The parse used by ArcronService.refreshApp, isolated from algod. */
-function isFrozen(entries: { key: Uint8Array; value: { uint?: number | bigint } }[]): boolean {
-    const found = entries.find((entry) => new TextDecoder().decode(entry.key) === 'frozen');
-    if (!found) return true;
-    return BigInt(found.value.uint ?? 0) !== 0n;
-}
+// The real function the console runs, not a copy. An earlier version of this
+// file declared its own, so reverting the coercion in the service left every
+// test here green.
+import { isFrozen } from './arcron.service';
 
 const key = (name: string) => new TextEncoder().encode(name);
 
