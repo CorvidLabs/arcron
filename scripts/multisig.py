@@ -178,10 +178,32 @@ def describe_transaction(path: pathlib.Path) -> list[str]:
         label = names.get(int(on_complete), str(on_complete))
         lines.append(f"app id        {getattr(txn, 'index', 0)}")
         lines.append(f"on complete   {label}")
-        if label == "UpdateApplication":
-            approval = getattr(txn, "approval_program", b"") or b""
-            clear = getattr(txn, "clear_program", b"") or b""
-            lines.append(f"REPLACES THE PROGRAMS with {len(approval)} + {len(clear)} bytes")
+        approval = getattr(txn, "approval_program", b"") or b""
+        clear = getattr(txn, "clear_program", b"") or b""
+        # A create is a NoOp against app id 0 that carries programs, so it
+        # looked like an ordinary call here and printed nothing that mattered.
+        # The fields a create fixes forever were only ever shown by `govern
+        # create`, which the coordinator runs. The holders who authorise the
+        # one transaction that cannot be undone read this.
+        is_create = int(getattr(txn, "index", 0) or 0) == 0 and bool(approval)
+        if is_create:
+            lines.append("CREATES A NEW APPLICATION. Every field below is permanent:")
+            lines.append("  the creator is this sender and can never be changed")
+            lines.append(f"  extra pages   {int(getattr(txn, 'extra_pages', 0) or 0)}")
+            gs = getattr(txn, "global_schema", None)
+            ls = getattr(txn, "local_schema", None)
+            lines.append(
+                f"  global state  {getattr(gs, 'num_uints', 0)} uints, "
+                f"{getattr(gs, 'num_byte_slices', 0)} byte slices"
+            )
+            lines.append(
+                f"  local state   {getattr(ls, 'num_uints', 0)} uints, "
+                f"{getattr(ls, 'num_byte_slices', 0)} byte slices"
+            )
+            lines.append("  Extra pages and schema cannot be changed by `update`, ever.")
+        if is_create or label == "UpdateApplication":
+            verb = "CARRIES PROGRAMS of" if is_create else "REPLACES THE PROGRAMS with"
+            lines.append(f"{verb} {len(approval)} + {len(clear)} bytes")
             # The combined digest is what `verify_build` records, and it is the
             # only one that pins both programs. An approval-only hash lets an
             # honest approval be shipped alongside a hostile clear program,
@@ -266,12 +288,21 @@ def blob_signers(path: pathlib.Path) -> list[str]:
     return [encoding.encode_address(sub.public_key) for sub in _load(path).multisig.subsigs]
 
 
+def carried_programs(path: pathlib.Path) -> tuple[bytes, bytes] | None:
+    """The programs a create or update transaction carries, if it carries any."""
+    txn = _load(path).transaction
+    approval = getattr(txn, "approval_program", b"") or b""
+    clear = getattr(txn, "clear_program", b"") or b""
+    return (approval, clear) if approval else None
+
+
 def refusals(
     path: pathlib.Path,
     *,
     app_id: int,
     genesis_ids: tuple[str, ...],
     expected_address: str | None,
+    expected_digest: str | None,
     max_fee: int,
     allow_account_txn: bool = False,
     allow_rekey: bool = False,
@@ -322,6 +353,17 @@ def refusals(
             f"This CLOSES the sender to {txn.close_remainder_to}, emptying the account. "
             "Pass --i-mean-to-rekey if that is genuinely what you want."
         )
+    if expected_digest is not None:
+        carried = carried_programs(path)
+        if carried is not None and combined_digest(*carried) != expected_digest:
+            reasons.append(
+                f"The programs in this file are not the ones this working tree compiles to.\n"
+                f"      file: {combined_digest(*carried)}\n"
+                f"      tree: {expected_digest}\n"
+                "      Printing the digest asks somebody to compare it. This is the "
+                "comparison. Check out the tag this was built from, or find out why the "
+                "file disagrees with it."
+            )
     if int(txn.fee) > max_fee:
         reasons.append(
             f"The fee is {txn.fee} microAlgos, above the {max_fee} ceiling. A fee is spent "

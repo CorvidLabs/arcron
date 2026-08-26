@@ -164,10 +164,39 @@ decodes it:
 
 ```
 on complete   UpdateApplication
-REPLACES THE PROGRAMS with 2008 + 4 bytes
-  approval sha256 481ac7e4c927f4ac2a9e3f36cfa8483dfe093ec0f5fd0d214e606b3001266bbd
-  Compare that against `fledge run verify` on the commit you expect.
+REPLACES THE PROGRAMS with 2104 + 4 bytes
+  combined sha256 0afab3686aedeb990a46ad519a4bf0bf6a04394672ec3dd24990761be660bf49
+  approval sha256 433a0418cf37e97376258a79277f05636400fa153c1fa3a0b86aba049071896a
+  clear    sha256 ed90f0d2da1f1d1abd773c45230651a292a90edbc12a7bf859a493a12a640ce7
+  Compare the combined digest against `poetry run python -m scripts.verify_build`
+  on the commit you expect. Do not compare against `fledge run verify`, which
+  does not rebuild.
 ```
+
+The **combined** digest is the one to compare, and it is what `verify_build`
+records. An approval-only hash lets an honest approval ship beside a hostile
+clear program: it matches on inspection, and after `freeze` it cannot be
+replaced. This guide told you to compare the approval hash against a task
+that does not rebuild, which hashed committed artifacts rather than a compile
+of the tag you thought you had.
+
+For a **create**, `show` names every field that is fixed forever, because none
+of them can be corrected by an update:
+
+```
+CREATES A NEW APPLICATION. Every field below is permanent:
+  the creator is this sender and can never be changed
+  extra pages   1
+  global state  2 uints, 0 byte slices
+  local state   0 uints, 0 byte slices
+  Extra pages and schema cannot be changed by `update`, ever.
+CARRIES PROGRAMS of 2104 + 4 bytes
+```
+
+`sign` does not stop at printing the digest. It rebuilds this tree and refuses
+a file whose programs are not the ones the tree compiles to, because printing
+a hash asks somebody to compare it and this is the comparison. Pass
+`--no-rebuild` to skip that, and know what you are skipping.
 
 and shouts about the two things that would otherwise pass as routine:
 

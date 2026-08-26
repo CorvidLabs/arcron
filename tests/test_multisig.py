@@ -121,7 +121,7 @@ def _write(tmp_path, txn):
 def _refusals(path, **overrides):
     kwargs = dict(
         app_id=769891898, genesis_ids=TESTNET_GENESIS,
-        expected_address=ms.address(), max_fee=10_000,
+        expected_address=ms.address(), expected_digest=None, max_fee=10_000,
     )
     kwargs.update(overrides)
     return ms.refusals(path, **kwargs)
@@ -269,3 +269,72 @@ def test_the_foundation_beacon_ids_match_what_the_specs_record() -> None:
     testnet, mainnet = re.search(r"TestNet `(\d+)` and MainNet `(\d+)`", spec).groups()
     assert int(testnet) == net.FOUNDATION_BEACON[net.TESTNET]
     assert int(mainnet) == net.FOUNDATION_BEACON[net.MAINNET]
+
+
+# --- what a holder is shown before signing a create --------------------
+#
+# Grok's follow-up: the permanent-field checklist was printed by `govern
+# create`, which the coordinator runs. Holders run `show`, and a create is a
+# NoOp against app id 0, so it printed type, sender, network, fee and nothing
+# else. Five honest people glancing at that could authorise the one
+# transaction with no way back, while the coordinator swapped the extra pages,
+# the schema, or the programs.
+
+def _create_txn(sender: str):
+    from algosdk import transaction
+
+    return transaction.ApplicationCreateTxn(
+        sender=sender, sp=_params(), on_complete=transaction.OnComplete.NoOpOC,
+        approval_program=b"\x0a\x81\x01", clear_program=b"\x0a\x81\x01",
+        global_schema=transaction.StateSchema(2, 0),
+        local_schema=transaction.StateSchema(0, 0),
+        extra_pages=1,
+    )
+
+
+def test_show_names_every_permanent_field_of_a_create(configured, tmp_path) -> None:
+    configured(3, SIGNERS)
+    described = "\n".join(ms.describe_transaction(_write(tmp_path, _create_txn(ms.address()))))
+    assert "CREATES A NEW APPLICATION" in described
+    assert "extra pages   1" in described
+    assert "global state  2 uints" in described
+    assert "local state   0 uints" in described
+    assert "combined sha256" in described
+    assert "cannot be changed by `update`" in described
+
+
+def test_sign_refuses_programs_that_are_not_this_tree(configured, tmp_path) -> None:
+    """Printing a digest asks somebody to compare it. This is the comparison."""
+    configured(3, SIGNERS)
+    path = _write(tmp_path, _create_txn(ms.address()))
+    reasons = _refusals(path, app_id=0, expected_digest="0" * 64)
+    assert any("not the ones this working tree compiles to" in r for r in reasons), reasons
+
+
+def test_sign_accepts_programs_that_are_this_tree(configured, tmp_path) -> None:
+    configured(3, SIGNERS)
+    path = _write(tmp_path, _create_txn(ms.address()))
+    carried = ms.carried_programs(path)
+    assert carried is not None
+    reasons = _refusals(path, app_id=0, expected_digest=ms.combined_digest(*carried))
+    assert reasons == [], reasons
+
+
+def test_the_extra_pages_formula_holds_at_the_page_boundary() -> None:
+    """Pinned because it is create-only and cannot be corrected afterwards.
+
+    A later simplification of this arithmetic would otherwise pass CI while
+    asking for the wrong number of pages, which is either a create that fails
+    or 100,000 microAlgos of the creator's balance locked up for nothing.
+    """
+    from scripts.govern import PROGRAM_PAGE
+
+    def pages(total: int) -> int:
+        return (total - 1) // PROGRAM_PAGE
+
+    assert pages(2_048) == 0
+    assert pages(2_049) == 1
+    assert pages(4_096) == 1
+    assert pages(4_097) == 2
+    # The live keeper: 2104 approval + 4 clear.
+    assert pages(2_108) == 1

@@ -53,13 +53,17 @@ def main(argv: list[str] | None = None) -> int:
 
     if ms.configured():
         # A multisig cannot sign in process, so creating from one is a separate
-        # flow: `scripts/multisig_e2e.py` is the worked version, and the
-        # deployment guide has the commands. Refusing is better than quietly
-        # deploying from the single-key DEPLOYER and leaving a contract whose
-        # creator is not the multisig anyone was told to expect.
+        # flow: `govern create` is it. Do not point anyone at
+        # `scripts/multisig_e2e.py`, which this comment used to: that script
+        # generates three throwaway keys and drops them when it exits, so on a
+        # real network it makes an app whose creator nobody holds. Refusing is
+        # better than quietly deploying from the single-key DEPLOYER and
+        # leaving a contract whose creator is not the multisig anyone was told
+        # to expect.
         logger.error(
             f"A multisig is configured ({ms.describe()}), and this command signs "
-            "in process. See docs/deploying.md for the multisig deployment flow."
+            "in process. Use `poetry run python -m scripts.govern create` instead; "
+            "see docs/deploying.md."
         )
         return 1
 

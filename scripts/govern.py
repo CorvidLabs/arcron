@@ -1,10 +1,16 @@
-"""Replace a keeper deployment's programs, or give up the ability to.
+"""Create a keeper deployment, replace its programs, or give up the ability to.
 
-Two commands, one of which cannot be undone.
+Two of these cannot be undone, and they are not the same two.
 
+    poetry run python -m scripts.govern create --network mainnet --expect-creator ADDR
     poetry run python -m scripts.govern update --network testnet --app-id N
     poetry run python -m scripts.govern freeze --network testnet --app-id N
     poetry run python -m scripts.govern status --network testnet --app-id N
+
+`create` writes an unsigned application-create for a multisig to sign. Every
+field it sets is permanent: the creator, the state schema, and the number of
+extra program pages. `update` replaces code and nothing else, so none of them
+has a way back.
 
 `update` compiles this tree and replaces the deployed programs with it. It
 works only while the app is unfrozen and only for the account that created it.
@@ -14,8 +20,21 @@ call that could restore an update path is an update, which is refused. Read
 `docs/releases.md` for when this is supposed to happen: freezing is the rc
 gate, not something to do early.
 
-Both refuse to guess. `--app-id` is required, the network is checked against
-the node's genesis id, and `freeze` asks for confirmation unless `--yes`.
+Under a multisig these write a file instead of sending, and the holders sign
+it wherever their keys are:
+
+    govern show --file F --app-id N     read it before signing, always
+    govern sign --file F --app-id N     refuses on any of several grounds
+    govern submit --file F --app-id N
+
+`show` describes what the file does, including every permanent field when it
+is a create. `sign` refuses a file that is not an app call, names a different
+app, is for another network, spends from an account that is not the configured
+multisig, rekeys or closes the sender, carries a fee above the ceiling, or
+carries programs that are not the ones this tree compiles to. Then it asks for
+the sending account to be typed in full, with no flag to skip it: a signature
+produced without a human reading the description is the thing a multisig
+exists to prevent.
 """
 
 import argparse
@@ -298,11 +317,20 @@ def _refuse(args, verb: str) -> bool:
     Collected rather than short-circuited so a holder sees all of what is
     wrong at once, and phrased as refusals so the default is inaction.
     """
+    # Recompute from this tree so a file carrying programs is checked rather
+    # than merely described. Skipped when the file carries none, and when the
+    # signer explicitly opted out of rebuilding.
+    expected_digest = None
+    if ms.carried_programs(args.file) is not None and not args.no_rebuild:
+        rebuild()
+        expected_digest = _digest(*_programs(_spec("keeper")))
+
     reasons = ms.refusals(
         args.file,
         app_id=args.app_id,
         genesis_ids=net.genesis_ids(args.network),
         expected_address=ms.address() if ms.configured() else None,
+        expected_digest=expected_digest,
         max_fee=MAX_SIGNABLE_FEE if not args.allow_high_fee else 2**63,
         allow_account_txn=args.account_txn,
         allow_rekey=args.i_mean_to_rekey,
@@ -409,12 +437,16 @@ def main(argv: list[str] | None = None) -> int:
             # once enough exist. Freeze already asks for the app id to be
             # typed back, and signing deserves the same pause, because a
             # holder who runs this from a script is not a second signer.
-            if not args.yes:
-                expected = str(ms.blob_address(args.file))
-                answer = input(f"  Type the sending account ({expected[:8]}...) to sign: ").strip()
-                if not expected.startswith(answer) or len(answer) < 8:
-                    logger.info("Not signed.")
-                    return 1
+            # No --yes escape here. `freeze` has one because the coordinator
+            # runs it after the holders have already signed; this is the
+            # holders' own step, and a signature produced without a human
+            # reading the description is the failure the multisig exists to
+            # prevent. A holder who scripts past this is not a second signer.
+            expected = str(ms.blob_address(args.file))
+            answer = input("  Type the full sending account to sign: ").strip()
+            if answer != expected:
+                logger.info("Not signed. The account typed did not match the file's sender.")
+                return 1
             have = ms.sign(args.file, secret)
             logger.info(f"Signed. {have} of {ms.blob_threshold(args.file)} collected.")
             return 0
