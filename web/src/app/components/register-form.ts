@@ -36,7 +36,8 @@ const CADENCES = [
         <h2>Register an upkeep</h2>
         <p class="subtitle">
           Escrow ALGO to have any keeper call your app on a schedule. The call is a NoOp carrying
-          one app arg, a method selector. A fee ceiling makes a neglected upkeep more attractive,
+          a method selector, plus any arguments you fix here. A keeper chooses when it happens,
+          never what it says. A fee ceiling makes a neglected upkeep more attractive,
           though only competing keepers hold the price below it. Leave it at zero unless an upkeep
           is actually going unserviced.
         </p>

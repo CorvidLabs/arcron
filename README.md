@@ -42,7 +42,7 @@ The job matters; whoever runs it does not, and nobody owns it.*
 **Building on it?** [`docs/integrating.md`](docs/integrating.md) is the whole
 integration story in one pass: the hook shape, authorization, the failure
 modes that stop your upkeep being serviced, and the pull pattern everything
-here is built on. Integration is one zero-argument method.
+here is built on. Integration is usually one zero-argument method.
 
 ## The keeper network
 
@@ -71,8 +71,12 @@ registry is a free algod query.
 **Constraints (v1):** registered calls are NoOp app calls carrying up to three
 app args, counting the selector, which is enough for an ARC-4 method of arity
 two. The zero-argument "tick/settle/harvest" hook is still the common shape.
-An upkeep declares no foreign arrays, and does not need to: a keeper's
-simulation discovers what the inner call touches and attaches the references.
+An upkeep declares no foreign arrays, and does not need to: a keeper that
+simulates before executing discovers what the inner call touches and attaches
+the references. The Python bot does this, because algokit-utils does it. The
+TypeScript client and the console do not simulate yet, so an upkeep whose
+target reaches an account, asset or app beyond the target itself is not
+servable from them ([#100](https://github.com/CorvidLabs/arcron/issues/100)).
 Fees ≥ 4000 µALGO (keepers pay ~3000 µALGO in group fees per execution).
 Interval ≥ 10 rounds.
 

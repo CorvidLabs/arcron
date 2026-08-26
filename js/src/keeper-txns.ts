@@ -212,6 +212,12 @@ export async function execute(
   // Algorand pools fees and keeps the unused part, so exactly the executions
   // that pay most were the ones that netted least.
   const paysBonus = usesAsset && (await optedIn(algod, signing.sender, upkeep.feeAsset ?? 0n));
+  // Known limitation: this attaches the target app and the fee asset and
+  // nothing else, because it does not simulate first. An upkeep whose target
+  // reaches any further account, asset or app fails here while the Python bot
+  // services it fine, since algokit-utils simulates and populates. Tracked in
+  // #100. Until that is closed, this client cannot service every upkeep the
+  // registry will show it.
   const composer = new algosdk.AtomicTransactionComposer();
   composer.addMethodCall({
     appID: appId,

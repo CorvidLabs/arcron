@@ -45,15 +45,16 @@ The MBR charged at registration SHALL equal the box's true minimum balance, so t
 
 ## Constraints
 
-- Escrow is plain ALGO in v1 (universal, faucet-friendly); ASA-denominated fees are a possible extension.
+- Escrow is plain ALGO. An upkeep may additionally offer an ASA bonus on top of the ALGO fee (`fee_asset`, `asset_fee`), paid best-effort: it is skipped when the keeper is not opted in, the app does not hold enough, or either holding is frozen, and skipping it never blocks the ALGO. No token is required to use Arcron.
 - Creators and keepers may be post-quantum (Falcon-1024) accounts: their addresses are ordinary 32-byte addresses and the contract compares nothing else. `MIN_UPKEEP_FEE` covers a post-quantum keeper only while Algorand's per-byte fee is zero. A Falcon-signed `execute` is about 13× the size of an ed25519 one, and the floor is permanent (measured in `scripts/spike_quantum.py`).
-- Escalation raises the balance an upkeep needs to stay executable, so an upkeep with a ceiling can go dormant at a balance that covers several runs at its base fee. Every reader of the registry prices runway at the ceiling for that reason.
-- Registered calls are NoOp app calls with exactly one app arg (the stored call data, typically a method selector) and no foreign arrays; targets must accept that shape.
+- Escalation does not raise the balance an upkeep needs to stay executable. When the escalated fee exceeds `balance` the fee falls back to `fee_per_execution`, so the dormancy threshold is always the base fee (see Invariant 12). Readers of the registry should still price *runway* at the ceiling, because a late run can consume that much, but an upkeep is not dormant until it cannot afford one run at its base fee.
+- Registered calls are NoOp app calls carrying the creator's stored argument list: the method selector first, then up to `MAX_CALL_ARGS - 1` further ARC-4 encoded arguments. The creator fixes the whole list at `register` and a keeper can neither choose nor alter any part of it. Foreign arrays are resolved off-chain by the keeper, not declared on-chain.
 - Keepers are expected to simulate off-chain before executing, but a mistake is cheap: a failing target call fails the whole group, and Algorand rejects the transaction before it reaches a block, so the keeper pays no fee at all (measured in `scripts/keeper_e2e.py` stage 14).
 
 ## Out of Scope
 
-- ASA-denominated fees, protocol rake, SLA/slashing mechanics, multi-arg or foreign-array call shapes.
+- Protocol rake, SLA/slashing mechanics, and keeper-supplied call data. Staking (#15) and keeper-supplied data (#22) are closed rather than deferred; see `docs/design/out-of-scope.md`.
+- ASA-denominated fees and multi-argument call shapes were listed here until 1.0 shipped both. The ASA path is a bonus on top of the ALGO fee rather than a denomination, and arguments are fixed by the creator rather than supplied by a keeper, which is what kept both inside the guarantee.
 - Escalation curves other than linear, and ceilings expressed as a multiple of the base fee rather than an absolute amount.
 
 The off-chain keeper bot that watches rounds and submits executions

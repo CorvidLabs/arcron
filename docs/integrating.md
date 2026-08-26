@@ -25,10 +25,17 @@ def run(self) -> UInt64:
     ...
 ```
 
-Arcron calls it with exactly one application argument (the method selector)
-and no foreign arrays. That is the whole call shape. `tick()uint64`,
+Arcron calls it with the method selector as the only application argument.
+That is the simplest shape and the common one: `tick()uint64`,
 `publish()uint64`, `distribute()uint64` and `sweep()uint64` in this repo are
-all the same shape.
+all built that way.
+
+A method taking arguments works too. The creator fixes the whole argument list
+at `register`, so the selector goes first and each ARC-4 encoded argument
+follows it, up to `MAX_CALL_ARGS` entries. What a keeper cannot do is choose
+or alter any of them, which is the guarantee the whole design rests on: a
+keeper decides *when* your call happens, never *what* it says. See
+[Calls with arguments](#calls-with-arguments) below.
 
 The consequence for design: your hook works from your own state. It is not
 handed parameters, so whatever it needs to decide must already be on-chain
@@ -369,11 +376,17 @@ So: leave the ceiling at zero unless an upkeep is genuinely going unserviced.
 It buys reliability from a competitive keeper set and buys nothing from a
 single one.
 
-The escrow also has to cover the ceiling for the upkeep to stay executable. An
-upkeep with a 4,000 µALGO fee and a 12,000 µALGO ceiling goes dormant below
-12,000, not below 4,000. `register` enforces one capped run up front, so a
-capped upkeep can never be unexecutable from birth, but later runs can draw it
-below that line.
+A ceiling does not raise the balance at which an upkeep stops being
+executable. When the escalated fee is more than the escrow holds, the contract
+drops the fee back to `fee_per_execution`, so an upkeep with a 4,000 µALGO fee
+and a 12,000 µALGO ceiling stays executable down to 4,000, not 12,000.
+
+That fallback is not a convenience. Lateness only ever grows, so the escalated
+price only ever rises: without it, an escrow that once fell below the escalated
+fee could never reach it again, and the upkeep would sit holding up to a full
+ceiling of escrow that no keeper could spend and only its creator could
+recover. What a ceiling costs you is the escrow that a late run can consume,
+not the point at which the upkeep goes quiet.
 
 - **Anyone can `top_up`.** Funding is permissionless, so a counterparty with an
   interest in your schedule running can pay for it. Only the creator can

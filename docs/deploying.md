@@ -81,10 +81,16 @@ trusting anyone:
 
 ```
 app 769891898
-  approval   1932 bytes
-  combined  sha256 bb466d637cc9441f408e8af29cc68398ab2d4320a02629e22c95cf057ce6d0fb
-  frozen    absent: this app predates the freeze flag and has no update path
+  creator   E5M2OH5XNDMNABJ6VOFOUVR2IKRPCGQH43PVC5P3DWQQ2LV2VJV2FJZQ3E
+  approval   2104 bytes
+  combined  sha256 0afab3686aedeb990a46ad519a4bf0bf6a04394672ec3dd24990761be660bf49
+  frozen    0: the creator can still replace the programs
+            Anyone escrowing here is trusting that they will not.
 ```
+
+An app deployed before governance shipped prints `frozen absent` instead,
+which means it has no update path at all and nobody can replace its programs.
+Absent is the stronger guarantee, not a missing one.
 
 `update` compiles this tree, refuses if the deployment is frozen, replaces the
 programs, and then re-reads them to confirm what landed is what was sent.

@@ -155,9 +155,12 @@ cannot drift apart.
   `extra_fee` covering the two inner transactions (fee pooling). Paid fee is
   the effective fee (≥ 4,000), so net ≥ 1,000 µALGO per execution, and more
   when the upkeep is late and its creator set a ceiling.
-- An upkeep is executable while `balance ≥ effective fee`; it goes dormant
-  when underfunded and resumes after a `top_up`. A ceiling raises that
-  threshold, so budget runway against `fee_cap` rather than the base fee.
+- An upkeep is executable while `balance ≥ fee_per_execution`; it goes dormant
+  when underfunded and resumes after a `top_up`. A ceiling does not raise that
+  threshold: when the escalated fee is more than the escrow holds, the fee
+  falls back to the base, so the upkeep stays executable by anyone rather than
+  stranding a ceiling's worth of escrow nobody can spend. Budget runway
+  against `fee_cap` anyway, since a late run can consume that much.
 
 ## Liveness
 
@@ -614,7 +617,13 @@ out, the dogfood plan and the mainnet gate are in
 - Three app args per execution, counting the selector. Foreign arrays are
   supplied by the keeper rather than stored, and there is no on-chain way for
   an upkeep to declare which resources it needs. It does not need one: a
-  keeper simulates the call first and algod reports what it touched. A
+  keeper that simulates the call first has algod report what it touched, and
+  attaches those references. That is a property of the keeper, not of the
+  network: the Python bot inherits it from algokit-utils, while
+  `js/src/keeper-txns.ts` and the console attach only the target app and the
+  fee asset and do not simulate, so an upkeep reaching anything further is not
+  servable from them yet
+  ([#100](https://github.com/CorvidLabs/arcron/issues/100)). A
   `resources()` declaration convention was proposed and then withdrawn for
   exactly that reason. See [Reaching resources your hook cannot name](integrating.md#reaching-resources-your-hook-cannot-name)
   and [docs/design/call-shapes.md](design/call-shapes.md).

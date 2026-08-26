@@ -293,9 +293,19 @@ secret in the project, not as a funding account.
   `scripts/deploy.py` refuses to run at all rather than quietly deploying from
   the single key instead. `fledge run smoke-multisig` proves on LocalNet that
   one holder of three cannot update and two can.
-- **Three keys, threshold two, on different devices held by different people.**
-  Any one can be lost without losing control, and any one can be compromised
-  without losing the contract. Three keys in one drawer is one key.
+- **More keys than the threshold, on different devices held by different
+  people.** Any one can then be lost without losing control, and any one can be
+  compromised without losing the contract. Keys in one drawer are one key.
+
+  The MainNet deployment uses **five keys with a threshold of three**
+  (`NHQU7QBDTUC4Q5I7LV3A35GGG36QUK5EL6PM4ZVBJKZ7AS6EDOU7BCRDWA`). Two can be
+  lost and two can be compromised without either losing control or losing the
+  contract. The LocalNet smoke test uses three keys with a threshold of two
+  because it only has to prove the mechanism, not carry anything.
+
+  Member order is part of the address. A multisig address is the hash of
+  `"MultisigAddr" || version || threshold || each public key in order`, so the
+  same five keys in a different order are a different account holding nothing.
 - **Once frozen, the key stops mattering** to anyone but its own ALGO. There
   is no owner, no admin, and no path back to one.
 
