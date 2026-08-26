@@ -106,13 +106,24 @@ genuinely counts; it is the wrong choice for a first upkeep.
 
 ### 3. Read the cost before you sign
 
-Check the **UP-FRONT COST** tile. It should read **0.0771 ALGO**: 0.0621 box
-MBR, 0.012 funding, and group fees.
+Check the **UP-FRONT COST** tile. With the funding above it should read
+**0.0851 ALGO**, itemised:
 
-This number was wrong until today. It read 0.0741 against a real debit of
-0.0771, which is exactly the kind of error that erodes trust in everything else
-on the page. **Compare it against what Pera actually asks you to approve.** If
-they disagree, that is a bug and worth more than the upkeep.
+| | | |
+|---|---|---|
+| Box deposit | 0.0621 | returned in full when you cancel |
+| Escrow | 0.0200 | spent one execution at a time, remainder returns on cancel |
+| Network fees | 0.0030 | three transactions, gone either way, including if the group fails |
+
+An earlier draft of this page said 0.0771, which is the total for 0.012 of
+funding rather than the 0.02 its own table asks for. The console was right and
+this document was wrong, which is worth recording: this section exists to catch
+the console lying about cost, and the first thing it caught was itself.
+
+The console's figure was also genuinely wrong until 2026-08-26, reading 0.0741
+against a real 0.0771 debit. **Compare the tile against what Pera actually asks
+you to approve.** If they disagree, that is a bug and worth more than the
+upkeep.
 
 ### 4. Tick the attestation, connect, and register
 
