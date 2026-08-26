@@ -13,7 +13,6 @@ that was actually paid (the asset escrow is 750,000 of the 1,000,000 funded).
 """
 
 import base64
-
 from dataclasses import replace
 
 import pytest
@@ -21,6 +20,7 @@ import pytest
 from scripts.keeper_bot import (
     CATCH_UP,
     SKIP_AHEAD,
+    is_frozen,
     _as_bytes,
     _decode_upkeep,
     effective_fee,
@@ -190,3 +190,38 @@ def test_resolve_app_id_refuses_to_guess() -> None:
     assert resolve_app_id(parser, 123, "testnet") == 123
     with pytest.raises(SystemExit):
         resolve_app_id(parser, None, "testnet")
+
+
+# --- the frozen guard on the deployer fallback ------------------------
+
+class _FakeAlgod:
+    """Just enough of algod to answer `is_frozen`."""
+
+    def __init__(self, state: list[dict]) -> None:
+        self._state = state
+
+    def application_info(self, app_id: int) -> dict:
+        return {"params": {"global-state": self._state}}
+
+
+def _entry(key: str, value: int) -> dict:
+    return {"key": base64.b64encode(key.encode()).decode(), "value": {"uint": value}}
+
+
+def test_an_app_with_frozen_zero_is_not_frozen() -> None:
+    """The value the guard exists for: the creator can still rewrite execute."""
+    assert is_frozen(_FakeAlgod([_entry("frozen", 0)]), 1) is False
+
+
+def test_an_app_with_frozen_one_is_frozen() -> None:
+    assert is_frozen(_FakeAlgod([_entry("frozen", 1)]), 1) is True
+
+
+def test_an_app_with_no_frozen_key_predates_governance_and_is_immutable() -> None:
+    """Absent is not unknown.
+
+    A deployment made before `update` and `freeze` existed carries no flag and
+    has no update path at all, so reading a missing key as "not frozen" would
+    refuse the fallback on precisely the apps that cannot be rewritten.
+    """
+    assert is_frozen(_FakeAlgod([_entry("next_upkeep_id", 23)]), 1) is True

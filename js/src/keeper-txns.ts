@@ -50,6 +50,22 @@ async function flatFee(algod: algosdk.Algodv2, microAlgo: number): Promise<algos
   return { ...params, fee: BigInt(microAlgo), flatFee: true };
 }
 
+/**
+ * Whether `address` can receive `assetId`.
+ *
+ * An account that never opted in cannot be sent the asset at all, which is
+ * why the contract checks the same thing before paying a bonus.
+ */
+async function optedIn(
+  algod: algosdk.Algodv2,
+  address: string,
+  assetId: bigint,
+): Promise<boolean> {
+  if (assetId === 0n) return false;
+  const account = await algod.accountInformation(address).do();
+  return (account.assets ?? []).some((holding) => BigInt(holding.assetId) === assetId);
+}
+
 async function run(
   algod: algosdk.Algodv2,
   composer: algosdk.AtomicTransactionComposer,
@@ -190,13 +206,19 @@ export async function execute(
   // which is a third inner transaction on top of the registered call and the
   // keeper's own payment.
   const usesAsset = (upkeep.feeAsset ?? 0n) > 0n;
+  // The contract pays the bonus only to a keeper opted in to the asset, so
+  // the surcharge has to ask the same question. Paying it regardless meant a
+  // keeper that could never receive a bonus funded its transfer anyway:
+  // Algorand pools fees and keeps the unused part, so exactly the executions
+  // that pay most were the ones that netted least.
+  const paysBonus = usesAsset && (await optedIn(algod, signing.sender, upkeep.feeAsset ?? 0n));
   const composer = new algosdk.AtomicTransactionComposer();
   composer.addMethodCall({
     appID: appId,
     method: keeperMethod('execute'),
     sender: signing.sender,
     signer: signing.signer,
-    suggestedParams: await flatFee(algod, usesAsset ? EXECUTE_FEE + 1_000 : EXECUTE_FEE),
+    suggestedParams: await flatFee(algod, paysBonus ? EXECUTE_FEE + 1_000 : EXECUTE_FEE),
     methodArgs: [upkeep.id],
     boxes: [{ appIndex: 0, name: upkeepBoxName(upkeep.id) }],
     appForeignApps: [Number(upkeep.targetApp)],
