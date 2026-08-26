@@ -619,13 +619,13 @@ out, the dogfood plan and the mainnet gate are in
   an upkeep to declare which resources it needs. It does not need one: a
   keeper that simulates the call first has algod report what it touched, and
   attaches those references. That is a property of the keeper, not of the
-  network: the Python bot inherits it from algokit-utils, while
-  `js/src/keeper-txns.ts` and the console attach only the target app and the
-  fee asset and do not simulate, so an upkeep reaching anything further is not
-  servable from them yet
-  ([#100](https://github.com/CorvidLabs/arcron/issues/100)). A
-  `resources()` declaration convention was proposed and then withdrawn for
-  exactly that reason. See [Reaching resources your hook cannot name](integrating.md#reaching-resources-your-hook-cannot-name)
+  network: the Python bot inherits it from algokit-utils, and
+  `js/src/keeper-txns.ts` (which the console also imports) does the same
+  thing itself, against raw algosdk, so an upkeep reaching an account, asset
+  or app beyond the target itself is servable from either. A `resources()`
+  declaration convention was proposed and then withdrawn, because simulation
+  already answers the same question for every target, including ones written
+  before the convention existed. See [Reaching resources your hook cannot name](integrating.md#reaching-resources-your-hook-cannot-name)
   and [docs/design/call-shapes.md](design/call-shapes.md).
 - The console shows ASA bonuses in base units, not the asset's decimals.
 - Catch-up is now a choice, not a limitation: a creator picks `CATCH_UP`

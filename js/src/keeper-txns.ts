@@ -9,6 +9,10 @@
  *     must reference the box the app is *about* to allocate (`next_upkeep_id`)
  *   * `execute` performs an inner app call, so the target app has to be in the
  *     foreign apps array, and the caller pays the inner fees (fee pooling)
+ *   * the target's own inner call can reach further accounts, assets, apps
+ *     and boxes that no argument names, so `execute` simulates itself first
+ *     and attaches whatever algod reports, the same idea algokit-utils uses
+ *     for the Python bot (see `discoverResources` below)
  */
 
 import algosdk from 'algosdk';
@@ -219,25 +223,169 @@ export async function execute(
   // Algorand pools fees and keeps the unused part, so exactly the executions
   // that pay most were the ones that netted least.
   const paysBonus = usesAsset && (await optedIn(algod, signing.sender, upkeep.feeAsset ?? 0n));
-  // Known limitation: this attaches the target app and the fee asset and
-  // nothing else, because it does not simulate first. An upkeep whose target
-  // reaches any further account, asset or app fails here while the Python bot
-  // services it fine, since algokit-utils simulates and populates. Tracked in
-  // #100. Until that is closed, this client cannot service every upkeep the
-  // registry will show it.
+  const suggestedParams = await flatFee(algod, paysBonus ? EXECUTE_FEE + 1_000 : EXECUTE_FEE);
+
+  // `execute`'s inner call reaches whatever the target's own logic reaches,
+  // and Arcron stores no list of that: the docs' answer is "a keeper
+  // simulates first and attaches what algod reports", which the Python bot
+  // gets for free from algokit-utils. This is that same idea against raw
+  // algosdk. `discoverResources` runs the call once against a throwaway
+  // composer that never needs a real signature, reads back whatever the
+  // target touched that this group did not already declare, and folds it
+  // into what gets attached for the real, signed submission below.
+  const known = knownExecuteResources(upkeep, usesAsset);
+  const resources = await discoverResources(algod, appId, signing.sender, upkeep.id, suggestedParams, known);
+
   const composer = new algosdk.AtomicTransactionComposer();
+  addExecuteCall(composer, appId, signing.sender, signing.signer, upkeep.id, suggestedParams, resources);
+  return run(algod, composer);
+}
+
+/** The upkeep box, the target app and the fee asset: known before simulating anything. */
+function knownExecuteResources(
+  upkeep: Pick<Upkeep, 'id' | 'targetApp' | 'feeAsset'>,
+  usesAsset: boolean,
+): ResourceRefs {
+  return {
+    appAccounts: [],
+    appForeignApps: [Number(upkeep.targetApp)],
+    appForeignAssets: usesAsset ? [Number(upkeep.feeAsset)] : [],
+    boxes: [{ appIndex: 0, name: upkeepBoxName(upkeep.id) }],
+  };
+}
+
+/** Add the `execute` method call to `composer`, with a given resource set and signer. */
+function addExecuteCall(
+  composer: algosdk.AtomicTransactionComposer,
+  appId: number,
+  sender: string,
+  signer: algosdk.TransactionSigner,
+  upkeepId: bigint,
+  suggestedParams: algosdk.SuggestedParams,
+  resources: ResourceRefs,
+): void {
   composer.addMethodCall({
     appID: appId,
     method: keeperMethod('execute'),
-    sender: signing.sender,
-    signer: signing.signer,
-    suggestedParams: await flatFee(algod, paysBonus ? EXECUTE_FEE + 1_000 : EXECUTE_FEE),
-    methodArgs: [upkeep.id],
-    boxes: [{ appIndex: 0, name: upkeepBoxName(upkeep.id) }],
-    appForeignApps: [Number(upkeep.targetApp)],
-    ...(usesAsset ? { appForeignAssets: [Number(upkeep.feeAsset)] } : {}),
+    sender,
+    signer,
+    suggestedParams,
+    methodArgs: [upkeepId],
+    // Copied rather than passed through: `ResourceRefs` is `readonly` because
+    // `foldUnnamedResources` is meant to be used as a pure function, and
+    // `addMethodCall`'s own parameter types are plain mutable arrays.
+    boxes: [...resources.boxes],
+    appAccounts: [...resources.appAccounts],
+    appForeignApps: [...resources.appForeignApps],
+    appForeignAssets: [...resources.appForeignAssets],
   });
-  return run(algod, composer);
+}
+
+/**
+ * Simulate the call once, with an empty signer and `allowUnnamedResources`,
+ * and fold whatever algod reports the target touched into `known`.
+ *
+ * The empty signer and `allowEmptySignatures` mean this never asks a wallet
+ * to sign anything: it is a read, not a transaction the caller is committing
+ * to. `composer.simulate` still calls through `gatherSignatures`, which is
+ * exactly what produces the placeholder signature `allowEmptySignatures`
+ * tells algod to accept.
+ */
+async function discoverResources(
+  algod: algosdk.Algodv2,
+  appId: number,
+  sender: string,
+  upkeepId: bigint,
+  suggestedParams: algosdk.SuggestedParams,
+  known: ResourceRefs,
+): Promise<ResourceRefs> {
+  const probe = new algosdk.AtomicTransactionComposer();
+  addExecuteCall(probe, appId, sender, algosdk.makeEmptyTransactionSigner(), upkeepId, suggestedParams, known);
+
+  const { simulateResponse } = await probe.simulate(
+    algod,
+    new algosdk.modelsv2.SimulateRequest({
+      txnGroups: [],
+      allowEmptySignatures: true,
+      allowUnnamedResources: true,
+    }),
+  );
+
+  // Group-level, not per-transaction: this group is one transaction, and the
+  // API's own distinction is that only the group-level object qualifies for
+  // group resource sharing, which is what a single-transaction group needs.
+  const unnamed = simulateResponse.txnGroups[0]?.unnamedResourcesAccessed;
+  return foldUnnamedResources(known, unnamed, appId);
+}
+
+/** The four legacy foreign-reference arrays a v1 AVM app call still uses. */
+export interface ResourceRefs {
+  readonly appAccounts: readonly string[];
+  readonly appForeignApps: readonly number[];
+  readonly appForeignAssets: readonly number[];
+  readonly boxes: readonly { appIndex: number; name: Uint8Array }[];
+}
+
+/**
+ * Fold a simulate response's `unnamedResourcesAccessed` into `known`, the same
+ * union `algokit-utils`' `populate_app_call_resources` produces.
+ *
+ * Exported and pure, with no `algod` argument, so this folding logic can be
+ * tested without a node: the network round trip is `discoverResources` above.
+ * `callingAppId` is the keeper app, so a reference to it (or the sentinel `0`
+ * the API uses for "the calling app") needs no declaration of its own.
+ */
+export function foldUnnamedResources(
+  known: ResourceRefs,
+  unnamed: algosdk.modelsv2.SimulateUnnamedResourcesAccessed | undefined,
+  callingAppId: number,
+): ResourceRefs {
+  if (!unnamed) return known;
+
+  const accounts = new Set(known.appAccounts);
+  const apps = new Set(known.appForeignApps);
+  const assets = new Set(known.appForeignAssets);
+  const boxes = [...known.boxes];
+  const zero = algosdk.Address.zeroAddress();
+
+  const addAccount = (address: algosdk.Address) => {
+    if (!address.equals(zero)) accounts.add(address.toString());
+  };
+  const addApp = (id: bigint) => {
+    if (id !== 0n && id !== BigInt(callingAppId)) apps.add(Number(id));
+  };
+
+  for (const address of unnamed.accounts ?? []) addAccount(address);
+  for (const app of unnamed.apps ?? []) addApp(app);
+  for (const asset of unnamed.assets ?? []) assets.add(Number(asset));
+  for (const box of unnamed.boxes ?? []) {
+    const isOwn = box.app === 0n || box.app === BigInt(callingAppId);
+    if (!isOwn) addApp(box.app);
+    boxes.push({ appIndex: isOwn ? 0 : Number(box.app), name: box.name });
+  }
+  // A holding or a local read needs the account AND the asset or app present;
+  // the legacy arrays have no reference shape narrower than that cross
+  // product, so this is the closest a v1 app call can declare either.
+  for (const holding of unnamed.assetHoldings ?? []) {
+    addAccount(holding.account);
+    assets.add(Number(holding.asset));
+  }
+  for (const local of unnamed.appLocals ?? []) {
+    addAccount(local.account);
+    addApp(local.app);
+  }
+  // Extra box references bump the box I/O budget without naming a box: an
+  // empty reference asks for exactly that and nothing else.
+  for (let index = 0; index < (unnamed.extraBoxRefs ?? 0); index += 1) {
+    boxes.push({ appIndex: 0, name: new Uint8Array(0) });
+  }
+
+  return {
+    appAccounts: [...accounts],
+    appForeignApps: [...apps],
+    appForeignAssets: [...assets],
+    boxes,
+  };
 }
 
 /**
