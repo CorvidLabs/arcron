@@ -1,0 +1,43 @@
+# The watcher. Runs beside the keeper and holds no account of its own.
+#
+# Beta wants thirty days of continuous TestNet uptime "with a funded heartbeat,
+# and the notifier running", so this is half of that gate rather than a
+# convenience. It is also the only thing that can tell somebody else's upkeep
+# from ours, which is what the pre-freeze plan for MainNet depends on: freeze
+# the moment a stranger escrows, and until this runs with --ours nothing knows
+# which upkeeps those are.
+#
+#   sudo cp deploy/notifier.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now arcron-notifier
+
+[Unit]
+Description=Arcron notifier
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=keeper
+WorkingDirectory=/opt/arcron
+EnvironmentFile=/etc/arcron/notifier.env
+# --ours is what makes a stranger detectable. Without it nobody is a stranger,
+# which is right on a shared TestNet app and wrong on a MainNet one. The
+# addresses go in notifier.env as ARCRON_OURS.
+ExecStart=/opt/arcron/.venv/bin/python -m scripts.notifier \
+    --network testnet --ours ${ARCRON_OURS}
+KillSignal=SIGTERM
+TimeoutStopSec=30
+Restart=always
+RestartSec=30
+
+# It reads chain state and posts to a webhook. It signs nothing, and there is
+# a test asserting it cannot: it imports nothing that could produce an account.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+StateDirectory=arcron
+Environment=XDG_STATE_HOME=/var/lib
+
+[Install]
+WantedBy=multi-user.target

@@ -98,8 +98,21 @@ fi
 chown root:"$RUN_USER" "$ENV_FILE"
 chmod 640 "$ENV_FILE"
 
-echo "==> Installing the unit"
+echo "==> Installing the units"
 install -m 644 "${SOURCE}/deploy/keeper-bot.service" "/etc/systemd/system/${SERVICE}.service"
+
+# The notifier alongside the keeper, because beta's thirty-day gate asks for
+# both and because it is the only thing that can tell a stranger's upkeep from
+# ours. Installed but not enabled without its own env file: it needs a webhook
+# and the list of creators that count as us, and starting it without those
+# gives a service that runs and reports nothing.
+NOTIFIER_ENV="${ENV_DIR}/notifier.env"
+install -m 644 "${SOURCE}/deploy/notifier.service" /etc/systemd/system/arcron-notifier.service
+if [ ! -f "$NOTIFIER_ENV" ]; then
+    install -m 640 "${SOURCE}/deploy/notifier.env.example" "$NOTIFIER_ENV"
+    chown root:"$RUN_USER" "$NOTIFIER_ENV"
+fi
+
 systemctl daemon-reload
 systemctl enable "$SERVICE" >/dev/null
 
@@ -112,6 +125,12 @@ Installed, not started: KEEPER_MNEMONIC is still empty.
   sudo systemctl start keeper-bot
   sudo systemctl status keeper-bot
   sudo journalctl -u keeper-bot -f
+
+Then the watcher, which is the other half of the thirty-day gate:
+
+  sudo -e /etc/arcron/notifier.env   # webhook, and ARCRON_OURS
+  sudo systemctl enable --now arcron-notifier
+  sudo journalctl -u arcron-notifier -f
 
 DONE
 else
