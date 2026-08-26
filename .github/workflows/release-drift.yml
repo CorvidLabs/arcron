@@ -1,0 +1,56 @@
+# Does the live deployment still match the release record?
+#
+# On 2026-08-26 the answer had been "no" for a day. Two commits carrying the
+# payer-binding fix landed after alpha-2 was deployed, nothing redeployed, and
+# the deployment the docs pointed everyone at was missing the fix for a proven
+# theft path. `verify_build` would have caught it in one second. Nothing ran it.
+#
+# This is read-only: it needs no secret and cannot touch the chain. That is
+# deliberate, because a check that needs a secret is a check that silently
+# stops working when the secret is missing, which is the other failure this
+# repository found the same day.
+name: Release drift
+
+on:
+  schedule:
+    # Daily. The thing being watched changes on the timescale of deployments,
+    # not minutes, and a noisy check is one people learn to ignore.
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+    inputs:
+      strict_drift:
+        description: Fail when the tree has moved past the release, not just warn
+        type: boolean
+        required: false
+        default: false
+
+concurrency:
+  group: release-drift
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # Full history: the drift check diffs against the commit named in the
+      # release row, which a shallow clone will not contain.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: |
+          pip install "poetry>=2.0,<3.0"
+          poetry install --only main --no-root --no-interaction
+
+      - name: Compare the live app against the release record
+        env:
+          ALGOD_SERVER: https://testnet-api.algonode.cloud
+        run: |
+          poetry run python -m scripts.verify_release --network testnet \
+            ${{ inputs.strict_drift && '--strict-drift' || '' }}
