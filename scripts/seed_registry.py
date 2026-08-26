@@ -54,6 +54,16 @@ PLAN = [
         25, 20, CATCH_UP, 0, [TICK],
     ),
     (
+        # Shaped for the half-hourly cron keeper rather than for a laptop.
+        # CATCH_UP on a 70 second cadence is what starved upkeep 18: a keeper
+        # that checks every thirty minutes finds ~25 missed intervals waiting
+        # and replays them all, one fee each, so the escrow is gone in a run
+        # or two. SKIP_AHEAD on a ten minute cadence gives that same keeper
+        # exactly one execution per visit and a runway measured in hours.
+        "heartbeat — one execution per half-hourly keeper visit",
+        _rounds(10 * 60), 24, SKIP_AHEAD, 0, [TICK],
+    ),
+    (
         "catch-up — replays every missed interval",
         _rounds(12 * 3600), 30, CATCH_UP, 0, [TICK],
     ),
@@ -86,16 +96,29 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--commit", action="store_true", help="actually register; otherwise price it and stop"
     )
+    parser.add_argument(
+        "--only",
+        help="register just the seeds whose label contains this text, case-insensitively"
+    )
     args = parser.parse_args(argv)
 
     algorand = net.connect(args.network)
     deployer = algorand.account.from_environment("DEPLOYER")
 
+    plan = PLAN
+    if args.only:
+        plan = [seed for seed in PLAN if args.only.lower() in seed[0].lower()]
+        if not plan:
+            raise SystemExit(
+                f"--only {args.only!r} matched no seed. Labels are:\n  "
+                + "\n  ".join(seed[0] for seed in PLAN)
+            )
+
     total = 0
     logger.info("")
     logger.info(f"{'upkeep':<52} {'every':>10} {'runs':>5} {'costs':>9}")
     priced = []
-    for label, interval, runs, policy, cap, call_args in PLAN:
+    for label, interval, runs, policy, cap, call_args in plan:
         # Funding must cover a run at the price it can actually be charged.
         per_run = max(MIN_UPKEEP_FEE, cap)
         mbr = BOX_MBR_FIXED + 400 * len(_encode_args(call_args))
