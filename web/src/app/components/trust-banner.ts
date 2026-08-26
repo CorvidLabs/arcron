@@ -1,19 +1,17 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 
 import { ArcronService } from '../core/arcron.service';
-import { NETWORKS, type NetworkKey } from '@corvidlabs/arcron/networks';
+import type { Standing } from '../core/quarantine';
 
 interface Notice {
   readonly tone: 'warn' | 'bad';
   readonly headline: string;
   readonly detail: string;
-  /** Present only on the not-the-published-app notice, to offer a way back. */
-  readonly canonical?: number;
 }
 
 export function noticesFor(state: {
   appId: number | null;
-  network: NetworkKey;
+  standing: Standing;
   networkLabel: string;
   status: string;
   frozen: boolean | null;
@@ -23,11 +21,16 @@ export function noticesFor(state: {
   if (appId === null) return [];
   const found: Notice[] = [];
 
-  // Deliberately not gated on connection status. This comparison needs no
-  // chain data at all, and gating it on a successful read meant one
-  // malformed box in a hostile app switched the whole control off.
-  const canonical = NETWORKS[state.network].defaultAppId;
-  if (canonical === undefined) {
+  // The identity of the app is not decided here any more. A foreign app id is
+  // quarantined rather than warned about, which is a state of the whole page
+  // and not a paragraph in a list: see `quarantine-panel.ts`. What is left
+  // here is the case that cannot be quarantined, because there is nothing to
+  // compare against.
+  //
+  // Deliberately not gated on connection status. This needs no chain data at
+  // all, and gating it on a successful read meant one malformed box in a
+  // hostile app switched the whole control off.
+  if (state.standing === 'unverifiable') {
     found.push({
       tone: 'warn',
       headline: `No published app is recorded for ${state.networkLabel}.`,
@@ -35,17 +38,6 @@ export function noticesFor(state: {
         `Nothing here can tell you whether app ${appId} is the one you meant. That is ` +
         `normal on a local network, where the app is whatever you just deployed. On any ` +
         `network carrying real value, treat it as unverified.`,
-    });
-  } else if (appId !== canonical) {
-    found.push({
-      tone: 'bad',
-      canonical,
-      headline: `This is not the published app for ${state.networkLabel}.`,
-      detail:
-        `You are pointed at app ${appId}; the published one is ${canonical}. That is ` +
-        `expected if you deployed your own. If you followed a link, stop: anyone can ` +
-        `deploy a contract that looks exactly like this one, and anything you escrow ` +
-        `here goes to whoever deployed it.`,
     });
   }
 
@@ -87,18 +79,18 @@ export function noticesFor(state: {
 }
 
 /**
- * What this app id is, and what its creator can still do to your money.
+ * What is worth knowing about this app that is not its identity.
  *
- * The console takes an app id from a link and remembers it, which is a
- * feature for anyone running their own deployment and a phishing vector for
- * everyone else: the ABI and box layout are public, so a look-alike keeper
- * accepts the same register form and keeps the funds. Nothing else on the
- * page distinguishes the canonical deployment from a stranger's copy.
+ * Identity moved out to `quarantine-panel.ts`, because a look-alike app is
+ * not a paragraph to read past: it is a state the whole page is in. What is
+ * left here is everything the console can only learn by reading, plus the one
+ * identity case it cannot decide at all, which is a network with no published
+ * deployment recorded.
  *
- * The freeze flag is the other half. Until a creator calls `freeze`, they can
- * replace the programs and reach every escrow in the app. That is disclosed
- * in the docs and was invisible here, which is the wrong way round: the
- * disclosure belongs where the money is committed.
+ * The freeze flag is the important half of what remains. Until a creator
+ * calls `freeze`, they can replace the programs and reach every escrow in the
+ * app. That is disclosed in the docs and was invisible here, which is the
+ * wrong way round: the disclosure belongs where the money is committed.
  */
 @Component({
   selector: 'arcron-trust-banner',
@@ -109,11 +101,6 @@ export function noticesFor(state: {
         <aside class="banner" [class]="notice.tone">
           <h2 class="headline">{{ notice.headline }}</h2>
           <p class="detail">{{ notice.detail }}</p>
-          @if (notice.canonical; as canonical) {
-            <button type="button" class="back" (click)="usePublished(canonical)">
-              Switch to the published app ({{ canonical }})
-            </button>
-          }
         </aside>
       }
     </div>
@@ -129,11 +116,6 @@ export function noticesFor(state: {
     .banner.bad { border-left-color: var(--danger); }
     .banner + .banner { margin-top: 0.6rem; }
     .headline { margin: 0; font-weight: 600; font-size: 0.9rem; }
-    .back {
-      margin-top: 0.55rem;
-      font-size: 0.78rem;
-      font-family: var(--font-mono);
-    }
     .headline::before { content: '\\26A0\\FE0E'; margin-right: 0.5rem; }
     .detail {
       margin: 0.3rem 0 0;
@@ -156,15 +138,11 @@ export class TrustBanner {
   protected readonly notices = computed(() =>
     noticesFor({
       appId: this.arcron.appId(),
-      network: this.arcron.network(),
+      standing: this.arcron.standing(),
       networkLabel: this.arcron.config().label,
       status: this.arcron.status(),
       frozen: this.arcron.frozen(),
       undecodableBoxes: this.arcron.undecodableBoxes(),
     }),
   );
-
-  protected usePublished(appId: number): void {
-    this.arcron.setAppId(appId);
-  }
 }

@@ -1,4 +1,5 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import { RouterLink } from '@angular/router';
 
 import { ArcronService } from '../core/arcron.service';
 import { algos, dueLabel, intervalLabel, runwayLabel, shortAddress } from '@corvidlabs/arcron/format';
@@ -38,14 +39,12 @@ interface Row {
   readonly executed: string;
   readonly state: 'due' | 'scheduled' | 'starved';
   readonly canExecute: boolean;
-  readonly canCancel: boolean;
-  readonly canFund: boolean;
 }
 
 @Component({
   selector: 'arcron-registry-table',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ExplorerLink],
+  imports: [ExplorerLink, RouterLink],
   template: `
     <section class="panel">
       <header>
@@ -61,10 +60,19 @@ interface Row {
       @if (arcron.appId() === null) {
         <p class="empty">Enter a keeper app id to load its registry.</p>
       } @else if (rows().length === 0) {
-        <p class="empty">
-          No upkeeps on app {{ arcron.appId() }} yet. Register one below to watch the network
-          work.
-        </p>
+        <!-- Not knowing yet and knowing there is nothing are different states,
+             and this used to collapse them: "no upkeeps yet" rendered for a
+             second on every load, in the confident voice reserved for a fact
+             the console had checked. It is a claim about the chain, and
+             before the first read returns it is not one we can make. -->
+        @if (arcron.status() === 'ready') {
+          <p class="empty">
+            No upkeeps on app {{ arcron.appId() }} yet.
+            <a routerLink="/register">Register one</a> to watch the network work.
+          </p>
+        } @else {
+          <p class="empty">Reading app {{ arcron.appId() }}…</p>
+        }
       } @else {
         <div class="scroll">
           <table>
@@ -86,7 +94,10 @@ interface Row {
               @for (row of rows(); track row.upkeep.id) {
                 <tr [class]="row.state">
                   <th scope="row" class="mono">
-                    {{ row.id }}
+                    <!-- The row's one link, on its identity rather than in a
+                         wider actions column: everything else about this
+                         upkeep lives on its own page now. -->
+                    <a [routerLink]="['/u', row.id]">{{ row.id }}</a>
                     @if (row.yours) {
                       <span class="yours" title="Registered by the connected account">yours</span>
                     }
@@ -127,61 +138,13 @@ interface Row {
                     >
                       Execute
                     </button>
-                    <button
-                      type="button"
-                      class="ghost small"
-                      [disabled]="!row.canFund || !reads()"
-                      (click)="toggle(row)"
-                    >
-                      Top up
-                    </button>
-                    @if (row.canCancel) {
-                      <button
-                        type="button"
-                        class="ghost small danger"
-                        [disabled]="keeper.busy() !== null || !reads()"
-                        (click)="cancel(row)"
-                      >
-                        Cancel
-                      </button>
-                    }
+                    <!-- Funding and cancelling live on the upkeep's own page.
+                         Topping up a stranger's upkeep is an irreversible gift
+                         to whoever registered it, and the only mention of who
+                         that was used to be a short address inside a drawer
+                         you had to open first. -->
                   </td>
                 </tr>
-                @if (expanded() === row.upkeep.id) {
-                  <tr class="drawer">
-                    <td colspan="9">
-                      <form class="top-up" (submit)="topUp($event, row)">
-                        <label>
-                          <span class="eyebrow">Add to escrow (ALGO)</span>
-                          <input
-                            type="number"
-                            name="amount"
-                            step="any"
-                            min="0.000001"
-                            [value]="defaultTopUp(row)"
-                            required
-                          />
-                        </label>
-                        <button type="submit" class="primary small" [disabled]="keeper.busy() !== null || !reads()">
-                          Fund upkeep {{ row.id }}
-                        </button>
-                        <p class="hint">
-                          Anyone can top up an upkeep, not only its creator. Registered by
-                          {{ row.creator }}. If a run is missed it {{ row.policy }}; last ran
-                          {{ row.lastRan }}.
-                          @if (row.ceiling) {
-                            A late run pays up to {{ row.ceiling }}, so the escrow needs that much
-                            to stay executable.
-                            @if (row.feeNow) {
-                              This upkeep is already late, so the next run will be charged
-                              {{ row.feeNow }}. Topping it up does not reset that.
-                            }
-                          }
-                        </p>
-                      </form>
-                    </td>
-                  </tr>
-                }
               }
             </tbody>
           </table>
@@ -241,11 +204,7 @@ interface Row {
     tr.due { background: color-mix(in srgb, var(--sheen) 8%, transparent); }
     tr.due th[scope='row'] { box-shadow: inset 2px 0 0 var(--sheen); }
     tr.starved td, tr.starved th { color: var(--text-faint); }
-    .actions { display: flex; gap: 0.35rem; justify-content: flex-end; }
-    .drawer td { background: var(--ink-06); }
-    .top-up { display: flex; flex-wrap: wrap; align-items: end; gap: 0.85rem; }
-    .top-up label { display: grid; gap: 0.3rem; }
-    .hint { margin: 0; color: var(--text-faint); font-size: 0.76rem; }
+    .actions { display: flex; gap: 0.6rem; align-items: center; justify-content: flex-end; }
     .legend { margin: 0; color: var(--text-faint); font-size: 0.76rem; display: flex; flex-wrap: wrap; gap: 0.4rem 0.75rem; align-items: center; }
     .chip {
       font-family: var(--font-mono);
@@ -275,8 +234,6 @@ export class RegistryTable {
   protected readonly reads = computed(() => this.arcron.canWrite());
   protected readonly keeper = inject(KeeperService);
   private readonly wallet = inject(WalletService);
-
-  protected readonly expanded = signal<bigint | null>(null);
 
   protected readonly rows = computed<Row[]>(() => {
     const round = this.arcron.round();
@@ -314,8 +271,6 @@ export class RegistryTable {
         executed: String(upkeep.timesExecuted),
         state: starved ? 'starved' : executable ? 'due' : 'scheduled',
         canExecute: executable && canSign,
-        canCancel: canSign && yours,
-        canFund: canSign,
       };
     });
   });
@@ -326,38 +281,7 @@ export class RegistryTable {
     return `${rows.length} registered · ${due} due`;
   });
 
-  protected toggle(row: Row): void {
-    this.expanded.update((current) => (current === row.upkeep.id ? null : row.upkeep.id));
-  }
-
-  /** Three more runs is the friendliest default top-up.
-   *
-   * Priced at the ceiling when there is one: three base fees can leave an
-   * upkeep still unexecutable the moment it falls behind, which is the
-   * opposite of what someone clicking "top up" wants.
-   */
-  protected defaultTopUp(row: Row): string {
-    const { feePerExecution, feeCap } = row.upkeep;
-    const worstCase = feeCap > feePerExecution ? feeCap : feePerExecution;
-    return (Number(worstCase * 3n) / 1e6).toString();
-  }
-
   protected execute(row: Row): void {
     void this.keeper.execute(row.upkeep);
-  }
-
-  protected cancel(row: Row): void {
-    void this.keeper.cancel(row.upkeep);
-  }
-
-  protected topUp(event: Event, row: Row): void {
-    event.preventDefault();
-    const form = event.target as HTMLFormElement;
-    const algo = Number(new FormData(form).get('amount'));
-    const microAlgo = Math.round(algo * 1e6);
-    if (Number.isFinite(microAlgo) && microAlgo > 0) {
-      void this.keeper.topUp(row.upkeep, microAlgo);
-      this.expanded.set(null);
-    }
   }
 }

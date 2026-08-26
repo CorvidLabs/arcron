@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, output } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { map } from 'rxjs';
@@ -419,6 +419,14 @@ export class RegisterForm {
   protected readonly test = inject(TargetTestService);
   private readonly builder = inject(FormBuilder);
 
+  /**
+   * The id the contract assigned, emitted once the call has landed.
+   *
+   * The form does not know where that should lead; its page does. Registering
+   * ends on `/u/:id` rather than on a confirmation panel.
+   */
+  readonly registered = output<bigint>();
+
   protected readonly minInterval = MIN_INTERVAL_ROUNDS;
   protected readonly minFeeAlgo = MIN_UPKEEP_FEE / 1e6;
   protected readonly cadences = CADENCES;
@@ -811,12 +819,12 @@ export class RegisterForm {
     this.form.controls.intervalRounds.setValue(rounds);
   }
 
-  protected submit(): void {
+  protected async submit(): Promise<void> {
     const callArgs = this.callArgs();
     if (!this.canSubmit() || callArgs === null) return;
     const { targetApp, intervalRounds, feePerExecution, funding, policy, feeCap, feeAsset, assetFee } =
       this.form.getRawValue();
-    void this.keeper.register({
+    const upkeepId = await this.keeper.register({
       targetApp,
       callArgs,
       intervalRounds,
@@ -827,5 +835,9 @@ export class RegisterForm {
       feeAsset,
       assetFee,
     });
+    // Null means the call did not land, and `KeeperService` has already put
+    // the reason on screen. Navigating away from a failure would take the
+    // only explanation with it.
+    if (upkeepId !== null) this.registered.emit(upkeepId);
   }
 }

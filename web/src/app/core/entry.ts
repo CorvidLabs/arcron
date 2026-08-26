@@ -18,6 +18,8 @@
 
 import { DEFAULT_NETWORK, isNetworkKey, NETWORKS, type NetworkKey } from '@corvidlabs/arcron/networks';
 
+import { isRemembered, type Standing } from './quarantine';
+
 /** Query parameter naming the chain: `?network=testnet`. */
 export const NETWORK_PARAM = 'network';
 /** Query parameter naming the keeper app: `?app=769891898`. */
@@ -78,9 +80,44 @@ export function entryFrom(
     return { network, appId: rememberedAppId(network, storedAppId(network)) };
 }
 
-/** The link that opens the console on exactly this network and app. */
-export function entryLink(base: string, network: NetworkKey, appId: number | null): string {
-    const query = new URLSearchParams({ [NETWORK_PARAM]: network });
-    query.set(APP_PARAM, appId === null ? 'none' : String(appId));
-    return `${base}?${query.toString()}`;
+/**
+ * The query parameters describing exactly this network and app.
+ *
+ * The router owns the address bar now, and it takes a parameter map rather
+ * than a string, so this is the shape everything else is built from.
+ */
+export function entryParams(
+    network: NetworkKey,
+    appId: number | null,
+): Record<string, string> {
+    return { [NETWORK_PARAM]: network, [APP_PARAM]: appId === null ? 'none' : String(appId) };
+}
+
+/** The subset of `Storage` this module writes, so a test can supply its own. */
+export type AppIdStorage = Pick<Storage, 'setItem' | 'removeItem'>;
+
+/** Where a network's remembered app id is kept. */
+export function appIdStorageKey(network: NetworkKey): string {
+    return `arcron.appId.${network}`;
+}
+
+/**
+ * Remember the app id the console is pointed at, unless it must not be.
+ *
+ * The only writer of app-id memory, so the quarantine rule cannot be missed
+ * by a second call site: a foreign app id is never written, which is what
+ * stops a poisoned link outliving the visit that followed it. It is not
+ * cleared either. Whatever the visitor had before the link arrived is theirs
+ * and the attacker does not get to erase it.
+ */
+export function storeAppId(
+    storage: AppIdStorage,
+    network: NetworkKey,
+    appId: number | null,
+    standing: Standing,
+): void {
+    if (!isRemembered(standing)) return;
+    const key = appIdStorageKey(network);
+    if (appId === null) storage.removeItem(key);
+    else storage.setItem(key, String(appId));
 }
