@@ -1,9 +1,0 @@
-# Build products of arcron-working-guide.md, deliberately not committed.
-#
-# The tree is otherwise entirely text. A checked-in PDF is a second copy of
-# every figure in the book — which is already a third copy of every figure in
-# `docs/` — and nothing can tell you when it stopped matching. Run ./build.sh
-# when you want a reading copy, or attach one to a release.
-arcron-working-guide.pdf
-arcron-working-guide.epub
-.guide.pdf.md

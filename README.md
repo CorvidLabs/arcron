@@ -157,13 +157,6 @@ would falsify it. [`docs/prior-art.md`](docs/prior-art.md) records what BiatecCr
 did differently, and the draft ARC that was never submitted. Nothing here
 claims to be first.
 
-**All of it in one read.** [`docs/book/`](docs/book/) holds the Working Guide, a
-single ordered pass through everything above — concept, console, integration,
-keepers, security, economics, reference. It is compiled *from* the documents it
-cites and defers to them: where the guide and a doc disagree, the doc is right,
-and [`tests/test_book.py`](tests/test_book.py) pins the load-bearing figures to
-the files that own them so CI notices before a reader does.
-
 ## Development
 
 Pre-requisites: Python 3.13, [AlgoKit](https://github.com/algorandfoundation/algokit-cli),
