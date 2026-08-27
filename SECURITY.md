@@ -76,7 +76,7 @@ In scope, and interesting to us:
 - anything that lets execution happen before its due round, or be prevented
   after it
 - the box-encoding decoders in `scripts/keeper_bot.py` and
-  `web/src/app/core/upkeep.ts` disagreeing with the contract
+  `js/src/upkeep.ts` disagreeing with the contract
 
 Out of scope:
 

@@ -209,7 +209,7 @@ ALGO was committed:
   the contract's comment ("roughly 1,512") and comfortably wider than
   `BEACON_WINDOW`'s 1,000-round margin.
 
-No change to `rain/contract.py` was needed or made; both findings are the
+No change to `smart_contracts/rain/contract.py` was needed or made; both findings are the
 LocalNet demo's assumptions holding up, not a gap it papered over.
 
 **Two script bugs, found by a flaky endpoint, not by design.** The public

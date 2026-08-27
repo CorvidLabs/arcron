@@ -96,8 +96,12 @@ The things that are not about money:
 - **Scheduled workflows are best-effort.** GitHub delays them under load and
   may drop them. Fine for servicing upkeeps that escalate anyway; poor as
   *evidence* of continuous uptime, which is what the beta gate asks for.
-- **Scheduled workflows are disabled after 60 days without repository
-  activity.** A quiet month turns the keeper off silently.
+- **In a public repository, scheduled workflows are disabled after 60 days
+  without repository activity.** A quiet month turns the keeper off silently.
+  A private repository is not auto-disabled, so this applies to Arcron now and
+  did not while the repository was private. GitHub states the rule with that
+  qualifier and this page did not, which mattered in the direction that lets
+  somebody plan around a limit they do not have.
 - **The mnemonic sits in repository secrets**, readable by any workflow in the
   repository. On TestNet, with a throwaway account holding a little ALGO, that
   is a small exposure. On MainNet it is not one to accept casually.
