@@ -1,4 +1,15 @@
+% Fenced code blocks wrap instead of running off the page.
 \usepackage{fvextra}
 \RecustomVerbatimEnvironment{verbatim}{Verbatim}{breaklines,breakanywhere}
 \DefineVerbatimEnvironment{Highlighting}{Verbatim}{breaklines,breakanywhere,commandchars=\\\{\}}
-\setlength{\emergencystretch}{3em}
+
+% Inline code spans are the other half of the problem, and the harder one. This
+% book is full of long unbreakable identifiers (`smart_contracts/keeper/contract.py`,
+% `logic eval error: err opcode executed`), and TeX will not hyphenate inside a
+% \texttt, so a span landing near a line end overflows into the margin rather
+% than wrapping. `hyphenat`'s htt option lets it hyphenate typewriter text;
+% \sloppy and a generous emergency stretch absorb whatever is left, which is the
+% right trade here: a slightly loose line beats text in the margin.
+\usepackage[htt]{hyphenat}
+\setlength{\emergencystretch}{4em}
+\sloppy
