@@ -398,7 +398,8 @@ ceiling of escrow that no keeper could spend and only its creator could
 recover. What a ceiling costs you is the escrow that a late run can consume,
 not the point at which the upkeep goes quiet.
 
-- **Anyone can `top_up`.** Funding is permissionless, so a counterparty with an
+- **Anyone can `top_up`.** Funding an upkeep that *already exists* is
+  permissionless, so a counterparty with an
   interest in your schedule running can pay for it. Only the creator can
   `cancel`.
 - **Running dry is silent.** The upkeep goes dormant (no keeper can execute

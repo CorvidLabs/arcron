@@ -88,17 +88,36 @@ The machine-readable version is the ARC-56 spec at
 `poetry run python -m smart_contracts build`. Prefer it over this table; the
 table is for reading and the JSON is for calling.
 
-Three things that are not in any signature and that you cannot call `register`
-without:
+What is not in any signature, and that you cannot call `register` without.
+Every one of these fails as a bare `assert` that names nothing, so getting one
+wrong costs an hour of staring at a program counter:
 
 - **Both payments go to the keeper application's own account**, the address
   derived from its app id, not to the creator and not to a keeper.
+- **Both payments must be *sent by* the same account that sends the app call.**
+  A third party cannot fund somebody else's registration. This surprises people,
+  because `top_up` is the opposite: funding an upkeep that already exists is
+  permissionless and is a gift, and funding one into existence is not.
 - **The group order is `[mbr_payment, funding_payment, app call]`.**
+- **The MBR payment is a minimum, not an exact amount.** Overpaying is accepted
+  and is not refunded, so pay the formula.
+- **The funding payment must cover at least one execution** at the price this
+  upkeep can be charged, which is `fee_cap` when a ceiling is set and
+  `fee_per_execution` otherwise. Registering with a token escrow to try things
+  out is refused.
 - **The call must carry a box reference for `b"u" + itob(n)`**, where `n` is
   the app's global `next_upkeep_id`. `register` assigns the id, so you have to
   predict it before you send: read that global key first. (A typed
   algokit-utils client does this for you. Building the group from raw algosdk,
   you have to. The alternative is a simulate with unnamed resources.)
+
+And the one for `execute`, which was documented for `register` and not here:
+
+- **Your `execute` transaction must itself carry the box reference for
+  `b"u" + itob(upkeep_id)` and a foreign-app reference to the target.** Without
+  the box you get `invalid Box`; without the app, `unavailable`. Arcron spends
+  those two of the eight reference slots on your behalf in its own accounting,
+  but it does not attach them to your transaction for you.
 
 | Method | Callers | Purpose |
 |--------|---------|---------|
@@ -235,7 +254,7 @@ an external entry point that anyone may call once an upkeep is due.
 |---|---|
 | Keeper app | `769891898` (TestNet, alpha-3) |
 | Upkeeps registered | ten, including one registered from the console by a wallet |
-| Always-on keeper | **running**: `.github/workflows/keeper-bot.yml`, every thirty minutes |
+| Always-on keeper | **running**: `.github/workflows/keeper-bot.yml` every thirty minutes, plus a container on a VPS and a second cron on the same barrier. The workflow was manual-dispatch-only until its `KEEPER_MNEMONIC` secret was set on 2026-08-26. |
 | Executions | 44 and counting, the most recent paid to a keeper for real |
 
 This table said "none" and "none running" for a day after both stopped being
@@ -391,7 +410,7 @@ exits immediately.
 with the mnemonic in `/etc/arcron/keeper.env` (chmod 640, owned root:keeper).
 
 **GitHub Actions** (`.github/workflows/keeper-bot.yml`) runs `--once` on a
-schedule. It is deliberately manual-dispatch-only until someone sets the
+schedule. It was deliberately manual-dispatch-only until somebody set the
 `KEEPER_MNEMONIC` secret, and it is a stopgap rather than the end state:
 cron granularity is ~5 minutes and best-effort, so short-interval upkeeps are
 serviced late, every run is a fresh process that re-attempts failing upkeeps,
