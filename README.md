@@ -4,6 +4,10 @@
 [![Keeper bot](https://github.com/CorvidLabs/arcron/actions/workflows/keeper-bot.yml/badge.svg)](https://github.com/CorvidLabs/arcron/actions/workflows/keeper-bot.yml)
 [![Release drift](https://github.com/CorvidLabs/arcron/actions/workflows/release-drift.yml/badge.svg)](https://github.com/CorvidLabs/arcron/actions/workflows/release-drift.yml)
 
+> **New here?** [`START-HERE.md`](START-HERE.md) is the front door — for people
+> trying it, for agents attacking it, and for anyone deciding whether the idea is
+> any good.
+
 **Arcron** is a permissionless keeper network for Algorand. Anyone registers
 a scheduled contract call, and any keeper executes it for the fee. By
 [CorvidLabs](https://github.com/CorvidLabs), built with Algorand Python
