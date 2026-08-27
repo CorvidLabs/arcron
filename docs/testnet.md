@@ -16,6 +16,7 @@ poetry run python -m scripts.keeper_bot --once --network testnet --app-id 769891
 | **keeper** | [`769891898`](https://testnet.explorer.perawallet.app/application/769891898) | live, **not frozen** | Arcron itself. Upkeeps are boxes; anyone may execute a due one for its fee. |
 | **pulse** | [`769891902`](https://testnet.explorer.perawallet.app/application/769891902) | live | A heartbeat counter that exists to be called. No state worth protecting, cannot fail, which is what makes it the right first target. |
 | **rain** | [`770029154`](https://testnet.explorer.perawallet.app/application/770029154) | live, **not frozen** | A scheduled prize draw, gated on an NFT collection. Deployed 2026-08-27. |
+| **rain (gate test)** | [`770030875`](https://testnet.explorer.perawallet.app/application/770030875) | live | The same contract gated on a collection we hold keys for, so the gate can be proved from both sides. Not the dogfood. |
 | ~~rain~~ | [`769988156`](https://testnet.explorer.perawallet.app/application/769988156) | superseded | The ungated version. Its last draw aged out and was abandoned; the prize returned to the pot. |
 
 `not frozen` means the creator can still replace the programs. That is
@@ -79,12 +80,38 @@ one, and so does the payout.
 
 ## What is proved, and what is not
 
+Proved on chain on 2026-08-27 against app
+[`770030875`](https://testnet.explorer.perawallet.app/application/770030875),
+using three assets minted from one account for the purpose: `corvid1` and
+`corvid2` in the collection, and `asdf` as a decoy from the same creator.
+
 | | |
 |---|---|
-| The gate refuses an asset the collection did not mint | **proved on chain**, 2026-08-27, rejected with "That asset is not from the collection" |
-| The gate refuses a same-creator asset whose unit name is wrong | proved in tests, each verified to fail with the check disabled |
-| The gate admits a real collection token | **not yet proved on chain** — needs a `corvid` NFT in an account we hold keys for |
-| A gated draw resolving and paying a holder | **not yet done** |
+| A collection token buys a ticket | **proved** — `corvid1` admitted as ticket #0 |
+| A same-creator token with the wrong unit name does not | **proved** — `asdf` refused with "Wrong collection" |
+| A token the creator never minted does not | **proved** — refused with "That asset is not from the collection" |
+| A gated draw resolves and picks a winner | **proved** — draw 1, 2 tickets, 0.9811 ALGO prize, resolved at round 66729237 by beacon `600011887` |
+
+The decoy is the point. `asdf` and `corvid1` came from the same account minutes
+apart, and gating on the creator alone would have sold it a ticket.
+
+**What this does not prove.** Both tickets in that draw were ours, so it
+demonstrates the mechanism rather than a contested draw. And the dogfood app
+[`770029154`](https://testnet.explorer.perawallet.app/application/770029154) is
+gated on the real `corvid.algo` collection, which nobody here holds a token
+from, so its admit path is exercised only by whoever does.
+
+## The beacon is slower than the delay suggests
+
+`BEACON_DELAY` is 8, so `draw` sets `commit_round` eight rounds out. **That is
+when the round exists, not when the beacon will answer for it.** A `resolve` one
+round past the commit failed inside the beacon's own assert; the same call
+succeeded eleven rounds past it, nineteen rounds after `draw`.
+
+So a resolver that fires once at the delay and gives up is a resolver that never
+resolves anything. It has to retry, and it has the full 1,000-round window to do
+it in. That is the difference between the draw above and the one before it,
+which nobody retried and which aged out unresolvable.
 
 ## Keeping this honest
 
