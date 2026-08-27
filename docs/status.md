@@ -1,6 +1,6 @@
 # Where Arcron stands
 
-Last updated 2026-08-25. This page is the one place to look if you want to
+Last updated 2026-08-26. This page is the one place to look if you want to
 know what exists, what state it is in, and what happens next. If it disagrees
 with anything else in this repo, this page is probably the stale one: check
 [the release table](releases.md), which is generated against live app ids.
@@ -33,6 +33,41 @@ proves the deployed programs are this source, byte for byte. Anyone can run it.
 
 Three earlier deployments are superseded and must not be used: `769823086`,
 `769802474`, and `769772891`.
+
+## The dogfood
+
+**Live since 2026-08-26.** A `rain` draw (app
+[`769988156`](https://testnet.explorer.perawallet.app/application/769988156)),
+open entry, ALGO prize, pointed at the real Foundation randomness beacon.
+Upkeep **76** on the keeper above calls `draw()` every 2,571 rounds (about
+two hours), SKIP_AHEAD. `scripts/rain_bot.py`, a dedicated account separate
+from the deployer and the keeper, resolves each draw against the beacon,
+claims what it wins and deposits it straight back into the pot; the loop
+never opens a draw itself, since that is the upkeep's job. Full detail,
+including the first draw's real output and what a live beacon call needed
+that the LocalNet stub could not show, is in
+[the rain release entry](releases.md#the-rain-dogfood-deployment).
+
+**Where to look when it breaks:**
+
+- `poetry run python -m scripts.verify_build --network testnet --contract rain --app-id 769988156`
+  proves the deployed programs are this source.
+- `poetry run python -m scripts.keeper_bot --check --network testnet --app-id 769891898`
+  says whether upkeep 76 is stalled or starved, among everything else in the
+  registry.
+- `poetry run python -m scripts.rain_bot --once --network testnet --app-id 769988156`
+  reports the draw's own state (open, awaiting resolution, or quiet) without
+  changing anything unless there is genuinely something to do.
+- The recurring pieces both run as a cron-driven GitHub Actions job in the
+  meantime, `.github/workflows/keeper-bot.yml` for execution and
+  `.github/workflows/rain-bot.yml` for resolve/claim/deposit; both are
+  stopgaps, and both name a long-running host as the real fix in their own
+  file headers.
+
+This is the mechanism [`docs/design/1.0.md`](design/1.0.md) describes: a
+recurring draw whose absence would actually be noticed, replacing the
+one-shot settlement that proved nothing about sustained operation. Its
+uptime clock starts now, at the deployment date above, not before.
 
 ## The contracts
 
@@ -99,11 +134,13 @@ Genuinely unknown, and only answerable by other people:
    fixed. What the exercise did not settle is whether the docs now work, since
    they were repaired by reading that agent's report: **rerun it against a fresh
    agent before treating this as answered.**
-2. **Does it survive unattended time?** The longest continuous run is minutes,
-   and the TestNet dogfood was found dark on 2026-08-26 after roughly a day: the
-   cron keeper was skipping for a missing secret and the local bot was pointed
-   at a superseded app. The clock starts from a keeper running somewhere that is
-   not a laptop.
+2. **Does it survive unattended time?** Still open. The earlier dogfood
+   attempt was found dark on 2026-08-26 after roughly a day: the cron keeper
+   was skipping for a missing secret and the local bot was pointed at a
+   superseded app. The `rain` draw described in [The dogfood](#the-dogfood)
+   above went live the same day and is what the clock now runs against;
+   nothing here claims it has survived 30 days yet, only that the mechanism
+   answering the question exists and is running.
 3. **Does keeping actually pay?** Nobody has run a keeper for a week and
    looked at whether it was worth the gas.
 

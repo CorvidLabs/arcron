@@ -1,0 +1,50 @@
+# systemd alternative to the container, for a host that already runs Python.
+#
+#   sudo cp deploy/rain-bot.service /etc/systemd/system/
+#   sudo systemctl enable --now rain-bot
+#
+# deploy/vps/install.sh puts everything where this expects it. By hand:
+# the runtime tree at /opt/arcron with its virtualenv at /opt/arcron/.venv
+# (poetry install with POETRY_VIRTUALENVS_IN_PROJECT=true), and
+# /etc/arcron/rain.env holding RAIN_MNEMONIC and RAIN_APP_ID,
+# chmod 640 root:keeper.
+#
+# Preferred over the cron workflow (.github/workflows/rain-bot.yml) for the
+# same reason deploy/keeper-bot.service is: a long-running process keeps
+# scripts/rain_bot.py's pending-deposit state between runs, so a crash
+# between `claim` and `deposit` heals itself on the next scan instead of
+# leaving a won prize sitting in the bot's own wallet until somebody notices.
+
+[Unit]
+Description=Arcron rain bot
+Documentation=https://github.com/CorvidLabs/arcron/blob/main/docs/arcron.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=keeper
+WorkingDirectory=/opt/arcron
+EnvironmentFile=/etc/arcron/rain.env
+ExecStart=/opt/arcron/.venv/bin/python -m scripts.rain_bot --network testnet --log-format json
+# Finish the scan in flight, then exit.
+KillSignal=SIGTERM
+TimeoutStopSec=30
+Restart=always
+RestartSec=10
+# It only needs to talk to algod and read its own directory.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+# Somewhere to keep the pending-deposit state. Without this the bot cannot
+# write it at all: ProtectSystem=strict makes the filesystem read-only and
+# ProtectHome hides the home directory the default path lives under. Shared
+# with keeper-bot.service's StateDirectory=arcron; systemd does not mind two
+# units naming the same one, and rain_bot.py's filename is namespaced by
+# network and app id so it cannot collide with keeper_backoff.py's.
+StateDirectory=arcron
+Environment=XDG_STATE_HOME=/var/lib
+
+[Install]
+WantedBy=multi-user.target

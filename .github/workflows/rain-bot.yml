@@ -1,0 +1,78 @@
+# A cron-driven rain bot. A stopgap, not the end state, for the same reasons
+# keeper-bot.yml is: see that file's header before changing this one.
+#
+# The registered draw cadence is two hours (see docs/releases.md); a scan
+# every thirty minutes matches the Arcron keeper's own cadence and leaves a
+# wide margin against the beacon's roughly 46-minute answer window
+# (smart_contracts/rain/contract.py::BEACON_WINDOW), so a single missed run
+# never risks an unresolved draw.
+#
+# The job skips itself cleanly when RAIN_MNEMONIC is not set, so turning it
+# on before the secret exists produces a green run with a notice rather than
+# a failure every half hour.
+#
+# What this does not give you, and why it is a stopgap:
+#   * Scheduled workflows are best-effort and may be delayed or dropped.
+#   * Each run is a fresh process, so scripts/rain_bot.py's own pending-
+#     deposit state (default_pending_path) has no memory between runs. A
+#     crash between `claim` and `deposit` here is not self-healing the way
+#     it is on a long-running host; the next run still sees the on-chain
+#     truth (nothing allocated) and cannot know a prize is still owed to the
+#     pot. A long-lived process with a real disk avoids this, the same as
+#     it does for keeper-bot.yml's backoff state.
+#   * The mnemonic lives in repository secrets, readable by any workflow here.
+
+name: Rain bot
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_id:
+        description: Rain app id to watch
+        required: false
+        default: "769988156"
+  schedule:
+    # Every half hour. See the note above before changing this.
+    - cron: "*/30 * * * *"
+
+concurrency:
+  group: rain-bot
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: |
+          pip install "poetry>=2.0,<3.0"
+          poetry install --only main --no-root --no-interaction
+
+      - name: Check the rain account is configured
+        id: configured
+        env:
+          RAIN_MNEMONIC: ${{ secrets.RAIN_MNEMONIC }}
+        run: |
+          if [ -z "$RAIN_MNEMONIC" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::RAIN_MNEMONIC is not set, so nothing was checked." \
+                 "Add it as a repository secret to start resolving. Until then this" \
+                 "workflow is a no-op rather than a failure."
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Resolve, claim, redeposit
+        if: steps.configured.outputs.ready == 'true'
+        env:
+          RAIN_MNEMONIC: ${{ secrets.RAIN_MNEMONIC }}
+          RAIN_APP_ID: ${{ inputs.app_id || '769988156' }}
+          ALGOD_SERVER: https://testnet-api.algonode.cloud
+        run: poetry run python -m scripts.rain_bot --once --network testnet --log-format json

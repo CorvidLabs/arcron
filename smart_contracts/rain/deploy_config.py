@@ -6,8 +6,16 @@ logger = logging.getLogger(__name__)
 
 
 # define deployment behaviour based on supplied app spec
-def deploy() -> "RainClient":
-    """Create (or find) the Rain app. Idempotent, like keeper's and pulse's.
+def deploy(app_id: int | None = None) -> "RainClient":
+    """Create a Rain app, or wrap an existing one if `app_id` is given.
+
+    Deliberately not `factory.deploy()`'s idempotent find-or-create, which
+    keeper's and pulse's deploy_config use: that path looks up existing apps
+    by creator and name through the indexer, and the public TestNet indexer
+    is a shared, quota-limited resource that this project has already hit
+    empty (see docs/releases.md's rain deployment note). A plain `create`
+    needs no indexer at all, and re-running against a known `app_id` needs
+    none either.
 
     This only creates the app. `rain` has no pre-fund step the way keeper
     and pulse do: its app account MBR is collected by `configure`'s own
@@ -31,15 +39,13 @@ def deploy() -> "RainClient":
         RainFactory, default_sender=deployer_.address
     )
 
-    app_client, result = factory.deploy(
-        on_update=algokit_utils.OnUpdate.AppendApp,
-        on_schema_break=algokit_utils.OnSchemaBreak.AppendApp,
-    )
+    if app_id is not None:
+        client: RainClient = factory.get_app_client_by_id(app_id=app_id)
+        logger.info(f"Rain app {client.app_id} (existing)")
+        return client
 
-    logger.info(
-        f"Rain app {app_client.app_id} deployed "
-        f"(operation: {result.operation_performed})"
-    )
+    app_client, _result = factory.send.create.bare()
+    logger.info(f"Rain app {app_client.app_id} created")
 
-    client: RainClient = app_client
+    client = app_client
     return client
