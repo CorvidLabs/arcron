@@ -24,6 +24,9 @@ from scripts.keeper_bot import (
     _as_bytes,
     _decode_upkeep,
     effective_fee,
+    find_winner,
+    read_upkeep,
+    registry_moved_on,
     resolve_app_id,
     select_due,
 )
@@ -241,3 +244,125 @@ def test_the_recorded_box_names_its_creator() -> None:
     upkeep = _decode_upkeep(1, bytes.fromhex(LIVE_BOX_HEX))
     assert len(upkeep.creator) == 58, "an Algorand address is 58 characters"
     assert upkeep.creator.isupper() or any(c.isdigit() for c in upkeep.creator)
+
+
+# --- reading the registry back after a failure ------------------------
+#
+# What separates a lost race from a broken target is what the boxes say a beat
+# later, so the code that reads them has to be exact about one thing: a box
+# that is gone means the upkeep was cancelled, and a node that will not answer
+# means nothing at all. Conflating them was a real bug, found when a free
+# TestNet endpoint started returning 403 under load: every failure during the
+# outage would have read as a lost race, and the bot would have sailed through
+# it convinced it was merely unlucky.
+
+
+class _BoxAlgod:
+    """Just enough of algod to answer `read_upkeep`."""
+
+    def __init__(self, error: Exception | None = None, value: bytes | None = None) -> None:
+        self._error = error
+        self._value = value
+
+    def application_box_by_name(self, app_id: int, name: bytes) -> dict:
+        if self._error is not None:
+            raise self._error
+        return {"value": base64.b64encode(self._value or b"").decode()}
+
+
+def _http_error(code: int, message: str) -> Exception:
+    from algosdk import error
+
+    return error.AlgodHTTPError(message, code)
+
+
+def test_a_cancelled_upkeep_reads_as_gone() -> None:
+    algod = _BoxAlgod(error=_http_error(404, "box not found"))
+    assert read_upkeep(algod, 1, 7) is None
+
+
+def test_a_node_that_will_not_answer_is_not_a_cancelled_upkeep() -> None:
+    """The 403 that found this. Anything but a missing box has to be raised."""
+    algod = _BoxAlgod(error=_http_error(403, "Forbidden"))
+    with pytest.raises(Exception, match="Forbidden"):
+        read_upkeep(algod, 1, 7)
+
+
+def test_registry_moved_on_reports_no_news_when_the_node_is_down() -> None:
+    """None, not False: "cannot tell" must not read as "nothing happened"."""
+    algod = _BoxAlgod(error=_http_error(403, "Forbidden"))
+    before = _decode_upkeep(0, bytes.fromhex(LIVE_BOX_HEX))
+    moved, after = registry_moved_on(algod, 1, before)
+    assert moved is None
+    assert after is None
+
+
+def test_registry_moved_on_sees_an_execution() -> None:
+    before = _decode_upkeep(0, bytes.fromhex(LIVE_BOX_HEX))
+    raw = bytearray(bytes.fromhex(LIVE_BOX_HEX))
+    raw[74:82] = (before.times_executed + 1).to_bytes(8, "big")
+    moved, after = registry_moved_on(_BoxAlgod(value=bytes(raw)), 1, before)
+    assert moved is True
+    assert after is not None and after.times_executed == before.times_executed + 1
+
+
+def test_registry_moved_on_sees_a_still_upkeep() -> None:
+    before = _decode_upkeep(0, bytes.fromhex(LIVE_BOX_HEX))
+    moved, after = registry_moved_on(_BoxAlgod(value=bytes.fromhex(LIVE_BOX_HEX)), 1, before)
+    assert moved is False
+    assert after == before
+
+
+def test_a_vanished_box_counts_as_moved_on() -> None:
+    """Cancelled mid-flight is a race nobody won, and nothing to back off."""
+    before = _decode_upkeep(0, bytes.fromhex(LIVE_BOX_HEX))
+    algod = _BoxAlgod(error=_http_error(404, "box not found"))
+    moved, after = registry_moved_on(algod, 1, before)
+    assert moved is True
+    assert after is None
+
+
+# --- naming the winner ------------------------------------------------
+
+
+class _BlockAlgod:
+    def __init__(self, block: dict) -> None:
+        self._block = block
+
+    def block_info(self, block_round: int) -> dict:
+        return {"block": self._block}
+
+
+def test_find_winner_reads_the_sender_out_of_the_block() -> None:
+    """The only durable record of a race: the winner's own transaction.
+
+    A losing keeper's is in no block at all, so if this cannot name the winner
+    a lost race leaves nothing behind but an opinion.
+    """
+    winner = "3PF5XJY3NDUHLTQ45LCTJCRWIN3PMLXUDMXYKPWAH7VW7FOR7JDZKQMHDY"
+    block = {
+        "txns": [
+            {"txn": {"apid": 999, "apaa": ["W0nMXA==", "AAAAAAAAAR4="], "snd": winner}},
+            {
+                "txn": {
+                    "apid": 1002,
+                    "apaa": ["W0nMXA==", base64.b64encode((286).to_bytes(8, "big")).decode()],
+                    "snd": winner,
+                }
+            },
+        ]
+    }
+    assert find_winner(_BlockAlgod(block), 1002, 286, 5186) == winner
+    # A different upkeep in the same block is not this race.
+    assert find_winner(_BlockAlgod(block), 1002, 287, 5186) is None
+
+
+def test_find_winner_never_raises() -> None:
+    """Best effort: a node that does not serve blocks must not break a scan."""
+
+    class _Broken:
+        def block_info(self, block_round: int) -> dict:
+            raise RuntimeError("no blocks here")
+
+    assert find_winner(_Broken(), 1002, 1, 5186) is None
+    assert find_winner(_BlockAlgod({}), 1002, 1, 0) is None

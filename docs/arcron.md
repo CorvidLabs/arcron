@@ -319,8 +319,22 @@ poetry run python -m scripts.keeper_bot --app-id N # other keeper instance
   holds for an upkeep whose target rejects the inner call: no fee, no state
   change, no escrow spent.
 
+  Measured between two keepers that genuinely collided, not only by
+  construction: `scripts/keeper_race.py` starts two real bots against a shared
+  wall-clock barrier so both reach for the same due upkeep in the same round,
+  and then checks the claim from chain data: the winner named out of the
+  block it landed in, the loser's transaction absent from any indexer, the
+  loser's balance moved by exactly zero. Stage 14b of the e2e pins the same
+  thing in the ordinary shape of a race, where the loser is not refused before
+  it broadcasts but by the pool after it does.
+
   So the barrier to running a keeper is lower than it looks: a bot that loses
   every race it enters is out nothing but local compute and a round-trip.
+- **Two keepers only compete if they run at the same time.** An offset
+  schedule is a queue: the earlier keeper takes every due upkeep and the later
+  one finds nothing. `--align SECONDS` holds the first scan until the next
+  whole multiple of SECONDS in UTC, so keepers that have never met scan the
+  same round. Both scheduled workflows use it; see `docs/hosting.md`.
 - A failing upkeep (e.g. a target that rejects the call) **backs off
   exponentially**, and that state survives restarts, so a `--once` cron
   invocation does not re-attempt a doomed upkeep on every run, which the old
@@ -336,6 +350,18 @@ poetry run python -m scripts.keeper_bot --app-id N # other keeper instance
   common case in a healthy network, it is free, and a keeper that stopped
   trying everything it lost a race for would service less and less of the
   registry.
+
+  Two signals separate a lost race from a broken target, and they are not
+  equally trustworthy. The error text is what arrives first, and a target has
+  some say in it: on-chain failures carry no assert strings, but algod
+  disassembles the failing program into the message, so a target can get
+  chosen words in front of a keeper. What it cannot do is fail without the
+  node saying the failure was in an inner transaction, because `execute`
+  checks the schedule before it calls anything. The second signal is the
+  registry itself: if the upkeep's box moved on between the scan that picked
+  it and the call that failed, somebody executed it, and nothing a target
+  writes can fake that. The box is only ever evidence *for* a race, because a
+  winner still sitting in the pool has not moved it yet, so a keeper reads both.
 
   Once you have fixed a target: `--retry-now <id>` clears one upkeep's
   backoff, `--clear-backoff` clears them all. State lives under

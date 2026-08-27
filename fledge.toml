@@ -76,6 +76,12 @@ soak = "poetry run python -m scripts.keeper_soak --network localnet --minutes 3"
 # A populated registry with competing keepers, asserting what has to be true
 # of the whole system rather than of one upkeep. Deterministic per seed.
 scenario = "poetry run python -m scripts.scenario --network localnet"
+# Two real keeper bots, one due upkeep, both aligned to the same barrier: a
+# collision that actually happens, and the chain checked afterwards for what
+# losing cost. Exits non-zero when the two did not collide, because a run in
+# which they took turns proves nothing. Not in a lane: it is a timing
+# experiment on a live chain, not an assertion that holds every time.
+race = "poetry run python -m scripts.keeper_race --network localnet"
 
 [lanes.ci]
 description = "Full CI pipeline: contracts + console, unit tests, spec drift check"

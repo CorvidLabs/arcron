@@ -4,7 +4,7 @@ Arcron's economic argument is that competition between keepers holds the fee
 below the ceiling, and that competing is safe because a keeper that loses a
 race pays nothing: Algorand rejects a failing transaction at validation, so it
 never reaches a block and its sender is never charged. Both halves had only
-ever been shown by construction — one keeper serviced TestNet and won
+ever been shown by construction. One keeper serviced TestNet and won
 everything by default, and `scripts/keeper_e2e.py` proves the cost of losing
 with a crafted transaction rather than with two keepers that genuinely
 collided.
@@ -177,7 +177,13 @@ def _launch(network: str, app_id: int, account, barrier: int) -> subprocess.Pope
 
 
 def _collect(account, process: subprocess.Popen) -> Outcome:
-    log = process.communicate(timeout=BOT_TIMEOUT_SECONDS)[0] or ""
+    try:
+        log = process.communicate(timeout=BOT_TIMEOUT_SECONDS)[0] or ""
+    except subprocess.TimeoutExpired:
+        # A bot that will not finish must not leave a signing process running
+        # after this script has reported and gone.
+        process.kill()
+        log = (process.communicate()[0] or "") + "\nkilled: took too long"
     events = []
     for line in log.splitlines():
         line = line.strip()
