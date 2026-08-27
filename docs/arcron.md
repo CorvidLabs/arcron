@@ -253,9 +253,9 @@ an external entry point that anyone may call once an upkeep is due.
 | | |
 |---|---|
 | Keeper app | `769891898` (TestNet, alpha-3) |
-| Upkeeps registered | ten, including one registered from the console by a wallet |
+| Upkeeps registered | 11 as of round 66707000 on 2026-08-27, including one registered from the console by a wallet |
 | Always-on keeper | **running**: `.github/workflows/keeper-bot.yml` every thirty minutes, plus a container on a VPS and a second cron on the same barrier. The workflow was manual-dispatch-only until its `KEEPER_MNEMONIC` secret was set on 2026-08-26. |
-| Executions | 44 and counting, the most recent paid to a keeper for real |
+| Executions | 70 as of round 66707000 on 2026-08-27, the most recent paid to a keeper for real |
 
 This table said "none" and "none running" for a day after both stopped being
 true, which is worth more than the correction. Two independent bugs kept it

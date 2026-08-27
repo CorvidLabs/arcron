@@ -1,5 +1,13 @@
 # What the console has to let people do
 
+> **Working document, 2026-08-26.** This records how the console's requirements
+> were argued out, and its "True today" sections describe the console as it was
+> when each was written rather than as it is now. Several are already wrong: the
+> console defaults to TestNet, it has a published URL, and the demo-target
+> criterion in J2 was cut. **The Decisions sections are authoritative**, and
+> `docs/console-plan.md` supersedes this file where the two disagree. It is kept
+> because the reasoning is worth more than a tidy summary would be.
+
 Five journeys. A journey is done when somebody who has not seen Arcron before
 completes it without asking us anything, not when the code that implements it
 exists.
