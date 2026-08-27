@@ -63,6 +63,33 @@ jobs:
           pip install "poetry>=2.0,<3.0"
           poetry install --no-interaction
 
+      # The `spec` task below is `specsync check --strict`, and SpecSync is a
+      # Rust binary that no hosted runner has and no dependency file installs.
+      # Without this step the loop dies on `specsync: command not found`. That
+      # has never been observed only because forking is disabled while the
+      # repository is private; it is waiting for the first fork pull request
+      # after it goes public.
+      #
+      # This is also the only place a version is pinned. `.specsync/version`
+      # looks like one and is not: it records the on-disk lifecycle format,
+      # which SpecSync 6.0 still stamps as 5.0.0. Nothing else in the tree
+      # names a SpecSync version, so until now "the version CI gates on" was
+      # whatever happened to be on one Mac's PATH.
+      #
+      # `version` has to be given explicitly: the action defaults to `6.0.0`
+      # and no such release exists yet — the 6.0 line is still candidates.
+      # The action puts SpecSync on PATH and runs `check --force --strict`
+      # itself; `--force` is the right CI invocation, because the hash cache
+      # is not committed and a warm workspace can otherwise report "all specs
+      # unchanged" and exit 0 over a check that validated nothing. The `spec`
+      # task still runs in the loop below, so this job's idea of the gate
+      # still comes from fledge.toml.
+      - name: SpecSync
+        uses: CorvidLabs/spec-sync@v6.0.0-rc.7
+        with:
+          version: 6.0.0-rc.7
+          strict: "true"
+
       - name: Run the CI lane's tasks
         run: |
           # Read each command from fledge.toml so this job and `fledge lanes
@@ -107,7 +134,11 @@ jobs:
       - name: Toolchain
         run: |
           missing=()
-          for tool in poetry bun fledge; do
+          # specsync belongs here: `fledge run spec` is a required step three
+          # steps down, and without this it fails as a bare "command not
+          # found" attributed to the spec drift step rather than to the
+          # runner. It is not installed by poetry, bun, or fledge.
+          for tool in poetry bun fledge specsync; do
             command -v "$tool" >/dev/null 2>&1 || missing+=("$tool")
           done
           if [ ${#missing[@]} -ne 0 ]; then
@@ -116,6 +147,12 @@ jobs:
             exit 1
           fi
           poetry --version && bun --version && fledge --version
+          # Printed, not asserted. This job takes SpecSync from the
+          # runner's PATH — only the fork job can pin a version — so the log
+          # is the sole record of what gated a push. It cannot be asserted
+          # either way: every 6.0 candidate self-reports `specsync 6.0.0`,
+          # so the string cannot tell rc.5 from rc.7.
+          specsync --version
 
       - name: Select the Python interpreter
         run: |

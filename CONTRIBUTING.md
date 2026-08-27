@@ -23,6 +23,15 @@ You will also want [AlgoKit](https://github.com/algorandfoundation/algokit-cli)
 and Docker for anything touching a chain, and [Bun](https://bun.sh) for the
 console.
 
+And **SpecSync**, which is easy to miss because nothing installs it for you:
+it is not a Poetry or a Bun dependency, but `fledge lanes run ci` runs it and
+CI fails without it. Take
+[v6.0.0-rc.7](https://github.com/CorvidLabs/spec-sync/releases/tag/v6.0.0-rc.7),
+which is what CI pins. Do not reach for `cargo install specsync`: crates.io
+stops at 5.2.0, so it will quietly give you an older tool than the one that
+gates your pull request — and every 6.0 candidate reports itself as
+`specsync 6.0.0`, so `--version` will not tell you which one you have.
+
 ## Deploying, if you want your own
 
 [`docs/deploying.md`](docs/deploying.md) covers LocalNet, TestNet and MainNet,
@@ -51,6 +60,13 @@ treats an undocumented export as an error.
 
 This catches real drift, but it is an unpleasant surprise if nobody warned
 you. Now you are warned. Run `specsync check --strict` locally before pushing.
+
+Know what it does not catch. It reads structure — sections present, exports
+documented, dependency specs resolvable — and it passes clean on a tree whose
+prose says things the contract does not do. Four reviews in `docs/reviews/`
+found exactly that and each said so in almost the same words: the check
+validates structure, not semantics, so the drift lives where it cannot see. A
+green spec check is not a claim that the spec is true.
 
 ## After changing a contract
 

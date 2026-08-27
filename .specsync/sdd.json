@@ -34,7 +34,11 @@
     "specs/"
   ],
   "verification_commands": [
-    "poetry run pytest tests/ -q"
+    "fledge run build",
+    "fledge run test",
+    "fledge run js-install",
+    "fledge run js-test",
+    "fledge run web-test"
   ],
   "custom_artifacts": {},
   "principles_file": null
