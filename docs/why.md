@@ -65,6 +65,25 @@ table quotes $2.02:
 | Hetzner, $4.10 | 20 |
 | a $5 host | 24 |
 
+**Those numbers do not come from dividing the host by the monthly cost**, and
+the arithmetic is worth spelling out because a reader who divides gets 7.2 and
+concludes the table is broken. A reviewer of this repository nearly corrected it
+before working it out.
+
+Running your own bot does not make the fee disappear; it makes it smaller.
+A self-hosted call still pays the 1,000 µALGO outer transaction fee, so the
+saving per upkeep is the difference, 3,000 µALGO, not the whole 4,000:
+
+| | per upkeep per month |
+|---|---|
+| Arcron at the floor | $0.275 |
+| your own bot, still paying the outer fee | $0.069 |
+| **what self-hosting actually saves** | **$0.206** |
+
+$2.02 ÷ $0.206 ≈ **10**, which is the crossover. The 7.2 further up this page is
+a different and also true number: the ratio of total costs, not the point where
+one overtakes the other.
+
 One process services any number of targets from one key: `scripts/keeper_bot.py`
 in this repo is a single process servicing the entire registry, so "ten
 contracts means ten bots" — which an earlier draft asserted — is false, and
