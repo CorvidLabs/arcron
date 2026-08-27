@@ -59,6 +59,14 @@ jobs:
         run: |
           pip install "poetry>=2.0,<3.0"
           poetry install --no-interaction
+          # The `build` task shells out to algokit to generate the typed
+          # clients, and no hosted runner has it. This job never ran until
+          # now: it existed only for forks, and a private repository cannot be
+          # forked, so its first execution was also the first time anything
+          # checked whether it worked. Pinned, so CI does not follow algokit's
+          # next major on its own.
+          pip install "algokit>=2.0,<3.0"
+          algokit --version
 
       # The `spec` task below is `specsync check --strict`, and SpecSync is a
       # Rust binary that no hosted runner has and no dependency file installs.
