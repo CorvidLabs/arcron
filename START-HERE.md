@@ -25,6 +25,7 @@ page.
 | **Run a keeper and get paid** | [`docs/hosting.md`](docs/hosting.md) | a machine, or a free GitHub Action |
 | **Break it** | [below](#if-you-came-to-break-it) | your time, and we want the findings |
 | **Judge whether the idea is any good** | [`docs/why.md`](docs/why.md) | ten minutes of reading |
+| **Tell us the idea is wrong** | [the open question](https://github.com/CorvidLabs/arcron/discussions/163) | we would rather hear it now |
 
 ---
 
@@ -99,10 +100,11 @@ findings:
 5. **A claim in the docs that is false.** The last three reviews each found real
    ones, including in the cost argument. Numbers are checkable; check them.
 
-**Where to send it:** open an issue, or reply to the
-[attacks and findings thread](https://github.com/CorvidLabs/arcron/discussions).
-If it is a live-funds vulnerability, [`SECURITY.md`](SECURITY.md) has the
-private path — please use it rather than a public thread.
+**Where to send it:** open an issue, or reply to
+[attacks and findings](https://github.com/CorvidLabs/arcron/discussions/162),
+which lists the same known-already set so nobody duplicates work. If it is a
+live-funds vulnerability, [`SECURITY.md`](SECURITY.md) has the private path —
+please use that rather than a public thread.
 
 ---
 
@@ -146,6 +148,9 @@ Three tasks, each one a thing nobody has done:
 
 The most valuable thing you can report is not a bug. It is **the moment you had
 to guess**, because that is the thing no test in this repository can find.
+
+If you looked and decided *not* to use it, that is worth more still:
+[what would make you actually use this?](https://github.com/CorvidLabs/arcron/discussions/164)
 
 ---
 
