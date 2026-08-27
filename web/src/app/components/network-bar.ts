@@ -245,7 +245,13 @@ import type { NetworkKey } from '@corvidlabs/arcron/networks';
        close button are hidden individually. */
     .menu-toggle { display: none; }
     .drawer-nav { display: none; }
+    /* display:contents promotes the header's children into the controls row,
+       and the order property then places the toggle last so it sits at the far right of
+       the bar rather than left of the status. The status is the thing that
+       changes; the toggle is a control you reach for, and controls go to the
+       edge. */
     .drawer-head { display: contents; }
+    .drawer-head .corvid-theme-toggle { order: 99; }
     .head-title { display: none; }
     .drawer-close { display: none; }
     .drawer-search { display: none; }

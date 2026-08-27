@@ -145,7 +145,8 @@ def main(argv: list[str] | None = None) -> None:
             ),
             beacon_app=beacon.app_id,
             gate_creator=artist.address,
-            prize_asset=prize_asset,
+            gate_unit_prefix=b"",
+                        prize_asset=prize_asset,
         )
     )
     _assert("gate is the collection's minter", rain.state.global_state.gate_creator, artist.address)
@@ -195,7 +196,8 @@ def main(argv: list[str] | None = None) -> None:
                     amount=algokit_utils.AlgoAmount(micro_algo=300_000),
                 )
             ),
-            beacon_app=beacon.app_id, gate_creator=ZERO_ADDRESS, prize_asset=rugable
+            beacon_app=beacon.app_id, gate_creator=ZERO_ADDRESS,
+            gate_unit_prefix=b"", prize_asset=rugable
         )
     )
     refused = False
@@ -407,7 +409,8 @@ def main(argv: list[str] | None = None) -> None:
                     amount=algokit_utils.AlgoAmount(micro_algo=500_000),
                 )
             ),
-            beacon_app=beacon.app_id, gate_creator=ZERO_ADDRESS, prize_asset=prize_asset
+            beacon_app=beacon.app_id, gate_creator=ZERO_ADDRESS,
+            gate_unit_prefix=b"", prize_asset=prize_asset
         )
     )
     solo_rain.send.opt_in_prize_asset(

@@ -199,14 +199,19 @@ interface Row {
        and passed it, because the content was inside a legitimate scroller and
        nothing asks whether a scroller's contents can be reached.
 
-       1220px is measured rather than reasoned. The table's min-content width is
-       1074px, and main is max-width:82rem with clamp(1rem, 4vw, 2.5rem)
-       padding, so the content box only reaches 1074 at a 1240px viewport: at
-       1200 it has 1071 and is three pixels short. Two earlier guesses, 1100 and
-       1160, both still scrolled. Below that the cards
+       1260px is measured, and re-measured. The first measurement gave 1220
+       against a table needing 1074. Then a state chip was added to every row,
+       the table grew to 1127, and 1220 quietly became too small: at 1226 the
+       table needed 1127 and had 1097, so the Execute column sat 30px off the
+       right edge behind a scrollbar. A screenshot found it.
+
+       The lesson is in the failure, not the number. Any column added to this
+       table moves this breakpoint, and nothing computes it: it is measured by
+       stepping the viewport until .scroll stops overflowing. Re-measure after
+       touching the columns. Below that the cards
        tile: one column on a phone, more as there is width for them, so a tablet
        gets a readable grid rather than a single 700px-wide card. */
-    @media (max-width: 1219px) {
+    @media (max-width: 1259px) {
       /* A nine-column table is not a table on a 390px screen. It was a
          sideways scroller: the Execute button sat off the right edge, the
          Cadence header was clipped mid-word, and reading one upkeep meant
@@ -251,11 +256,16 @@ interface Row {
       /* One column on a phone, then as many as fit. minmax(0, 1fr) rather than
          auto-fill with a fixed track, so a card never forces the row wider than
          the viewport. */
+      /* stretch, not start. Cards size to their content, and content differs by
+         a line or two: a fee with a ceiling adds "up to 0.012 ALGO", an overdue
+         upkeep adds "overdue by ~44 min", a long cadence wraps. So a row of
+         cards came out ragged with the Execute buttons at three different
+         heights, which reads as a layout fault rather than as data. */
       tbody {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr));
         gap: 0.85rem;
-        align-items: start;
+        align-items: stretch;
       }
 
       /* The stripe is always 3px and only its colour changes. Giving it only to
@@ -266,6 +276,8 @@ interface Row {
          a --surface panel painted in the page ground is inverted elevation. The
          keeper board's job cards already use --surface. */
       tbody tr {
+        display: flex;
+        flex-direction: column;
         border: 1px solid var(--hairline);
         border-left: 3px solid transparent;
         border-radius: 4px;
@@ -297,10 +309,6 @@ interface Row {
 
       /* A 44px button in a cell measured 61px: padding plus the phantom
          descender under an inline-block. flex removes the descender. */
-      tbody td.actions {
-        display: flex;
-      }
-
       /* The id is the card's title. */
       tbody th[scope='row'] {
         display: flex;
@@ -368,11 +376,22 @@ interface Row {
          other cell uses and was half the reason the card looked crooked. */
 
       /* Execute is the reason somebody opened this on a phone. Full width, at
-         the foot of the card, above the thumb rather than off the right edge. */
+         the foot of the card, above the thumb rather than off the right edge.
+
+         margin-top:auto rather than a fixed gap, so it takes whatever slack the
+         stretched card has and every Execute in a row lands on the same line
+         however much data the card above it carried. There were two rules on
+         this selector for a while and the fixed 0.5rem in the second one won,
+         which is why the buttons stayed ragged after the cards were levelled:
+         the computed margin-top read 8px, not auto.
+
+         flex rather than block, because an inline-block button leaves a
+         phantom descender under it and the spacing stops being the spacing
+         written here. */
       tbody td.actions {
-        display: block;
+        display: flex;
         padding-top: 0.6rem;
-        margin-top: 0.5rem;
+        margin-top: auto;
         border-top: 1px solid var(--hairline);
       }
 
@@ -477,8 +496,15 @@ interface Row {
       border-radius: 2px;
     }
     .chip.due { background: color-mix(in srgb, var(--sheen) 18%, transparent); color: var(--sheen-strong); }
-    .chip.scheduled { border: 1px solid var(--hairline); }
-    .chip.starved { border: 1px solid var(--hairline); color: var(--text-faint); }
+    .chip.scheduled { border: 1px solid var(--hairline); color: var(--text-faint); }
+    /* Starved was styled fainter than scheduled, so the two were near enough
+       identical and the one that reads as inert was the one needing a person.
+       An upkeep below one fee cannot run until its creator tops it up. */
+    .chip.starved {
+      border: 1px solid var(--warning);
+      color: var(--warning);
+      background: color-mix(in srgb, var(--warning) 12%, transparent);
+    }
   `,
 })
 export class RegistryTable {
@@ -508,6 +534,26 @@ export class RegistryTable {
     inject(ActivatedRoute).queryParamMap.pipe(map((params) => params.get('mine') === '1')),
     { initialValue: false },
   );
+
+  /**
+   * What order the registry is in.
+   *
+   * There was none. `rows()` mapped `upkeeps()` straight through, and that is
+   * box-read order, which is ascending id, which is registration order. So a
+   * starved upkeep needing its creator sat wherever it happened to be
+   * registered, and the one thing a reader can act on was as likely to be last
+   * as first.
+   *
+   * Due first, because anyone can run those now. Then starved, because they
+   * need a person and hiding the network's failures helps nobody. Then
+   * scheduled. Ties keep ascending id, so the order is stable between polls
+   * rather than shuffling as rounds advance.
+   */
+  private static readonly STATE_ORDER: Record<string, number> = {
+    due: 0,
+    starved: 1,
+    scheduled: 2,
+  };
 
   protected readonly rows = computed<Row[]>(() => {
     const round = this.arcron.round();
@@ -547,10 +593,17 @@ export class RegistryTable {
         balance: algos(upkeep.balance),
         runway: runwayLabel(executionsRemaining(upkeep), upkeep.intervalRounds, pace),
         executed: String(upkeep.timesExecuted),
-        state: starved ? 'starved' : executable ? 'due' : 'scheduled',
+        state: (starved ? 'starved' : executable ? 'due' : 'scheduled') as Row['state'],
         canExecute: executable && canSign,
       };
-    });
+    })
+      .sort((left, right) => {
+        const byState =
+          RegistryTable.STATE_ORDER[left.state] - RegistryTable.STATE_ORDER[right.state];
+        // Ascending id breaks ties, so the order is stable between polls
+        // rather than shuffling as rounds advance.
+        return byState !== 0 ? byState : Number(left.upkeep.id - right.upkeep.id);
+      });
   });
 
   protected readonly summary = computed(() => {

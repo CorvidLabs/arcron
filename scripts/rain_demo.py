@@ -137,6 +137,7 @@ def main(argv: list[str] | None = None) -> None:
             ),
             beacon_app=beacon.app_id,
             gate_creator=ZERO_ADDRESS,
+            gate_unit_prefix=b"",
             prize_asset=0,
         )
     )
