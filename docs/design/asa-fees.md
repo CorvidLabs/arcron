@@ -197,6 +197,64 @@ becomes 139 (9 name + 130 head), so 149 bytes and 62,100 µALGO, up from
 41,300, or **+50%** on the entry price of an upkeep. A deposit, refunded on
 cancel, not a fee.
 
+## What got built, and the one number this note had wrong
+
+The contract shipped as proposed. The operator-side half of §3 did not, until
+now: "`keeper_bot --check` should warn on startup for every asset it is not
+opted in to" sat unbuilt while the bot decoded all three fields and ignored
+them. `scripts/keeper_assets.py` is that warning and the report behind it.
+
+Building it turned up a framing error worth recording, because it was the
+frame everyone reached for first, including this note's §4:
+
+**The opt-in deposit is the wrong cost to reason about.** A *keeper's* opt-in
+locks 100,000 µALGO and a close-out releases it, so about 2,000 µALGO of
+transaction fees is the only part genuinely spent. (§4's deposit is a
+different thing and the note is right about it: the *app account's* opt-in is
+permanent, and that asymmetry is now the easiest of the two to get backwards.)
+
+What actually decides whether a keeper should accept an asset is a flow. The
+bonus is a third inner transaction, and Algorand pools fees without refunding
+the unused part, so a keeper that can receive a bonus must fund the transfer on
+every execution whether or not that particular bonus is worth having. There is
+no per-execution opt-out, only opting out of the asset. So:
+
+    not opted in    pays 3,000    receives the fee              net  fee - 3,000
+    opted in        pays 4,000    receives the fee and a bonus  net  fee - 4,000 + bonus
+
+The opt-in is worth `bonus - 1,000` µALGO per execution, independent of the
+fee, of the escalation cap, and of how late the upkeep is. Below that it is not
+a missed opportunity, it is a permanent tax on every upkeep naming the asset.
+That single subtraction is what the report exists to put in front of an
+operator, as a break-even unit price they can take to a price this repository
+deliberately does not source.
+
+Two consequences, both built:
+
+- **The bot's balance guard was wrong for exactly the operators this feature
+  creates.** It compared the account's total against a hardcoded 100,000 µALGO
+  minimum. The real floor rises by 100,000 per asset opt-in, and again per app
+  and per asset created; a live keeper holding eleven assets measured
+  5,439,000. So the bot believed it had 5.34 ALGO more to spend than it did,
+  and would have found out by failing to broadcast rather than by refusing to
+  start. It now reads `min-balance` from algod, and `--min-balance` is a
+  *spendable* threshold.
+- **Deciding is the operator's, not the bot's.** Nothing opts in automatically.
+  An opt-in changes the account's floor and commits it to the surcharge from
+  then on, and a valuation is the one input no algod can supply.
+
+Still open, deliberately: `select_due` ranks by the gross ALGO fee, so a bonus
+upkeep and a plain one at the same fee sort identically despite netting 0 and
+1,000. Correcting it needs the same operator-declared valuation, so it waits
+for the layer that carries one.
+
+Finally, a number in the **Cost** table above should not be quoted: the "40
+bytes" of page headroom in its last row is stale, and it is exactly the kind of
+figure that gets cited later as a reason something is impossible. Live app
+769891898 compiles to 2,219 bytes across two pages, so 1,877 are free. The
+table's argument about re-measuring rather than quoting it still stands, and
+now applies to the table itself.
+
 ## Considered and rejected
 
 - **Denominate the fee in the ASA instead of ALGO.** This is what #9 literally
