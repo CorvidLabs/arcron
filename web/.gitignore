@@ -45,3 +45,12 @@ Thumbs.db
 
 # Copied in from node_modules for accessibility audits
 public/axe.min.js
+
+# Playwright: traces and per-test output, the HTML report, and the raw
+# findings each page state writes for the run's consolidated report.
+# `__screenshots__/` is already ignored above, which covers the screenshots
+# and findings.md the rendering suite produces.
+/test-results
+/playwright-report
+/blob-report
+/e2e/.findings

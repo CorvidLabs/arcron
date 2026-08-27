@@ -311,7 +311,12 @@ export function standingOfUpkeep(upkeep: Upkeep, round: bigint): UpkeepStanding 
     .facts .args { font-size: 0.8rem; overflow-wrap: anywhere; }
     .sub { display: block; color: var(--text-faint); font-size: 0.78rem; }
     .escalated { color: var(--warning); font-weight: 600; }
-    .detail { margin: 0; color: var(--text-faint); font-size: 0.84rem; max-width: 72ch; }
+    /* Wrapping anywhere, for the same reason .full and .args do it: these
+       sentences quote a 58-character Algorand address, which is one
+       unbreakable word. Inside .row's flex layout that set a minimum width the
+       page could not go below, so at 390 the whole console laid out 584px wide
+       and scrolled 194px sideways. */
+    .detail { margin: 0; color: var(--text-faint); font-size: 0.84rem; max-width: 72ch; overflow-wrap: anywhere; }
     .full { margin: 0; color: var(--text-faint); font-size: 0.74rem; overflow-wrap: anywhere; }
     .yours {
       display: inline-block;
