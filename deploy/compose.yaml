@@ -4,6 +4,19 @@
 #   docker compose -f deploy/compose.yaml up -d
 #   docker compose -f deploy/compose.yaml logs -f
 #
+# Upgrading from a version before 2026-08-26 needs both flags:
+#
+#   docker compose -f deploy/compose.yaml down -v
+#   docker compose -f deploy/compose.yaml up -d --build
+#
+# `--build` because `up -d` alone reuses the image it already has, and the
+# notifier's state directory is fixed in the Dockerfile. `-v` because Docker
+# sets a volume's ownership only when it creates it: an existing
+# `notifier-state` from the broken image stays root-owned however many times
+# the image is rebuilt, and the notifier keeps logging "Permission denied"
+# against a fix that is present and correct. Dropping the volume costs one
+# round of re-announcements and nothing else.
+#
 # The bot earns its own fees, so a funded account is self-sustaining while the
 # registry is busy — but it cannot earn its way back from empty. Watch the
 # balance (see docs/arcron.md, "Operating a bot").
