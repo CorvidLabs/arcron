@@ -1,14 +1,17 @@
-# CI on CorvidLabs' own macOS runner.
+# CI, entirely on GitHub-hosted runners.
 #
 # Every step shells out to a task in fledge.toml rather than restating the
-# command, so CI and `fledge lanes run ci` cannot drift apart.
+# command, so CI and `fledge lanes run ci` cannot drift apart. The task list
+# is read from the `ci` lane itself rather than repeated here, because a
+# repeated list is a list that drifts: this workflow silently stopped running
+# `js-test`, 123 tests, and nobody noticed because the copy still looked
+# plausible.
 #
-# Register a runner (repo Settings → Actions → Runners → New self-hosted
-# runner) and give it the labels `self-hosted` and `macOS`. The runner needs
-# poetry, bun, algokit and fledge on its PATH; the toolchain step below fails
-# with a readable message rather than a mysterious "command not found" if any
-# are missing.
-
+# There is deliberately no self-hosted runner. A self-hosted runner executes
+# whatever a workflow says on hardware somebody owns, so on a public repository
+# "open a pull request" starts to mean "run this on someone's Mac". Guarding
+# that with an `if` works until the guard is edited. Not having the runner
+# cannot be edited wrong.
 name: CI
 
 on:
@@ -26,20 +29,14 @@ defaults:
     shell: bash
 
 jobs:
-  # Pull requests from forks run here, on GitHub's infrastructure, never on the
-  # self-hosted runner. A self-hosted runner executes whatever a workflow says
-  # on hardware we own, so running a fork's code on it would make "open a pull
-  # request" mean "run this on someone's Mac". This job gets no secrets and no
-  # access to that machine.
+  # The only build job, and it runs for everybody: this repository's branches
+  # and any fork's pull request, on identical hardware with no secrets. There
+  # is no second job to fall behind this one.
   #
-  # It cannot use `fledge`, which is not installed on a hosted runner, so it
-  # reads the task commands out of fledge.toml instead of restating them —
-  # same single source of truth, no drift.
-  fork-checks:
-    name: Contracts and console (fork)
-    if: >-
-      github.event_name == 'pull_request' &&
-      github.event.pull_request.head.repo.full_name != github.repository
+  # `fledge` is not installed on a hosted runner, so this reads the task
+  # commands out of fledge.toml instead of restating them.
+  build-and-test:
+    name: Contracts and console
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -113,122 +110,18 @@ jobs:
             exit 1
           fi
 
-  build-and-test:
-    name: Contracts and console
-    # A self-hosted runner executes whatever the workflow says on hardware we
-    # own, so never run a fork's code on it.
-    if: >-
-      github.event_name != 'pull_request' ||
-      github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, macOS]
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-        # Full history: tests/test_verify_release.py checks that the release
-        # record names a commit this repository contains, and that drift
-        # detection still reports what it should. A shallow clone of a merge
-        # commit resolves neither.
-        with:
-          fetch-depth: 0
-
-      - name: Toolchain
-        run: |
-          missing=()
-          # specsync belongs here: `fledge run spec` is a required step three
-          # steps down, and without this it fails as a bare "command not
-          # found" attributed to the spec drift step rather than to the
-          # runner. It is not installed by poetry, bun, or fledge.
-          for tool in poetry bun fledge specsync; do
-            command -v "$tool" >/dev/null 2>&1 || missing+=("$tool")
-          done
-          if [ ${#missing[@]} -ne 0 ]; then
-            echo "::error::Missing on this runner: ${missing[*]}"
-            echo "Install them, or see .github/workflows/ci.yml for what CI expects."
-            exit 1
-          fi
-          poetry --version && bun --version && fledge --version
-          # Printed, not asserted. This job takes SpecSync from the
-          # runner's PATH — only the fork job can pin a version — so the log
-          # is the sole record of what gated a push. It cannot be asserted
-          # either way: every 6.0 candidate self-reports `specsync 6.0.0`,
-          # so the string cannot tell rc.5 from rc.7.
-          specsync --version
-
-      - name: Select the Python interpreter
-        run: |
-          # Must happen before installing: a fresh checkout has no .venv, so
-          # poetry would otherwise take the default python3 — which on this
-          # runner is 3.14, and coincurve publishes no wheels for 3.14. The
-          # install then tries to build it from source and fails obscurely.
-          if ! command -v python3.13 >/dev/null 2>&1; then
-            echo "::error::python3.13 not found on this runner (default is $(python3 --version 2>&1))"
-            exit 1
-          fi
-          poetry env use "$(command -v python3.13)"
-          poetry run python --version
-
-      - name: Install Python dependencies
-        run: poetry install --no-interaction
-
-      - name: Python version guard
-        run: |
-          # Belt and braces: assert what actually got installed into.
-          version=$(poetry run python -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
-          echo "Python $version"
-          case "$version" in
-            3.12|3.13) ;;
-            *) echo "::error::Python $version is unsupported — use 3.13 (never 3.14)"; exit 1 ;;
-          esac
-
-      - name: Build contracts
-        run: fledge run build
-
-      - name: Unit tests
-        run: fledge run test
-
-      - name: Spec drift
-        run: fledge run spec
-
-      - name: Contract artifacts are current
-        run: |
-          # A contract change with stale artifacts means the bot and console
-          # are compiled against something that is no longer the source.
-          if ! git diff --quiet -- smart_contracts/artifacts; then
-            echo "::error::Artifacts differ from a fresh build — run 'poetry run python -m smart_contracts build' and commit."
-            git --no-pager diff --stat -- smart_contracts/artifacts
-            exit 1
-          fi
-
-      - name: JavaScript dependencies
-        run: fledge run js-install
-
-      - name: Contract TypeScript tests
-        # The decoder here is the twin of the Python one and is pinned to the
-        # same recorded box; these run beside the contract on purpose.
-        run: fledge run js-test
-
-      - name: Console tests
-        run: fledge run web-test
-
-      - name: Console build
-        run: fledge run web-build
-
-      - name: Hosted console build
-        # The bundle that goes to corvidlabs.xyz. It differs from the build
-        # above by one attribute, and that attribute is the whole difference
-        # between a working page and one that 404s its own JavaScript.
-        run: fledge run web-build-hosted
-
-      - name: Hosted console loads at its subpath
-        run: fledge run web-verify-hosted
-
   localnet:
     name: LocalNet end-to-end
     # The chain-facing half: slower, needs Docker, and proves the things mocks
     # cannot. Kept off pull requests so the fast checks stay fast.
+    #
+    # Hosted, like everything else. GitHub's ubuntu image ships Docker, which is
+    # all LocalNet needs; algokit is a pip install away and pinning it here
+    # means this job cannot depend on whatever happened to be on one machine's
+    # PATH.
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     needs: build-and-test
-    runs-on: [self-hosted, macOS]
+    runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
@@ -239,13 +132,17 @@ jobs:
         with:
           fetch-depth: 0
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
       - name: Docker and AlgoKit
         run: |
           if ! docker info >/dev/null 2>&1; then
             echo "::error::Docker is not running on this runner; LocalNet needs it."
             exit 1
           fi
-          command -v algokit >/dev/null 2>&1 || { echo "::error::algokit is not installed"; exit 1; }
+          pip install --quiet "algokit>=2.0,<3.0"
           algokit --version
 
       - name: Select the Python interpreter
