@@ -56,7 +56,7 @@ look.
 | Method signature | `tick()uint64` |
 | Selector it produces | `0x4d4d5f0b` |
 | Box MBR | 0.0621 ALGO, **refunded in full on cancel** |
-| Minimum fee per run | 0.004 ALGO |
+| Minimum fee per run | 0.004 ALGO (the floor; the console suggests 0.010) |
 
 `pulse` is a heartbeat counter that exists to be called. It has no state worth
 protecting and cannot fail, which is what makes it the right first target.
@@ -91,9 +91,9 @@ once you have escrowed. That was measured, not assumed:
 | Field | Value | Why |
 |---|---|---|
 | INTERVAL (ROUNDS) | `215` | About 10 minutes. Or press the `every 5 min` quick-cadence button. |
-| FEE PER EXECUTION | `0.004` | The minimum. Keepers spend about 0.003 in group fees, so this leaves them 0.001. |
+| FEE PER EXECUTION | `0.010` | What the console suggests. Keepers spend about 0.003 in group fees, so this leaves them 0.007. The minimum the contract accepts is 0.004, which leaves 0.001 and cannot fund a machine — see below. |
 | FEE CEILING | `0` | Off. Only raise it if an upkeep is actually going unserviced. |
-| FUNDING | `0.02` | Five runs. |
+| FUNDING | `0.03` | Three runs at the suggested fee. |
 | IF A RUN IS MISSED | **Skip ahead** | See below. |
 
 **Leave it on Skip ahead.** Catch up replays every missed interval at one fee

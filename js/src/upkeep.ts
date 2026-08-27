@@ -21,6 +21,27 @@ export const BOX_MBR_FIXED = 2_500 + 400 * 139;
 export const MIN_UPKEEP_FEE = 4_000;
 export const MAX_UPKEEP_FEE = 1_000_000_000;
 export const MIN_INTERVAL_ROUNDS = 10;
+/**
+ * What the console suggests, which is deliberately not the floor.
+ *
+ * `MIN_UPKEEP_FEE` is what the contract will accept. It is not what anyone
+ * should be advised to pay, and the console pre-filled it for months.
+ *
+ * A keeper spends about 3,000 uALGO in group fees per execution, so the floor
+ * leaves it 1,000. At that margin one keeper needs roughly 77 concurrent hourly
+ * upkeeps before its earnings cover a $5 host, while a creator running upkeeps
+ * of their own is better off self-hosting past about 26. Those numbers are the
+ * wrong way round: the floor is priced for the creator and sits below the cost
+ * of supplying it, so the escalating fee has nothing to escalate from and
+ * cannot recruit the second keeper.
+ *
+ * At 10,000 a keeper nets 7,000 and breaks even around 11 upkeeps, which is
+ * what the registry holds today. The creator pays about $0.65 a month for an
+ * hourly upkeep, still several times cheaper than the cheapest paid host.
+ *
+ * The floor is unchanged and still accepted. It is no longer the suggestion.
+ */
+export const SUGGESTED_UPKEEP_FEE = 10_000;
 export const MAX_INTERVAL_ROUNDS = 1_000_000_000;
 /** How many app args an execution may carry, counting the selector. */
 export const MAX_CALL_ARGS = 3;
