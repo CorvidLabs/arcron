@@ -119,6 +119,21 @@ x402 and the agent-to-agent payment work give agents a way to **pay**. Nothing
 in that stack gives them a way to **wake up**. An ecosystem is about to have a
 payment verb and no scheduling verb.
 
+That is not a reading of the tea leaves. x402's own specification says so, in a
+section headed **Out of Scope**:
+
+> - **Recurring payments**: Automatic periodic charges without new authorizations
+> - **Open-ended allowances**: Authorizations without time bounds or single-use constraints
+
+And the Algorand work is real and current: the Foundation ships
+[x402 demos](https://github.com/algorandfoundation/x402-demo) and a
+[tutorial](https://dev.algorand.co/resources/x402-on-algorand/), Algorand's
+`exact` scheme is
+[merged into the upstream spec](https://github.com/x402-foundation/x402)
+alongside evm, svm, aptos, hedera and stellar, and an xGov proposal funded a
+multi-chain facilitator. Every one of those flows begins with a live client
+making a request. Nothing in the stack fires on its own.
+
 That gap is real, and it is worth being precise about how much it proves:
 
 **The weak form is wrong.** "Agents need scheduling, so they need Arcron" does
