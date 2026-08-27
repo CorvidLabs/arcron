@@ -53,14 +53,6 @@
       "worst": 11.2,
       "why": "h3.eyebrow renders at 11.2px, below the 14px floor. See rules.text-size."
     },
-    "text-size:label.active.network": {
-      "worst": 13.12,
-      "why": "label.active.network renders at 13.12px, below the 14px floor. See rules.text-size."
-    },
-    "text-size:label.network": {
-      "worst": 13.12,
-      "why": "label.network renders at 13.12px, below the 14px floor. See rules.text-size."
-    },
     "text-size:legend.eyebrow": {
       "worst": 11.2,
       "why": "legend.eyebrow renders at 11.2px, below the 14px floor. See rules.text-size."
@@ -108,10 +100,6 @@
     "text-size:p.prompt": {
       "worst": 13.12,
       "why": "p.prompt renders at 13.12px, below the 14px floor. See rules.text-size."
-    },
-    "text-size:p.state": {
-      "worst": 12.8,
-      "why": "p.state renders at 12.8px, below the 14px floor. See rules.text-size."
     },
     "text-size:p.subtitle": {
       "worst": 13.6,
