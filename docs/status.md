@@ -27,7 +27,7 @@ already knew how it worked.
 | Demo target | Pulse [`769891902`](https://testnet.explorer.perawallet.app/application/769891902) |
 | Programs | 2,219 bytes across two pages, sha256 `c94c6e0c…` (alpha-3) |
 | Governance | **not frozen**: the creator can still replace the programs |
-| Registry | 11 upkeeps as of round 66707000 on 2026-08-27, the fastest executable one firing about every ten minutes |
+| Registry | 11 upkeeps as of round 66707000 on 2026-08-26, the fastest executable one firing about every ten minutes |
 | Console | [corvidlabs.xyz/arcron/console/](https://corvidlabs.xyz/arcron/console/), **live, and running a build older than this tree** |
 
 `poetry run python -m scripts.verify_build --network testnet --app-id 769891898`

@@ -115,9 +115,9 @@ LocalNet with `smart_contracts/resource_probe/`:
 | Called | Budget remaining at method entry |
 |--------|----------------------------------|
 | Directly, as a plain app call | **684** |
-| Through an Arcron upkeep | **1,250** |
+| Through an Arcron upkeep | **1,135** |
 
-So a hook driven by Arcron has roughly 1.8× the budget of the same method
+So a hook driven by Arcron has roughly 1.66x, measured the budget of the same method
 called directly. It is not competing with Arcron for budget; it inherits the
 pool Arcron's own call contributed to. Reach for `algopy.ensure_budget` only
 if you exceed that.
@@ -404,9 +404,24 @@ not the point at which the upkeep goes quiet.
   `cancel`.
 - **Running dry is silent.** The upkeep goes dormant (no keeper can execute
   it) and resumes the moment someone tops it up. Nothing announces it.
-- **Notice before it happens:** `poetry run python -m scripts.keeper_bot --check`
-  reports an upkeep whose escrow has fallen below one fee as **starved** and
-  exits non-zero, so it drops straight into cron.
+- **Notice before it happens.** `poetry run python -m scripts.keeper_bot --check`
+  reports an upkeep whose escrow has fallen below one fee as **starved**, and
+  **exits zero when it does**. That is deliberate: the exit code answers "is a
+  keeper failing to do its job", and a starved upkeep is the creator's problem,
+  not a keeper's. Blaming keepers for it would make the signal useless. Only a
+  **stalled** upkeep, funded and due and nobody came, exits non-zero.
+
+  So do not put `--check` in cron and expect to be paged when your escrow runs
+  out. Grep its output instead:
+
+  ```bash
+  poetry run python -m scripts.keeper_bot --check --network testnet \
+    --app-id <app> | grep -q starved && echo "top up something"
+  ```
+
+  This page said for some time that `--check` exits non-zero on starvation. It
+  does not, and an outside developer found it by putting it in cron and
+  watching it never fire.
 - **Cancel when done.** A hook that has finished its job for good, like a
   one-shot task that already ran, keeps being called and keeps paying keepers
   to do nothing until you cancel.
@@ -484,7 +499,7 @@ Start here:
 
 ```bash
 algokit localnet start
-fledge lanes run local          # the whole suite, including seven worked demos
+fledge lanes run local          # the whole suite, including the worked demos
 ```
 
 Then register against the live TestNet keeper app `769891898` with
