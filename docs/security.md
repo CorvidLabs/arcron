@@ -168,6 +168,24 @@ readable and why freezing happens before anybody is asked to rely on it. Treat
 an unfrozen deployment as one you are trusting a person with, and a frozen one
 as one you are trusting only the bytecode with.
 
+**That second sentence is not the smaller ask it sounds like, and this document
+used to let it read that way.** Freezing does not remove risk; it exchanges one
+risk for another, and which exchange is better depends on something this project
+has not done. An unfrozen deployment can be repaired by someone who could also
+rob you. A frozen one can be robbed by nobody and repaired by nobody either, so
+its safety rests entirely on the bytecode being right the first time.
+
+The [MainNet gate](../CLAUDE.md) is self-review plus sustained TestNet time, with
+no paid audit. Read alongside a freeze, that is three things at once: **no admin
+key, no third-party review, and no way to patch.** Each is defensible on its own
+and the combination is the actual risk of a frozen MainNet deployment. It
+deserves more weight than it has had here, where the upgrade-key story got the
+attention because it is the one with a villain in it.
+
+None of that argues against freezing. It argues that freezing is the point of no
+return for bug risk, so the review that precedes it is doing more work than a
+review before an upgradeable deployment ever has to.
+
 The reason the window exists at all is that being unable to fix a bug is
 expensive while nobody depends on the deployment yet. Two earlier deployments
 were abandoned rather than repaired, stranding 243,000 µALGO of box minimum
