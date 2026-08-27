@@ -31,11 +31,14 @@ The job matters; whoever runs it does not, and nobody owns it.*
 > Read [`docs/security.md`](docs/security.md) before escrowing anything: the
 > threat model, the accepted risks, and what happens if a bug is found.
 >
-> Apps [`769802474`](https://testnet.explorer.perawallet.app/application/769802474)
+> Apps [`769823086`](https://testnet.explorer.perawallet.app/application/769823086),
+> [`769802474`](https://testnet.explorer.perawallet.app/application/769802474)
 > and [`769772891`](https://testnet.explorer.perawallet.app/application/769772891)
-> are **superseded** and should not be used: both predate the 1.0 contract, and
-> their box encoding is a different shape that current tooling refuses to
-> decode rather than misread. Their registries are empty.
+> are **superseded** and should not be used. `769823086` is alpha-1: it predates
+> governance, it has no update path, and it is the one most likely to be linked
+> from somewhere stale. The other two predate the 1.0 contract, and their box
+> encoding is a different shape that current tooling refuses to decode rather
+> than misread.
 >
 > Check what any deployment is actually running. It compares compiled
 > bytecode, not source text:
@@ -77,7 +80,7 @@ app args, counting the selector, which is enough for an ARC-4 method of arity
 two. The zero-argument "tick/settle/harvest" hook is still the common shape.
 An upkeep declares no foreign arrays, and does not need to: a keeper that
 simulates before executing discovers what the inner call touches and attaches
-the references. The Python bot does this because algokit-utils does it, and
+the references. The Python bot does this by simulating the call and naming the references itself, because algokit-utils' default populator caps at four, and
 the TypeScript client (`js/src/keeper-txns.ts`, which the console also
 imports) does it too, so an upkeep whose target reaches an account, asset or
 app beyond the target itself is servable from either.

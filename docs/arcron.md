@@ -155,7 +155,7 @@ Constraints (asserted on-chain):
   and then holding. Lateness is measured from `last_serviced_round`, not from
   the schedule, so the first execution of a catch-up burst can be escalated
   and every replay behind it pays base. `balance ≥ effective fee` is what
-  makes an upkeep executable, so a ceiling raises the dormancy threshold.
+  makes an upkeep executable, and a ceiling does **not** raise that threshold: when the escalated fee is more than the escrow holds, the fee falls back to the base and the upkeep still runs.
 
 ## Box encoding (Upkeep struct)
 
@@ -253,9 +253,9 @@ an external entry point that anyone may call once an upkeep is due.
 | | |
 |---|---|
 | Keeper app | `769891898` (TestNet, alpha-3) |
-| Upkeeps registered | 11 as of round 66707000 on 2026-08-27, including one registered from the console by a wallet |
+| Upkeeps registered | 11 as of round 66707000 on 2026-08-26, including one registered from the console by a wallet |
 | Always-on keeper | **running**: `.github/workflows/keeper-bot.yml` every thirty minutes, plus a container on a VPS and a second cron on the same barrier. The workflow was manual-dispatch-only until its `KEEPER_MNEMONIC` secret was set on 2026-08-26. |
-| Executions | 70 as of round 66707000 on 2026-08-27, the most recent paid to a keeper for real |
+| Executions | 70 as of round 66707000 on 2026-08-26, the most recent paid to a keeper for real |
 
 This table said "none" and "none running" for a day after both stopped being
 true, which is worth more than the correction. Two independent bugs kept it
@@ -728,7 +728,7 @@ out, the dogfood plan and the mainnet gate are in
   an upkeep to declare which resources it needs. It does not need one: a
   keeper that simulates the call first has algod report what it touched, and
   attaches those references. That is a property of the keeper, not of the
-  network: the Python bot inherits it from algokit-utils, and
+  network: the Python bot does it itself, because algokit-utils' default populator caps at four references, and
   `js/src/keeper-txns.ts` (which the console also imports) does the same
   thing itself, against raw algosdk, so an upkeep reaching an account, asset
   or app beyond the target itself is servable from either. A `resources()`
