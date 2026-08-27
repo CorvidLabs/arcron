@@ -8,7 +8,9 @@ with anything else in this repo, this page is probably the stale one: check
 ## The short version
 
 The keeper network is live on TestNet, holds real escrow, and has been through
-five rounds of adversarial review plus four independent contract audits. It is
+five rounds of adversarial review, four of them by independent language
+models rather than by people. **None of that is an audit**, and `SECURITY.md`
+says so in the words that matter: no third party has reviewed this contract. It is
 **upgradeable**, which means bugs found now are fixable in place rather than
 requiring everyone to cancel and re-register. Nothing but our own money has
 ever been escrowed in it.
@@ -71,8 +73,10 @@ uptime clock starts now, at the deployment date above, not before.
 
 ## The contracts
 
-Four independent audits plus three re-scores covered seven contracts in
-August 2026, and most of their findings landed in four of them: `treasury`
+Four independent reviews plus three re-scores covered seven contracts in
+August 2026. They were carried out by language models given the repository and
+an adversarial brief, which is a useful thing and is not an audit; nobody has
+paid a firm to look at this. and most of their findings landed in four of them: `treasury`
 had two validation gaps, `deadman` had a total-loss trap on its default
 deploy path, `embargo` let a stranger hijack a fresh instance, and `watchdog`
 documented an error its own assert ordering made unreachable. None of that
@@ -83,12 +87,12 @@ it is ready to hold value belonging to someone other than us.
 
 | Contract | What it is | Ships | Notes |
 |---|---|---|---|
-| `keeper` | the network itself: escrow, scheduling, keeper payment, governance | **yes** | five review rounds plus an audit; no unresolved findings |
-| `subscription` | recurring payments, an example target | **yes** | audited clean; the integration example the docs recommend copying |
+| `keeper` | the network itself: escrow, scheduling, keeper payment, governance | **yes** | five adversarial review rounds, none of them a paid audit; no unresolved findings |
+| `subscription` | recurring payments, an example target | **yes** | reviewed clean; the integration example the docs recommend copying |
 | `rain` | community giveaway, winner drawn from a randomness beacon | **yes** | one blocker found and fixed: a prize asset created `default_frozen` could be received and never sent; becoming the first public use, and part of the dogfood |
 | `pulse` | trivial demo target | n/a | exists to be called; the heartbeat target for the dogfood's uptime clock |
 
-The audits also refuted one reported blocker. An extra program page is charged
+The reviews also refuted one reported blocker. An extra program page is charged
 to the creator account, not the app account; measured against both live
 deployments the app account base is exactly 100,000 microalgo with a second
 page in use.

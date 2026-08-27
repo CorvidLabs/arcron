@@ -333,9 +333,12 @@ secret in the project, not as a funding account.
   compromised without losing the contract. Keys in one drawer are one key.
 
   The MainNet deployment uses **three keys with a threshold of two**
-  (`LUH77ATPWS4ZTCO7OZ3YM2DP5M2BXN53CHPFFQCFBATRFCYEB3NKTGMBNI`). Two can be
-  lost and two can be compromised without either losing control or losing the
-  contract. The LocalNet smoke test uses three keys with a threshold of two
+  (`LUH77ATPWS4ZTCO7OZ3YM2DP5M2BXN53CHPFFQCFBATRFCYEB3NKTGMBNI`). **One** can
+  be lost and **one** can be compromised without either losing control or losing
+  the contract. Two lost is below the threshold and control is gone
+  permanently, because a creator cannot be changed after creation; two
+  compromised *is* the threshold. That is the whole margin, and it is smaller
+  than the 3-of-5 this replaced, which tolerated two of each. The LocalNet smoke test uses three keys with a threshold of two
   because it only has to prove the mechanism, not carry anything.
 
   Member order is part of the address. A multisig address is the hash of
