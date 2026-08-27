@@ -162,6 +162,12 @@ jobs:
           fi
           pip install --quiet "algokit>=2.0,<3.0"
           algokit --version
+          # poetry too. This job assumed a machine that already had it, which
+          # was true of the self-hosted runner and is not true of a hosted one.
+          # It only runs on push, so the pull request that moved this job to
+          # ubuntu-latest was green and main went red on merge.
+          pip install --quiet "poetry>=2.0,<3.0"
+          poetry --version
 
       - name: Select the Python interpreter
         run: poetry env use "$(command -v python3.13)"
