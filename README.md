@@ -12,6 +12,12 @@ a scheduled contract call, and any keeper executes it for the fee. By
 *ARC and cron: Algorand's standards, and the scheduler everyone already knows.
 The job matters; whoever runs it does not, and nobody owns it.*
 
+**Why this exists:** every serious chain should have a way to say *"call this
+later"* without requiring a server, and Algorand does not have one. There is no
+ARC for scheduled execution and never has been. [`docs/why.md`](docs/why.md)
+makes the case, at about a nineteenth the cost of the cheapest VM, and states
+plainly what would prove it wrong.
+
 | Contract | What it is | Status |
 |----------|-----------|--------|
 | [`smart_contracts/keeper`](smart_contracts/keeper/contract.py) | The Arcron network: upkeep scheduling with ALGO escrow and keeper rewards | **Live on TestNet**, app [`769891898`](https://testnet.explorer.perawallet.app/application/769891898) |
@@ -141,7 +147,8 @@ explorer). Full reference: [`docs/arcron.md`](docs/arcron.md).
 
 **Prior art.** Somebody built a permissionless keeper network on Algorand
 before this one, on an Algorand Foundation grant, and it is dead:
-[`docs/prior-art.md`](docs/prior-art.md) records what BiatecCron did, what it
+[`docs/why.md`](docs/why.md) states the case for the primitive and the test that
+would falsify it. [`docs/prior-art.md`](docs/prior-art.md) records what BiatecCron did, what it
 did differently, and the draft ARC that was never submitted. Nothing here
 claims to be first.
 
