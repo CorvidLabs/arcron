@@ -1857,10 +1857,13 @@ heartbeat, not a courier."*
 | Console | `corvidlabs.xyz/arcron/console/` |
 | CORVID asset (candidate, not wired in) | `3225439167` |
 
-> **Superseded — do not send funds to these:** `769823086` (alpha-1, no update
-> path), `769802474`, and `769772891` (both predate the 1.0 box shape). Current
-> tooling refuses to decode them rather than misread, and the console quarantines
-> any app id that is not `769891898`.
+> **Use only `769891898`.** Every other app id is either a superseded earlier
+> deployment (an older box shape, or no governance) or an outright look-alike.
+> You never need their ids: the console quarantines any app id that is not
+> `769891898`, and the current tooling refuses to decode an old box rather than
+> misread it. If you are holding an older link, treat it as dead — the project's
+> record of which deployments those were lives in `docs/releases.md` and
+> `docs/status.md`.
 
 **Limits and constants:**
 
