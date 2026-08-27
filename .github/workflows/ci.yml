@@ -103,10 +103,20 @@ jobs:
             local command
             command=$(python -c "import tomllib,sys; print(tomllib.load(open('fledge.toml','rb'))['tasks'][sys.argv[1]])" "$1")
             echo "::group::$1 — $command"
-            eval "$command"
+            # A subshell, because several tasks are `cd web && ...` and
+            # `eval` runs them in this shell: the directory change survived
+            # the task, and the next iteration looked for fledge.toml from
+            # inside web/.
+            ( eval "$command" )
             echo "::endgroup::"
           }
-          for task in build test spec web-install web-test web-build web-build-hosted web-verify-hosted; do
+          # The lane decides what CI is. Repeating its step list here is
+          # what let them drift: this loop ran `web-install`, which is not
+          # in the lane, and skipped `js-install` and `js-test`, which are,
+          # so 123 tests ran nowhere.
+          steps=$(python -c "import tomllib; print(' '.join(tomllib.load(open('fledge.toml','rb'))['lanes']['ci']['steps']))")
+          echo "CI lane: $steps"
+          for task in $steps; do
             run_task "$task"
           done
 
