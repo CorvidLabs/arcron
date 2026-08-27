@@ -11,6 +11,7 @@ dispenser. TestNet needs `.env.testnet` with `DEPLOYER_MNEMONIC`.
 import argparse
 import logging
 import os
+import pathlib
 
 import algokit_utils
 from dotenv import load_dotenv
@@ -124,10 +125,23 @@ def load_network(network: str) -> str:
     if network == MAINNET:
         require_mainnet_multisig()
     if not loaded and network != LOCALNET and not os.environ.get("ALGOD_SERVER"):
+        # Two audiences, and the old message only served one. From a checkout
+        # the answer is a file; from a container or a systemd unit there is no
+        # checkout to copy anything into, and the answer is the environment.
+        # Telling an operator watching `docker compose logs` to copy a template
+        # sends them looking for a directory that is not there.
+        in_container = pathlib.Path("/.dockerenv").exists()
+        remedy = (
+            "set ALGOD_SERVER in the environment. In Docker that is "
+            "deploy/keeper.env, which deploy/keeper.env.example shows in full; "
+            "check it exists and that ALGOD_SERVER is not blank"
+            if in_container
+            else f"copy .env.testnet.template to {env_file} and fill it in, "
+            f"or set ALGOD_SERVER in the environment"
+        )
         raise FileNotFoundError(
-            f"{env_file} not found and ALGOD_SERVER is not set — copy "
-            f".env.testnet.template and add DEPLOYER_MNEMONIC, or supply the "
-            f"configuration through the environment"
+            f"No Algorand node configured for {network}: {env_file} is absent "
+            f"and ALGOD_SERVER is unset. To fix: {remedy}."
         )
     return network
 

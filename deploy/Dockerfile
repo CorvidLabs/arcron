@@ -27,6 +27,17 @@ COPY smart_contracts ./smart_contracts
 
 # No reason for a keeper to run as root.
 RUN useradd --create-home --uid 10001 keeper && chown -R keeper /app
+
+# The state directory has to exist *in the image*, owned by the user that will
+# write it. Docker initialises a fresh named volume from whatever is at the
+# mount point, so when this directory was absent the volume was created owned
+# by root and the notifier could not write to its own state: it announced
+# everything correctly and then logged "Permission denied" every cycle,
+# forever. Setting `user:` in compose does not fix it, because that changes who
+# the process is and not who owns the volume.
+RUN mkdir -p /home/keeper/.local/state/arcron \
+    && chown -R keeper:keeper /home/keeper/.local
+
 USER keeper
 
 ENTRYPOINT ["python", "-m", "scripts.keeper_bot"]
