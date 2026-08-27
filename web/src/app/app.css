@@ -70,3 +70,19 @@ footer p {
 .routed:focus:not(:focus-visible) {
   outline: none;
 }
+
+/* The mobile drawer is position:fixed and lives inside this header, and
+   backdrop-filter creates a containing block for fixed descendants. With the
+   blur on, the drawer positioned against a 44px header instead of the viewport
+   and rendered as a clipped strip across the top — which every measurement in
+   the audit passed, because a 90px panel is a real panel with real contents.
+   Only the screenshot showed it.
+
+   The blur is decorative. On a phone the header is 44px of opaque background
+   already, so dropping it costs nothing and gives the drawer the viewport to
+   position against. */
+@media (max-width: 480px) {
+  header.chrome {
+    backdrop-filter: none;
+  }
+}

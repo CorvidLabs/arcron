@@ -2,7 +2,7 @@
   "note": "Rendering problems that exist today and are being left alone on purpose. Each entry pins the measurement, so the same problem getting worse fails the run, a new one fails the run, and one that has been fixed fails the run too (a licence nothing uses any more is a licence to regress). Regenerate with scripts/write-baseline.ts only after reading what changed.",
   "rules": {
     "text-size": "The console renders 46 distinct text styles below 14px, from 10.56px chips up to 13.6px body copy, on a 15px root. That is not one style to nudge; it is the whole type scale, and moving it changes how every page reads. The measurements are here so the decision can be made with numbers, and so nothing gets smaller in the meantime.",
-    "touch-target": "Every control is sized for a mouse: buttons land at 29.8px or 38.2px tall at 390 wide, against the 44x44 WCAG 2.5.5 target. Fixing it means a deliberate pass over control sizing on touch, not a min-height sprinkled over the button rules, so it is recorded rather than patched."
+    "touch-target": "Every control is sized for a mouse: buttons land at 29.8px or 38.2px tall at 390 wide, against the 44x44 WCAG 2.5.5 target. Fixing it means a deliberate pass over control sizing on touch, not a min-height sprinkled over the button rules, so it is recorded rather than patched. One entry left this list without being fixed: the theme toggle moved into the mobile drawer, so at 390px the audit measures a closed drawer and never sees it. It is still 34x34 when open, and it belongs to the vendored design system, so the fix belongs upstream rather than here."
   },
   "accepted": {
     "text-size:a": {
@@ -176,10 +176,6 @@
     "touch-target:a@390": {
       "worst": 8.45,
       "why": "an 8.45x16px anchor, still the worst target here. Three fixes were tried in registry-table.ts on 2026-08-27 \u2014 min-height with display:flex, th a[href] as well as td a[href], and content-box padding \u2014 and the measurement did not move, though the media query is present in the built bundle. So the element being measured is probably not the registry id link this entry originally described. Needs identifying in a browser before a fourth guess."
-    },
-    "touch-target:button.corvid-theme-toggle@390": {
-      "worst": 34,
-      "why": "34x34, and it belongs to the vendored CorvidLabs design system in web/public/brand/. CLAUDE.md forbids hand-rolling the theme toggle, so resizing it here would fork the design system rather than fix it. Left deliberately; the fix belongs upstream."
     },
     "touch-target:input@390": {
       "worst": 13,

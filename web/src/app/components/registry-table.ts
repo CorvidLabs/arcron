@@ -1,5 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
-import { RouterLink } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { map } from 'rxjs';
 
 import { ArcronService } from '../core/arcron.service';
 import { algos, dueLabel, intervalLabel, runwayLabel, shortAddress } from '@corvidlabs/arcron/format';
@@ -271,12 +273,28 @@ export class RegistryTable {
   protected readonly keeper = inject(KeeperService);
   private readonly wallet = inject(WalletService);
 
+  /**
+   * Whether the drawer's "Your upkeeps" link is filtering the table.
+   *
+   * A query parameter rather than component state, so the filtered view has an
+   * address somebody can bookmark or send, and so leaving the page and coming
+   * back does not silently drop the filter.
+   */
+  protected readonly mineOnly = toSignal(
+    inject(ActivatedRoute).queryParamMap.pipe(map((params) => params.get('mine') === '1')),
+    { initialValue: false },
+  );
+
   protected readonly rows = computed<Row[]>(() => {
     const round = this.arcron.round();
     const pace = this.arcron.secondsPerRound();
     const signedInAs = this.wallet.activeAddress();
     const canSign = this.wallet.connected();
-    return this.arcron.upkeeps().map((upkeep) => {
+    const mineOnly = this.mineOnly();
+    return this.arcron
+      .upkeeps()
+      .filter((upkeep) => !mineOnly || upkeep.creator === signedInAs)
+      .map((upkeep) => {
       const executable = isExecutable(upkeep, round);
       const fee = effectiveFee(upkeep, round);
       // Against the escalated fee: an upkeep can starve at a balance its
