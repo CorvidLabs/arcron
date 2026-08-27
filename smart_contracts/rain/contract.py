@@ -108,6 +108,16 @@ class Rain(ARC4Contract):
         # collection on Algorand is many assets rather than one, so the check
         # has to be on who minted them.
         self.gate_creator = GlobalState(Account())
+        # Empty: the creator is the whole gate. Set: an asset must also carry a
+        # unit name starting with these bytes.
+        #
+        # This is not decoration. A minting account is usually somebody's
+        # working wallet, and the corvid.algo account on TestNet holds 31 live
+        # assets of which 15 belong to the collection; the rest are called
+        # things like `asdf` and `Test`. Gating on the creator alone would sell
+        # a ticket to any of them. The comparison is on bytes, so it is
+        # case-sensitive: `corvid` does not admit `Corvid`.
+        self.gate_unit_prefix = GlobalState(Bytes(b""))
         # Zero: the pot and the prize are ALGO. Set: both are this asset.
         self.prize_asset = GlobalState(UInt64(0))
 
@@ -117,6 +127,7 @@ class Rain(ARC4Contract):
         mbr_payment: gtxn.PaymentTransaction,
         beacon_app: UInt64,
         gate_creator: arc4.Address,
+        gate_unit_prefix: Bytes,
         prize_asset: UInt64,
     ) -> None:
         """Point at the beacon, and decide who may enter and what they win.
@@ -126,6 +137,11 @@ class Rain(ARC4Contract):
 
         `gate_creator` zero leaves entry open to anyone. Set to a collection's
         minting account, only holders of something it created may enter.
+
+        `gate_unit_prefix` narrows that further: empty accepts anything the
+        creator minted, set requires the asset's unit name to start with these
+        bytes. A minting account is usually somebody's working wallet with test
+        assets in it, so the creator alone is rarely the collection.
 
         `prize_asset` zero keeps the pot and the prize in ALGO. Set, both are
         that asset, and the app must opt in before it can be funded.
@@ -163,6 +179,7 @@ class Rain(ARC4Contract):
         assert mbr_payment.amount >= APP_BASE_MBR, "MBR payment too small"
         self.beacon_app.value = beacon_app
         self.gate_creator.value = gate_creator.native
+        self.gate_unit_prefix.value = gate_unit_prefix
         self.prize_asset.value = prize_asset
 
     @abimethod()
@@ -251,6 +268,14 @@ class Rain(ARC4Contract):
             # A project usually mints its prize token from the same account as
             # its collection, which would make holding the prize a ticket.
             assert gate_asset.id != self.prize_asset.value, "The prize is not a ticket"
+            # And the unit name, when one is required. The creator is the
+            # security property; this is what separates a collection from the
+            # rest of a working wallet.
+            prefix = self.gate_unit_prefix.value
+            if prefix.length > 0:
+                unit = gate_asset.unit_name
+                assert unit.length >= prefix.length, "Wrong collection"
+                assert op.substring(unit, 0, prefix.length) == prefix, "Wrong collection"
 
         index = self.tickets.value
         Box(Account, key=op.concat(TICKET_PREFIX, op.itob(index))).value = Txn.sender

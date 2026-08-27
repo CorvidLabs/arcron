@@ -12,7 +12,7 @@ executing. That half lives in scripts/rain_demo.py on LocalNet.
 from collections.abc import Iterator
 
 import pytest
-from algopy import Asset, UInt64, arc4, op
+from algopy import Asset, UInt64, arc4, op, Bytes
 from algopy_testing import AlgopyTestContext, algopy_testing_context
 
 from smart_contracts.rain.contract import (
@@ -43,6 +43,7 @@ def _configure(
     gate_creator,
     prize_asset,
     *,
+    gate_unit_prefix: Bytes | None = None,
     amount: int = APP_BASE_MBR,
     payment_fields: dict | None = None,
 ) -> None:
@@ -51,7 +52,13 @@ def _configure(
         amount=amount,
         **(payment_fields or {}),
     )
-    contract.configure(payment, beacon_app, gate_creator, prize_asset)
+    contract.configure(
+        payment,
+        beacon_app,
+        gate_creator,
+        gate_unit_prefix if gate_unit_prefix is not None else Bytes(b""),
+        prize_asset,
+    )
 
 
 @pytest.fixture()
@@ -109,7 +116,9 @@ def test_configure_refuses_an_mbr_payment_below_the_app_floor(
         receiver=context.ledger.get_app(contract).address, amount=APP_BASE_MBR - 1
     )
     with pytest.raises(AssertionError, match="MBR payment too small"):
-        contract.configure(payment, UInt64(BEACON_APP), arc4.Address(), UInt64(0))
+        contract.configure(
+            payment, UInt64(BEACON_APP), arc4.Address(), Bytes(b""), UInt64(0)
+        )
 
 
 def test_configure_accepts_an_mbr_payment_that_covers_the_floor(
@@ -119,7 +128,9 @@ def test_configure_accepts_an_mbr_payment_that_covers_the_floor(
     payment = context.any.txn.payment(
         receiver=context.ledger.get_app(contract).address, amount=APP_BASE_MBR
     )
-    contract.configure(payment, UInt64(BEACON_APP), arc4.Address(), UInt64(0))
+    contract.configure(
+        payment, UInt64(BEACON_APP), arc4.Address(), Bytes(b""), UInt64(0)
+    )
     assert contract.beacon_app.value == BEACON_APP
 
 
@@ -273,6 +284,102 @@ def gated(context: AlgopyTestContext, collection) -> Rain:
     contract = Rain()
     _configure(context, contract, UInt64(BEACON_APP), arc4.Address(creator), UInt64(0))
     return contract
+
+
+@pytest.fixture()
+def prefixed(context: AlgopyTestContext, collection) -> Rain:
+    """A draw gated on the creator *and* a unit-name prefix."""
+    creator, _ = collection
+    context.ledger.patch_global_fields(round=UInt64(START_ROUND))
+    contract = Rain()
+    _configure(
+        context,
+        contract,
+        UInt64(BEACON_APP),
+        arc4.Address(creator),
+        UInt64(0),
+        gate_unit_prefix=Bytes(b"corvid"),
+    )
+    return contract
+
+
+def _holder(context: AlgopyTestContext, asset):
+    """Somebody opted in and holding one, which is what the gate asks first."""
+    return context.any.account(opted_asset_balances={asset.id: UInt64(1)})
+
+
+def _enter_holding(context: AlgopyTestContext, rain: Rain, asset) -> int:
+    holder = _holder(context, asset)
+    with context.txn.create_group(active_txn_overrides={"sender": holder}):
+        return _enter(context, rain, gate_asset=asset)
+
+
+def test_the_prefix_admits_a_collection_token(
+    context: AlgopyTestContext, prefixed: Rain, collection
+) -> None:
+    creator, _ = collection
+    token = context.any.asset(creator=creator, unit_name=Bytes(b"corvid7"))
+    assert _enter_holding(context, prefixed, token) == 0
+
+
+def test_the_prefix_refuses_a_token_the_same_account_minted(
+    context: AlgopyTestContext, prefixed: Rain, collection
+) -> None:
+    """The reason this exists at all.
+
+    A minting account is somebody's working wallet. The corvid.algo account on
+    TestNet holds 31 live assets, of which 15 are the collection and the rest
+    are called things like `asdf` and `Test`. Gating on the creator alone sells
+    a ticket to any of them.
+    """
+    creator, _ = collection
+    junk = context.any.asset(creator=creator, unit_name=Bytes(b"asdf"))
+    with pytest.raises(AssertionError, match="Wrong collection"):
+        _enter_holding(context, prefixed, junk)
+
+
+def test_the_prefix_is_a_prefix_and_not_a_substring(
+    context: AlgopyTestContext, prefixed: Rain, collection
+) -> None:
+    # substring(unit, 0, len) anchors at the start; a unit name that merely
+    # contains the word must not pass.
+    creator, _ = collection
+    contains = context.any.asset(creator=creator, unit_name=Bytes(b"notcorvid"))
+    with pytest.raises(AssertionError, match="Wrong collection"):
+        _enter_holding(context, prefixed, contains)
+
+
+def test_the_prefix_comparison_is_case_sensitive(
+    context: AlgopyTestContext, prefixed: Rain, collection
+) -> None:
+    # The AVM compares bytes. Recorded rather than fixed: the collection this
+    # was built for has one asset called `Corvid` and fourteen called `corvid`,
+    # and lowercasing on chain costs opcodes for a single outlier.
+    creator, _ = collection
+    capital = context.any.asset(creator=creator, unit_name=Bytes(b"Corvid"))
+    with pytest.raises(AssertionError, match="Wrong collection"):
+        _enter_holding(context, prefixed, capital)
+
+
+def test_a_unit_name_shorter_than_the_prefix_is_refused_not_crashed(
+    context: AlgopyTestContext, prefixed: Rain, collection
+) -> None:
+    # substring past the end panics rather than failing an assert, so the
+    # length is checked first and the caller gets the same message as any
+    # other wrong token.
+    creator, _ = collection
+    short = context.any.asset(creator=creator, unit_name=Bytes(b"cor"))
+    with pytest.raises(AssertionError, match="Wrong collection"):
+        _enter_holding(context, prefixed, short)
+
+
+def test_an_empty_prefix_leaves_the_creator_gate_alone(
+    context: AlgopyTestContext, gated: Rain, collection
+) -> None:
+    # The default. Everything the creator minted is still a ticket.
+    creator, _ = collection
+    junk = context.any.asset(creator=creator, unit_name=Bytes(b"asdf"))
+    assert _enter_holding(context, gated, junk) == 0
 
 
 def test_open_entry_ignores_whatever_asset_is_supplied(
