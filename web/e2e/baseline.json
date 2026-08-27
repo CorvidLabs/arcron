@@ -221,6 +221,10 @@
     "text-size:th": {
       "worst": 10.88,
       "why": "th renders at 10.88px, below the 14px floor. It left this list briefly while the head was .sr-only, which turned out to be hiding it from the audit rather than from the page. See rules.text-size."
+    },
+    "text-size:a.breakable": {
+      "worst": 12.48,
+      "why": "a.breakable renders at 12.48px, below the 14px floor. Not new small text: this is the same account address already accepted as text-size:a, which gained a class when explorer links learned to break an address and not an id. See rules.text-size."
     }
   }
 }

@@ -74,16 +74,35 @@ export function roundsAsTime(count: bigint, secondsPerRound: number | null): str
 }
 
 /** "every 10 rounds · ~28 s": the round count leads, time explains it. */
+/**
+ * Keep a phrase together, so a value only ever wraps where it means something.
+ *
+ * These labels are "A \u00b7 B" compounds, and as one plain string they wrap
+ * wherever the box runs out: a registry card on a phone rendered a cadence as
+ * "214 rounds \u00b7 ~8" on one line and "min 55 s" on the next, splitting a
+ * duration between its number and its unit. Replacing the spaces *inside* each
+ * half with non-breaking ones leaves the separator as the only break
+ * opportunity, so a value that must wrap does it between the two facts rather
+ * than through one of them.
+ *
+ * The mono font renders U+00A0 at the same advance as a space, so nothing moves
+ * when a value does fit.
+ */
+function unbreakable(phrase: string): string {
+  return phrase.replace(/ /g, '\u00a0');
+}
+
 export function intervalLabel(intervalRounds: bigint, secondsPerRound: number | null): string {
   const time = roundsAsTime(intervalRounds, secondsPerRound);
-  return time === null ? rounds(intervalRounds) : `${rounds(intervalRounds)} · ~${time}`;
+  const count = unbreakable(rounds(intervalRounds));
+  return time === null ? count : `${count} · ${unbreakable(`~${time}`)}`;
 }
 
 /** "due now", "overdue by ~2 min", "in ~1 d 6 h". */
 export function dueLabel(untilDue: bigint, secondsPerRound: number | null): string {
   if (untilDue === 0n) return 'due now';
   const time = roundsAsTime(untilDue, secondsPerRound);
-  const amount = time === null ? rounds(untilDue) : `~${time}`;
+  const amount = unbreakable(time === null ? rounds(untilDue) : `~${time}`);
   return untilDue < 0n ? `overdue by ${amount}` : `in ${amount}`;
 }
 
@@ -95,6 +114,6 @@ export function runwayLabel(
 ): string {
   if (executionsLeft === 0n) return 'empty';
   const time = roundsAsTime(executionsLeft * intervalRounds, secondsPerRound);
-  const runs = `${executionsLeft.toLocaleString('en-US')} run${executionsLeft === 1n ? '' : 's'}`;
-  return time === null ? runs : `${runs} · ~${time}`;
+  const runs = unbreakable(`${executionsLeft.toLocaleString('en-US')} run${executionsLeft === 1n ? '' : 's'}`);
+  return time === null ? runs : `${runs} · ${unbreakable(`~${time}`)}`;
 }

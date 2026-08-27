@@ -1,7 +1,14 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 
 import { ArcronService } from '../core/arcron.service';
-import { type BoardEntry, type SortKey, sortEntries, summarise, toEntry } from '@corvidlabs/arcron/board';
+import {
+  type BoardEntry,
+  executionCost,
+  type SortKey,
+  sortEntries,
+  summarise,
+  toEntry,
+} from '@corvidlabs/arcron/board';
 import { algos, dueLabel, intervalLabel, rounds, runwayLabel } from '@corvidlabs/arcron/format';
 import { ExplorerLink } from './explorer-link';
 import { KeeperService } from '../core/keeper.service';
@@ -15,6 +22,8 @@ interface Row {
   readonly selector: string;
   readonly reward: string;
   readonly netReward: string;
+  readonly executionCost: string;
+  readonly worthless: boolean;
   /** True while lateness has pushed this upkeep's fee above its base. */
   readonly escalated: boolean;
   readonly cadence: string;
@@ -78,7 +87,10 @@ const SORTS: readonly { key: SortKey; label: string }[] = [
                 </div>
                 <div class="pay">
                   <strong class="mono" [class.escalated]="row.escalated">{{ row.netReward }}</strong>
-                  <span class="sub">net of the {{ executionCost }} it costs to run</span>
+                  <span class="sub">net of the {{ row.executionCost }} it costs to run</span>
+                  @if (row.worthless) {
+                    <span class="sub warn">this one pays a keeper nothing at this fee</span>
+                  }
                 </div>
                 <div class="when">
                   <span>{{ row.due }}</span>
@@ -201,6 +213,33 @@ const SORTS: readonly { key: SortKey; label: string }[] = [
     @media (max-width: 52rem) {
       .job { grid-template-columns: minmax(0, 1fr) auto; }
     }
+
+    /* On a phone, stack.
+
+       The two-column rule above held all the way down to 390px, so the content
+       column got about 200px and the Execute button took the rest: the app id
+       wrapped, "overdue by ~28 min" ran to three lines, and "233 runs · ~9 d
+       22 h" ran to three more, all in a column beside a button. The registry
+       became cards at this width and the board did not, so the two lists in the
+       same console behaved differently on the same screen. */
+    @media (max-width: 30rem) {
+      .job {
+        grid-template-columns: minmax(0, 1fr);
+        align-items: stretch;
+        gap: 0.5rem;
+      }
+
+      .job > * {
+        min-width: 0;
+      }
+
+      /* The reason somebody opened this on a phone, full width and under the
+         thumb rather than squeezed into an auto column. */
+      .job button {
+        width: 100%;
+        min-height: 44px;
+      }
+    }
   `,
 })
 export class UpkeepBoard {
@@ -210,10 +249,18 @@ export class UpkeepBoard {
 
   protected readonly sorts = SORTS;
   protected readonly sort = signal<SortKey>('reward');
-  // The ALGO-only cost. An upkeep offering an ASA bonus costs a further
-  // 1,000 for the transfer, which `netReward` accounts for per upkeep; this
-  // is the headline figure for the common case.
-  protected readonly executionCost = algos(3_000n);
+  // No component-wide execution cost. There was one, algos(3_000n), printed
+  // beside every row as "net of the 0.003 ALGO it costs to run" — while
+  // netReward was computed per upkeep with executionCost(upkeep), which is
+  // 4,000 when the upkeep offers an ASA bonus. So a bonus upkeep at the fee
+  // floor showed "+0 ALGO, net of the 0.003 ALGO it costs to run": the zero was
+  // right and the reason given for it was wrong by exactly the axfer.
+  //
+  // The zero itself is real and worth reading twice. At MIN_UPKEEP_FEE an
+  // ALGO-only upkeep nets a keeper 1,000 microALGO, and one carrying an ASA
+  // bonus nets nothing at all, because the transfer is a third inner
+  // transaction. That is the floor being priced below the cost of supplying it,
+  // which docs/why.md now states outright.
 
   private readonly entries = computed(() => {
     const round = this.arcron.round();
@@ -258,6 +305,10 @@ export class UpkeepBoard {
         // to change which work a keeper reaches for first.
         reward: algos(entry.currentFee),
         netReward: algos(entry.netReward, { sign: true }),
+        executionCost: algos(BigInt(executionCost(entry.upkeep))),
+        // Says so out loud rather than leaving a keeper to work out why a run
+        // they are being offered pays them nothing.
+        worthless: entry.netReward <= 0n,
         escalated: entry.escalated,
         cadence: intervalLabel(entry.upkeep.intervalRounds, pace),
         due: dueLabel(roundsUntilDue(entry.upkeep, round), pace),

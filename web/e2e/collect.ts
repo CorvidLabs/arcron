@@ -342,6 +342,27 @@ export function collect(): Collected {
     }
   }
 
+  /**
+   * How much of two elements genuinely sits on top of each other.
+   *
+   * Compares every line box of one against every line box of the other, so a
+   * wrapped inline is measured as the lines a pointer can hit rather than as
+   * the rectangle enclosing all of them.
+   */
+  const overlapArea = (first: Element, second: Element): number => {
+    const firstLines = Array.from(first.getClientRects()).filter((r) => r.width > 1 && r.height > 1);
+    const secondLines = Array.from(second.getClientRects()).filter((r) => r.width > 1 && r.height > 1);
+    let total = 0;
+    for (const a of firstLines) {
+      for (const b of secondLines) {
+        const width = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+        const height = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+        if (width > 1 && height > 1) total += width * height;
+      }
+    }
+    return total;
+  };
+
   // --- Overlapping controls ------------------------------------------------
   // Two things you can click sitting on top of each other. Nesting is not
   // overlap: a label wrapping its own input is the normal case.
@@ -355,15 +376,21 @@ export function collect(): Collected {
       const first = clickable[i];
       const second = clickable[j];
       if (first.contains(second) || second.contains(first)) continue;
-      const a = first.getBoundingClientRect();
-      const b = second.getBoundingClientRect();
-      const width = Math.min(a.right, b.right) - Math.max(a.left, b.left);
-      const height = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
-      if (width <= 1 || height <= 1) continue;
+      // Per-line boxes, not the bounding rect. An inline element that wraps has
+      // a bounding rect covering every line it occupies, so a 58-character
+      // address broken over three lines reported a tall rectangle that
+      // horizontally overlapped the id link beside it on the first line, 1452
+      // square pixels of overlap that nothing could ever click. What a pointer
+      // actually hits is the individual line boxes, and those did not touch.
+      //
+      // This is strictly more accurate rather than more permissive: a genuine
+      // overlap of two boxes still overlaps line for line.
+      const area = overlapArea(first, second);
+      if (area <= 1) continue;
       overlaps.push({
         first: signatureOf(first),
         second: signatureOf(second),
-        areaPx: Math.round(width * height),
+        areaPx: Math.round(area),
       });
     }
   }

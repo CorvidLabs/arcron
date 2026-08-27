@@ -65,27 +65,62 @@ describe('rounds as time', () => {
 
   test('says nothing when the round rate is unknown', () => {
     expect(roundsAsTime(1_286n, null)).toBeNull();
-    expect(intervalLabel(1_286n, null)).toBe('1,286 rounds');
-    expect(dueLabel(-42n, null)).toBe('overdue by 42 rounds');
+    expect(readsAs(intervalLabel(1_286n, null))).toBe('1,286 rounds');
+    expect(readsAs(dueLabel(-42n, null))).toBe('overdue by 42 rounds');
   });
 });
 
+/**
+ * Compare a label ignoring which kind of space it uses.
+ *
+ * These labels bind the spaces inside each half of an "A · B" compound so a
+ * value only ever wraps at the separator: a cadence rendered "214 rounds · ~8"
+ * then "min 55 s" on a phone, splitting a duration between its number and its
+ * unit. The assertions below are about the words, so they normalise; the test
+ * at the end of this block is the one that pins the binding itself.
+ */
+function readsAs(actual: string): string {
+  return actual.replace(/\u00a0/g, ' ');
+}
+
 describe('labels', () => {
   test('interval reads at every scale', () => {
-    expect(intervalLabel(10n, ROUND_SECONDS)).toBe('10 rounds · ~28 s');
-    expect(intervalLabel(30_857n, ROUND_SECONDS)).toBe('30,857 rounds · ~1 d');
+    expect(readsAs(intervalLabel(10n, ROUND_SECONDS))).toBe('10 rounds · ~28 s');
+    expect(readsAs(intervalLabel(30_857n, ROUND_SECONDS))).toBe('30,857 rounds · ~1 d');
   });
 
   test('due reads before, at, and after the due round', () => {
-    expect(dueLabel(1_286n, ROUND_SECONDS)).toBe('in ~1 h');
-    expect(dueLabel(0n, ROUND_SECONDS)).toBe('due now');
-    expect(dueLabel(-30_857n, ROUND_SECONDS)).toBe('overdue by ~1 d');
+    expect(readsAs(dueLabel(1_286n, ROUND_SECONDS))).toBe('in ~1 h');
+    expect(readsAs(dueLabel(0n, ROUND_SECONDS))).toBe('due now');
+    expect(readsAs(dueLabel(-30_857n, ROUND_SECONDS))).toBe('overdue by ~1 d');
   });
 
   test('runway turns escrow into time', () => {
     // 30 daily runs left ≈ a month of unattended operation.
-    expect(runwayLabel(30n, 30_857n, ROUND_SECONDS)).toBe('30 runs · ~30 d');
-    expect(runwayLabel(1n, 10n, ROUND_SECONDS)).toBe('1 run · ~28 s');
-    expect(runwayLabel(0n, 10n, ROUND_SECONDS)).toBe('empty');
+    expect(readsAs(runwayLabel(30n, 30_857n, ROUND_SECONDS))).toBe('30 runs · ~30 d');
+    expect(readsAs(runwayLabel(1n, 10n, ROUND_SECONDS))).toBe('1 run · ~28 s');
+    expect(readsAs(runwayLabel(0n, 10n, ROUND_SECONDS))).toBe('empty');
+  });
+
+  test('a compound value can only break at its separator', () => {
+    // The failure this pins is visual and was found in a photograph of a phone:
+    // "214 rounds · ~8" on one line and "min 55 s" on the next. A duration split
+    // between its number and its unit is not a wrap, it reads as broken data.
+    // Binding the spaces inside each half leaves the separator as the only place
+    // the line can break.
+    const cadence = intervalLabel(214n, ROUND_SECONDS);
+    const [count, time] = cadence.split(' · ');
+
+    expect(count).not.toContain(' ');
+    expect(time).not.toContain(' ');
+    expect(cadence).toContain(' · ');
+
+    // And it still reads as ordinary text to a person.
+    expect(readsAs(cadence)).toMatch(/^214 rounds · ~/);
+  });
+
+  test('a runway and an overdue phrase are bound the same way', () => {
+    expect(runwayLabel(233n, 214n, ROUND_SECONDS).split(' · ')[0]).not.toContain(' ');
+    expect(dueLabel(-720n, ROUND_SECONDS).replace('overdue by ', '')).not.toContain(' ');
   });
 });
