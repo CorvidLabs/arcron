@@ -155,7 +155,7 @@ PY
 algokit dispenser fund --receiver <address> --amount 2000000
 
 # 3. Hand the mnemonic to the workflow, and to nothing else.
-gh secret set KEEPER_2_MNEMONIC --repo CorvidLabs/nest
+gh secret set KEEPER_2_MNEMONIC --repo CorvidLabs/arcron
 ```
 
 It must be a **different** account from `KEEPER_MNEMONIC`. One account cannot

@@ -212,7 +212,8 @@ due upkeep, cancel your own. Signing goes through
 and Kibisis, plus KMD on LocalNet so a browser can sign with nothing
 installed. Amounts read in ALGO and cadences read as time
 ("every 1,286 rounds · ~1 h"). Built on the
-[CorvidLabs design system](https://github.com/CorvidLabs/design-system);
+the CorvidLabs design system, which is a private repository and vendored
+here under `web/public/brand/`;
 see [`web/README.md`](web/README.md).
 
 ### Publishing the console

@@ -5,7 +5,8 @@ upkeep registry, plus a keeper console for registering, funding, executing and
 cancelling upkeeps.
 
 Angular (standalone components, signals, zoneless) + Bun + algosdk, styled
-entirely on the [CorvidLabs design system](https://github.com/CorvidLabs/design-system)
+entirely on the CorvidLabs design system, a private repository vendored here
+under `web/public/brand/`,
 vendored in `public/brand/`.
 
 Its address is **https://corvidlabs.xyz/arcron/console/**, which is canonical
