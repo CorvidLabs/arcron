@@ -173,49 +173,25 @@
       "worst": 10.88,
       "why": "th renders at 10.88px, below the 14px floor. See rules.text-size."
     },
-    "touch-target:a.primary@390": {
-      "worst": 38.19,
-      "why": "a.primary \"Register an upkeep\" is 158.89x38.19 CSS px, under the 44x44 WCAG 2.5.5 target. See rules.touch-target."
-    },
     "touch-target:a@390": {
       "worst": 8.45,
-      "why": "the upkeep id link in the registry table: an 8.45x16px tap target on the row identity, and the only way into an upkeep from the registry. The worst target in the console by a wide margin and the first one to fix."
+      "why": "an 8.45x16px anchor, still the worst target here. Three fixes were tried in registry-table.ts on 2026-08-27 \u2014 min-height with display:flex, th a[href] as well as td a[href], and content-box padding \u2014 and the measurement did not move, though the media query is present in the built bundle. So the element being measured is probably not the registry id link this entry originally described. Needs identifying in a browser before a fourth guess."
     },
     "touch-target:button.corvid-theme-toggle@390": {
       "worst": 34,
-      "why": "button.corvid-theme-toggle \"Switch to light theme\" is 34x34 CSS px, under the 44x44 WCAG 2.5.5 target. See rules.touch-target."
-    },
-    "touch-target:button.current.ghost.small@390": {
-      "worst": 29.83,
-      "why": "button.current.ghost.small \"Registry\" is 70.05x29.83 CSS px, under the 44x44 WCAG 2.5.5 target. See rules.touch-target."
-    },
-    "touch-target:button.ghost.small.wallet@390": {
-      "worst": 29.83,
-      "why": "button.ghost.small.wallet \"Pera\" is 72.86x29.83 CSS px, under the 44x44 WCAG 2.5.5 target. See rules.touch-target."
-    },
-    "touch-target:button.ghost.small@390": {
-      "worst": 29.83,
-      "why": "button.ghost.small \"Keeper board\" is 101.83x29.83 CSS px, under the 44x44 WCAG 2.5.5 target. See rules.touch-target."
-    },
-    "touch-target:button.ghost@390": {
-      "worst": 38.19,
-      "why": "button.ghost \"Test the call\" is 109.86x38.19 CSS px, under the 44x44 WCAG 2.5.5 target. See rules.touch-target."
-    },
-    "touch-target:button.primary.small@390": {
-      "worst": 29.83,
-      "why": "button.primary.small \"Execute\" is 69.09x29.83 CSS px, under the 44x44 WCAG 2.5.5 target. See rules.touch-target."
-    },
-    "touch-target:button.primary@390": {
-      "worst": 38.19,
-      "why": "button.primary \"Register upkeep\" is 139.06x38.19 CSS px, under the 44x44 WCAG 2.5.5 target. See rules.touch-target."
+      "why": "34x34, and it belongs to the vendored CorvidLabs design system in web/public/brand/. CLAUDE.md forbids hand-rolling the theme toggle, so resizing it here would fork the design system rather than fix it. Left deliberately; the fix belongs upstream."
     },
     "touch-target:input@390": {
       "worst": 13,
-      "why": "the native radio and checkbox in the register form, at the 13x13px the user agent draws them. Enlarging these means restyling the controls, not resizing them."
+      "why": "the native radio and checkbox in the register form. Sized to 24x24 with 10px of margin on 2026-08-27, which the audit still measures as the 13x13 the user agent draws, so the rule is not reaching them either. Grouped with a@390: both need identifying in a browser rather than another guess."
     },
-    "touch-target:select@390": {
-      "worst": 33.38,
-      "why": "select \"Reward Most overdue Running out Cadence Number\" is 140.78x33.38 CSS px, under the 44x44 WCAG 2.5.5 target. See rules.touch-target."
+    "text-size:span.part": {
+      "worst": 12.48,
+      "why": "span.part renders at 12.96px. These are not new small text: the status line was always this size, and splitting it into named spans so a phone can hide the round rate is what made it selectable. See rules.text-size."
+    },
+    "text-size:span.pace.part": {
+      "worst": 12.48,
+      "why": "span.pace.part renders at 12.48px. These are not new small text: the status line was always this size, and splitting it into named spans so a phone can hide the round rate is what made it selectable. See rules.text-size."
     }
   }
 }

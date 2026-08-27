@@ -180,6 +180,30 @@ interface Row {
        table rather than the page is the entire point of this element. */
     .scroll { position: relative; overflow-x: auto; border: 1px solid var(--hairline); border-radius: 3px; }
     table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+
+    /* The upkeep id is the only way into an upkeep from the registry, and it
+       drew an 8.45x16px tap target — the worst in the console by a wide margin.
+       A global rule in styles.css cannot reach here, because Angular scopes
+       component styles and they win on specificity, so it lives with the table
+       it belongs to. The whole cell becomes the target rather than the digits. */
+    @media (max-width: 480px) {
+      /* The id lives in a th scope=row, the row's identity rather than one of
+         its values. A first attempt matched only td a and changed nothing,
+         which the audit reported as the problem still happening at the same
+         8.45px rather than as a fix. */
+      th a[href],
+      td a[href] {
+        display: inline-block;
+        box-sizing: content-box;
+        min-width: 30px;
+        /* Padding rather than min-height: an inline-block anchor in a table
+           cell takes its height from line-box rules, and min-height on its own
+           left the measured box at 8.45x16. 14px of vertical padding either
+           side of a 16px line box is 44. */
+        padding: 14px 7px;
+        text-align: center;
+      }
+    }
     th, td { padding: 0.65rem 0.8rem; text-align: left; border-bottom: 1px solid var(--hairline); vertical-align: top; }
     thead th {
       font-family: var(--font-mono);
