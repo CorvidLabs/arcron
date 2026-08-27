@@ -100,6 +100,23 @@ def main(argv: list[str] | None = None) -> None:
     )
     net.add_network_argument(parser)
     parser.add_argument(
+        "--gate-creator",
+        default="",
+        help=(
+            "Only holders of an asset this account minted may enter. Omit for open "
+            "entry. A minting account is usually a working wallet, so pair it with "
+            "--gate-unit-prefix."
+        ),
+    )
+    parser.add_argument(
+        "--gate-unit-prefix",
+        default="",
+        help=(
+            "Also require the gate token's unit name to start with this. Bytes, so "
+            "case-sensitive. Empty accepts anything --gate-creator minted."
+        ),
+    )
+    parser.add_argument(
         "--app-id",
         type=int,
         default=None,
@@ -132,11 +149,19 @@ def main(argv: list[str] | None = None) -> None:
             args=ConfigureArgs(
                 mbr_payment=_payment(algorand, deployer.address, rain.app_address, APP_BASE_MBR),
                 beacon_app=beacon_app,
-                gate_creator=ZERO_ADDRESS,
+                gate_creator=args.gate_creator or ZERO_ADDRESS,
+                gate_unit_prefix=args.gate_unit_prefix.encode(),
                 prize_asset=0,
             )
         )
-        logger.info(f"  Configured against beacon {beacon_app}, open entry, ALGO prize")
+        if args.gate_creator:
+            logger.info(
+                f"  Configured against beacon {beacon_app}, ALGO prize, gated on "
+                f"{args.gate_creator[:12]}… with unit prefix "
+                f"{args.gate_unit_prefix!r}"
+            )
+        else:
+            logger.info(f"  Configured against beacon {beacon_app}, open entry, ALGO prize")
     elif state.beacon_app == beacon_app:
         logger.info(f"  Already configured against beacon {beacon_app}; skipping")
     else:

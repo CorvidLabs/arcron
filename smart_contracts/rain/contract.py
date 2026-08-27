@@ -107,6 +107,18 @@ class Rain(ARC4Contract):
         # account created, which is how an NFT collection gates a draw. A
         # collection on Algorand is many assets rather than one, so the check
         # has to be on who minted them.
+        # 0 while the creator may still replace the programs, 1 once that is
+        # given up for good. Readable before anyone stakes anything, because a
+        # promise is only worth what it can be checked against.
+        #
+        # This contract is a demo and it iterates: the unit-name gate below was
+        # added after a deployment, and without an update path that meant a new
+        # app id, an abandoned draw and an upkeep re-pointed by hand. But it
+        # also holds entrants' money, so an upgradeable version is one the
+        # creator can change the rules under. Both are true, which is why it
+        # gets the keeper's arrangement rather than one or the other: cheap to
+        # iterate now, and a one-way door to close before the money matters.
+        self.frozen = GlobalState(UInt64(0))
         self.gate_creator = GlobalState(Account())
         # Empty: the creator is the whole gate. Set: an asset must also carry a
         # unit name starting with these bytes.
@@ -120,6 +132,33 @@ class Rain(ARC4Contract):
         self.gate_unit_prefix = GlobalState(Bytes(b""))
         # Zero: the pot and the prize are ALGO. Set: both are this asset.
         self.prize_asset = GlobalState(UInt64(0))
+
+    @abimethod(allow_actions=["UpdateApplication"])
+    def update(self) -> None:
+        """Replace the programs. Creator only, and only before `freeze`.
+
+        A demo contract earns its keep by changing. Without this, adding the
+        unit-name gate meant deploying a new app, abandoning an open draw with
+        a prize in it, and re-pointing the upkeep that drives it.
+
+        It is still a real power: while `frozen` is 0 the creator can change
+        the rules under people who have already entered, and no statement of
+        intent removes that. Temporary by construction, readable on chain, and
+        given up before anyone is asked to rely on it.
+        """
+        assert Txn.sender == Global.creator_address, "Only the creator can update"
+        assert self.frozen.value == 0, "Frozen: the programs cannot be replaced"
+
+    @abimethod()
+    def freeze(self) -> None:
+        """Give up the ability to update, permanently. Creator only.
+
+        One way. Nothing sets `frozen` back to 0, and the only call that could
+        add such a path is an update, which is refused from here on.
+        """
+        assert Txn.sender == Global.creator_address, "Only the creator can freeze"
+        assert self.frozen.value == 0, "Already frozen"
+        self.frozen.value = UInt64(1)
 
     @abimethod()
     def configure(

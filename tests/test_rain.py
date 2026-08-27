@@ -286,6 +286,47 @@ def gated(context: AlgopyTestContext, collection) -> Rain:
     return contract
 
 
+def test_only_the_creator_can_freeze(context: AlgopyTestContext, rain: Rain) -> None:
+    stranger = context.any.account()
+    with context.txn.create_group(active_txn_overrides={"sender": stranger}):
+        with pytest.raises(AssertionError, match="Only the creator can freeze"):
+            rain.freeze()
+
+
+def test_freezing_is_one_way(context: AlgopyTestContext, rain: Rain) -> None:
+    rain.freeze()
+    assert rain.frozen.value == 1
+    with pytest.raises(AssertionError, match="Already frozen"):
+        rain.freeze()
+
+
+def test_a_frozen_contract_refuses_an_update(
+    context: AlgopyTestContext, rain: Rain
+) -> None:
+    # The whole point. After freeze the only call that could restore an update
+    # path is an update, and this is it being refused.
+    rain.freeze()
+    with pytest.raises(AssertionError, match="Frozen: the programs cannot be replaced"):
+        rain.update()
+
+
+def test_only_the_creator_can_update(context: AlgopyTestContext, rain: Rain) -> None:
+    stranger = context.any.account()
+    with context.txn.create_group(active_txn_overrides={"sender": stranger}):
+        with pytest.raises(AssertionError, match="Only the creator can update"):
+            rain.update()
+
+
+def test_an_unfrozen_contract_allows_the_creator_to_update(
+    context: AlgopyTestContext, rain: Rain
+) -> None:
+    # Deliberately not asserting anything about what an update does: this
+    # contract's `update` only decides *whether*, and the AVM replaces the
+    # programs. Asserting it does not raise is the whole contract here.
+    rain.update()
+    assert rain.frozen.value == 0
+
+
 @pytest.fixture()
 def prefixed(context: AlgopyTestContext, collection) -> Rain:
     """A draw gated on the creator *and* a unit-name prefix."""
