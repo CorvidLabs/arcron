@@ -225,6 +225,22 @@
     "text-size:a.breakable": {
       "worst": 12.48,
       "why": "a.breakable renders at 12.48px, below the 14px floor. Not new small text: this is the same account address already accepted as text-size:a, which gained a class when explorer links learned to break an address and not an id. See rules.text-size."
+    },
+    "table-cell:td.actions@1280": {
+      "worst": 344.53,
+      "why": "the registry cards at 1280px: td.actions is a label/value line inside a card-shaped tr, 344.53px shorter by design. Cards run to 1379px now, so this viewport is in card mode; the breakpoint carries slack because the width a nine-column table needs depends on what is in the registry. See rules.table-cell."
+    },
+    "table-cell:td.mono@1280": {
+      "worst": 371.72,
+      "why": "the registry cards at 1280px: td.mono is a label/value line inside a card-shaped tr, 371.72px shorter by design. Cards run to 1379px now, so this viewport is in card mode; the breakpoint carries slack because the width a nine-column table needs depends on what is in the registry. See rules.table-cell."
+    },
+    "table-cell:td@1280": {
+      "worst": 374.7,
+      "why": "the registry cards at 1280px: td is a label/value line inside a card-shaped tr, 374.7px shorter by design. Cards run to 1379px now, so this viewport is in card mode; the breakpoint carries slack because the width a nine-column table needs depends on what is in the registry. See rules.table-cell."
+    },
+    "table-cell:th.mono@1280": {
+      "worst": 370.69,
+      "why": "the registry cards at 1280px: th.mono is a label/value line inside a card-shaped tr, 370.69px shorter by design. Cards run to 1379px now, so this viewport is in card mode; the breakpoint carries slack because the width a nine-column table needs depends on what is in the registry. See rules.table-cell."
     }
   }
 }

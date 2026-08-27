@@ -199,19 +199,26 @@ interface Row {
        and passed it, because the content was inside a legitimate scroller and
        nothing asks whether a scroller's contents can be reached.
 
-       1260px is measured, and re-measured. The first measurement gave 1220
-       against a table needing 1074. Then a state chip was added to every row,
-       the table grew to 1127, and 1220 quietly became too small: at 1226 the
-       table needed 1127 and had 1097, so the Execute column sat 30px off the
-       right edge behind a scrollbar. A screenshot found it.
+       1380px, with deliberate slack, and the slack is the point.
 
-       The lesson is in the failure, not the number. Any column added to this
-       table moves this breakpoint, and nothing computes it: it is measured by
-       stepping the viewport until .scroll stops overflowing. Re-measure after
-       touching the columns. Below that the cards
+       This has been measured three times and been wrong twice. 1220 against a
+       table needing 1074. Then a state chip went on every row, the table grew
+       to 1127, and at 1226 the Execute column sat 30px off the right edge. Then
+       1260, measured against live data, which was clipped within the hour
+       because an upkeep funded to 8 ALGO for 800 runs made two cells wider and
+       the table grew to 1141.
+
+       So the width this table needs is not a property of the table. It is a
+       property of whatever is in the registry that day, and pinning a
+       breakpoint to today's measurement guarantees somebody photographs a
+       clipped Execute column tomorrow. 1141 fits comfortably by 1280; 1380
+       leaves about 240px for values to grow into.
+
+       A wider card layout is the cost, and it is the cheaper mistake: a card is
+       readable at any width, and a table missing its action column is not. Below that the cards
        tile: one column on a phone, more as there is width for them, so a tablet
        gets a readable grid rather than a single 700px-wide card. */
-    @media (max-width: 1259px) {
+    @media (max-width: 1379px) {
       /* A nine-column table is not a table on a 390px screen. It was a
          sideways scroller: the Execute button sat off the right edge, the
          Cadence header was clipped mid-word, and reading one upkeep meant
