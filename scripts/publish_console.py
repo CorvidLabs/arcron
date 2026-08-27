@@ -36,6 +36,7 @@ import logging
 import pathlib
 import re
 import shutil
+import subprocess
 import socketserver
 import sys
 import threading
@@ -274,6 +275,7 @@ def _publish(bundle: pathlib.Path, site: pathlib.Path, check: bool) -> int:
     # would be deployed alongside the current one.
     shutil.rmtree(target, ignore_errors=True)
     shutil.copytree(bundle, target)
+    _write_provenance(target)
     logger.info(f"  {bundle.relative_to(REPO)} -> {target.relative_to(site)} ({len(shipped)} files)")
     _report_spa_fallback()
     logger.info("")
@@ -283,6 +285,54 @@ def _publish(bundle: pathlib.Path, site: pathlib.Path, check: bool) -> int:
     logger.info(f"    git -C {site} push")
     logger.info("The site's deploy workflow builds and ships main, so the push is what publishes.")
     return 0
+
+
+def _write_provenance(target: Path) -> None:
+    """Record which commit of this repository produced the bundle.
+
+    A vendored build in another repository is bytes with no history: nothing in
+    the site checkout says which Arcron commit produced them, and the console is
+    the one thing a stranger is asked to trust with a signature.
+
+    This file existed and was written by hand, so the replace-rather-than-overlay
+    copy above deleted it and nothing put it back. A staged bundle then looked
+    exactly like a hand-edited one. Generating it means it cannot go stale and
+    cannot be forgotten.
+    """
+    commit = subprocess.run(
+        ["git", "-C", str(REPO), "rev-parse", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=False,
+    ).stdout.strip()
+    dirty = subprocess.run(
+        ["git", "-C", str(REPO), "status", "--porcelain"],
+        capture_output=True,
+        text=True,
+        check=False,
+    ).stdout.strip()
+
+    lines = [
+        "Arcron console - vendored build output. Do not edit by hand.",
+        "",
+        "Source:  github.com/CorvidLabs/arcron",
+        f"Commit:  {commit or 'unknown'}",
+        f"Built:   fledge run web-build-hosted   (base href {BASE_HREF})",
+    ]
+    if dirty:
+        # Worth shouting about: a bundle built from uncommitted work cannot be
+        # reproduced from the commit named above.
+        lines.append("")
+        lines.append("WARNING: built from a dirty working tree; the commit above")
+        lines.append("         does not reproduce this bundle.")
+    lines += [
+        "",
+        "To refresh, from a checkout of that repo at the commit you want:",
+        "    fledge run web-build-hosted",
+        f"    fledge run site-console -- --site <this checkout>",
+        "",
+    ]
+    (target / "BUILD.txt").write_text("\n".join(lines))
 
 
 def main(argv: list[str] | None = None) -> int:
