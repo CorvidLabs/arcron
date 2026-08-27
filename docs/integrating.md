@@ -195,8 +195,24 @@ replay is a no-op rather than a fatal error.
 One consequence to price in: under `CATCH_UP` those no-op replays are still
 paid executions, so an outage costs one fee per missed interval while billing
 advances once. If that matters, register `SKIP_AHEAD`, which does not replay a
-backlog at all. `CATCH_UP` is the default because most hooks want every period,
-and a metering hook usually does not.
+backlog at all.
+
+**There is no default. `policy` is a required argument to `register`, and the
+danger is that `CATCH_UP` is encoded as `0`,** which is the value a caller
+passes without deciding. The console does decide: it pre-selects `SKIP_AHEAD`
+(`web/src/app/components/register-form.ts`), and anyone integrating directly
+should make the same choice deliberately rather than inherit it from a zero.
+
+The reason is measured rather than theoretical. Upkeep 18 on `769891898` ran
+`CATCH_UP` into a real outage: it spent its entire escrow on 17 replays and
+advanced **41 rounds against a 23,478 round backlog**, then starved. Money
+gone, schedule still broken. On a short cadence, catch-up after any real
+outage cannot catch up.
+
+`CATCH_UP` is still right for work where every period genuinely owes something
+— a metering hook that bills per interval, a distribution that must not skip a
+recipient. It is the wrong default for everything else, and it is never the
+right choice made by accident.
 
 `smart_contracts/subscription/` is the worked example. It had both bugs in
 turn: it recorded `last_charged_round` on every call and never read it, and
