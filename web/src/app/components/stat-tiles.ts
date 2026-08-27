@@ -24,7 +24,7 @@ import { isExecutable } from '@corvidlabs/arcron/upkeep';
       <div class="tile">
         <dt class="eyebrow">Escrowed</dt>
         <dd class="mono">{{ escrowed() }}</dd>
-        <dd class="hint">{{ escrowedExact() }}</dd>
+        <dd class="hint">{{ escrowedHint() }}</dd>
       </div>
 
       <div class="tile" [class.bad]="arcron.solvent() === false">
@@ -72,7 +72,20 @@ export class StatTiles {
   });
 
   protected readonly escrowed = computed(() => algos(this.arcron.totalEscrowed()));
-  protected readonly escrowedExact = computed(() => algos(this.arcron.totalEscrowed()));
+
+  /**
+   * What the escrow total is spread across.
+   *
+   * This used to be the identical expression to `escrowed`, so the tile printed
+   * its own value twice while every sibling tile's hint said something new.
+   * Side by side with App spendable, which can hold the same number, it made
+   * the whole row look like it had failed to compute.
+   */
+  protected readonly escrowedHint = computed(() => {
+    const count = this.arcron.upkeeps().length;
+    if (count === 0) return 'nothing registered yet';
+    return count === 1 ? 'across 1 upkeep' : `across ${count} upkeeps`;
+  });
 
   protected readonly spendable = computed(() => {
     const account = this.arcron.appAccount();

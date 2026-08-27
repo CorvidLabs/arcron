@@ -82,6 +82,13 @@ footer p {
    already, so dropping it costs nothing and gives the drawer the viewport to
    position against. */
 @media (max-width: 480px) {
+  /* Same reasoning as the panel padding in styles.css: clamp(1rem, 4vw, 2.5rem)
+     resolves to the 1rem minimum at this width, and 1rem is 18px here rather
+     than 15px, so the page gutter grew when the type scale was fixed. */
+  main {
+    padding-inline: 0.75rem;
+  }
+
   header.chrome {
     backdrop-filter: none;
     /* Opaque, because --header-bg is 92% and the blur was what stopped the

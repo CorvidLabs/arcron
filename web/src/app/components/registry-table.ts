@@ -79,7 +79,7 @@ interface Row {
         <div class="scroll">
           <table>
             <caption class="sr-only">Registered upkeeps</caption>
-            <thead class="sr-only">
+            <thead>
               <tr>
                 <th scope="col">#</th>
                 <th scope="col">Target</th>
@@ -100,6 +100,10 @@ interface Row {
                          wider actions column: everything else about this
                          upkeep lives on its own page now. -->
                     <a [routerLink]="['/u', row.id]">{{ row.id }}</a>
+                    <!-- The legend below defines due, scheduled and starved.
+                         Until this chip existed it was a key to a code that
+                         appeared nowhere on the page. -->
+                    <span class="chip" [class]="'chip ' + row.state">{{ row.state }}</span>
                     @if (row.yours) {
                       <span class="yours" title="Registered by the connected account">yours</span>
                     }
@@ -182,26 +186,27 @@ interface Row {
        table rather than the page is the entire point of this element. */
     .scroll { position: relative; overflow-x: auto; border: 1px solid var(--hairline); border-radius: 3px; }
     table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
-    /* The head is .sr-only in the markup because it is hidden on a phone, where
-       every cell names itself instead. Above the breakpoint it is a real table
-       head again; thead.sr-only outranks the global .sr-only on specificity. */
-    thead.sr-only {
-      position: static;
-      width: auto;
-      height: auto;
-      padding: revert;
-      margin: 0;
-      overflow: visible;
-      clip: auto;
-      white-space: normal;
-    }
-
     /* The upkeep id is the only way into an upkeep from the registry, and it
        drew an 8.45x16px tap target — the worst in the console by a wide margin.
        A global rule in styles.css cannot reach here, because Angular scopes
        component styles and they win on specificity, so it lives with the table
        it belongs to. The whole cell becomes the target rather than the digits. */
-    @media (max-width: 480px) {
+    /* Cards until the table actually fits, which is 1074px, not 480px.
+       Measured across the range: at 481px the layout flipped back to a table
+       that needed 1074px and scrolled sideways inside its wrapper, so every
+       tablet, every small laptop and every phone in landscape still had the
+       Execute button off the right edge. The rendered-page audit drives 768px
+       and passed it, because the content was inside a legitimate scroller and
+       nothing asks whether a scroller's contents can be reached.
+
+       1220px is measured rather than reasoned. The table's min-content width is
+       1074px, and main is max-width:82rem with clamp(1rem, 4vw, 2.5rem)
+       padding, so the content box only reaches 1074 at a 1240px viewport: at
+       1200 it has 1071 and is three pixels short. Two earlier guesses, 1100 and
+       1160, both still scrolled. Below that the cards
+       tile: one column on a phone, more as there is width for them, so a tablet
+       gets a readable grid rather than a single 700px-wide card. */
+    @media (max-width: 1219px) {
       /* A nine-column table is not a table on a 390px screen. It was a
          sideways scroller: the Execute button sat off the right edge, the
          Cadence header was clipped mid-word, and reading one upkeep meant
@@ -221,27 +226,79 @@ interface Row {
         display: block;
       }
 
-      /* The head carries .sr-only in the template rather than being clipped by
-         hand here. Same effect, and the rendered-page audit already skips
-         anything inside .sr-only, so a hand-rolled equivalent reads to it as
-         content genuinely cut off. Restored to a real table head above the
-         breakpoint by the rule outside this block. */
+      /* Gone, not clipped.
 
-      tbody tr {
-        border: 1px solid var(--hairline);
-        border-radius: 4px;
-        margin-bottom: 0.85rem;
-        padding: 0.75rem;
-        background: var(--paper);
+         This was .sr-only on the element, with a rule outside this block
+         cancelling it for desktop. That rule had no media guard, so it cancelled
+         .sr-only at every width: the head rendered as nine full-width grey
+         bands, 371px of "# TARGET CADENCE NEXT RUN FEE ESCROW RUNWAY RUNS"
+         stacked above the first card on an 844px screen.
+
+         The audit did not catch it because it skips anything inside .sr-only by
+         design. So the class was acting as an exemption marker while the CSS
+         made the exemption false, which is the precise failure the rendered-page
+         rule exists to prevent. display:none here needs no exemption and no
+         second rule to undo it.
+
+         display:none does drop the head from the accessibility tree, and
+         changing display away from table already drops the table role in every
+         engine, so the explicit roles on the markup carry the semantics at this
+         width instead. */
+      thead {
+        display: none;
       }
 
-      /* The state stripe moves from a left border on a row to the card edge. */
+      /* One column on a phone, then as many as fit. minmax(0, 1fr) rather than
+         auto-fill with a fixed track, so a card never forces the row wider than
+         the viewport. */
+      tbody {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr));
+        gap: 0.85rem;
+        align-items: start;
+      }
+
+      /* The stripe is always 3px and only its colour changes. Giving it only to
+         due and starved left scheduled cards 2px narrower with their content 2px
+         to the left, which reads as jitter down a list.
+
+         --surface, not --paper: paper is the page ground, and a card sitting on
+         a --surface panel painted in the page ground is inverted elevation. The
+         keeper board's job cards already use --surface. */
+      tbody tr {
+        border: 1px solid var(--hairline);
+        border-left: 3px solid transparent;
+        border-radius: 4px;
+        padding: 0.75rem;
+        background: var(--surface);
+      }
+
       tbody tr.due {
-        border-left: 3px solid var(--success);
+        border-left-color: var(--success);
       }
 
       tbody tr.starved {
-        border-left: 3px solid var(--warning);
+        border-left-color: var(--warning);
+      }
+
+      /* The title bar is a table affordance. On a card the 3px edge already says
+         it, and both together is two stripes on one card — visible on a starved
+         card as an amber edge and an amber bar 12px apart. */
+      tbody tr.due th[scope='row'],
+      tbody tr.starved th[scope='row'] {
+        box-shadow: none;
+      }
+
+      /* The chip carries the state name, so the card edge is reinforcement
+         rather than the only signal. */
+      tbody th[scope='row'] .chip {
+        margin-left: auto;
+      }
+
+      /* A 44px button in a cell measured 61px: padding plus the phantom
+         descender under an inline-block. flex removes the descender. */
+      tbody td.actions {
+        display: flex;
       }
 
       /* The id is the card's title. */
@@ -264,19 +321,33 @@ interface Row {
          the cadence read "25 rounds - ~1 min 10" with the rest past the edge,
          and the runs column lost its digits. minmax(0, ...) is what lets a
          track go narrower than its content so the value can wrap instead. */
+      /* One shared label track, and values left-aligned.
+
+         The label track was minmax(0, auto), so every cell sized its own label
+         independently and nothing lined up down the card: Fee's label track
+         measured 25.67px against Next run's 70.06px. The values were
+         right-aligned, which pays off when values form a column and card mode is
+         exactly what destroys that column, so a value too long for its track
+         wrapped and right-aligned its own orphan. And gap is a shorthand, so it
+         set row-gap too: 13.5px between a value and its own second line, which
+         made multi-line values look detached from themselves. */
       tbody td {
         display: grid;
-        grid-template-columns: minmax(0, auto) minmax(0, 1fr);
+        grid-template-columns: 6.5rem minmax(0, 1fr);
+        column-gap: 0.75rem;
+        row-gap: 0;
         align-items: baseline;
-        gap: 0.75rem;
         border: 0;
-        padding: 0.3rem 0;
-        text-align: right;
+        padding: 0.35rem 0;
+        text-align: left;
       }
 
-      tbody td::before {
+      /* Guarded on the attribute: the actions cell has none, and attr() on a
+         missing attribute yields an empty string rather than nothing, so an
+         unguarded rule generates an empty inline box inheriting the label's
+         type. */
+      tbody td[data-label]::before {
         content: attr(data-label);
-        text-align: left;
         color: var(--text-faint);
         text-transform: uppercase;
         letter-spacing: 0.06em;
@@ -291,13 +362,10 @@ interface Row {
         display: block;
       }
 
-      /* Target carries two lines of its own, so it stacks rather than sitting
-         opposite its label. */
-      tbody td[data-label='Target'] {
-        flex-direction: column;
-        align-items: flex-start;
-        text-align: left;
-      }
+      /* Target needs no special case now. It had one: flex-direction on a
+         grid container, which does nothing at all, and align-items:flex-start,
+         which opted this single cell out of the baseline alignment every
+         other cell uses and was half the reason the card looked crooked. */
 
       /* Execute is the reason somebody opened this on a phone. Full width, at
          the foot of the card, above the thumb rather than off the right edge. */
@@ -348,22 +416,14 @@ interface Row {
         white-space: normal;
       }
 
-      /* The id lives in a th scope=row, the row's identity rather than one of
-         its values. A first attempt matched only td a and changed nothing,
-         which the audit reported as the problem still happening at the same
-         8.45px rather than as a fix. */
-      th a[href],
-      td a[href] {
-        display: inline-block;
-        box-sizing: content-box;
-        min-width: 30px;
-        /* Padding rather than min-height: an inline-block anchor in a table
-           cell takes its height from line-box rules, and min-height on its own
-           left the measured box at 8.45x16. 14px of vertical padding either
-           side of a 16px line box is 44. */
-        padding: 14px 7px;
-        text-align: center;
-      }
+      /* No anchor rule here.
+
+         There was one, and it did not do what it looked like. Angular compiles
+         a component selector to td[_ngcontent-x] a[href][_ngcontent-x], and the
+         explorer link is rendered by another component, so it carries a
+         different _ngcontent and this rule could never reach it. On the id link
+         it fired on top of the global rule instead, giving a two-digit link a
+         44x72 box. The global rule in styles.css handles both. */
     }
     th, td { padding: 0.65rem 0.8rem; text-align: left; border-bottom: 1px solid var(--hairline); vertical-align: top; }
     thead th {
@@ -394,8 +454,13 @@ interface Row {
       text-transform: uppercase;
     }
     tr.due { background: color-mix(in srgb, var(--sheen) 8%, transparent); }
-    tr.due th[scope='row'] { box-shadow: inset 2px 0 0 var(--sheen); }
-    tr.starved td, tr.starved th { color: var(--text-faint); }
+    /* Not faint. A starved upkeep cannot pay its own fee, which is the one
+       state a creator has to act on, and greying it out is the convention for
+       "inactive, ignore me". It was the faintest thing on the page. The row
+       keeps ordinary text and carries a warning edge instead; the chip in the
+       id cell says which state it is. */
+    tr.starved th[scope='row'] { box-shadow: inset 3px 0 0 var(--warning); }
+    tr.due th[scope='row'] { box-shadow: inset 3px 0 0 var(--success); }
     /* Right-aligned, not a flex container. A td set to display:flex is not a
        table cell any more: the table wraps it in an anonymous cell, this one
        came out 11px shorter than its row, and the row's due highlight and

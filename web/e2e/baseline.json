@@ -201,6 +201,26 @@
     "table-cell:th.mono@390": {
       "worst": 467.7,
       "why": "the mobile registry cards: th.mono is a label/value line inside a card-shaped tr, 467.7px shorter than it by design. See rules.table-cell for why the rule stops applying to a table that deliberately stops being one."
+    },
+    "table-cell:td@768": {
+      "worst": 404.52,
+      "why": "the registry cards at 768px: td is a label/value line inside a card-shaped tr, 404.52px shorter by design. Cards now run to 1219px rather than 480px, because the table needs 1074px and the content box only reaches that at a 1240px viewport. See rules.table-cell."
+    },
+    "table-cell:td.mono@768": {
+      "worst": 401.53,
+      "why": "the registry cards at 768px: td.mono is a label/value line inside a card-shaped tr, 401.53px shorter by design. Cards now run to 1219px rather than 480px, because the table needs 1074px and the content box only reaches that at a 1240px viewport. See rules.table-cell."
+    },
+    "table-cell:th.mono@768": {
+      "worst": 400.5,
+      "why": "the registry cards at 768px: th.mono is a label/value line inside a card-shaped tr, 400.5px shorter by design. Cards now run to 1219px rather than 480px, because the table needs 1074px and the content box only reaches that at a 1240px viewport. See rules.table-cell."
+    },
+    "table-cell:td.actions@768": {
+      "worst": 374.34,
+      "why": "the registry cards at 768px: td.actions is a label/value line inside a card-shaped tr, 374.34px shorter by design. Cards now run to 1219px rather than 480px, because the table needs 1074px and the content box only reaches that at a 1240px viewport. See rules.table-cell."
+    },
+    "text-size:th": {
+      "worst": 10.88,
+      "why": "th renders at 10.88px, below the 14px floor. It left this list briefly while the head was .sr-only, which turned out to be hiding it from the audit rather than from the page. See rules.text-size."
     }
   }
 }

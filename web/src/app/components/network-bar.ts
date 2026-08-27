@@ -3,6 +3,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  effect,
   inject,
   signal,
 } from '@angular/core';
@@ -380,9 +381,15 @@ import type { NetworkKey } from '@corvidlabs/arcron/networks';
       .bars::before { top: -6px; }
       .bars::after { top: 6px; }
 
+      /* overscroll-behavior: contain, because a wheel or a swipe over the scrim
+         scrolled the page beneath it, and over the drawer itself it scrolled
+         the page while the drawer stayed put — so on a phone the drawer's own
+         content could not be scrolled at all. */
       .scrim {
         position: fixed;
         inset: 0;
+        overscroll-behavior: contain;
+        touch-action: none;
         background: rgb(0 0 0 / 45%);
         z-index: 20;
       }
@@ -402,6 +409,7 @@ import type { NetworkKey } from '@corvidlabs/arcron/networks';
         background: var(--paper);
         border-left: 1px solid var(--hairline);
         overflow-y: auto;
+        overscroll-behavior: contain;
         /* display:none when closed, not an off-canvas transform. Parking it at
            translateX(100%) put a 320px panel outside a 390px viewport, and the
            audit reported it as overflow, correctly: something sitting past the
@@ -602,6 +610,14 @@ export class NetworkBar {
    * phone.
    */
   protected readonly menuOpen = signal(false);
+
+  constructor_menuLock = effect(() => {
+    // The page must not scroll behind an open drawer. overscroll-behavior stops
+    // a scroll chaining out of the drawer; it does not stop a wheel or swipe
+    // that starts on the page itself, and the scrim is not a scroll container.
+    // A class on body is the only thing that covers both.
+    document.body.classList.toggle('menu-open', this.menuOpen());
+  });
 
   protected toggleMenu(): void {
     this.menuOpen.update((open) => !open);
