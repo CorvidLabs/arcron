@@ -270,7 +270,18 @@ import type { NetworkKey } from '@corvidlabs/arcron/networks';
     .app-id { display: flex; align-items: center; gap: 0.45rem; }
     .app-id input { width: 7.5rem; }
     .status { display: flex; align-items: center; gap: 0.45rem; margin: 0; font-size: 0.78rem; }
-    .status .dot { width: 0.45rem; height: 0.45rem; border-radius: 50%; background: currentColor; }
+    /* flex:0 0 auto, because a flex item with a percentage border-radius will
+       shrink when the row is tight and a squashed circle reads as a rendering
+       fault rather than a status light. It was visibly an oval in the drawer,
+       where the status wraps onto three lines and the dot is the only thing
+       that can give. */
+    .status .dot {
+      flex: 0 0 auto;
+      width: 0.45rem;
+      height: 0.45rem;
+      border-radius: 50%;
+      background: currentColor;
+    }
     .status.ready { color: var(--success); }
     .status.warn { color: var(--warning); }
     .status.bad { color: var(--danger); }
@@ -295,9 +306,24 @@ import type { NetworkKey } from '@corvidlabs/arcron/networks';
        and dragged the footer with it, and so did flex:1-1-auto on the controls,
        because flex children will not shrink below their content. */
     @media (max-width: 480px) {
+      /* nowrap is safe here only because the drawer is position:fixed and out
+         of flow, so the bar holds the brand and the menu button and nothing
+         else. It still needs the brand able to shrink: without min-width:0 the
+         wordmark sets a floor, the bar measured 396px inside a 358px content
+         box, and the whole document grew to 432px — the same overflow this
+         file already records from an earlier attempt. */
       .bar {
         flex-wrap: nowrap;
         gap: 0.5rem;
+      }
+
+      .brand {
+        min-width: 0;
+        overflow: hidden;
+      }
+
+      .wordmark {
+        white-space: nowrap;
       }
 
       .tagline { display: none; }

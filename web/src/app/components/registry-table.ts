@@ -79,7 +79,7 @@ interface Row {
         <div class="scroll">
           <table>
             <caption class="sr-only">Registered upkeeps</caption>
-            <thead>
+            <thead class="sr-only">
               <tr>
                 <th scope="col">#</th>
                 <th scope="col">Target</th>
@@ -104,18 +104,18 @@ interface Row {
                       <span class="yours" title="Registered by the connected account">yours</span>
                     }
                   </th>
-                  <td>
+                  <td data-label="Target">
                     <span class="mono">app <arcron-explorer-link kind="app" [value]="row.target" /></span>
                     <span class="sub mono">{{ row.selector }}</span>
                   </td>
-                  <td>
+                  <td data-label="Cadence">
                     <span class="mono">{{ row.interval }}</span>
                   </td>
-                  <td>
+                  <td data-label="Next run">
                     <span class="mono">{{ row.nextRound }}</span>
                     <span class="sub" [class.now]="row.state === 'due'">{{ row.due }}</span>
                   </td>
-                  <td class="mono" [title]="row.feeExact">
+                  <td class="mono" data-label="Fee" [title]="row.feeExact">
                     @if (row.feeNow) {
                       <span class="escalated" title="escalated: this upkeep is late">{{ row.feeNow }}</span>
                       <span class="sub">base {{ row.fee }}</span>
@@ -126,11 +126,11 @@ interface Row {
                       }
                     }
                   </td>
-                  <td class="mono">{{ row.balance }}</td>
-                  <td>
+                  <td class="mono" data-label="Escrow">{{ row.balance }}</td>
+                  <td data-label="Runway">
                     <span class="sub">{{ row.runway }}</span>
                   </td>
-                  <td class="mono">{{ row.executed }}</td>
+                  <td class="mono" data-label="Runs">{{ row.executed }}</td>
                   <td class="actions">
                     <button
                       type="button"
@@ -182,6 +182,19 @@ interface Row {
        table rather than the page is the entire point of this element. */
     .scroll { position: relative; overflow-x: auto; border: 1px solid var(--hairline); border-radius: 3px; }
     table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+    /* The head is .sr-only in the markup because it is hidden on a phone, where
+       every cell names itself instead. Above the breakpoint it is a real table
+       head again; thead.sr-only outranks the global .sr-only on specificity. */
+    thead.sr-only {
+      position: static;
+      width: auto;
+      height: auto;
+      padding: revert;
+      margin: 0;
+      overflow: visible;
+      clip: auto;
+      white-space: normal;
+    }
 
     /* The upkeep id is the only way into an upkeep from the registry, and it
        drew an 8.45x16px tap target — the worst in the console by a wide margin.
@@ -189,6 +202,152 @@ interface Row {
        component styles and they win on specificity, so it lives with the table
        it belongs to. The whole cell becomes the target rather than the digits. */
     @media (max-width: 480px) {
+      /* A nine-column table is not a table on a 390px screen. It was a
+         sideways scroller: the Execute button sat off the right edge, the
+         Cadence header was clipped mid-word, and reading one upkeep meant
+         scrolling right and then back. Every rendered-page check passed on
+         that, because the scroller is a legitimate scroller and nothing in the
+         audit asks whether the content inside it can be reached.
+
+         So each row becomes a card. The head is hidden, every cell names itself
+         from its data-label, and Execute is a full-width button at the foot
+         where a thumb is. */
+      table,
+      thead,
+      tbody,
+      tr,
+      th,
+      td {
+        display: block;
+      }
+
+      /* The head carries .sr-only in the template rather than being clipped by
+         hand here. Same effect, and the rendered-page audit already skips
+         anything inside .sr-only, so a hand-rolled equivalent reads to it as
+         content genuinely cut off. Restored to a real table head above the
+         breakpoint by the rule outside this block. */
+
+      tbody tr {
+        border: 1px solid var(--hairline);
+        border-radius: 4px;
+        margin-bottom: 0.85rem;
+        padding: 0.75rem;
+        background: var(--paper);
+      }
+
+      /* The state stripe moves from a left border on a row to the card edge. */
+      tbody tr.due {
+        border-left: 3px solid var(--success);
+      }
+
+      tbody tr.starved {
+        border-left: 3px solid var(--warning);
+      }
+
+      /* The id is the card's title. */
+      tbody th[scope='row'] {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 1.05rem;
+        border: 0;
+        padding: 0 0 0.5rem;
+      }
+
+      tbody th[scope='row']::before {
+        content: '#';
+        color: var(--text-faint);
+      }
+
+      /* Grid rather than flex, with both tracks allowed to shrink to zero. A
+         flex row let the value keep its intrinsic width and run off the card:
+         the cadence read "25 rounds - ~1 min 10" with the rest past the edge,
+         and the runs column lost its digits. minmax(0, ...) is what lets a
+         track go narrower than its content so the value can wrap instead. */
+      tbody td {
+        display: grid;
+        grid-template-columns: minmax(0, auto) minmax(0, 1fr);
+        align-items: baseline;
+        gap: 0.75rem;
+        border: 0;
+        padding: 0.3rem 0;
+        text-align: right;
+      }
+
+      tbody td::before {
+        content: attr(data-label);
+        text-align: left;
+        color: var(--text-faint);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        font-size: 0.72rem;
+        white-space: nowrap;
+      }
+
+      /* Values that carry a second line, like the next run's "overdue by", put
+         it under the number rather than beside the label. */
+      tbody td > .sub {
+        grid-column: 2;
+        display: block;
+      }
+
+      /* Target carries two lines of its own, so it stacks rather than sitting
+         opposite its label. */
+      tbody td[data-label='Target'] {
+        flex-direction: column;
+        align-items: flex-start;
+        text-align: left;
+      }
+
+      /* Execute is the reason somebody opened this on a phone. Full width, at
+         the foot of the card, above the thumb rather than off the right edge. */
+      tbody td.actions {
+        display: block;
+        padding-top: 0.6rem;
+        margin-top: 0.5rem;
+        border-top: 1px solid var(--hairline);
+      }
+
+      tbody td.actions button {
+        width: 100%;
+        min-height: 44px;
+      }
+
+      /* The wrapper has nothing left to scroll, but it keeps overflow-x:auto as
+         a backstop: a card that somehow exceeds the viewport should scroll
+         inside this box rather than widen the document, which is what happened
+         when this said visible. */
+      .scroll {
+        border: 0;
+        max-width: 100%;
+      }
+
+      table {
+        width: 100%;
+        max-width: 100%;
+        table-layout: auto;
+      }
+
+      tbody tr,
+      tbody td,
+      tbody th {
+        max-width: 100%;
+        overflow-wrap: anywhere;
+      }
+
+      /* Values wrap rather than truncate. The table sets nowrap on its mono
+         cells so columns stay aligned, which is right for a table and wrong for
+         a card: the cadence read "25 rounds - ~1 min 10" with the trailing "s"
+         clipped inside the cell. The card had not overflowed, so a check for
+         cells escaping their card saw nothing; only comparing scrollWidth with
+         clientWidth found it. */
+      tbody td,
+      tbody td span,
+      tbody th,
+      tbody th span {
+        white-space: normal;
+      }
+
       /* The id lives in a th scope=row, the row's identity rather than one of
          its values. A first attempt matched only td a and changed nothing,
          which the audit reported as the problem still happening at the same

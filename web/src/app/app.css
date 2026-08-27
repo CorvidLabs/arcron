@@ -84,5 +84,11 @@ footer p {
 @media (max-width: 480px) {
   header.chrome {
     backdrop-filter: none;
+    /* Opaque, because --header-bg is 92% and the blur was what stopped the
+       remaining 8% reading as a fault. With the filter gone, page content
+       showed through a sticky header and the registry heading appeared to sit
+       inside the wordmark. Falling back to --paper keeps the design system's
+       colour and drops only the transparency. */
+    background: var(--paper);
   }
 }
