@@ -71,7 +71,7 @@ because these are easy to get wrong from memory:
   (`set_suggested_params_cache_timeout(0)`) and fund the app account's base
   MBR (0.1 ALGO) before it can escrow or hold boxes.
 - Upkeep box values are ARC-4 head/tail encoded; `scripts/keeper_bot.py` has
-  the reference decoder (`_decode_upkeep`), and `web/src/app/core/upkeep.ts`
+  the reference decoder (`_decode_upkeep`), and `js/src/upkeep.ts`
   is its TypeScript twin; both are pinned to the same recorded box.
 - `web/` is styled only with the CorvidLabs design system vendored in
   `web/public/brand/`: no hardcoded colours, no hand-rolled theme toggle.

@@ -107,18 +107,24 @@ genuinely counts; it is the wrong choice for a first upkeep.
 ### 3. Read the cost before you sign
 
 Check the **UP-FRONT COST** tile. With the funding above it should read
-**0.0851 ALGO**, itemised:
+**0.0951 ALGO**, itemised:
 
 | | | |
 |---|---|---|
 | Box deposit | 0.0621 | returned in full when you cancel |
-| Escrow | 0.0200 | spent one execution at a time, remainder returns on cancel |
+| Escrow | 0.0300 | spent one execution at a time, remainder returns on cancel |
 | Network fees | 0.0030 | three transactions, gone either way, including if the group fails |
 
-An earlier draft of this page said 0.0771, which is the total for 0.012 of
-funding rather than the 0.02 its own table asks for. The console was right and
-this document was wrong, which is worth recording: this section exists to catch
-the console lying about cost, and the first thing it caught was itself.
+This page has now got its own arithmetic wrong twice. An early draft said
+0.0771, the total for 0.012 of funding rather than the 0.02 its table asked for.
+Then the suggested fee moved to 0.010 and the funding row to 0.03, and this
+total stayed at 0.0851, which is 0.02 of funding — so the page told a reader to
+expect 0.0851 while a correct console showed 0.0951, and two paragraphs later
+told them a mismatch is a bug worth more than the upkeep.
+
+Both times the console was right and this document was wrong. The section exists
+to catch the console lying about cost, and the only thing it has ever caught is
+itself. Recompute the total from the funding row before trusting it.
 
 The console's figure was also genuinely wrong until 2026-08-26, reading 0.0741
 against a real 0.0771 debit. **Compare the tile against what Pera actually asks

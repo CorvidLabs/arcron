@@ -12,7 +12,7 @@ import algosdk from 'algosdk';
 
 import { NETWORKS, type NetworkKey } from '@corvidlabs/arcron/networks';
 
-import { devModeFrom } from './dev-mode';
+import { devModeFrom, type DevModeState } from './dev-mode';
 import { appIdStorageKey, type Entry, entryFrom, rememberedAppId, storeAppId } from './entry';
 import { canonicalAppId, isQuarantined, standingOf } from './quarantine';
 import { decodeUpkeep, type Upkeep, upkeepIdFromBoxName } from '@corvidlabs/arcron/upkeep';
@@ -275,6 +275,7 @@ export class ArcronService {
     if (network === this.network()) return;
     this.network.set(network);
     this.appId.set(readAppId(network));
+    this.forgetAcceptance();
     this.reset();
     void this.refresh();
   }
@@ -282,6 +283,7 @@ export class ArcronService {
   setAppId(appId: number | null): void {
     if (appId === this.appId()) return;
     this.appId.set(appId);
+    this.forgetAcceptance();
     this.reset();
     void this.refresh();
   }
@@ -297,9 +299,25 @@ export class ArcronService {
    *
    * Unlocks the money buttons for this app id, in this tab, until the app id
    * changes or the page is reloaded. Nothing is written down.
+   *
+   * The comment used to say that and the code did not do it: `acceptedAppId`
+   * was never cleared, so accepting app A, switching to B and switching back to
+   * A unlocked money again with no second prompt. A review found it. Clearing
+   * on every change makes the sentence true — returning to an app you once
+   * accepted asks again.
    */
   acceptCurrentApp(): void {
     this.acceptedAppId.set(this.appId());
+  }
+
+  /**
+   * Forget an acceptance because the app id moved.
+   *
+   * Called wherever the app id changes. Accepting is per-visit-to-an-app, not
+   * per-app-forever.
+   */
+  private forgetAcceptance(): void {
+    this.acceptedAppId.set(null);
   }
 
   start(): void {
@@ -484,15 +502,26 @@ export class ArcronService {
  * Read once at module load rather than per call, so it cannot change under a
  * page that has already decided which deployment it is showing.
  */
-export const DEV_MODE = readDevMode();
+const DEV_STATE = readDevMode();
 
-function readDevMode(): boolean {
+/** Whether developer controls are shown at all. */
+export const DEV_MODE = DEV_STATE.enabled;
+
+/**
+ * Whether dev mode was on *before* this navigation.
+ *
+ * `?app=` and `?network=` require this rather than `DEV_MODE`, so that one link
+ * cannot both turn dev mode on and point the console at a look-alike app.
+ */
+export const DEV_ESTABLISHED = DEV_STATE.established;
+
+function readDevMode(): DevModeState {
   try {
     return devModeFrom(location.search, localStorage);
   } catch {
     // A browser blocking site data throws on access. Dev mode off is the safe
     // answer: one deployment, nothing configurable.
-    return false;
+    return { enabled: false, established: false };
   }
 }
 
@@ -507,7 +536,7 @@ function readEntry(): Entry {
     location.search,
     localStorage.getItem(NETWORK_STORAGE_KEY),
     (network) => localStorage.getItem(appIdStorageKey(network)),
-    DEV_MODE,
+    DEV_ESTABLISHED,
   );
 }
 
