@@ -25,7 +25,14 @@ page.
 | **Run a keeper and get paid** | [`docs/hosting.md`](docs/hosting.md) | a machine, or a free GitHub Action |
 | **Break it** | [below](#if-you-came-to-break-it) | your time, and we want the findings |
 | **Judge whether the idea is any good** | [`docs/why.md`](docs/why.md) | ten minutes of reading |
+| **Read the whole thing, front to back** | [the Working Guide](docs/book/arcron-working-guide.md) | ~16,000 words |
 | **Tell us the idea is wrong** | [the open question](https://github.com/CorvidLabs/arcron/discussions/163) | we would rather hear it now |
+
+This page branches by what you came to do and then hands you to a document. The
+[Working Guide](docs/book/arcron-working-guide.md) is the other shape: one
+ordered read through all of it. It is **compiled from `docs/`, and `docs/`
+wins** — if the two ever disagree, the guide has a bug and
+[`tests/test_book.py`](tests/test_book.py) should have caught it.
 
 ---
 
