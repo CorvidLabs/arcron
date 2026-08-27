@@ -649,6 +649,32 @@ export class RegisterForm {
     return subject === null ? null : this.test.resultFor(subject);
   });
 
+  /**
+   * A verdict of "no" about the exact call this form would register.
+   *
+   * Upkeep 77 on TestNet escrowed 8 ALGO against a selector its target does
+   * not have. Every execution failed on `err` in the target's own router, and
+   * always would have: a selector is fixed in the box at registration, so
+   * there is no recovery except cancelling.
+   *
+   * The Test button catches this. Nothing made it matter. `canSubmit` asked
+   * the form, the balance, the read path and the attestation checkbox, and
+   * never asked the one control on the page built to answer this question, so
+   * a reader could press Test, be told the target has no such method, and
+   * register anyway.
+   *
+   * This blocks only a *failing verdict about this exact call*. Not testing
+   * stays allowed, because the attestation is a judgement the console cannot
+   * make and `docs/first-upkeep.md` is explicit that a pass does not satisfy
+   * it. An unreachable node is not a verdict either. Editing the signature
+   * clears the report through `resultFor`, so the block lifts the moment the
+   * call changes.
+   */
+  protected readonly refused = computed(() => {
+    const outcome = this.report()?.outcome ?? null;
+    return outcome !== null && !outcome.accepted ? outcome : null;
+  });
+
   protected readonly claims = computed(() => {
     const { targetApp } = this.value();
     return (
@@ -776,6 +802,9 @@ export class RegisterForm {
       // an unread balance is not evidence that there is one. There is a
       // re-check control beside the figure so a funded account is never stuck.
       this.afford()?.state === 'enough' &&
+      // A test that came back "no" about this exact call is the one signal on
+      // the page that this upkeep can never run. See `refused`.
+      this.refused() === null &&
       this.value().attested,
   );
 
@@ -812,6 +841,15 @@ export class RegisterForm {
       return (
         "The connected account's balance has not been read, so the console cannot tell " +
         'whether you can afford this. Re-check it beside the cost.'
+      );
+    }
+    const refused = this.refused();
+    if (refused !== null) {
+      return (
+        'The test said this call fails, so registering it would escrow funds against an ' +
+        'upkeep that can never run. A selector is fixed in the box at registration and ' +
+        'cannot be corrected afterwards. Change the call, or re-test it.' +
+        (refused.failure === null ? '' : ` The target said: ${refused.failure}`)
       );
     }
     if (!this.value().attested) {
