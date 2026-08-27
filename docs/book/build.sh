@@ -2,6 +2,11 @@
 # Build the Arcron Working Guide to PDF and EPUB from the single Markdown source.
 # Requires: pandoc, and (for PDF) tectonic. Both installable via Homebrew:
 #   brew install pandoc tectonic
+#
+# The outputs are gitignored on purpose (see .gitignore here): they are build
+# products of arcron-working-guide.md, which is itself derived from `docs/`.
+# Committing them would put a fourth, undateable copy of every figure in a tree
+# that is otherwise entirely text.
 set -euo pipefail
 cd "$(dirname "$0")"
 SRC="arcron-working-guide.md"
