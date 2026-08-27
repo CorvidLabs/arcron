@@ -1,0 +1,151 @@
+# Prior art
+
+Somebody built a permissionless keeper network on Algorand before this one. It
+shipped to MainNet, it was funded by an Algorand Foundation grant, and it is
+effectively dead. Arcron is the second attempt, not the first, and the useful
+thing about the first is what it did differently.
+
+Researched 2026-08-26 from public sources. On-chain figures come from AlgoNode's
+MainNet indexer and have not been cross-checked against a second provider, so
+treat them as indicative rather than settled.
+
+## BiatecCron, the direct predecessor
+
+Built by [Ludovít Scholtz](https://github.com/scholtz), an established Algorand
+developer, under Algorand Foundation grant
+[xGov-90](https://github.com/algorandfoundation/xGov/blob/main/Proposals/xgov-90.md).
+Its [README](https://github.com/scholtz/BiatecCron) states the idea in terms
+that could be lifted from this repository:
+
+> Anyone can execute the tasks. Successful executor will receive reward set in
+> the smart contract.
+
+The architecture is close to this one. A singleton task manager holds a box per
+task with escrowed funds and a fee, and `executeTask` has no access control at
+all: it pays the fee to whoever sent the transaction.
+
+**Its record on MainNet** (app `1765620242`): 439 transactions in total, from
+2024-04-20 to 2026-04-09, and nothing since. Three tasks were ever registered,
+in two years, and all three belong to the author's own accounts. 431 of the 439
+transactions came from a single sender. Development stopped after one month. The
+npm package has 981 downloads in over two years. The forum post announcing it
+received no substantive replies.
+
+### What it did differently, and why that matters here
+
+Four differences stand out, and Arcron already chose the other way on each. That
+is not hindsight: they were chosen for other reasons, and this is the first
+evidence that they were the right ones.
+
+**The fee was paid in a token.** BiatecCron's MainNet deployment pays executors
+in ASA `1241944285`, a tokenised gold ASA issued by the same person running the
+network, worth about eight cents per execution. To keep, you had to opt into a
+niche asset, hold it, and value it. Arcron pays ALGO. This is the clearest
+difference and probably the most important one.
+
+**There was no fee escalation.** Changing a task's fee is creator-only and
+manual, so an underpriced task simply never runs, forever, unless its creator
+notices. Arcron's fee climbs toward a creator-set ceiling the longer an upkeep
+goes unserviced. No comparable system has this, on Algorand or off it: Chainlink
+charges a gas markup, Gelato charges a subscription, Keep3r's fee is set by the
+job.
+
+**Every task was its own deployed application**, generated from a visual builder
+through a compiler. Expensive to create, a bespoke bug surface each time, and
+onboarding a protocol meant extending a component library. An Arcron upkeep is a
+box in a registry naming a method that already exists.
+
+**The operator kept large powers with no way to give them up.**
+`updateApplication` is creator-gated with no freeze path, and the creator can
+move funds with an arbitrary sender. Arcron starts upgradeable too, which is
+disclosed on every page of the console, and `freeze` exists to end it.
+
+## AlgoRhythm, the ARC that was never submitted
+
+In January 2026, Paweł Pierścionek, CTO of AlgoNode, which runs the free public
+Algorand API infrastructure much of the ecosystem depends on, pushed
+[a draft ARC](https://github.com/algorandecosystem/algorhythm) titled
+"AlgoRhythm, a Decentralized Task Scheduler on Algorand" to the Algorand
+Foundation's own ecosystem organisation. Two commits, same day, never touched
+again. It ends in a TODO list whose entries include:
+
+> research decentralized competition
+> fee structure (anti spam + incentives)
+
+It was never submitted to the ARCs repository. The person best placed in the
+ecosystem to specify this sat down to do it, wrote that the incentive design was
+the unsolved part, and stopped.
+
+**There is no ARC covering scheduled execution, automation or keeper
+incentives**, and there never has been, not even as a submitted draft. The
+nearest neighbour is
+[ARC-58](https://github.com/algorandfoundation/ARCs/pull/269), plugin-based
+account abstraction, which has the permission half of this primitive and none of
+the economic half: a plugin can be callable by anyone, at most once every N
+rounds, until round X, with no escrow, fee or reward. It has been a draft for
+two and a half years.
+
+## The ecosystem hand-rolls half of this already
+
+[Réti](https://github.com/algorandfoundation/reti), the Algorand Foundation's
+staking pool contracts, carries this above `epochBalanceUpdate`:
+
+> Note: ANYONE can call this.
+
+with a guard preventing two calls in one epoch. There is no reward, so the
+caller pays the fee and gets nothing, and the expected caller is the validator's
+own manager account, which the contract keeps funded by skimming commission.
+Permissionlessness there is a liveness fallback rather than an incentive. That
+gap is what Arcron generalises, and it is worth knowing that the Foundation
+built half of it by hand rather than reaching for shared infrastructure.
+
+Folks Finance has permissionless liquidation, which works because the incentive
+is in the protocol and needs no keeper network. Subtopia, the ecosystem's only
+subscription platform, has no renew or charge method at all: it makes a
+subscription an expiring token the subscriber re-acquires, sidestepping
+automation entirely. The default answer to "recurring" on Algorand has been to
+restructure the problem so that nothing has to fire on a schedule.
+
+## What the wider industry did
+
+Measured against the definition used here, any account, no allowlist, no stake,
+no registration, no owner and no token, **none of the four best-known systems
+qualifies, and two have shut down.**
+
+Chainlink Automation gates on an active-transmitter set and advertised "no node
+competition" as a feature, to avoid users bidding against each other; its v1.x
+and v2.1 both sunset in 2026. Gelato's entry points check a single immutable
+address and it now sells a fiat subscription. OpenZeppelin Defender shut down in
+July 2026 with Actions given no successor. Keep3r's contracts are alive and
+skeletal: 42 registered jobs of which 30 have never been worked, 76 registered
+keepers of which 50 have never earned anything, and today one job served by two
+keepers.
+
+The Keep3r number worth carrying is this: sampling its whole history, **distinct
+active keepers peaked at six.** On Ethereum, at a peak TVL of $630M, with a
+token that traded in the four figures.
+
+## What this means for Arcron
+
+**Keeper diversity is small everywhere.** BiatecCron's single executor is not
+evidence that Algorand rejects the idea, because six was the ceiling on Ethereum
+at its richest. Designing for a competitive keeper market is designing for
+something that has never existed. Designing so that one or two keepers plus a
+credible open door is enough is designing for what happens.
+
+Read that way, the escalating fee is most valuable not as a competition
+mechanism but as the thing that recruits a second keeper when the first one
+stops, which is the failure that actually occurs.
+
+**The number to defend is not keeper count. It is users who are not us.**
+BiatecCron ran three tasks for two years and all three were the author's. That
+is the outcome to avoid, and it is a distribution problem rather than an
+engineering one. Arcron's own open question, in
+[`status.md`](status.md), is the same one: nobody who is not us has registered
+an upkeep yet.
+
+**Nothing here is a claim to be first.** The defensible claims are narrower and
+survive contact with this research: the only maintained permissionless keeper
+network on Algorand, fees in ALGO rather than a bespoke token, upkeeps as
+registry entries rather than generated contracts, and an escalating fee, which
+no comparable system has anywhere.

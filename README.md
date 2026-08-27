@@ -139,6 +139,12 @@ permissionless callers at their due rounds, with `Pulse.beats` incremented by
 every execution (rounds 66610411, 66611741, 66625540+, all verifiable on the
 explorer). Full reference: [`docs/arcron.md`](docs/arcron.md).
 
+**Prior art.** Somebody built a permissionless keeper network on Algorand
+before this one, on an Algorand Foundation grant, and it is dead:
+[`docs/prior-art.md`](docs/prior-art.md) records what BiatecCron did, what it
+did differently, and the draft ARC that was never submitted. Nothing here
+claims to be first.
+
 ## Development
 
 Pre-requisites: Python 3.13, [AlgoKit](https://github.com/algorandfoundation/algokit-cli),
