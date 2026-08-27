@@ -21,7 +21,8 @@ later"* without requiring a server, and Algorand does not have one. There is no
 ARC for scheduled execution and never has been. [`docs/why.md`](docs/why.md)
 makes the case at about a seventh the cost of the cheapest paid host, says
 where it stops being true (above ~10 upkeeps, run your own bot), and states
-plainly what would prove it wrong.
+plainly what would prove it wrong. [`docs/testnet.md`](docs/testnet.md)
+lists every contract and upkeep actually running.
 
 | Contract | What it is | Status |
 |----------|-----------|--------|

@@ -25,6 +25,7 @@ page.
 | **Run a keeper and get paid** | [`docs/hosting.md`](docs/hosting.md) | a machine, or a free GitHub Action |
 | **Break it** | [below](#if-you-came-to-break-it) | your time, and we want the findings |
 | **Judge whether the idea is any good** | [`docs/why.md`](docs/why.md) | ten minutes of reading |
+| **See what is actually running** | [`docs/testnet.md`](docs/testnet.md) | every contract and upkeep on TestNet |
 | **Read the whole thing, front to back** | [the Working Guide](docs/book/arcron-working-guide.md) | ~16,000 words |
 | **Tell us the idea is wrong** | [the open question](https://github.com/CorvidLabs/arcron/discussions/163) | we would rather hear it now |
 

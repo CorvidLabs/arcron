@@ -107,9 +107,58 @@ class Rain(ARC4Contract):
         # account created, which is how an NFT collection gates a draw. A
         # collection on Algorand is many assets rather than one, so the check
         # has to be on who minted them.
+        # 0 while the creator may still replace the programs, 1 once that is
+        # given up for good. Readable before anyone stakes anything, because a
+        # promise is only worth what it can be checked against.
+        #
+        # This contract is a demo and it iterates: the unit-name gate below was
+        # added after a deployment, and without an update path that meant a new
+        # app id, an abandoned draw and an upkeep re-pointed by hand. But it
+        # also holds entrants' money, so an upgradeable version is one the
+        # creator can change the rules under. Both are true, which is why it
+        # gets the keeper's arrangement rather than one or the other: cheap to
+        # iterate now, and a one-way door to close before the money matters.
+        self.frozen = GlobalState(UInt64(0))
         self.gate_creator = GlobalState(Account())
+        # Empty: the creator is the whole gate. Set: an asset must also carry a
+        # unit name starting with these bytes.
+        #
+        # This is not decoration. A minting account is usually somebody's
+        # working wallet, and the corvid.algo account on TestNet holds 31 live
+        # assets of which 15 belong to the collection; the rest are called
+        # things like `asdf` and `Test`. Gating on the creator alone would sell
+        # a ticket to any of them. The comparison is on bytes, so it is
+        # case-sensitive: `corvid` does not admit `Corvid`.
+        self.gate_unit_prefix = GlobalState(Bytes(b""))
         # Zero: the pot and the prize are ALGO. Set: both are this asset.
         self.prize_asset = GlobalState(UInt64(0))
+
+    @abimethod(allow_actions=["UpdateApplication"])
+    def update(self) -> None:
+        """Replace the programs. Creator only, and only before `freeze`.
+
+        A demo contract earns its keep by changing. Without this, adding the
+        unit-name gate meant deploying a new app, abandoning an open draw with
+        a prize in it, and re-pointing the upkeep that drives it.
+
+        It is still a real power: while `frozen` is 0 the creator can change
+        the rules under people who have already entered, and no statement of
+        intent removes that. Temporary by construction, readable on chain, and
+        given up before anyone is asked to rely on it.
+        """
+        assert Txn.sender == Global.creator_address, "Only the creator can update"
+        assert self.frozen.value == 0, "Frozen: the programs cannot be replaced"
+
+    @abimethod()
+    def freeze(self) -> None:
+        """Give up the ability to update, permanently. Creator only.
+
+        One way. Nothing sets `frozen` back to 0, and the only call that could
+        add such a path is an update, which is refused from here on.
+        """
+        assert Txn.sender == Global.creator_address, "Only the creator can freeze"
+        assert self.frozen.value == 0, "Already frozen"
+        self.frozen.value = UInt64(1)
 
     @abimethod()
     def configure(
@@ -117,6 +166,7 @@ class Rain(ARC4Contract):
         mbr_payment: gtxn.PaymentTransaction,
         beacon_app: UInt64,
         gate_creator: arc4.Address,
+        gate_unit_prefix: Bytes,
         prize_asset: UInt64,
     ) -> None:
         """Point at the beacon, and decide who may enter and what they win.
@@ -126,6 +176,11 @@ class Rain(ARC4Contract):
 
         `gate_creator` zero leaves entry open to anyone. Set to a collection's
         minting account, only holders of something it created may enter.
+
+        `gate_unit_prefix` narrows that further: empty accepts anything the
+        creator minted, set requires the asset's unit name to start with these
+        bytes. A minting account is usually somebody's working wallet with test
+        assets in it, so the creator alone is rarely the collection.
 
         `prize_asset` zero keeps the pot and the prize in ALGO. Set, both are
         that asset, and the app must opt in before it can be funded.
@@ -163,6 +218,7 @@ class Rain(ARC4Contract):
         assert mbr_payment.amount >= APP_BASE_MBR, "MBR payment too small"
         self.beacon_app.value = beacon_app
         self.gate_creator.value = gate_creator.native
+        self.gate_unit_prefix.value = gate_unit_prefix
         self.prize_asset.value = prize_asset
 
     @abimethod()
@@ -251,6 +307,14 @@ class Rain(ARC4Contract):
             # A project usually mints its prize token from the same account as
             # its collection, which would make holding the prize a ticket.
             assert gate_asset.id != self.prize_asset.value, "The prize is not a ticket"
+            # And the unit name, when one is required. The creator is the
+            # security property; this is what separates a collection from the
+            # rest of a working wallet.
+            prefix = self.gate_unit_prefix.value
+            if prefix.length > 0:
+                unit = gate_asset.unit_name
+                assert unit.length >= prefix.length, "Wrong collection"
+                assert op.substring(unit, 0, prefix.length) == prefix, "Wrong collection"
 
         index = self.tickets.value
         Box(Account, key=op.concat(TICKET_PREFIX, op.itob(index))).value = Txn.sender
