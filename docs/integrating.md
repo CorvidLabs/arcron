@@ -209,8 +209,8 @@ gone, schedule still broken. On a short cadence, catch-up after any real
 outage cannot catch up.
 
 `CATCH_UP` is still right for work where every period genuinely owes something
-— a metering hook that bills per interval, a distribution that must not skip a
-recipient. It is the wrong default for everything else, and it is never the
+(a metering hook that bills per interval, a distribution that must not skip a
+recipient). It is the wrong default for everything else, and it is never the
 right choice made by accident.
 
 `smart_contracts/subscription/` is the worked example. It had both bugs in
@@ -270,8 +270,8 @@ by default, through its `populate_app_call_resources` send parameter.
 
 **But its default populator caps at four direct account references and refuses a
 fifth**, which [`arcron.md`](arcron.md) measures against a real AVM. A hook
-needing five or six accounts is servable — Arcron spends 2 of the AVM's 8
-reference slots, leaving 6 — but *not* by a keeper that leans on the stock
+needing five or six accounts is servable, because Arcron spends 2 of the AVM's
+8 reference slots and leaves 6, but *not* by a keeper that leans on the stock
 populator. `scripts/keeper_bot.py` resolves references from its own simulation
 for exactly this reason.
 
