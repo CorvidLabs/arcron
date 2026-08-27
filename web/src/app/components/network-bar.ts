@@ -123,6 +123,11 @@ import type { NetworkKey } from '@corvidlabs/arcron/networks';
       gap: 0.6rem;
       color: inherit;
       text-decoration: none;
+      /* WCAG 2.5.5 wants 44x44. The mark is 26px and the wordmark sets the rest,
+         which left the whole link 32px tall and failing on every mobile page at
+         once, since this bar is on all of them. Growing the hit area rather than
+         the mark keeps the bar looking the same. */
+      min-height: 44px;
     }
     /* Underlining only the name, because underlining the mark looks like a
        rendering fault rather than a link. */
