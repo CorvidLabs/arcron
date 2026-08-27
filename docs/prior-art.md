@@ -82,8 +82,46 @@ nearest neighbour is
 [ARC-58](https://github.com/algorandfoundation/ARCs/pull/269), plugin-based
 account abstraction, which has the permission half of this primitive and none of
 the economic half: a plugin can be callable by anyone, at most once every N
-rounds, until round X, with no escrow, fee or reward. It has been a draft for
-two and a half years.
+rounds, until round X. It *does* have escrow — an Escrow Factory, and Flat,
+Window and Drip allowances, added since this page first described it as having
+none. But that escrow funds what the plugin spends on the user's behalf.
+**Nothing pays the account that calls it.** Every value-moving path in the
+reference `AbstractedAccount` is admin- or plugin-gated, and the example
+`SubscriptionPlugin` pays a hardcoded receiver, never `Txn.sender`. It has been
+a draft for two years and seven months.
+
+## xGov-116, the one that had the economics right
+
+The claim that nobody on Algorand built the economic half is **wrong**, and this
+is the counterexample.
+
+[xGov-116, "Subscription Payments"](https://github.com/algorandfoundation/xGov/blob/main/Proposals/xgov-116.md),
+by Kyle Beeding of Akita, was **approved and funded for 50,000 ALGO** in Period
+3, January 2024 — months before BiatecCron reached MainNet. Its own description:
+
+> The subscription acts as an escrow... The contract charges a 4% fee with 0.5%
+> going to the account that triggers the payment during a valid payment window.
+> ... the payment can be triggered by anyone (during the valid window)
+
+Escrow, a permissionless trigger, and a cut to whoever triggers it. That is the
+economic half, specified and Foundation-funded, two and a half years ago. One of
+its milestones was literally "Automatic Contract Calls".
+
+**It appears never to have shipped.** There is no public repository under the
+author's account. What did survive is its design: the author went on to
+co-write ARC-58, whose escrow and allowance system reads as this proposal's
+descendant — carrying the escrow across and dropping the payment to the
+triggerer, which is the half that makes it permissionless infrastructure rather
+than a wallet feature.
+
+It also complicates the line elsewhere on this page that Subtopia is the
+ecosystem's only subscription platform. It was the only one that *shipped*.
+
+**Nothing in 2026 changed this.** Algorand 5.0, the August 2026 consensus
+upgrade, brought post-quantum Falcon accounts, big transactions and AVM v13.
+None of it lets a contract wake itself up. The dev portal's own answer to
+recurring work is still `algokit-subscriber`, which documents running your own
+watcher on a cron.
 
 ## The ecosystem hand-rolls half of this already
 
@@ -173,8 +211,12 @@ engineering one. Arcron's own open question, in
 [`status.md`](status.md), is the same one: nobody who is not us has registered
 an upkeep yet.
 
-**Nothing here is a claim to be first.** The defensible claims are narrower and
-survive contact with this research: the only maintained permissionless keeper
+**Nothing here is a claim to be first, and xGov-116 is why.** Somebody
+specified escrow plus a permissionless trigger plus a cut to the triggerer, and
+was funded to build it, in January 2024. The idea has been had. What has not
+happened is somebody shipping it and keeping it running.
+
+The defensible claims are narrower and survive contact with this research: the only maintained permissionless keeper
 network on Algorand, fees in ALGO rather than a bespoke token, upkeeps as
 registry entries rather than generated contracts, and an escalating fee, which
 no comparable system has anywhere.
