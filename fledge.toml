@@ -78,10 +78,14 @@ web-serve = "cd web && bun run ng serve"
 # web/e2e/baseline.json with the reason it stands.
 #
 # In `local` rather than `ci` on one ground: it needs a Chromium build that
-# `web-render-install` fetches once (~150 MB), and `ci` has to stay runnable
-# from a cold checkout with nothing but poetry and bun, because the fork job
-# runs it on GitHub's shared runners on every pull request. The run itself is
-# about fifteen seconds including the Angular build, so speed is not the reason.
+# In the `ci` lane, because a check nobody runs is a report rather than a gate.
+# It was kept out to spare `ci` the one-time ~150 MB browser fetch, and the cost
+# of that was ten of forty checks failing on main and staying failed: the home
+# link rendered 32px tall against WCAG's 44, on every page at mobile width, in
+# both themes. Nothing else in the suite asks a browser for measurements, which
+# is the whole reason this exists. The run itself is about fifteen seconds
+# including the Angular build, so the fetch is the only cost, and it is paid
+# once per machine.
 web-render = "cd web && bunx playwright test"
 # One-time, per machine. Safe to re-run; it no-ops when the browser is present.
 web-render-install = "cd web && bunx playwright install chromium"
@@ -110,8 +114,8 @@ scenario = "poetry run python -m scripts.scenario --network localnet"
 race = "poetry run python -m scripts.keeper_race --network localnet"
 
 [lanes.ci]
-description = "Full CI pipeline: contracts + console, unit tests, spec drift check"
-steps = ["build", "test", "spec", "js-install", "js-test", "web-test", "web-build", "web-build-hosted", "web-verify-hosted"]
+description = "Full CI pipeline: contracts + console, unit tests, spec drift check, rendered-page audit"
+steps = ["build", "test", "spec", "js-install", "js-test", "web-test", "web-build", "web-build-hosted", "web-verify-hosted", "web-render"]
 
 [lanes.local]
 description = "CI plus the LocalNet end-to-end test and the console rendering audit (needs algokit localnet start, and web-render-install once)"
