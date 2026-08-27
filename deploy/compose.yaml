@@ -14,11 +14,13 @@ services:
       context: ..
       dockerfile: deploy/Dockerfile
     image: arcron-keeper
-    # Survive algod hiccups, node restarts and reboots. The bot backs off
-    # internally too, so this is the last line of defence, not the first.
-    restart: unless-stopped
     env_file: keeper.env
     command: ["--network", "testnet", "--log-format", "json"]
+    # A missing or half-filled keeper.env is a configuration mistake, and
+    # `restart: unless-stopped` turns that into a crash loop that scrolls the
+    # real error off the screen. Stop after a few tries so the message is the
+    # last thing in the log rather than the ten thousandth.
+    restart: on-failure:3
     # SIGTERM lets it finish the scan in flight before exiting.
     stop_signal: SIGTERM
     stop_grace_period: 30s
