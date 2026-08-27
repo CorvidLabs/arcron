@@ -133,6 +133,9 @@ permission to conclude that it does. Briefs of the form *"prove this is bad"*
 produce confident nonsense; we have run both and only the first kind found real
 bugs.
 
+[`docs/review-brief.md`](docs/review-brief.md) is that brief, written out and
+ready to paste. If somebody sent you here to review this, use it.
+
 ---
 
 ## If you are on the team
