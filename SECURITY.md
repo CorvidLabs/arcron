@@ -96,7 +96,7 @@ that app is unfrozen it can replace the app's programs, which means it can
 rewrite the rules and reach every escrow.
 
 On TestNet that key is `DEPLOYER_MNEMONIC`, a throwaway. **On MainNet it is
-the 3-of-5 multisig** `NHQU7QBDTUC4Q5I7LV3A35GGG36QUK5EL6PM4ZVBJKZ7AS6EDOU7BCRDWA`,
+the 2-of-3 multisig** `LUH77ATPWS4ZTCO7OZ3YM2DP5M2BXN53CHPFFQCFBATRFCYEB3NKTGMBNI`,
 and no single mnemonic can act for it. A MainNet deployment created from a
 single key would be the admin-key problem this whole section exists to avoid,
 permanently, because an app's creator cannot be changed afterwards. `poetry run python -m

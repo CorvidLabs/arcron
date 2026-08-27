@@ -332,7 +332,7 @@ ssh <user>@<host> 'sudo mkdir -p /tmp/arcron-install \
 
 ## Release stages
 
-Arcron is at **alpha-1**: running on TestNet, and redeployable at any time for
+Arcron is at **alpha-3**: running on TestNet, and redeployable at any time for
 any reason. Nothing here is a promise yet.
 
 | Stage | What is frozen | At stake |
@@ -416,7 +416,7 @@ invariants, error cases and testing. `specsync check --strict` runs in the
 - [x] ASA-denominated upkeep fees, a capability rather than a commitment: escrow and fees stay ALGO by default, and CORVID (mainnet ASA [`3225439167`](https://explorer.perawallet.app/asset/3225439167)) is not wired in
 - [x] End-to-end verification on LocalNet (`fledge lanes run local`), which found and fixed an 800 µALGO box-MBR undercharge
 - [x] Redeploy TestNet with the box-MBR fix: app [`769802474`](https://testnet.explorer.perawallet.app/application/769802474), e2e-verified on-chain
-- [x] Redeploy for the 1.0 contract, **alpha-1** on app [`769891898`](https://testnet.explorer.perawallet.app/application/769891898), all 20 e2e stages green on-chain
+- [x] Redeploy for the 1.0 contract, now **alpha-3** on app [`769891898`](https://testnet.explorer.perawallet.app/application/769891898), all 20 e2e stages green on-chain
 - [x] Web front end: registry dashboard + keeper console in `web/`
 - [x] Wallet signing (Pera, Defly, Lute, Exodus, Kibisis; KMD on LocalNet)
 - [x] Multi-arg call shapes, up to three ARC-4 arguments per upkeep
