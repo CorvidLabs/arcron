@@ -66,7 +66,14 @@ import type { NetworkKey } from '@corvidlabs/arcron/networks';
 
         <p class="status" [class]="statusClass()" role="status">
           <span class="dot" aria-hidden="true"></span>
-          <span class="mono">{{ statusLabel() }}</span>
+          @if (statusParts(); as parts) {
+            <span class="mono"
+              >{{ parts.chain }}<span class="part"> &middot; round {{ parts.round }}</span
+              ><span class="part pace"> &middot; {{ parts.pace }}</span></span
+            >
+          } @else {
+            <span class="mono">{{ statusLabel() }}</span>
+          }
         </p>
 
         <button
@@ -167,6 +174,50 @@ import type { NetworkKey } from '@corvidlabs/arcron/networks';
     .status.ready { color: var(--success); }
     .status.warn { color: var(--warning); }
     .status.bad { color: var(--danger); }
+
+    /* Mobile: a thinner header, not a forehead.
+
+       The bar wrapped at 390px into three stacked rows — wordmark and tagline,
+       then a status line long enough to wrap twice, then the theme toggle —
+       costing about 160px before any content on a 844px-tall viewport. Only a
+       screenshot shows this; every measurement in the audit passed while it
+       happened, because nothing there asks how much room the chrome takes.
+
+       Two attempts at this made it worse. flex-wrap:nowrap on the bar pushed
+       it 199px past the viewport and dragged the footer with it, because flex
+       children will not shrink below their content; adding flex:1-1-auto to
+       the controls did the same. Forbidding the wrap only hid that the content
+       did not fit. So nothing here touches the layout: it removes content and
+       shrinks type, and lets the existing wrap do what it already did. */
+    @media (max-width: 480px) {
+      /* The wordmark already says Arcron. "keeper network console" describes
+         the site to someone deciding whether to open it, which is not a thing a
+         phone user needs repeated above every page. */
+      .tagline {
+        display: none;
+      }
+
+      .wordmark {
+        font-size: 1.1rem;
+      }
+
+      .mark {
+        width: 22px;
+        height: 22px;
+      }
+
+      .status {
+        font-size: 0.72rem;
+      }
+
+      /* The chain and the round are what somebody checks on a phone: am I on
+         the right network, and is it moving. The round rate is a number you
+         read once and it is what makes this line wrap onto a third row. */
+      .status .pace {
+        display: none;
+      }
+    }
+    }
     .status .mono { color: var(--text-faint); }
     .status.bad .mono { color: var(--danger); }
   `,
@@ -205,6 +256,25 @@ export class NetworkBar {
     if (this.arcron.genesisMatches() === false) return 'bad';
     if (this.arcron.status() === 'connecting') return 'warn';
     return 'ready';
+  });
+
+  /**
+   * The healthy status, split so a phone can show less of it.
+   *
+   * Null whenever something is wrong, because the error strings are sentences
+   * and cutting a sentence in half to save room is how a warning stops
+   * warning. Those keep using statusLabel and wrap if they must.
+   */
+  protected readonly statusParts = computed<{ chain: string; round: string; pace: string } | null>(() => {
+    if (this.arcron.status() === 'error') return null;
+    if (this.arcron.genesisMatches() === false) return null;
+    if (this.arcron.status() === 'connecting') return null;
+    const basis = this.arcron.paceSource() === 'measured' ? '' : ' nominal';
+    return {
+      chain: this.arcron.genesisId() ?? '',
+      round: String(this.arcron.round()),
+      pace: `${this.arcron.secondsPerRound().toFixed(1)} s/round${basis}`,
+    };
   });
 
   protected readonly statusLabel = computed(() => {
