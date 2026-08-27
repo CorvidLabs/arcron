@@ -37,13 +37,34 @@ import { isExecutable } from '@corvidlabs/arcron/upkeep';
   styles: `
     .tiles {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(11.5rem, 1fr));
+      /* Explicit counts, because there are exactly four tiles and auto-fit does
+         not know that. It resolved to three columns between 600 and 900px,
+         leaving one empty cell, and to six at 1280 leaving two. The grid paints
+         its gaps from --hairline, so an empty cell is not space: it is a solid
+         block the colour of a border, which reads as a tile that failed to
+         render. Checking every width found the 1280 case, which a review of the
+         same component had not. */
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 1px;
       margin: 0;
       background: var(--hairline);
       border: 1px solid var(--hairline);
       border-radius: 3px;
       overflow: hidden;
+    }
+
+    /* One column when two would be cramped. */
+    @media (max-width: 26rem) {
+      .tiles {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
+
+    /* All four across once there is room, and never more than four. */
+    @media (min-width: 56rem) {
+      .tiles {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
     }
     .tile { background: var(--surface); padding: 0.9rem 1.1rem; }
     .tile dd { margin: 0.3rem 0 0; font-size: 1.35rem; font-weight: 500; letter-spacing: -0.01em; }
@@ -103,9 +124,34 @@ export class StatTiles {
     return `fastest every ~${duration(Number(fastest) * this.arcron.secondsPerRound())}`;
   });
 
-  protected readonly dueHint = computed(() =>
-    this.dueNow() > 0 ? 'executable by anyone, right now' : 'all caught up',
-  );
+  /**
+   * Upkeeps past their round that no keeper can run, because the escrow will
+   * not cover one fee.
+   *
+   * These are the reason the tile and the table appeared to disagree. The rows
+   * say "overdue by ~1 d 19 h" from the schedule, and `dueNow` counts only what
+   * is executable, so a registry showing six overdue rows above a tile reading
+   * "Due now 1" left the reader to work out that five of them were broke.
+   */
+  protected readonly starved = computed(() => {
+    const round = this.arcron.round();
+    return this.arcron
+      .upkeeps()
+      .filter((upkeep) => upkeep.nextExecutionRound <= round && !isExecutable(upkeep, round))
+      .length;
+  });
+
+  protected readonly dueHint = computed(() => {
+    const stuck = this.starved();
+    if (this.dueNow() === 0) {
+      return stuck > 0
+        ? `none executable; ${stuck} overdue but out of escrow`
+        : 'all caught up';
+    }
+    return stuck > 0
+      ? `executable by anyone; ${stuck} more overdue but out of escrow`
+      : 'executable by anyone, right now';
+  });
 
   protected readonly solvencyHint = computed(() => {
     const solvent = this.arcron.solvent();
