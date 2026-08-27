@@ -229,7 +229,7 @@ wrong at the moment of publication.
 ### A personal path in a committed review
 
 `docs/reviews/2026-08-26-grok-4.6-rescore.md:145` and `:159` contain
-`/Users/leif/Development/_CorvidLabs/_apps/nest/...` inside code-fence headers.
+`...` inside code-fence headers.
 Cosmetic, and it is also in history so removing it at HEAD does not remove it
 from the published clone. Not worth rewriting history for; worth fixing at HEAD
 so it is not the first thing a reader sees.

@@ -1,5 +1,9 @@
 # arcron
 
+[![CI](https://github.com/CorvidLabs/arcron/actions/workflows/ci.yml/badge.svg)](https://github.com/CorvidLabs/arcron/actions/workflows/ci.yml)
+[![Keeper bot](https://github.com/CorvidLabs/arcron/actions/workflows/keeper-bot.yml/badge.svg)](https://github.com/CorvidLabs/arcron/actions/workflows/keeper-bot.yml)
+[![Release drift](https://github.com/CorvidLabs/arcron/actions/workflows/release-drift.yml/badge.svg)](https://github.com/CorvidLabs/arcron/actions/workflows/release-drift.yml)
+
 **Arcron** is a permissionless keeper network for Algorand. Anyone registers
 a scheduled contract call, and any keeper executes it for the fee. By
 [CorvidLabs](https://github.com/CorvidLabs), built with Algorand Python
