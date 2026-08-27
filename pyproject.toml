@@ -13,12 +13,16 @@ python = ">=3.12,<3.14"
 algokit-utils = "^4.0.0"
 python-dotenv = "^1.0.0"
 algorand-python = "^3"
-algorand-python-testing = "^1"
 
 [tool.poetry.group.dev.dependencies]
 algokit-client-generator = "^2.1.0"
 puyapy = ">=5.0,<5.10"
 pytest = "^9.1.1"
+# Only tests/ import it, and it is what pulls in python-ecdsa, whose Minerva
+# P-256 timing advisory has no patched version. Algorand signs with Ed25519 and
+# nothing here touches P-256, but a testing library has no business in the
+# dependency set a keeper operator installs.
+algorand-python-testing = "^1"
 
 [build-system]
 requires = ["poetry-core"]
