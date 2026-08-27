@@ -65,10 +65,25 @@ Proven, and not worth re-proving:
 - A 20-stage end-to-end test passes on TestNet and finishes with the app
   account at exactly its minimum balance, so every escrowed microalgo was
   either paid to a keeper or refunded to its creator.
-- A simulation ran 1,008 executions across 96 upkeeps with three competing
-  keepers and came out exactly solvent.
+- A simulation ran 1,008 executions across 96 upkeeps with three keepers and
+  came out exactly solvent. Read that as a busy registry rather than as
+  competition: the three take turns, and until 2026-08-26 all three were
+  signing as the same account, because `scripts/scenario.py` funded three and
+  then let the bot take its signer from the environment.
 - A losing keeper pays nothing. Algorand rejects failing transactions at
   validation rather than including them, so there is no fee to pay.
+  Established twice over: by construction in `scripts/keeper_e2e.py` stage 14,
+  and, since 2026-08-27, between two keepers that genuinely collided on
+  TestNet.
+
+  **The first real race**, staged by `scripts/keeper_race.py`: two keeper bots
+  aligned to the same barrier both scanned round 66703234 and both found
+  upkeeps 71 and 75 due. They split the registry, each winning one and losing
+  the other, which is the first time anything but a queue has happened here.
+  On upkeep 75 the winner's `SFOP56PA…` is in block 66703238; the loser's
+  `KXTAGVSR…` is in no block and no indexer, and the loser's balance moved by
+  zero. A second run at round 66703289 reproduced it the other way round, with
+  `RWZRK7WB…` winning and `OMTXGJQT…` thrown away.
 
 Genuinely unknown, and only answerable by other people:
 

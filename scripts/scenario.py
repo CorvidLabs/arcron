@@ -1,10 +1,15 @@
-"""A populated network, not a demonstration: many actors, competing keepers.
+"""A populated network, not a demonstration: many actors, several keepers.
 
 Every other script here proves one property in isolation, which is what makes
 them readable and what makes them miss things. Bugs in a system like this live
 in the interactions: an upkeep that starves while another escalates, a keeper
-that wins one race and loses the next, a registry with enough in it that the
-bot's ordering matters.
+that takes work a moment before another would have, a registry with enough in
+it that the bot's ordering matters.
+
+The keepers here take turns rather than collide, which is what makes the
+registry-wide claims below meaningful and is not the same thing as
+competition. `scripts/keeper_race.py` is where two keepers reach for the same
+upkeep in the same round.
 
 So this builds a small economy and runs it. Nothing is asserted about any
 single upkeep. What is asserted is what has to be true of the whole registry
@@ -19,9 +24,11 @@ Run:  poetry run python -m scripts.scenario [--network localnet] [--rounds N]
 
 import argparse
 import logging
+import os
 import random
 
 import algokit_utils
+from algosdk import mnemonic
 from algosdk.logic import get_application_address
 
 from scripts import keeper_bot, network as net
@@ -131,17 +138,29 @@ def main(argv: list[str] | None = None) -> None:
     _assert("solvent before anything runs", solvent(), True)
 
     # ------------------------------------------------------------------
-    logger.info(f"── Running {args.rounds} rounds with {KEEPERS} keepers competing ──")
+    logger.info(f"── Running {args.rounds} rounds, {KEEPERS} keepers taking the work ──")
+    # They arrive one after another rather than at once, so this is a queue and
+    # not a race: whoever the shuffle puts first takes the due work and the
+    # others find an empty registry. That is the right shape for what this
+    # script asserts, which is about the registry as a whole rather than about
+    # who won. A genuine collision, two keepers reaching for the same upkeep
+    # in the same round, is staged by `scripts/keeper_race.py`.
+    #
+    # Each keeper does have to be its own account, though. Three funded
+    # accounts were created above and then never used to sign anything: the bot
+    # takes its signer from the environment, so every one of these invocations
+    # signed as the same KEEPER, and a registry serviced by one account cannot
+    # show anything about several.
     start = algod.status()["last-round"]
     target = start + args.rounds
     executions = 0
-    races_lost = 0
+    refused = 0
     checks = 0
 
     while algod.status()["last-round"] < target:
-        # Keepers do not take turns politely in the real world.
         rng.shuffle(keepers)
         for account in keepers:
+            os.environ["KEEPER_MNEMONIC"] = mnemonic.from_private_key(account.private_key)
             with _quiet():
                 try:
                     keeper_bot.main([
@@ -151,7 +170,7 @@ def main(argv: list[str] | None = None) -> None:
                 except SystemExit:
                     pass
                 except Exception:
-                    races_lost += 1
+                    refused += 1
         net.wait_for_round(algorand, algod.status()["last-round"] + 10, poker=founder)
         checks += 1
         if not solvent():

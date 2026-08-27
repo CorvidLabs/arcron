@@ -23,6 +23,7 @@ TestNet (app 769891898; 769802474 and 769772891 are superseded, predating the
 - Specs: `specsync check --strict`
 - End-to-end: `poetry run python -m scripts.keeper_e2e --network localnet|testnet`
 - Keeper bot: `poetry run python -m scripts.keeper_bot [--once] [--network N] [--app-id N]`
+- Keeper race: `poetry run python -m scripts.keeper_race --network localnet` (two real bots, one due upkeep, aligned to the same barrier; exits non-zero if they did not actually collide)
 
 ## 1.0 scope (decided 2026-08-24)
 

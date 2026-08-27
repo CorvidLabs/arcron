@@ -18,6 +18,7 @@ the same upkeep instead of taking turns at it.
 
 import argparse
 import base64
+import contextlib
 import json
 import logging
 import os
@@ -366,6 +367,44 @@ def _decode_upkeep(upkeep_id: int, raw: bytes) -> Upkeep:
     )
 
 
+@contextlib.contextmanager
+def muffled(active: bool):
+    """Keep algokit-utils' own error dump out of a JSON log stream.
+
+    `--log-format json` promises one object per line, and that promise is what
+    a log shipper is built on. A rejected execution makes algokit-utils print a
+    multi-line traceback through the root logger, which turns the most
+    interesting event a keeper has, losing a race, into forty lines of noise
+    with the structured record buried in them.
+
+    Nothing is lost by muting it: the bot re-emits the node's own text as the
+    `reason` field of the event it raises itself. Left alone in text mode,
+    where a person is reading and the traceback is the useful part.
+    """
+    if not active:
+        yield
+        return
+    previous = logging.root.manager.disable
+    logging.disable(logging.CRITICAL)
+    try:
+        yield
+    finally:
+        logging.disable(previous)
+
+
+def _balance(algod, address: str) -> int | None:
+    """What an account holds, or None if the node would not say.
+
+    Used either side of an execution to price a lost race, where the answer is
+    evidence rather than control flow: a keeper must not stop working because
+    it could not measure something.
+    """
+    try:
+        return algod.account_info(address)["amount"]
+    except Exception:
+        return None
+
+
 def failure_text(exc: Exception) -> str:
     """Everything the node said, not just what the client chose to show.
 
@@ -379,12 +418,23 @@ def failure_text(exc: Exception) -> str:
 
 
 def read_upkeep(algod, app_id: int, upkeep_id: int) -> Upkeep | None:
-    """One upkeep, or None if its box is gone (cancelled, or never existed)."""
+    """One upkeep, or None if its box is gone (cancelled, or never existed).
+
+    Only a genuine "no such box" is None; everything else the node says is
+    raised. The difference matters more than it looks: a missing box is read
+    as an upkeep that was cancelled mid-flight, which is a lost race and backs
+    nothing off. Swallowing every error here would turn a rate-limited public
+    endpoint, and free TestNet nodes return 403 under load, into "the upkeep is
+    gone". That is how this was found, and a keeper would sail through an
+    outage believing it had lost a hundred races.
+    """
     name = b"u" + upkeep_id.to_bytes(8, "big")
     try:
         raw = _as_bytes(algod.application_box_by_name(app_id, name)["value"])
-    except Exception:
-        return None
+    except Exception as exc:
+        if getattr(exc, "code", None) == 404 or "box not found" in str(exc).lower():
+            return None
+        raise
     return _decode_upkeep(upkeep_id, raw)
 
 
@@ -795,6 +845,7 @@ def main(argv: list[str] | None = None) -> None:
             for upkeep in due:
                 if shutdown.requested:
                     break
+                balance_before = None
                 try:
                     # An upkeep offering an ASA bonus sends a third inner
                     # transaction when the bonus is actually paid, and only a
@@ -822,20 +873,21 @@ def main(argv: list[str] | None = None) -> None:
                     # number is the whole argument for running a keeper at all
                     # (docs/arcron.md), and until now nothing but a controlled
                     # experiment had ever measured it.
-                    balance_before = algod.account_info(keeper.address)["amount"]
-                    response = client.send.execute(
-                        args=ExecuteArgs(upkeep_id=upkeep.upkeep_id),
-                        params=_resolve_execute_references(client, upkeep, extra_fee),
-                        # Every reference the call needs is already named
-                        # directly by _resolve_execute_references, so the
-                        # populator has nothing left to add. It is told not
-                        # to run at all rather than left to try: its own
-                        # spreader still caps at four direct accounts, which
-                        # this sidesteps rather than collides with.
-                        send_params=algokit_utils.SendParams(
-                            populate_app_call_resources=False
-                        ),
-                    )
+                    balance_before = _balance(algod, keeper.address)
+                    with muffled(as_json):
+                        response = client.send.execute(
+                            args=ExecuteArgs(upkeep_id=upkeep.upkeep_id),
+                            params=_resolve_execute_references(client, upkeep, extra_fee),
+                            # Every reference the call needs is already named
+                            # directly by _resolve_execute_references, so the
+                            # populator has nothing left to add. It is told not
+                            # to run at all rather than left to try: its own
+                            # spreader still caps at four direct accounts, which
+                            # this sidesteps rather than collides with.
+                            send_params=algokit_utils.SendParams(
+                                populate_app_call_resources=False
+                            ),
+                        )
                     executed_count += 1
                     backoff.record_success(upkeep.upkeep_id)
                     # Price it at the round it confirmed in, not the round it
@@ -882,16 +934,33 @@ def main(argv: list[str] | None = None) -> None:
                         # to look up afterwards. This line is the only record
                         # the race ever gets, which is why it carries the
                         # winner and the cost rather than just an apology.
-                        spent = balance_before - algod.account_info(keeper.address)["amount"]
-                        won_at = after.last_serviced_round if after else 0
+                        balance_after = _balance(algod, keeper.address)
+                        spent = (
+                            None
+                            if balance_before is None or balance_after is None
+                            else balance_before - balance_after
+                        )
+                        # Only name a winner when the registry has actually
+                        # moved. Observed on TestNet: a keeper refused while
+                        # the winner's transaction was still in the pool read
+                        # `last_serviced_round` from *before* this race and
+                        # reported the keeper who serviced the upkeep an hour
+                        # earlier. A stale attribution is worse than none,
+                        # which is the same mistake as reading a target's
+                        # error text and believing it.
+                        won_at = after.last_serviced_round if (moved and after) else 0
                         winner = find_winner(algod, app_id, upkeep.upkeep_id, won_at)
                         emit(
                             "race_lost",
                             f"Lost upkeep {upkeep.upkeep_id} to "
                             f"{winner or 'another keeper'}"
                             + (f" at round {won_at}" if won_at else "")
-                            + f"; forfeited {effective_fee(upkeep, current)} µALGO "
-                            f"and paid {spent} µALGO to find out",
+                            + f"; forfeited {effective_fee(upkeep, current)} µALGO"
+                            + (
+                                f" and paid {spent} µALGO to find out"
+                                if spent is not None
+                                else " (what it cost went unmeasured)"
+                            ),
                             round=current,
                             upkeep_id=upkeep.upkeep_id,
                             target_app=upkeep.target_app,

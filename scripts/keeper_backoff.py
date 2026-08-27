@@ -49,7 +49,7 @@ RACE_MESSAGES = ("not due", "upkeep not found")
 # text: one asserting "cooldown not due" would otherwise read as another
 # keeper having won, and be retried forever. The target cannot suppress the
 # marker, because the node writes it, and a keeper-side refusal never carries
-# one — `execute` checks the schedule before it calls anything.
+# one, because `execute` checks the schedule before it calls anything.
 #
 # This replaces an earlier check for "executing Keeper" in the message. That
 # string is not written by algod at all: `algokit-utils` renders it from the

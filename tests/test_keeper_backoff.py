@@ -237,7 +237,7 @@ def test_the_registry_moving_on_is_a_lost_race_whatever_the_error_said(
     """The shape a message-only classifier gets wrong on a public network.
 
     A losing keeper's transaction is not always refused at broadcast. Its own
-    node can accept it — the winner's has not reached that node yet — and then
+    node can accept it, because the winner's has not reached that node yet, and then
     it simply never lands, so what comes back is a timeout that mentions
     neither "not due" nor anything else a keeper could read. Backing off on
     that would punish an upkeep for being popular.

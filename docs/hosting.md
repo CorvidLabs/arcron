@@ -93,9 +93,81 @@ The things that are not about money:
 - **Each run is a fresh process**, so `scripts/keeper_backoff.py` has no memory
   between runs and a persistently failing upkeep is retried every time.
 
-Good as a backstop next to a real keeper. Two keepers running from
-different places is also a more honest demonstration of the network's premise
-than one.
+Good as a backstop next to a real keeper.
+
+### B2. The second keeper, and why it is not just a backup
+
+`.github/workflows/keeper-bot-2.yml` is a second keeper on the *same* cron as
+the first, signing from `KEEPER_2_MNEMONIC`. It exists to make the thing this
+project asserts actually happen.
+
+Arcron's economic argument is that competition between keepers holds the fee
+below the ceiling, and that competing is safe because losing a race costs
+nothing. Neither had ever occurred on a real chain. One keeper serviced
+TestNet, it won everything by default, and a keeper that never loses a race is
+no evidence at all about what losing costs.
+
+**An offset schedule does not race.** This is the part that is easy to get
+wrong. Two keepers thirty minutes apart never contend for anything: the first
+takes every due upkeep, the second arrives to an empty registry. That looks
+like redundancy and is a queue. Even the same cron is not enough on its own,
+because two runners finish installing dependencies tens of seconds apart, and
+the slower one finds the work already done.
+
+So both workflows pass `--align 120`, which holds the first scan until the
+next whole two-minute mark in UTC. Runner clocks are NTP-synced, so an
+absolute instant is the one thing two machines that have never met can agree
+on. Both then scan in the same round window and reach for the same upkeep,
+which is what a race is. Nothing about the barrier is specific to GitHub or to
+this repository: a keeper on a VPS can join it with the same flag.
+
+The two workflows keep **separate concurrency groups**. Sharing one would
+queue the second behind the first, which is exactly the arrangement being
+avoided.
+
+#### What the owner runs
+
+The secret is a credential, so it is the owner's to create. Three commands,
+none of which write the mnemonic anywhere:
+
+```bash
+# 1. A new account. Nothing is saved; copy the mnemonic straight into step 3.
+poetry run python - <<'PY'
+from algosdk import account, mnemonic
+private_key, address = account.generate_account()
+print(f"address:  {address}")
+print(f"mnemonic: {mnemonic.from_private_key(private_key)}")
+PY
+
+# 2. Fund it on TestNet. A couple of ALGO is plenty; fees top it up.
+#    Or paste the address into https://bank.testnet.algorand.network/
+algokit dispenser fund --receiver <address> --amount 2000000
+
+# 3. Hand the mnemonic to the workflow, and to nothing else.
+gh secret set KEEPER_2_MNEMONIC --repo CorvidLabs/nest
+```
+
+It must be a **different** account from `KEEPER_MNEMONIC`. One account cannot
+race itself, and two jobs signing as the same address would collide on the
+transaction id rather than on the upkeep. Until the secret exists the second
+workflow skips itself with a notice, the same way the first one does, so
+turning the schedule on early produces a green run and an explanation rather
+than a failure every half hour that everyone learns to ignore.
+
+#### What it costs
+
+Two keepers is two runs, and `--align 120` adds about a minute of waiting to
+each. Against the table above:
+
+| | Runs/month | Minutes | Cost beyond the 3,000-minute allowance |
+|---|---|---|---|
+| one keeper, no barrier | 1,440 | ~2,900 | free |
+| two keepers, `--align 120` | 2,880 | ~8,600 | ~$45/month |
+
+That is the price of the demonstration, and it is worth checking against what
+the demonstration is for. Once a race has been observed and recorded, the
+second keeper can drop to a slower cron, or move to a host that is already
+running: the barrier works between a workflow and a VPS just as well.
 
 ### C. A small always-on host
 
@@ -130,3 +202,54 @@ poetry run python -m scripts.keeper_bot --check --network testnet --app-id <id>
 
 exits non-zero if the registry has due upkeeps nobody is servicing, which is
 the one-line health check to hang a monitor on.
+
+## Seeing a race afterwards
+
+A race leaves almost no trace, and that is the point of it. Algorand rejects a
+failing transaction at validation, so the losing keeper's execution never
+reaches a block: there is nothing to query later, no receipt, no fee, no entry
+in any explorer. Only the winner's transaction exists.
+
+So the losing keeper's own log is the record, and it is written to carry
+everything an outsider would need to check it. This one is real, from the
+first race that ever happened on TestNet, at round 66703234:
+
+```json
+{"event": "race_lost", "round": 66703234, "upkeep_id": 75,
+ "target_app": 769891902,
+ "winner": "NUGVPQGZCURNU4CBHQ2IMXCY4UO2VI3VYCBWKCATL4OAKBJAT4MUTQMBVU",
+ "won_at_round": 66703238, "fee_forgone": 4000, "spent": 0,
+ "registry_advanced": true,
+ "tx_id": "KXTAGVSRJAYXTUGRGA5VY73SLRRH2YGUKIB7YIFOEUBWM4P7XDXQ"}
+```
+
+Every field there can be checked against the chain by somebody who does not
+trust the keeper that wrote it:
+
+- `won_at_round` and `winner` come from the upkeep's own box and from the
+  block that upkeep was serviced in. Read the block; the winner's execution is
+  in it.
+- `spent` is a balance read either side of the rejected call. It is `0`, and
+  that number is the whole argument for running a keeper: **losing costs
+  nothing**, which is not true on chains where a revert still burns gas.
+- `tx_id` is the transaction that was thrown away. Look it up in an indexer
+  and it is not there, because it never was. That absence is the claim.
+- `registry_advanced` says whether the box had moved when the loser looked. It
+  is often `false`, because the winner's transaction can still be in the pool
+  a moment after it has already beaten you, and then `winner` and
+  `won_at_round` are `null` rather than a guess. A keeper that reported the
+  account which serviced the upkeep an hour earlier would be worse than one
+  that said nothing.
+
+To produce one on purpose rather than waiting for the schedule:
+
+```bash
+poetry run python -m scripts.keeper_race --network localnet
+poetry run python -m scripts.keeper_race --network testnet \
+    --app-id 769891898 --target-app 769891902
+```
+
+It registers a fast upkeep, starts two real keeper bots against the same
+barrier, and then makes the checks above itself. It exits non-zero when the
+two keepers did not actually collide, because a run in which they politely
+took turns proves nothing and should not read as a pass.
