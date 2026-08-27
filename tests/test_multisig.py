@@ -14,14 +14,23 @@ from scripts import multisig as ms
 # Real addresses, chosen because their properties are the point.
 LEDGER = "X2OF75PUW34XMTY2QW7ZTXH2XHDREVH4ZRDDHFXJNJHXJEEPSWWB4T73AQ"
 CORVID = "WGSHC4TYKYBS6EX5V5E377BQDLKWIIPBCFOLZQZIXCKHFIEKRPBFOMW25A"
-HOT = "WOX2O7LDLN74QDQYDJRUHGBLAH3JBEUYAFJO6FQL4P2EXV33VYAR536BBY"
-KYN = "EN3QXMNA4CRHIAOIAJUH4TBH2XDC5UF5GVSYFHLHNE7IOPLZYJMHXGG3BI"
+# Not members of anything. Several cases need an address that belongs to
+# nobody in particular, and a real-looking one reads better than a made-up
+# one. These were named OUTSIDER and ANOTHER while the plan was a 2-of-3 drawn from
+# five candidates; publishing which key is the hot one is a signal that
+# cannot be taken back, and now that neither is a member the label bought
+# nothing.
+OUTSIDER = "WOX2O7LDLN74QDQYDJRUHGBLAH3JBEUYAFJO6FQL4P2EXV33VYAR536BBY"
+ANOTHER = "EN3QXMNA4CRHIAOIAJUH4TBH2XDC5UF5GVSYFHLHNE7IOPLZYJMHXGG3BI"
 GASPAR = "DEXWEZGRX3Q6B2S3GVO74MUN54XA3JI5GQFVGNK64JYPD4NCFRK4G5ACVY"
 # A post-quantum Falcon account. A valid Algorand address whose 32 bytes are a
 # hash rather than a curve point, so no ed25519 key corresponds to it.
 FALCON = "B5JC6CBSTBT4IHX2RC7BC4TJYHJYOUOMRDTMVMOEIEXICAYDFYZCI2SUTY"
 
-SIGNERS = [LEDGER, CORVID, HOT, KYN, GASPAR]
+# The MainNet creator, as decided in issue #79. Order is part of the
+# address, so this list is the address.
+SIGNERS = [LEDGER, CORVID, GASPAR]
+
 
 
 @pytest.fixture()
@@ -38,31 +47,31 @@ def test_a_falcon_account_is_refused(configured) -> None:
 
     A post-quantum account is a perfectly good Algorand account that can never
     produce an ed25519 subsignature. Nothing complains on its own: the address
-    derives normally, and the result reads as a 3 of 5 while behaving as a
-    3 of 4. Whoever held two of the remaining four would silently lose the
-    ability to act alone.
+    derives normally, and the result reads as a 2 of 3 while behaving as a
+    2 of 2: the other two holders must both sign, every time, and the
+    redundancy the third member was there to provide does not exist.
     """
-    configured(3, [FALCON, LEDGER, CORVID, KYN, GASPAR])
+    configured(2, [FALCON, LEDGER, GASPAR])
     with pytest.raises(RuntimeError, match="cannot take part in a multisig"):
         ms.address()
 
 
 def test_the_real_signers_are_accepted(configured) -> None:
-    configured(3, SIGNERS)
-    assert ms.address() == "NHQU7QBDTUC4Q5I7LV3A35GGG36QUK5EL6PM4ZVBJKZ7AS6EDOU7BCRDWA"
-    assert ms.describe().startswith("3 of 5 at ")
+    configured(2, SIGNERS)
+    assert ms.address() == "LUH77ATPWS4ZTCO7OZ3YM2DP5M2BXN53CHPFFQCFBATRFCYEB3NKTGMBNI"
+    assert ms.describe().startswith("2 of 3 at ")
 
 
 def test_order_changes_the_address(configured) -> None:
     """Two people comparing sets in different orders would not match."""
-    configured(3, SIGNERS)
+    configured(2, SIGNERS)
     one = ms.address()
     configured(3, [SIGNERS[1], SIGNERS[0]] + SIGNERS[2:])
     assert ms.address() != one
 
 
 def test_an_impossible_threshold_is_refused(configured) -> None:
-    configured(6, SIGNERS)
+    configured(4, SIGNERS)
     with pytest.raises(RuntimeError, match="impossible"):
         ms.address()
     configured(0, SIGNERS)
@@ -71,8 +80,8 @@ def test_an_impossible_threshold_is_refused(configured) -> None:
 
 
 def test_a_repeated_signer_is_refused(configured) -> None:
-    """It would read as 3 of 5 while one holder counted twice."""
-    configured(3, [LEDGER, LEDGER, CORVID, KYN, GASPAR])
+    """It would read as 2 of 3 while one holder counted twice."""
+    configured(2, [LEDGER, LEDGER, GASPAR])
     with pytest.raises(RuntimeError, match="twice"):
         ms.address()
 
@@ -136,9 +145,9 @@ def test_a_rekey_of_the_multisig_is_refused(configured, tmp_path) -> None:
     """
     from algosdk import transaction
 
-    configured(3, SIGNERS)
+    configured(2, SIGNERS)
     txn = transaction.PaymentTxn(
-        sender=ms.address(), sp=_params(), receiver=ms.address(), amt=0, rekey_to=HOT
+        sender=ms.address(), sp=_params(), receiver=ms.address(), amt=0, rekey_to=OUTSIDER
     )
     reasons = _refusals(_write(tmp_path, txn))
     assert any("REKEYS" in r for r in reasons), reasons
@@ -148,9 +157,9 @@ def test_a_rekey_of_the_multisig_is_refused(configured, tmp_path) -> None:
 def test_a_close_of_the_multisig_is_refused(configured, tmp_path) -> None:
     from algosdk import transaction
 
-    configured(3, SIGNERS)
+    configured(2, SIGNERS)
     txn = transaction.PaymentTxn(
-        sender=ms.address(), sp=_params(), receiver=ms.address(), amt=0, close_remainder_to=HOT
+        sender=ms.address(), sp=_params(), receiver=ms.address(), amt=0, close_remainder_to=OUTSIDER
     )
     assert any("CLOSES" in r for r in _refusals(_write(tmp_path, txn)))
 
@@ -164,9 +173,9 @@ def test_a_file_for_another_network_is_refused(configured, tmp_path) -> None:
     """
     from algosdk import transaction
 
-    configured(3, SIGNERS)
+    configured(2, SIGNERS)
     txn = transaction.PaymentTxn(
-        sender=ms.address(), sp=_params(genesis_id="mainnet-v1.0"), receiver=HOT, amt=0
+        sender=ms.address(), sp=_params(genesis_id="mainnet-v1.0"), receiver=OUTSIDER, amt=0
     )
     assert any("mainnet-v1.0" in r for r in _refusals(_write(tmp_path, txn)))
 
@@ -175,9 +184,9 @@ def test_an_inflated_fee_is_refused(configured, tmp_path) -> None:
     """A fee is spent whether or not the transaction does anything."""
     from algosdk import transaction
 
-    configured(3, SIGNERS)
+    configured(2, SIGNERS)
     txn = transaction.PaymentTxn(
-        sender=ms.address(), sp=_params(fee=5_000_000), receiver=HOT, amt=0
+        sender=ms.address(), sp=_params(fee=5_000_000), receiver=OUTSIDER, amt=0
     )
     assert any("above the" in r for r in _refusals(_write(tmp_path, txn), allow_account_txn=True))
 
@@ -191,12 +200,15 @@ def test_a_file_spending_from_a_different_account_is_refused(configured, tmp_pat
     """
     from algosdk import transaction
 
-    configured(2, SIGNERS)
+    # A different multisig entirely, so the sender genuinely is not the
+    # configured account. Threshold is what differs here; the members are the
+    # same, which is the near-miss worth catching.
+    configured(3, SIGNERS)
     stranger = ms.address()
-    txn = transaction.PaymentTxn(sender=stranger, sp=_params(), receiver=HOT, amt=0)
+    txn = transaction.PaymentTxn(sender=stranger, sp=_params(), receiver=OUTSIDER, amt=0)
     path = _write(tmp_path, txn)
 
-    configured(3, SIGNERS)
+    configured(2, SIGNERS)
     assert any("spends from" in r for r in _refusals(path, allow_account_txn=True))
 
 
@@ -208,7 +220,7 @@ def test_a_genuine_update_of_the_named_app_is_allowed(configured, tmp_path) -> N
     """
     from algosdk import transaction
 
-    configured(3, SIGNERS)
+    configured(2, SIGNERS)
     txn = transaction.ApplicationUpdateTxn(
         sender=ms.address(), sp=_params(), index=769891898,
         approval_program=b"\x0a\x81\x01", clear_program=b"\x0a\x81\x01",
@@ -237,16 +249,16 @@ def test_mainnet_refuses_a_multisig_that_is_not_the_expected_one(configured) -> 
     """Member order is part of the address, so this catches a permutation too."""
     from scripts import network as net
 
-    configured(3, [CORVID, LEDGER, HOT, KYN, GASPAR])  # LEDGER and CORVID swapped
+    configured(2, [CORVID, LEDGER, GASPAR])  # LEDGER and CORVID swapped
     with pytest.raises(RuntimeError, match="not the expected"):
         net.require_mainnet_multisig()
 
 
-def test_mainnet_accepts_the_real_three_of_five(configured) -> None:
+def test_mainnet_accepts_the_real_two_of_three(configured) -> None:
     """A gate that refuses the intended creator is an outage, not a gate."""
     from scripts import network as net
 
-    configured(3, SIGNERS)
+    configured(2, SIGNERS)
     assert ms.address() == net.MAINNET_CREATOR
     net.require_mainnet_multisig()
 
@@ -293,7 +305,7 @@ def _create_txn(sender: str):
 
 
 def test_show_names_every_permanent_field_of_a_create(configured, tmp_path) -> None:
-    configured(3, SIGNERS)
+    configured(2, SIGNERS)
     described = "\n".join(ms.describe_transaction(_write(tmp_path, _create_txn(ms.address()))))
     assert "CREATES A NEW APPLICATION" in described
     assert "extra pages   1" in described
@@ -305,14 +317,14 @@ def test_show_names_every_permanent_field_of_a_create(configured, tmp_path) -> N
 
 def test_sign_refuses_programs_that_are_not_this_tree(configured, tmp_path) -> None:
     """Printing a digest asks somebody to compare it. This is the comparison."""
-    configured(3, SIGNERS)
+    configured(2, SIGNERS)
     path = _write(tmp_path, _create_txn(ms.address()))
     reasons = _refusals(path, app_id=0, expected_digest="0" * 64)
     assert any("not the ones this working tree compiles to" in r for r in reasons), reasons
 
 
 def test_sign_accepts_programs_that_are_this_tree(configured, tmp_path) -> None:
-    configured(3, SIGNERS)
+    configured(2, SIGNERS)
     path = _write(tmp_path, _create_txn(ms.address()))
     carried = ms.carried_programs(path)
     assert carried is not None
@@ -354,7 +366,7 @@ def test_a_machine_with_no_multisig_configured_is_told_it_checked_nothing(
     monkeypatch.setenv(ms.THRESHOLD_VAR, "3")
     monkeypatch.setenv(ms.ADDRESSES_VAR, ",".join(SIGNERS))
     path = _write(tmp_path, transaction.PaymentTxn(
-        sender=ms.address(), sp=_params(), receiver=HOT, amt=0
+        sender=ms.address(), sp=_params(), receiver=OUTSIDER, amt=0
     ))
     monkeypatch.delenv(ms.ADDRESSES_VAR, raising=False)
     monkeypatch.delenv(ms.THRESHOLD_VAR, raising=False)
@@ -374,10 +386,10 @@ def test_an_asset_close_is_refused_like_a_rekey(configured, tmp_path) -> None:
     """
     from algosdk import transaction
 
-    configured(3, SIGNERS)
+    configured(2, SIGNERS)
     path = _write(tmp_path, transaction.AssetTransferTxn(
-        sender=ms.address(), sp=_params(), receiver=HOT, amt=0, index=42,
-        close_assets_to=HOT,
+        sender=ms.address(), sp=_params(), receiver=OUTSIDER, amt=0, index=42,
+        close_assets_to=OUTSIDER,
     ))
     reasons = _refusals(path, app_id=0, allow_account_txn=True)
     assert any("CLOSES an asset holding" in r for r in reasons), reasons
@@ -394,7 +406,7 @@ def test_an_update_that_also_resizes_the_app_is_described_and_refused(
     """
     from algosdk import transaction
 
-    configured(3, SIGNERS)
+    configured(2, SIGNERS)
     txn = transaction.ApplicationUpdateTxn(
         sender=ms.address(), sp=_params(), index=769891898,
         approval_program=b"\x0a\x81\x01", clear_program=b"\x0a\x81\x01",
@@ -409,7 +421,7 @@ def test_an_update_that_also_resizes_the_app_is_described_and_refused(
 def test_an_honest_update_sets_neither_and_passes(configured, tmp_path) -> None:
     from algosdk import transaction
 
-    configured(3, SIGNERS)
+    configured(2, SIGNERS)
     path = _write(tmp_path, transaction.ApplicationUpdateTxn(
         sender=ms.address(), sp=_params(), index=769891898,
         approval_program=b"\x0a\x81\x01", clear_program=b"\x0a\x81\x01",

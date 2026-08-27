@@ -332,7 +332,7 @@ secret in the project, not as a funding account.
   people.** Any one can then be lost without losing control, and any one can be
   compromised without losing the contract. Keys in one drawer are one key.
 
-  The MainNet deployment uses **five keys with a threshold of three**
+  The MainNet deployment uses **three keys with a threshold of two**
   (`NHQU7QBDTUC4Q5I7LV3A35GGG36QUK5EL6PM4ZVBJKZ7AS6EDOU7BCRDWA`). Two can be
   lost and two can be compromised without either losing control or losing the
   contract. The LocalNet smoke test uses three keys with a threshold of two

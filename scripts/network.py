@@ -69,11 +69,22 @@ def add_network_argument(parser: argparse.ArgumentParser) -> None:
 # account that can ever replace its programs. An app's creator is fixed at
 # creation, so a MainNet app made from anything else is the admin-key problem
 # permanently, with no way back.
-MAINNET_CREATOR = "NHQU7QBDTUC4Q5I7LV3A35GGG36QUK5EL6PM4ZVBJKZ7AS6EDOU7BCRDWA"
+#
+# A 2-of-3, decided 2026-08-27 in issue #79. Member order is part of the
+# address: the same three keys in a different order derive a different account,
+# so the order below is the order, and it is Ledger, Corvid, Gaspar.
+#
+# The trade, stated rather than assumed: 2-of-3 survives one lost key and needs
+# two to collude. The 3-of-5 this replaces survived two losses and needed three.
+# Both margins are smaller. That is the price of three people instead of five,
+# and it resolves a contradiction rather than creating one: docs/security.md and
+# docs/deploying.md already described a 2-of-3 while this constant and issue #79
+# said 3-of-5.
+MAINNET_CREATOR = "LUH77ATPWS4ZTCO7OZ3YM2DP5M2BXN53CHPFFQCFBATRFCYEB3NKTGMBNI"
 
 
 def require_mainnet_multisig() -> None:
-    """Refuse MainNet unless the configured signer is the 3-of-5.
+    """Refuse MainNet unless the configured signer is the 2-of-3.
 
     `ARCRON_ALLOW_MAINNET=1` was the entire gate, and a shell that exports it
     once turns `--network mainnet` back into an ordinary argument. The flag

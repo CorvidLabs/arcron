@@ -160,7 +160,7 @@ order:
 2. Run the dogfood upkeep unattended, with the notifier watching. This is the
    only evidence that accrues while nobody is looking.
 3. Answer the three unknowns above through the alpha tasks.
-4. MainNet, deployed from the 3-of-5 multisig, with the app id unpublished
+4. MainNet, deployed from the 2-of-3 multisig, with the app id unpublished
    until it is frozen.
 
 ### Why 90 to 95 and not 100
