@@ -1,6 +1,6 @@
 # Where Arcron stands
 
-Last updated 2026-08-26. This page is the one place to look if you want to
+Last updated 2026-08-27. This page is the one place to look if you want to
 know what exists, what state it is in, and what happens next. If it disagrees
 with anything else in this repo, this page is probably the stale one: check
 [the release table](releases.md), which is generated against live app ids.
@@ -27,8 +27,8 @@ already knew how it worked.
 | Demo target | Pulse [`769891902`](https://testnet.explorer.perawallet.app/application/769891902) |
 | Programs | 2,219 bytes across two pages, sha256 `c94c6e0c…` (alpha-3) |
 | Governance | **not frozen**: the creator can still replace the programs |
-| Registry | 11 upkeeps as of round 66707000 on 2026-08-26, the fastest executable one firing about every ten minutes |
-| Console | [corvidlabs.xyz/arcron/console/](https://corvidlabs.xyz/arcron/console/), **live, and running a build older than this tree** |
+| Registry | 6 upkeeps as of round 66,734,963 on 2026-08-27; 83 executions in the preceding 24 hours from 5 distinct keeper accounts |
+| Console | [corvidlabs.xyz/arcron/console/](https://corvidlabs.xyz/arcron/console/), live and current with this tree |
 
 `poetry run python -m scripts.verify_build --network testnet --app-id 769891898`
 proves the deployed programs are this source, byte for byte. Anyone can run it.
@@ -38,11 +38,24 @@ Three earlier deployments are superseded and must not be used: `769823086`,
 
 ## The dogfood
 
-**Live since 2026-08-26.** A `rain` draw (app
-[`769988156`](https://testnet.explorer.perawallet.app/application/769988156)),
-open entry, ALGO prize, pointed at the real Foundation randomness beacon.
-Upkeep **76** on the keeper above calls `draw()` every 2,571 rounds (about
-two hours), SKIP_AHEAD. `scripts/rain_bot.py`, a dedicated account separate
+**Live since 2026-08-26.** A `rain` draw pointed at the real Foundation
+randomness beacon. There are two deployments, and the current one is the
+gated one:
+
+| | |
+|---|---|
+| [`770029154`](https://testnet.explorer.perawallet.app/application/770029154) | **current.** Entry gated on an NFT collection: creator `WGSHC4TY…` **and** unit name beginning `corvid`, case sensitive. Serviced by upkeep **79**. No tickets and an empty pot as of round 66,734,963, so `draw()` is a no-op returning 0 until somebody enters. |
+| [`769988156`](https://testnet.explorer.perawallet.app/application/769988156) | the earlier open-entry draw, one draw resolved. **No upkeep schedules it any more**, so it is a record of a completed cycle rather than a running one. |
+
+Upkeep **79** calls `draw()uint64` every 2,571 rounds (about two hours),
+SKIP_AHEAD.
+
+It replaced upkeep 77, which was registered against a selector `rain` does
+not have and so could never have executed: every attempt died on `err` in the
+target's own ABI router, and a selector is fixed in the box at registration.
+Cancelling refunded the escrow and box MBR in full and cost 0.005 ALGO. The
+console now refuses to register a call its own Test button has just said
+would fail, which is the hole that let it happen. `scripts/rain_bot.py`, a dedicated account separate
 from the deployer and the keeper, resolves each draw against the beacon,
 claims what it wins and deposits it straight back into the pot; the loop
 never opens a draw itself, since that is the upkeep's job. Full detail,
@@ -52,12 +65,12 @@ that the LocalNet stub could not show, is in
 
 **Where to look when it breaks:**
 
-- `poetry run python -m scripts.verify_build --network testnet --contract rain --app-id 769988156`
+- `poetry run python -m scripts.verify_build --network testnet --contract rain --app-id 770029154`
   proves the deployed programs are this source.
 - `poetry run python -m scripts.keeper_bot --check --network testnet --app-id 769891898`
-  says whether upkeep 76 is stalled or starved, among everything else in the
+  says whether upkeep 79 is stalled or starved, among everything else in the
   registry.
-- `poetry run python -m scripts.rain_bot --once --network testnet --app-id 769988156`
+- `poetry run python -m scripts.rain_bot --once --network testnet --app-id 770029154`
   reports the draw's own state (open, awaiting resolution, or quiet) without
   changing anything unless there is genuinely something to do.
 - The recurring pieces both run as a cron-driven GitHub Actions job in the
