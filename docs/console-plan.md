@@ -219,7 +219,7 @@ routes and not five, in the AC files' favour.
 **The console's address is `https://corvidlabs.xyz/arcron/console/`.**
 
 The site is a separate repository, `CorvidLabs/site`: an Astro build deployed
-to an nginx VPS by `.github/workflows/deploy.yml`, which tars `dist/`, ships it
+to an nginx VPS by the deploy workflow in `CorvidLabs/site`, which tars `dist/`, ships it
 over ssh, and rsyncs it into the web root with `--delete`. Astro copies
 everything under `public/` into that build verbatim, and `public/arcsite/studio`
 is already a compiled application published exactly this way. So a built bundle
@@ -240,7 +240,7 @@ attribute wrong and `ng build` still succeeds, the tests still pass, and every
 script tag on the page resolves to the domain root and 404s. So the check
 serves the bundle at `/arcron/console/` on a throwaway server and fetches every
 file in it, including the ones no markup names: `network-bar.ts:152` injects
-`brand/theme.js` from a string at runtime, so crawling index.html alone would
+`web/public/brand/theme.js` from a string at runtime, so crawling index.html alone would
 call a broken bundle healthy.
 
 Two things are still owed, neither of them buildable here:
