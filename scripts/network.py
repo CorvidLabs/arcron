@@ -108,7 +108,7 @@ def require_mainnet_multisig() -> None:
         raise RuntimeError(
             f"Refusing MainNet: the configured multisig is {ms.address()}, not the "
             f"expected {MAINNET_CREATOR}. Member order is part of a multisig address, "
-            "so the same five keys in a different order are a different account holding "
+            "so the same keys in a different order are a different account holding "
             "nothing. Check ARCRON_MULTISIG_ADDRESSES against docs/security.md."
         )
 

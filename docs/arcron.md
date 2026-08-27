@@ -11,8 +11,8 @@ quick overview see `../README.md`; for runnable flows see `../examples/`.
 | Pulse demo target | [`769891902`](https://testnet.explorer.perawallet.app/application/769891902) |
 | Reference bot | `scripts/keeper_bot.py` |
 | Proof | All 20 stages of `scripts/keeper_e2e.py` pass against it on-chain, including the box-MBR regression, the losing-keeper measurement, and the escalation-lockout and patient-keeper regressions. |
-| Stage | **alpha-1**, see [release stages](releases.md) |
-| Superseded | [`769802474`](https://testnet.explorer.perawallet.app/application/769802474) (predates the 1.0 struct) and [`769772891`](https://testnet.explorer.perawallet.app/application/769772891); see [migration](#migrating-off-the-deprecated-app) |
+| Stage | **alpha-3**, see [release stages](releases.md) |
+| Superseded | [`769823086`](https://testnet.explorer.perawallet.app/application/769823086) (alpha-1, immutable, pre-governance), [`769802474`](https://testnet.explorer.perawallet.app/application/769802474) (predates the 1.0 struct) and [`769772891`](https://testnet.explorer.perawallet.app/application/769772891); see [migration](#migrating-off-the-deprecated-app) |
 
 ### Migrating off the deprecated app
 
