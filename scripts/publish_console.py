@@ -287,7 +287,7 @@ def _publish(bundle: pathlib.Path, site: pathlib.Path, check: bool) -> int:
     return 0
 
 
-def _write_provenance(target: Path) -> None:
+def _write_provenance(target: pathlib.Path) -> None:
     """Record which commit of this repository produced the bundle.
 
     A vendored build in another repository is bytes with no history: nothing in
