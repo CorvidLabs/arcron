@@ -3,6 +3,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  effect,
   inject,
   signal,
 } from '@angular/core';
@@ -270,7 +271,18 @@ import type { NetworkKey } from '@corvidlabs/arcron/networks';
     .app-id { display: flex; align-items: center; gap: 0.45rem; }
     .app-id input { width: 7.5rem; }
     .status { display: flex; align-items: center; gap: 0.45rem; margin: 0; font-size: 0.78rem; }
-    .status .dot { width: 0.45rem; height: 0.45rem; border-radius: 50%; background: currentColor; }
+    /* flex:0 0 auto, because a flex item with a percentage border-radius will
+       shrink when the row is tight and a squashed circle reads as a rendering
+       fault rather than a status light. It was visibly an oval in the drawer,
+       where the status wraps onto three lines and the dot is the only thing
+       that can give. */
+    .status .dot {
+      flex: 0 0 auto;
+      width: 0.45rem;
+      height: 0.45rem;
+      border-radius: 50%;
+      background: currentColor;
+    }
     .status.ready { color: var(--success); }
     .status.warn { color: var(--warning); }
     .status.bad { color: var(--danger); }
@@ -295,9 +307,24 @@ import type { NetworkKey } from '@corvidlabs/arcron/networks';
        and dragged the footer with it, and so did flex:1-1-auto on the controls,
        because flex children will not shrink below their content. */
     @media (max-width: 480px) {
+      /* nowrap is safe here only because the drawer is position:fixed and out
+         of flow, so the bar holds the brand and the menu button and nothing
+         else. It still needs the brand able to shrink: without min-width:0 the
+         wordmark sets a floor, the bar measured 396px inside a 358px content
+         box, and the whole document grew to 432px — the same overflow this
+         file already records from an earlier attempt. */
       .bar {
         flex-wrap: nowrap;
         gap: 0.5rem;
+      }
+
+      .brand {
+        min-width: 0;
+        overflow: hidden;
+      }
+
+      .wordmark {
+        white-space: nowrap;
       }
 
       .tagline { display: none; }
@@ -354,9 +381,15 @@ import type { NetworkKey } from '@corvidlabs/arcron/networks';
       .bars::before { top: -6px; }
       .bars::after { top: 6px; }
 
+      /* overscroll-behavior: contain, because a wheel or a swipe over the scrim
+         scrolled the page beneath it, and over the drawer itself it scrolled
+         the page while the drawer stayed put — so on a phone the drawer's own
+         content could not be scrolled at all. */
       .scrim {
         position: fixed;
         inset: 0;
+        overscroll-behavior: contain;
+        touch-action: none;
         background: rgb(0 0 0 / 45%);
         z-index: 20;
       }
@@ -376,6 +409,7 @@ import type { NetworkKey } from '@corvidlabs/arcron/networks';
         background: var(--paper);
         border-left: 1px solid var(--hairline);
         overflow-y: auto;
+        overscroll-behavior: contain;
         /* display:none when closed, not an off-canvas transform. Parking it at
            translateX(100%) put a 320px panel outside a 390px viewport, and the
            audit reported it as overflow, correctly: something sitting past the
@@ -576,6 +610,14 @@ export class NetworkBar {
    * phone.
    */
   protected readonly menuOpen = signal(false);
+
+  constructor_menuLock = effect(() => {
+    // The page must not scroll behind an open drawer. overscroll-behavior stops
+    // a scroll chaining out of the drawer; it does not stop a wheel or swipe
+    // that starts on the page itself, and the scrim is not a scroll container.
+    // A class on body is the only thing that covers both.
+    document.body.classList.toggle('menu-open', this.menuOpen());
+  });
 
   protected toggleMenu(): void {
     this.menuOpen.update((open) => !open);
