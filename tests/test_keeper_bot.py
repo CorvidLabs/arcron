@@ -2,7 +2,7 @@
 
 The vector is a real box value, recorded from a chain rather than hand-built,
 so it pins the encoding the contract actually produces. Its TypeScript twin is
-`web/src/app/core/upkeep.test.ts`, which reads the same bytes; if the
+`js/src/upkeep.test.ts`, which reads the same bytes; if the
 contract's Upkeep struct changes, both must change together.
 
 Recorded on LocalNet from the 1.0 contract — #7, #14, #8 and #9 together:

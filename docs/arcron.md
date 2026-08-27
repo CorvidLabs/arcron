@@ -306,7 +306,7 @@ compounds:
 | daily | 30,857 | 24.0 h | 22.8 h | ~1.2 h |
 | weekly | 216,000 | 168.0 h | 159.7 h | ~8.3 h |
 
-A "daily" upkeep therefore slides about **35 hours** (a day and a half)
+A "daily" upkeep therefore slides about **36 hours** (a day and a half)
 against the calendar over thirty cycles, and which way it slides depends on
 how busy the network is.
 

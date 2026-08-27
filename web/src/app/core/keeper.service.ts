@@ -12,7 +12,7 @@ import { ArcronService, describe } from './arcron.service';
 import { algos } from '@corvidlabs/arcron/format';
 import { WalletService } from './wallet.service';
 import * as txns from '@corvidlabs/arcron/keeper-txns';
-import type { Upkeep } from '@corvidlabs/arcron/upkeep';
+import { effectiveFee, type Upkeep } from '@corvidlabs/arcron/upkeep';
 
 export type Operation = 'register' | 'top_up' | 'cancel' | 'execute' | 'opt_in_asset' | 'top_up_asset';
 
@@ -94,7 +94,10 @@ export class KeeperService {
       const result = await txns.execute(algod, appId, signing, upkeep);
       return {
         result,
-        message: `Executed for ${algos(upkeep.feePerExecution)}; next due at round ${result.returnValue}`,
+        // The escalated fee, not the base one. Logging feePerExecution
+        // understated what was paid on exactly the runs where escalation was
+        // the point, which is the run somebody reads the log to understand.
+        message: `Executed for ${algos(effectiveFee(upkeep, this.arcron.round()))}; next due at round ${result.returnValue}`,
       };
     });
   }

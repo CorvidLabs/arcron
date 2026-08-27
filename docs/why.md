@@ -21,16 +21,25 @@ Here it is honestly, which is less flattering than the first draft of this page:
 
 | one hourly schedule, per month | cost | what you give up |
 |---|---|---|
-| **Arcron** | ~3.03 ALGO ≈ **$0.28** | see below — it is not nothing |
+| **Arcron** at the 4,000 µALGO floor | ~3.03 ALGO ≈ **$0.28** | see below — it is not nothing |
+| **Arcron** at the suggested 10,000 | ~7.58 ALGO ≈ **$0.69** | as above |
 | fly.io shared-cpu-1x | ~$2.02 | you write, host, key and monitor the bot |
 | Hetzner CX22 | ~$4.10 | as above |
 | AWS Lambda + EventBridge | **$0.00** | as above, but genuinely free at this volume |
 | Oracle Always Free | $0.00 | free, but Oracle reclaims idle instances — see below |
 | GitHub Actions cron | $0.00 | delayed under load, and runs may be dropped |
 
-**About 7.7x cheaper than the cheapest paid host**, not the 19x an earlier draft
-claimed by quoting $5 — which was the top of [`hosting.md`](hosting.md)'s own
-"$2 to $5" range, and contradicted its "a $4 Hetzner box" in the same repo.
+**Every figure on this page uses one basis**, because two earlier drafts mixed
+two and produced a multiplier that did not reproduce from their own tables. The
+basis: 2.66 s/round measured, so a nominal-hour upkeep of 1,286 rounds fires
+every 57.0 minutes, **758 times a month**, at ALGO $0.0907. Recompute rather
+than quote.
+
+**About 7.2x cheaper than the cheapest paid host** at the floor, and **2.9x** at
+the suggested fee. An earlier draft said 7.7x in both places; against fly.io's
+$2.02 the first is 7.2x and the second is 2.9x, and repeating one number for
+both overstated the suggested fee by two and a half times. Two independent
+reviews caught it.
 
 **Against the free options it is not cheaper at all**, and the honest thing is
 to say which ones actually work. AWS Lambda plus EventBridge Scheduler at 720
@@ -45,11 +54,21 @@ ones.
 
 ## Where this stops being true
 
-**Above about 26 hourly upkeeps, running your own bot is cheaper.** One process
-services any number of targets from one key: `scripts/keeper_bot.py` in this
-repo is a single process servicing the entire registry, so "ten contracts means
-ten bots" — which an earlier draft of this page asserted — is false, and false
-in a way this repository disproves.
+**Above about 10 hourly upkeeps, running your own bot on the cheapest paid host
+is cheaper.** The crossover depends entirely on which host you compare against,
+and an earlier draft quoted 26 — the figure for a $5 host — on a page whose own
+table quotes $2.02:
+
+| against | crossover |
+|---|---|
+| fly.io, $2.02 | **10 upkeeps** |
+| Hetzner, $4.10 | 20 |
+| a $5 host | 24 |
+
+One process services any number of targets from one key: `scripts/keeper_bot.py`
+in this repo is a single process servicing the entire registry, so "ten
+contracts means ten bots" — which an earlier draft asserted — is false, and
+false in a way this repository disproves.
 
 The real asymmetry is narrower and survives: **no hot key, and no operational
 attention.** Arcron needs neither. That is worth something and it is not a
@@ -60,36 +79,50 @@ moves *against* Arcron precisely when Algorand succeeds:
 
 | against | parity at ALGO |
 |---|---|
-| $4.10/mo | $1.42 |
-| $2.02/mo | **$0.70** |
+| $4.10/mo | $1.35 |
+| $2.02/mo | **$0.67** |
 
-ALGO has traded above both within the last two years. A fiat-denominated
-competitor and a crypto-denominated one cannot be compared with a fixed
-multiple, and this page should not be read as if they can.
+**ALGO has not traded near either price in years, and an earlier draft of this
+page said it had.** It last closed above $0.70 on 2022-04-28 and above $1.42 on
+2022-01-13; its high over the last two years is **$0.6135**, below even the
+lower parity point. Checked against Kraken's ALGOUSD history, not recalled.
+
+That correction makes this argument weaker, not stronger, which is why it is
+here. Parity needs roughly a sevenfold rise from spot. The point that survives
+is narrower: a fiat-denominated competitor and a crypto-denominated one cannot
+be compared with a fixed multiple, and the ratio moves against Arcron precisely
+when Algorand does well. This page should not be read as if the multiple is a
+property of the design.
+
+That is the third correction to the numbers on this page, after a 19x that was
+really 7.2x and a crossover quoted against a host the page does not recommend.
+Every one was found by a reviewer who recomputed instead of quoting. Do that.
 
 ## The floor price is below the cost of supplying it
 
 This is the structural finding, and it is not comfortable.
 
-At the 4,000 µALGO minimum a keeper nets 1,000 µALGO per execution, so **one
-keeper needs roughly 77 concurrent hourly upkeeps to fund a $5 host.** A
-creator's crossover is 26. Those numbers are the wrong way round: between 26
-and 77 a creator self-hosts anyway, and below 26 the aggregate fees cannot fund
-the server this page says Arcron replaces.
+At the 4,000 µALGO minimum a keeper nets 1,000 per execution, so **one keeper
+needs roughly 73 concurrent hourly upkeeps to fund a $5 host.** A creator
+crosses over to self-hosting at 10 against the cheapest paid host. Those numbers
+are the wrong way round: the floor is priced for the creator and sits below the
+cost of supplying it.
 
 Raising the fee closes it, because the ratio is `(fee − 1000)/(fee − 3000)`:
 
-| fee | creator pays/mo | creator crossover | keeper break-even |
+| fee | creator pays/mo | creator crossover vs $2.02 | keeper funds a $5 host at |
 |---|---|---|---|
-| 4,000 µALGO (the floor) | $0.28 | 26 | 77 |
-| 10,000 µALGO | $0.65 | 9 | 11 |
-| 20,000 µALGO | $1.31 | 4 | 5 |
+| 4,000 µALGO (the floor) | $0.28 | 10 | **73** |
+| 10,000 µALGO | $0.69 | 3 | **10** |
+| 20,000 µALGO | $1.38 | 2 | 5 |
 
-**Around 10,000 µALGO the two converge and the network pays for itself**, still
-roughly 7.7x cheaper than a paid host. That is the sustainable operating point,
-and it is not the one the minimum advertises. The contract half-admits this
-already: *"A creator who wants keepers who do not care about their token should
-set a fee above this floor."*
+**Around 10,000 the two converge at about 10 upkeeps and the network pays for
+itself**, which is roughly what the registry holds. It is still 2.9x cheaper
+than the cheapest paid host — not the 7.7x an earlier draft claimed here, which
+was the floor's ratio against a $5 host reused for a different fee against a
+different host. The contract half-admits the underlying point already: *"A
+creator who wants keepers who do not care about their token should set a fee
+above this floor."*
 
 ## What you give up
 

@@ -1,6 +1,7 @@
 # Design: catch-up policy and fee escalation
 
-**Status: proposed, not implemented.** Issues [#7](https://github.com/CorvidLabs/arcron/issues/7)
+**Status: **shipped**. Escalation, the catch-up policy and the fee cap are all
+in the deployed contract; this page is kept as the reasoning that produced them..** Issues [#7](https://github.com/CorvidLabs/arcron/issues/7)
 and [#14](https://github.com/CorvidLabs/arcron/issues/14) must be designed
 together. This is that design, for review before any code is written.
 
