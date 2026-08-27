@@ -99,9 +99,10 @@ findings:
 5. **A claim in the docs that is false.** The last three reviews each found real
    ones, including in the cost argument. Numbers are checkable; check them.
 
-**Where to send it:** open an issue, or a Discussion under *Attacks and
-findings*. If it is a live-funds vulnerability, [`SECURITY.md`](SECURITY.md) has
-the private path.
+**Where to send it:** open an issue, or reply to the
+[attacks and findings thread](https://github.com/CorvidLabs/arcron/discussions).
+If it is a live-funds vulnerability, [`SECURITY.md`](SECURITY.md) has the
+private path — please use it rather than a public thread.
 
 ---
 
