@@ -60,15 +60,15 @@ export function entryFrom(
     search: string,
     storedNetwork: string | null,
     storedAppId: StoredAppId,
-    devMode = false,
+    devEstablished = false,
 ): Entry {
     const parameters = new URLSearchParams(search);
 
-    // Outside dev mode the console opens on one deployment and there is no
-    // way to send it anywhere else. `?network=` and `?app=` are developer
-    // controls, so a link carrying a look-alike app id is inert for everyone
-    // who is not editing this code. See `dev-mode.ts` for why.
-    if (!devMode) {
+    // The console opens on one deployment unless dev mode was *already* on
+    // before this navigation. Gating on "established" rather than "enabled" is
+    // what stops a single `?dev=1&app=<look-alike>` link from turning dev mode
+    // on and redirecting in the same step. See `dev-mode.ts`.
+    if (!devEstablished) {
         return {
             network: DEFAULT_NETWORK,
             appId: NETWORKS[DEFAULT_NETWORK].defaultAppId ?? null,

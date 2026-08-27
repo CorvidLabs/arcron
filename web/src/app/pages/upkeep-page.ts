@@ -13,6 +13,7 @@ import {
   runwayLabel,
   shortAddress,
 } from '@corvidlabs/arcron/format';
+import { executionCost } from '@corvidlabs/arcron/board';
 import { KeeperService } from '../core/keeper.service';
 import { WalletService } from '../core/wallet.service';
 import {
@@ -414,7 +415,11 @@ export class UpkeepPage {
       balance: algos(upkeep.balance),
       runway: runwayLabel(executionsRemaining(upkeep), upkeep.intervalRounds, pace),
       feeNote: escalates(upkeep)
-        ? `The fee rises with lateness up to a ceiling of ${algos(upkeep.feeCap)}, so the escrow has to cover the ceiling rather than the base fee to stay executable once late. The fee cannot be changed after registration.`
+        ? // Not "the escrow must cover the ceiling": execute falls back to the
+          // base fee when the balance cannot cover the escalated one, so an
+          // upkeep with one base fee left is still executable. Saying otherwise
+          // contradicted the same page's own due/executable state.
+          `The fee rises with lateness up to a ceiling of ${algos(upkeep.feeCap)}. An escrow that cannot cover the escalated fee still pays the base fee, so this stays executable on one base fee — it just pays less than the ceiling. The fee cannot be changed after registration.`
         : 'This upkeep pays the same fee however late it gets, and that fee cannot be changed after registration.',
       bonus:
         upkeep.feeAsset === 0n
@@ -424,7 +429,11 @@ export class UpkeepPage {
       canExecute: standing === 'due' && this.wallet.connected() && this.arcron.canWrite(),
       executeNote:
         standing === 'due'
-          ? `Anyone can run a due upkeep and be paid its fee. This one pays ${algos(fee)} and costs about ${algos(3_000n)} in group fees to send, so it nets ${algos(fee - 3_000n, { sign: true })}.`
+          ? // An ASA bonus adds a third inner transaction, so an opted-in keeper
+            // signs 4,000 rather than 3,000. `executionCost` is the canonical
+            // helper and the board already uses it; this page hardcoded 3,000
+            // and overstated an opted-in keeper's net by 0.001.
+            `Anyone can run a due upkeep and be paid its fee. This one pays ${algos(fee)} and costs about ${algos(BigInt(executionCost(upkeep)))} in group fees to send, so it nets ${algos(fee - BigInt(executionCost(upkeep)), { sign: true })}.`
           : standing === 'needs funding'
             ? 'No keeper can run this until its escrow covers one fee. That is the creator\'s to fix, and topping it up is what fixes it.'
             : `Not due yet. Anyone may run it once round ${upkeep.nextExecutionRound} arrives.`,

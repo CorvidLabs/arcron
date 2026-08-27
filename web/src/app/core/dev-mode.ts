@@ -14,11 +14,25 @@
  *
  * So the network picker and the app id field are developer controls, and the
  * published console does not have them. `?network=` and `?app=` are read only
- * in dev mode, which means a poisoned link is inert for everyone who is not
- * already editing this code.
+ * in dev mode.
  *
- * Quarantine stays, because dev mode still honours `?app=` and a developer
- * pointed at the wrong app should still be told.
+ * That was once described here as making a poisoned link "inert for everyone
+ * who is not already editing this code", which was false, and a review said so.
+ * `?dev=1` is a public query parameter: one link of the form
+ * `?dev=1&app=<look-alike>` turns dev mode on and re-arms `?app=` in the same
+ * navigation, so anybody could make a stranger "already editing this code".
+ * Worse, the flag persists, so a later and much more innocent-looking `?app=`
+ * link stayed honoured on that browser.
+ *
+ * So enabling and redirecting are now separated: a navigation that turns dev
+ * mode on does not also honour `?app=` or `?network=`. `established` reports
+ * whether dev mode was on *before* this navigation, which is what those
+ * parameters require. A developer who already has it on is unaffected; the
+ * single-link attack needs both halves at once and no longer gets them.
+ *
+ * Quarantine stays regardless, because dev mode still honours `?app=` on
+ * subsequent navigations and a developer pointed at the wrong app should still
+ * be told.
  */
 
 /** Query parameter that turns on the developer controls: `?dev=1`. */
@@ -40,16 +54,38 @@ export type DevStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
  * blocked throws on access rather than returning null, and a console that
  * cannot open in a private window is worse than one without dev mode.
  */
-export function devModeFrom(search: string, storage: DevStorage | null): boolean {
+export interface DevModeState {
+    /** Whether developer controls are on at all. */
+    readonly enabled: boolean;
+    /**
+     * Whether dev mode was already on before this navigation.
+     *
+     * `?app=` and `?network=` require this rather than `enabled`, so that a
+     * single link cannot both turn dev mode on and point the console somewhere.
+     */
+    readonly established: boolean;
+}
+
+export function devModeFrom(search: string, storage: DevStorage | null): DevModeState {
     const requested = new URLSearchParams(search).get(DEV_PARAM);
+
+    let remembered = false;
+    try {
+        remembered = storage?.getItem(DEV_STORAGE_KEY) === '1';
+    } catch {
+        // A browser blocking site data throws rather than returning null. Not
+        // remembering is survivable; not opening is not.
+    }
 
     if (requested === '1' || requested === 'true') {
         try {
             storage?.setItem(DEV_STORAGE_KEY, '1');
         } catch {
-            // Not remembered is survivable; not working is not.
+            // As above.
         }
-        return true;
+        // `established` stays false when this navigation is what turned it on,
+        // which is exactly the case `?dev=1&app=<look-alike>` relies on.
+        return { enabled: true, established: remembered };
     }
 
     if (requested === '0' || requested === 'false') {
@@ -58,12 +94,8 @@ export function devModeFrom(search: string, storage: DevStorage | null): boolean
         } catch {
             // As above.
         }
-        return false;
+        return { enabled: false, established: false };
     }
 
-    try {
-        return storage?.getItem(DEV_STORAGE_KEY) === '1';
-    } catch {
-        return false;
-    }
+    return { enabled: remembered, established: remembered };
 }

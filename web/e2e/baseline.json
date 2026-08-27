@@ -2,7 +2,8 @@
   "note": "Rendering problems that exist today and are being left alone on purpose. Each entry pins the measurement, so the same problem getting worse fails the run, a new one fails the run, and one that has been fixed fails the run too (a licence nothing uses any more is a licence to regress). Regenerate with scripts/write-baseline.ts only after reading what changed.",
   "rules": {
     "text-size": "The console renders 46 distinct text styles below 14px, from 10.56px chips up to 13.6px body copy, on a 15px root. That is not one style to nudge; it is the whole type scale, and moving it changes how every page reads. The measurements are here so the decision can be made with numbers, and so nothing gets smaller in the meantime.",
-    "touch-target": "Every control is sized for a mouse: buttons land at 29.8px or 38.2px tall at 390 wide, against the 44x44 WCAG 2.5.5 target. Fixing it means a deliberate pass over control sizing on touch, not a min-height sprinkled over the button rules, so it is recorded rather than patched."
+    "touch-target": "Every control is sized for a mouse: buttons land at 29.8px or 38.2px tall at 390 wide, against the 44x44 WCAG 2.5.5 target. Fixing it means a deliberate pass over control sizing on touch, not a min-height sprinkled over the button rules, so it is recorded rather than patched. One entry left this list without being fixed: the theme toggle moved into the mobile drawer, so at 390px the audit measures a closed drawer and never sees it. It is still 34x34 when open, and it belongs to the vendored design system, so the fix belongs upstream rather than here.",
+    "table-cell": "A td whose display is not table-cell is wrapped in an anonymous cell, and the row's background and bottom border stop at the last real cell. The measurable symptom is a cell shorter than its row. That premise holds for a table and stops holding for the mobile registry, which deliberately stops being one: under 480px every row is a card, the tr carries its own border, radius, background and state stripe, and each td is a label/value line inside it. So a td is shorter than its tr by design, and the thing this rule protects, a row whose paint stops short, is drawn by the tr itself."
   },
   "accepted": {
     "text-size:a": {
@@ -169,53 +170,57 @@
       "worst": 13.6,
       "why": "strong renders at 13.6px, below the 14px floor. See rules.text-size."
     },
-    "text-size:th": {
-      "worst": 10.88,
-      "why": "th renders at 10.88px, below the 14px floor. See rules.text-size."
-    },
-    "touch-target:a.primary@390": {
-      "worst": 38.19,
-      "why": "a.primary \"Register an upkeep\" is 158.89x38.19 CSS px, under the 44x44 WCAG 2.5.5 target. See rules.touch-target."
-    },
     "touch-target:a@390": {
       "worst": 8.45,
-      "why": "the upkeep id link in the registry table: an 8.45x16px tap target on the row identity, and the only way into an upkeep from the registry. The worst target in the console by a wide margin and the first one to fix."
-    },
-    "touch-target:button.corvid-theme-toggle@390": {
-      "worst": 34,
-      "why": "button.corvid-theme-toggle \"Switch to light theme\" is 34x34 CSS px, under the 44x44 WCAG 2.5.5 target. See rules.touch-target."
-    },
-    "touch-target:button.current.ghost.small@390": {
-      "worst": 29.83,
-      "why": "button.current.ghost.small \"Registry\" is 70.05x29.83 CSS px, under the 44x44 WCAG 2.5.5 target. See rules.touch-target."
-    },
-    "touch-target:button.ghost.small.wallet@390": {
-      "worst": 29.83,
-      "why": "button.ghost.small.wallet \"Pera\" is 72.86x29.83 CSS px, under the 44x44 WCAG 2.5.5 target. See rules.touch-target."
-    },
-    "touch-target:button.ghost.small@390": {
-      "worst": 29.83,
-      "why": "button.ghost.small \"Keeper board\" is 101.83x29.83 CSS px, under the 44x44 WCAG 2.5.5 target. See rules.touch-target."
-    },
-    "touch-target:button.ghost@390": {
-      "worst": 38.19,
-      "why": "button.ghost \"Test the call\" is 109.86x38.19 CSS px, under the 44x44 WCAG 2.5.5 target. See rules.touch-target."
-    },
-    "touch-target:button.primary.small@390": {
-      "worst": 29.83,
-      "why": "button.primary.small \"Execute\" is 69.09x29.83 CSS px, under the 44x44 WCAG 2.5.5 target. See rules.touch-target."
-    },
-    "touch-target:button.primary@390": {
-      "worst": 38.19,
-      "why": "button.primary \"Register upkeep\" is 139.06x38.19 CSS px, under the 44x44 WCAG 2.5.5 target. See rules.touch-target."
+      "why": "an 8.45x16px anchor, still the worst target here. Three fixes were tried in registry-table.ts on 2026-08-27 \u2014 min-height with display:flex, th a[href] as well as td a[href], and content-box padding \u2014 and the measurement did not move, though the media query is present in the built bundle. So the element being measured is probably not the registry id link this entry originally described. Needs identifying in a browser before a fourth guess."
     },
     "touch-target:input@390": {
       "worst": 13,
-      "why": "the native radio and checkbox in the register form, at the 13x13px the user agent draws them. Enlarging these means restyling the controls, not resizing them."
+      "why": "the native radio and checkbox in the register form. Sized to 24x24 with 10px of margin on 2026-08-27, which the audit still measures as the 13x13 the user agent draws, so the rule is not reaching them either. Grouped with a@390: both need identifying in a browser rather than another guess."
     },
-    "touch-target:select@390": {
-      "worst": 33.38,
-      "why": "select \"Reward Most overdue Running out Cadence Number\" is 140.78x33.38 CSS px, under the 44x44 WCAG 2.5.5 target. See rules.touch-target."
+    "text-size:span.part": {
+      "worst": 12.48,
+      "why": "span.part renders at 12.96px. These are not new small text: the status line was always this size, and splitting it into named spans so a phone can hide the round rate is what made it selectable. See rules.text-size."
+    },
+    "text-size:span.pace.part": {
+      "worst": 12.48,
+      "why": "span.pace.part renders at 12.48px. These are not new small text: the status line was always this size, and splitting it into named spans so a phone can hide the round rate is what made it selectable. See rules.text-size."
+    },
+    "table-cell:td@390": {
+      "worst": 516.72,
+      "why": "the mobile registry cards. Each td is a 516.72px-shorter line inside a card-shaped tr, which is the layout rather than a fault: the nine-column table was a sideways scroller on a phone with the Execute button off the right edge. Verified by measurement that no cell escapes its card and the document does not scroll sideways. See rules.table-cell."
+    },
+    "table-cell:td.actions@390": {
+      "worst": 487.52,
+      "why": "the mobile registry cards: td.actions is a label/value line inside a card-shaped tr, 487.52px shorter than it by design. See rules.table-cell for why the rule stops applying to a table that deliberately stops being one."
+    },
+    "table-cell:td.mono@390": {
+      "worst": 513.38,
+      "why": "the mobile registry cards: td.mono is a label/value line inside a card-shaped tr, 513.38px shorter than it by design. See rules.table-cell for why the rule stops applying to a table that deliberately stops being one."
+    },
+    "table-cell:th.mono@390": {
+      "worst": 467.7,
+      "why": "the mobile registry cards: th.mono is a label/value line inside a card-shaped tr, 467.7px shorter than it by design. See rules.table-cell for why the rule stops applying to a table that deliberately stops being one."
+    },
+    "table-cell:td@768": {
+      "worst": 404.52,
+      "why": "the registry cards at 768px: td is a label/value line inside a card-shaped tr, 404.52px shorter by design. Cards now run to 1219px rather than 480px, because the table needs 1074px and the content box only reaches that at a 1240px viewport. See rules.table-cell."
+    },
+    "table-cell:td.mono@768": {
+      "worst": 401.53,
+      "why": "the registry cards at 768px: td.mono is a label/value line inside a card-shaped tr, 401.53px shorter by design. Cards now run to 1219px rather than 480px, because the table needs 1074px and the content box only reaches that at a 1240px viewport. See rules.table-cell."
+    },
+    "table-cell:th.mono@768": {
+      "worst": 400.5,
+      "why": "the registry cards at 768px: th.mono is a label/value line inside a card-shaped tr, 400.5px shorter by design. Cards now run to 1219px rather than 480px, because the table needs 1074px and the content box only reaches that at a 1240px viewport. See rules.table-cell."
+    },
+    "table-cell:td.actions@768": {
+      "worst": 374.34,
+      "why": "the registry cards at 768px: td.actions is a label/value line inside a card-shaped tr, 374.34px shorter by design. Cards now run to 1219px rather than 480px, because the table needs 1074px and the content box only reaches that at a 1240px viewport. See rules.table-cell."
+    },
+    "text-size:th": {
+      "worst": 10.88,
+      "why": "th renders at 10.88px, below the 14px floor. It left this list briefly while the head was .sr-only, which turned out to be hiding it from the audit rather than from the page. See rules.text-size."
     }
   }
 }

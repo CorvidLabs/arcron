@@ -70,3 +70,32 @@ footer p {
 .routed:focus:not(:focus-visible) {
   outline: none;
 }
+
+/* The mobile drawer is position:fixed and lives inside this header, and
+   backdrop-filter creates a containing block for fixed descendants. With the
+   blur on, the drawer positioned against a 44px header instead of the viewport
+   and rendered as a clipped strip across the top — which every measurement in
+   the audit passed, because a 90px panel is a real panel with real contents.
+   Only the screenshot showed it.
+
+   The blur is decorative. On a phone the header is 44px of opaque background
+   already, so dropping it costs nothing and gives the drawer the viewport to
+   position against. */
+@media (max-width: 480px) {
+  /* Same reasoning as the panel padding in styles.css: clamp(1rem, 4vw, 2.5rem)
+     resolves to the 1rem minimum at this width, and 1rem is 18px here rather
+     than 15px, so the page gutter grew when the type scale was fixed. */
+  main {
+    padding-inline: 0.75rem;
+  }
+
+  header.chrome {
+    backdrop-filter: none;
+    /* Opaque, because --header-bg is 92% and the blur was what stopped the
+       remaining 8% reading as a fault. With the filter gone, page content
+       showed through a sticky header and the registry heading appeared to sit
+       inside the wordmark. Falling back to --paper keeps the design system's
+       colour and drops only the transparency. */
+    background: var(--paper);
+  }
+}

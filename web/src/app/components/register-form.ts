@@ -324,6 +324,21 @@ const INTEGRATION_GUIDE_URL =
     .note { margin: 0.25rem 0 0; max-width: 68ch; }
     .policy { grid-column: 1 / -1; display: grid; gap: 0.5rem; margin: 0; padding: 0.7rem 0.85rem; border: 1px solid var(--hairline); }
     .policy legend { padding: 0 0.35rem; }
+
+    /* The user agent draws radio and checkbox at 13x13. A CSS transform looks
+       bigger and measures the same, because it does not change the layout box,
+       and the audit reads the box, which is the honest thing to read. Sizing
+       the control is what actually moves the target. */
+    @media (max-width: 480px) {
+      input[type='radio'],
+      input[type='checkbox'] {
+        width: 24px;
+        height: 24px;
+        /* The label is the real target; padding round the control carries the
+           rest of the 44px without drawing a 44px box. */
+        margin: 10px;
+      }
+    }
     .choice { display: flex; align-items: start; gap: 0.55rem; }
     .choice input { margin-top: 0.25rem; }
     .choice span { display: grid; gap: 0.1rem; }

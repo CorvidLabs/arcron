@@ -149,8 +149,38 @@ export function collect(): Collected {
     // `.sr-only` is a 1px clipped box; the size check above catches it, but a
     // screen-reader-only wrapper can still be larger, so the clip is checked too.
     if (style.clip === 'rect(0px, 0px, 0px, 0px)') return false;
+    // Deliberately NOT `closest('.sr-only')`. Treating the class as an exemption
+    // marker meant a rule that un-hid the element also hid it from this suite: a
+    // thead carried `.sr-only` while a second, unguarded rule cancelled it, and
+    // nine full-width header bands rendered above the registry at every width
+    // while every check passed. The class now has to be doing its job to earn
+    // the skip, which the two lines above already decide, so an element that is
+    // visibly rendered is measured whatever class it carries.
+    if (element.closest('.sr-only') !== null && !isVisuallyClipped(element)) {
+      return true;
+    }
     if (element.closest('.sr-only') !== null) return false;
     return true;
+  };
+
+  /**
+   * Whether an element carrying `.sr-only` is actually clipped.
+   *
+   * The class is a promise, not a proof. This checks the promise is kept: the
+   * box is 1px-ish, or clipped by `clip`/`clip-path`, or genuinely out of flow
+   * and off-screen. Anything else claiming `.sr-only` is on the page and is
+   * measured like everything else on the page.
+   */
+  const isVisuallyClipped = (element: Element): boolean => {
+    const marker = element.closest('.sr-only');
+    if (marker === null) return true;
+    const style = window.getComputedStyle(marker);
+    const rect = marker.getBoundingClientRect();
+    if (rect.width < 2 || rect.height < 2) return true;
+    if (style.clip === 'rect(0px, 0px, 0px, 0px)') return true;
+    if (style.clipPath !== 'none') return true;
+    if (isHiddenOffscreen(rect)) return true;
+    return false;
   };
 
   const boxOf = (rect: DOMRect): Box => ({

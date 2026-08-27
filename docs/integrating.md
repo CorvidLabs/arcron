@@ -131,9 +131,8 @@ several times in quick succession.
 
 Make it idempotent, or make each call's effect depend only on current state.
 If replaying missed periods is wrong for your use case (a prize draw, say),
-say so on
-[issue #7](https://github.com/CorvidLabs/arcron/issues/7), which is deciding
-that policy and needs concrete cases.
+register `SKIP_AHEAD`. That policy shipped; the section below on catch-up
+explains which to pick and why the console suggests `SKIP_AHEAD`.
 
 ### Rounds are not a clock
 
@@ -267,9 +266,19 @@ upkeep box and your app, leaving 6.
 **A keeper does not have to be told which ones you need.** Simulation reports
 the resources a call *would* have required, so a keeper simulates first,
 attaches what the simulation names, and then sends. `algokit-utils` does this
-by default, through its `populate_app_call_resources` send parameter, so a
-keeper built on it services your hook with no configuration and no cooperation
-from you.
+by default, through its `populate_app_call_resources` send parameter.
+
+**But its default populator caps at four direct account references and refuses a
+fifth**, which [`arcron.md`](arcron.md) measures against a real AVM. A hook
+needing five or six accounts is servable — Arcron spends 2 of the AVM's 8
+reference slots, leaving 6 — but *not* by a keeper that leans on the stock
+populator. `scripts/keeper_bot.py` resolves references from its own simulation
+for exactly this reason.
+
+So size a hook at four or fewer references if you want any keeper to serve it,
+and at five or six only if you accept that some will not. This page previously
+promised the stock populator handled the whole range, which would have sent
+somebody to escrow against an upkeep a stock keeper silently skips.
 
 Measured on LocalNet against a target that reaches for an account no argument
 names:
@@ -395,8 +404,9 @@ an upkeep has every reason to wait for the fee to peak before executing. It
 clears a market only when there is a market: with several keepers competing,
 one of them takes the work early at a lower price, and the ceiling is rarely
 reached. With one keeper, the ceiling *is* the price, and the cadence is
-roughly half what you asked for. Arcron's TestNet deployment currently has one
-keeper.
+roughly half what you asked for. Arcron's TestNet deployment has run two keepers against
+one due upkeep, and they collided as designed; the loser paid nothing. Day to
+day it is served by one.
 
 So: leave the ceiling at zero unless an upkeep is genuinely going unserviced.
 It buys reliability from a competitive keeper set and buys nothing from a

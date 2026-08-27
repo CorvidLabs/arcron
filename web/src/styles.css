@@ -265,3 +265,91 @@ button.ghost:disabled {
 :root[data-theme='light'] .corvid-theme-toggle .moon {
   display: none;
 }
+
+/* ---------------------------------------------------------------------------
+   Mobile.
+
+   The console had no responsive layer at all: one media query in this file, for
+   dark mode, and one width breakpoint in one component. At 390px it reflowed
+   rather than adapted, which is why the rendered-page audit recorded 42 pieces
+   of text below its 14px floor and 11 controls under WCAG 2.5.5's 44x44 target
+   and then accepted all of them as "the whole type scale, not one style to
+   nudge".
+
+   That was true and it is not a reason to leave a phone unusable. The type
+   scale is written as rem multipliers from 0.62 up, so raising the root lifts
+   all of it proportionally and keeps the relationships the design intends.
+   18px clears the 14px floor for every step at 0.78rem and above; the handful
+   below that are eyebrows, chips and one decorative arrow, and they get an
+   explicit floor rather than a bigger root, because a root large enough for
+   0.62rem would be 22.6px and would wreck the headings.
+   --------------------------------------------------------------------------- */
+@media (max-width: 480px) {
+  :root {
+    font-size: 18px;
+  }
+
+  /* The gutters are rem-based, and raising the root to 18px inflated every one
+     of them by twenty percent at exactly the width where space is scarcest.
+     That was a side effect of fixing the type scale, not a decision: measured
+     at 390px, 120px of the viewport was gutter and the value column of a
+     registry card got 48 to 59 percent of the screen. These trim the panel and
+     page padding back so the content gets the width instead. */
+  .panel {
+    padding-inline: 0.75rem;
+  }
+
+  /* The steps below 0.78rem are labels and chips. Floor them rather than
+     scaling the root past what the headings can take. */
+  .eyebrow,
+  .chip,
+  .sub,
+  .note,
+  .hint,
+  small {
+    font-size: 0.78rem;
+  }
+
+  /* WCAG 2.5.5. The audit measures every control, and buttons landed at 29.8px
+     and 38.2px. Padding rather than height alone, so labels stay centred. */
+  button,
+  .button,
+  a.primary,
+  select,
+  input[type='number'],
+  input[type='text'] {
+    min-height: 44px;
+  }
+
+  /* The worst target in the console by a wide margin: the upkeep id link in the
+     registry table, 8.45x16px, and the only way into an upkeep from the
+     registry. Made a block so the whole cell is the tap target. */
+  /* flex, not line-height. line-height:44px on a 15.84px font makes the box
+     44px by pushing the text off its own baseline: the app link in a Target
+     cell measured 96x45 for one line, its baseline sat 14px below where the
+     label expected it, and the hex selector landed 58px lower again. That read
+     as a broken grid and was not one. Centring the text in a 44px flex box
+     gives the same target and leaves the baseline where it belongs. */
+  td a,
+  th a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* No overflow rules here on purpose. The registry table already sits in a
+     `.scroll` wrapper with `overflow-x: auto`, which is the right shape: the
+     table scrolls, the page does not. An earlier version of this block added
+     `body { overflow-x: hidden }` and `table { display: block }`, which broke
+     that wrapper and then hid the evidence — the audit correctly reported the
+     table running 840px past a body that was now concealing it, which is
+     content cut off rather than content contained. */
+}
+
+/* While the mobile drawer is open the page beneath it must not scroll. The
+   drawer sets this class on body; overscroll-behavior alone only stops a scroll
+   chaining out of the drawer, not one that starts on the page. */
+body.menu-open {
+  overflow: hidden;
+}
