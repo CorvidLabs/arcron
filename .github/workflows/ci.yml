@@ -198,14 +198,23 @@ jobs:
           echo "::error::algod did not become ready"
           exit 1
 
-      - name: Build contracts
-        run: fledge run build
-
-      - name: Keeper end-to-end
-        run: fledge run smoke-keeper
-
-      - name: Daily rain demo
-        run: fledge run smoke-rain
+      # These read their commands out of fledge.toml for the same reason the
+      # job above does: `fledge` is not on a hosted runner, and these three
+      # steps invoked it directly. The job only runs on push, so no pull
+      # request ever executed them and `fledge: command not found` sat on main
+      # looking like a broken end-to-end test rather than a missing binary.
+      - name: Run the chain-facing tasks
+        run: |
+          run_task() {
+            local command
+            command=$(python -c "import tomllib,sys; print(tomllib.load(open('fledge.toml','rb'))['tasks'][sys.argv[1]])" "$1")
+            echo "::group::$1 — $command"
+            ( eval "$command" )
+            echo "::endgroup::"
+          }
+          for task in build smoke-keeper smoke-rain; do
+            run_task "$task"
+          done
 
       - name: LocalNet state on failure
         if: failure()
