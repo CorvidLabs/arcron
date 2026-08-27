@@ -18,6 +18,25 @@ import { canonicalAppId, isQuarantined, standingOf } from './quarantine';
 import { decodeUpkeep, type Upkeep, upkeepIdFromBoxName } from '@corvidlabs/arcron/upkeep';
 
 const POLL_INTERVAL_MS = 2_500;
+/**
+ * How many polls pass between full reads of the registry.
+ *
+ * A poll used to read every box every time: status, the app, its account, the
+ * box list, and then one request per box. At twelve upkeeps that is sixteen
+ * requests every 2.5 seconds, or 6.4 a second from a single open tab, growing
+ * by 0.4 a second for every upkeep anyone ever registers. Public nodes answer
+ * that with 403, and the console then reports itself unable to read the chain.
+ *
+ * The round has to be live, because it decides which Execute buttons are lit
+ * and what they claim to pay. Escrow balances do not need 2.5 second
+ * resolution: they change when an upkeep runs, and the fastest cadence anyone
+ * can register is ten rounds, about 28 seconds.
+ *
+ * So the cheap half runs every poll and the expensive half every eighth,
+ * which is 6.4 requests a second down to about 0.9. A write refreshes
+ * immediately regardless, so anything you do yourself still appears at once.
+ */
+const FULL_READ_EVERY = 8;
 /** Round-rate samples kept; at the poll interval this is ~2 minutes of chain. */
 const RATE_SAMPLES = 48;
 /** Below this the sample window is too short to divide by. */
@@ -87,6 +106,8 @@ export function isFrozen(
 @Injectable({ providedIn: 'root' })
 export class ArcronService {
   private timer: ReturnType<typeof setInterval> | null = null;
+  /** Polls since the registry was last read in full. */
+  private pollsSinceFullRead = FULL_READ_EVERY;
 
   /** Resolved once, before the signals below read it, so field order matters. */
   private readonly entry = readEntry();
@@ -284,7 +305,10 @@ export class ArcronService {
   start(): void {
     if (this.timer !== null) return;
     void this.refresh();
-    this.timer = setInterval(() => void this.refresh(), POLL_INTERVAL_MS);
+    this.timer = setInterval(() => {
+      const full = this.pollsSinceFullRead >= FULL_READ_EVERY;
+      void this.refresh(full);
+    }, POLL_INTERVAL_MS);
   }
 
   stop(): void {
@@ -293,7 +317,14 @@ export class ArcronService {
     this.timer = null;
   }
 
-  async refresh(): Promise<void> {
+  /**
+   * Read the chain.
+   *
+   * `full` forces the registry to be re-read rather than waiting for the next
+   * scheduled full read. Callers outside the poll pass it, so anything you do
+   * yourself appears at once and the saving only ever applies to idle time.
+   */
+  async refresh(full = true): Promise<void> {
     const algod = this.algod();
     const appId = this.appId();
     // Every write below is guarded by this. A victim who suspects the app id
@@ -323,8 +354,14 @@ export class ArcronService {
         this.appAccount.set(null);
         this.nextUpkeepId.set(null);
         this.frozen.set(null);
-      } else {
+      } else if (full || this.upkeeps().length === 0) {
+        // The second condition matters on first load and after a network
+        // switch, where waiting up to eight polls to show anything would read
+        // as a broken page rather than as a cheap one.
+        this.pollsSinceFullRead = 0;
         await this.refreshApp(algod, appId, current);
+      } else {
+        this.pollsSinceFullRead += 1;
       }
       if (!current()) return;
       this.status.set('ready');

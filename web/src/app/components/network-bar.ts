@@ -1,5 +1,7 @@
 import { afterNextRender, ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 
+import { RouterLink } from '@angular/router';
+
 import { ArcronService, DEV_MODE } from '../core/arcron.service';
 import { duration } from '@corvidlabs/arcron/format';
 import type { NetworkKey } from '@corvidlabs/arcron/networks';
@@ -7,15 +9,26 @@ import type { NetworkKey } from '@corvidlabs/arcron/networks';
 @Component({
   selector: 'arcron-network-bar',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [RouterLink],
   template: `
     <div class="bar">
       <div class="brand">
-        <svg class="mark" viewBox="0 0 64 64" role="img" aria-label="CorvidLabs">
-          <circle cx="24" cy="32" r="18" fill="currentColor" />
-          <path d="M33 21.5 L58.5 29.5 L33 39.5 Z" fill="currentColor" />
-          <circle cx="27.5" cy="26" r="3" fill="var(--paper)" />
-        </svg>
-        <h1 class="wordmark">Arcron</h1>
+        <!--
+          The wordmark is the way back to the registry, which is what everybody
+          tries first and what nothing else on the page offers from an upkeep
+          page or the register form. The link wraps the mark and the name and
+          not the tagline, because "keeper network console" describes the site
+          rather than naming the destination, and a link should say where it
+          goes.
+        -->
+        <a class="home" routerLink="/" aria-label="Arcron, back to the registry">
+          <svg class="mark" viewBox="0 0 64 64" role="img" aria-label="CorvidLabs">
+            <circle cx="24" cy="32" r="18" fill="currentColor" />
+            <path d="M33 21.5 L58.5 29.5 L33 39.5 Z" fill="currentColor" />
+            <circle cx="27.5" cy="26" r="3" fill="var(--paper)" />
+          </svg>
+          <h1 class="wordmark">Arcron</h1>
+        </a>
         <span class="tagline">keeper network console</span>
       </div>
 
@@ -104,6 +117,17 @@ import type { NetworkKey } from '@corvidlabs/arcron/networks';
       justify-content: space-between;
     }
     .brand { display: flex; align-items: center; gap: 0.6rem; }
+    .home {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      color: inherit;
+      text-decoration: none;
+    }
+    /* Underlining only the name, because underlining the mark looks like a
+       rendering fault rather than a link. */
+    .home:hover .wordmark { text-decoration: underline; }
+    .home:focus-visible { outline: 2px solid var(--sheen); outline-offset: 3px; border-radius: 2px; }
     .mark { width: 26px; height: 26px; color: var(--ink); }
     .wordmark { margin: 0; font-size: 1.3rem; font-weight: 900; letter-spacing: -0.02em; }
     .tagline {
