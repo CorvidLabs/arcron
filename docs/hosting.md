@@ -63,9 +63,20 @@ account yourself and give it only what it needs: it refuses to start below
 103,000 microAlgos, and a couple of ALGO of float is plenty while fees top it
 up.
 
-Half-hourly is chosen against the upkeeps that exist rather than in the
-abstract. The shortest live cadence is about six hours, so a check every
-thirty minutes is late by at most eight percent of one interval.
+Half-hourly was chosen against the upkeeps that existed when it was written,
+and those have changed. That justification said the shortest live cadence was
+about six hours, so a half-hourly check was late by at most eight percent of
+one interval. On 2026-08-27 the shortest executable cadence was **ten minutes**,
+which makes a half-hourly keeper **three intervals late**, not a fraction of
+one. The claim was overstated by a factor of about thirty-six.
+
+Take the cadence you actually register seriously, then. A half-hourly keeper
+suits work measured in hours. Below that it will service your upkeep eventually
+and not on time, and with `CATCH_UP` it will replay every interval it missed at
+one fee each, which is how upkeep 18 burned its entire escrow and advanced 41
+rounds against a 23,478 round backlog. If you need minutes, run something that
+polls in minutes: `deploy/compose.yaml` is that, and it is the reason the cron
+is described here as a stopgap.
 
 **The cost is the thing to check first**, because it is billed per minute on a
 private repository and a keeper runs constantly. A run is roughly two minutes,

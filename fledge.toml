@@ -34,6 +34,10 @@ smoke-clawback = "poetry run python -m scripts.clawback_e2e --network localnet"
 site-docs = "poetry run python -m scripts.sync_site_docs"
 site-console = "poetry run python -m scripts.publish_console"
 # Record the live deployment as JSON, for pages that must build without a network.
+# The published mirror is the only documentation anybody outside can read
+# while this repository is private, and it has been days behind twice. This
+# reports drift without writing; run sync_site_docs without --check to fix it.
+site-docs-check = "poetry run python -m scripts.sync_site_docs --site ../../site --check"
 snapshot = "poetry run python -m scripts.testnet_snapshot --network testnet --app-id 769891898"
 # One install for the whole Bun workspace (js + web). Installing per-package
 # gives each its own algosdk, and the console then bundles it twice.
