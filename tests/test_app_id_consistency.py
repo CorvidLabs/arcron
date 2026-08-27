@@ -72,6 +72,30 @@ LIVE_KEEPER_POINTERS = [
 ]
 
 
+def latest_release_stage() -> str:
+    """The stage in the last row of the release table, e.g. `alpha-3`.
+
+    The regex below already captured this and threw it away, which is a fair
+    summary of how the stage has been maintained: `docs/releases.md` is updated
+    on every deployment and the prose describing "where we are" is updated when
+    somebody remembers. On 2026-08-27 the live app had been alpha-3 for a day
+    while README.md said alpha-1 twice, docs/arcron.md's headline table said
+    alpha-1 twenty lines above its own liveness table saying alpha-3, and an
+    example said alpha-2.
+    """
+    return _last_release_row().group(1)
+
+
+def _last_release_row() -> "re.Match[str]":
+    rows = [
+        found
+        for line in (ROOT / "docs" / "releases.md").read_text().splitlines()
+        if (found := re.match(r"\|\s*((?:alpha|beta|rc|mainnet)-\d+)\s*\|", line))
+    ]
+    assert rows, "docs/releases.md has no recorded release"
+    return rows[-1]
+
+
 def latest_release_app_id() -> str:
     """The app id in the last row of the release table — what is live now."""
     rows = [
@@ -122,3 +146,68 @@ def test_superseded_apps_appear_only_where_history_is_recorded() -> None:
             if app_id in text:
                 offenders.append(f"{relative} names superseded app {app_id}")
     assert not offenders, "Superseded app ids outside historical files:\n  " + "\n  ".join(offenders)
+
+
+# --- the release stage, in the files a stranger reads ---------------------
+
+# What a stranger opens first. These are exempt from the superseded-app-id
+# check above, because they name dead deployments deliberately, and that
+# exemption is exactly why nothing noticed them naming a dead *stage*.
+STRANGER_FACING = (
+    "README.md",
+    "SECURITY.md",
+    "docs/arcron.md",
+    "docs/status.md",
+    "docs/integrating.md",
+)
+
+# A stage token next to one of these is history, not a claim about now.
+HISTORICAL_MARKERS = (
+    "superseded", "predates", "replaced", "earlier", "was ", "were ",
+    "first deployment", "no longer", "until", "abandoned", "stranded",
+    "migrat", "since", "previous", "deployed as", "up to and including",
+    "old ", "retired", "immutable",
+)
+
+STAGE_PATTERN = re.compile(r"\b((?:alpha|beta|rc|mainnet)-\d+)\b")
+
+
+def test_no_stranger_facing_file_names_a_superseded_stage_as_current() -> None:
+    """A stage claim that has gone stale is a lie about what you are trusting.
+
+    `docs/releases.md` is updated on every deployment. The prose saying "where
+    we are" is updated when somebody remembers, and on 2026-08-27 nobody had:
+    the live app had been alpha-3 for a day while README.md said alpha-1 twice,
+    docs/arcron.md's headline table said alpha-1 twenty lines above its own
+    liveness table saying alpha-3, and examples/register_upkeep.py said alpha-2.
+
+    A reader cannot tell which sentence is the stale one, which is corrosive in
+    a project whose safety case is that it tells you uncomfortable things
+    plainly.
+
+    Mentions of an older stage are fine, and necessary: the release history and
+    the migration notes have to name what they are talking about. What is
+    refused is an older stage named with nothing around it to say it is past.
+    """
+    current = latest_release_stage()
+    offenders = []
+
+    for relative in STRANGER_FACING:
+        path = ROOT / relative
+        if not path.is_file():
+            continue
+        for number, line in enumerate(path.read_text().splitlines(), start=1):
+            lowered = line.lower()
+            if any(marker in lowered for marker in HISTORICAL_MARKERS):
+                continue
+            # A table row from the release history is a record, not a claim.
+            if re.match(r"\|\s*(?:alpha|beta|rc|mainnet)-\d+\s*\|", line):
+                continue
+            for stage in STAGE_PATTERN.findall(line):
+                if stage != current:
+                    offenders.append(f"{relative}:{number} says {stage}, live is {current}\n      {line.strip()[:100]}")
+
+    assert not offenders, (
+        f"Stale release stage in files a stranger reads (live is {current}):\n  "
+        + "\n  ".join(offenders)
+    )
