@@ -19,6 +19,7 @@ import {
   MAX_UPKEEP_FEE,
   MIN_INTERVAL_ROUNDS,
   MIN_UPKEEP_FEE,
+  SUGGESTED_UPKEEP_FEE,
   registrationCost,
   SKIP_AHEAD,
   toHex,
@@ -116,7 +117,8 @@ const INTEGRATION_GUIDE_URL =
           <label>
             <span class="eyebrow">Fee per execution (ALGO)</span>
             <input type="number" step="0.001" formControlName="feePerExecution" />
-            <small>min {{ minFeeAlgo }} (keepers spend ~0.003 in group fees)</small>
+            <small>min {{ minFeeAlgo }}; keepers spend ~0.003 in group fees, so at the
+              minimum they net 0.001 and cannot fund a machine</small>
           </label>
 
           <label>
@@ -459,10 +461,10 @@ export class RegisterForm {
       [Validators.required, Validators.min(MIN_INTERVAL_ROUNDS), Validators.max(MAX_INTERVAL_ROUNDS)],
     ],
     feePerExecution: [
-      MIN_UPKEEP_FEE / 1e6,
+      SUGGESTED_UPKEEP_FEE / 1e6,
       [Validators.required, Validators.min(MIN_UPKEEP_FEE / 1e6), Validators.max(MAX_UPKEEP_FEE / 1e6)],
     ],
-    funding: [(MIN_UPKEEP_FEE * 3) / 1e6, [Validators.required, Validators.min(MIN_UPKEEP_FEE / 1e6)]],
+    funding: [(SUGGESTED_UPKEEP_FEE * 3) / 1e6, [Validators.required, Validators.min(MIN_UPKEEP_FEE / 1e6)]],
     // The encoding keeps CATCH_UP as zero so nothing registered before means
     // something new. The form defaults the other way, because "only the
     // latest run matters" is the commoner shape and the safer mistake.
