@@ -15,7 +15,8 @@ The job matters; whoever runs it does not, and nobody owns it.*
 **Why this exists:** every serious chain should have a way to say *"call this
 later"* without requiring a server, and Algorand does not have one. There is no
 ARC for scheduled execution and never has been. [`docs/why.md`](docs/why.md)
-makes the case, at about a nineteenth the cost of the cheapest VM, and states
+makes the case at about a seventh the cost of the cheapest paid host, says
+where it stops being true (above ~26 upkeeps, run your own bot), and states
 plainly what would prove it wrong.
 
 | Contract | What it is | Status |
