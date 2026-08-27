@@ -34,6 +34,20 @@
 
 name: Keeper bot
 
+# Least privilege, declared rather than inherited.
+#
+# Without this a workflow takes whatever the repository's default token
+# permissions happen to be. That default is `read` today, and a default is a
+# setting: it can be widened later, by somebody who is not thinking about these
+# files, and every workflow silently widens with it. CodeQL flagged all five.
+#
+# Nothing here writes. Every job checks out the repository and runs tests or a
+# bot against a chain; none comments, pushes, tags, or releases. So the floor is
+# the floor, and a job that ever needs more has to say so here and be noticed.
+permissions:
+  contents: read
+
+
 on:
   workflow_dispatch:
     inputs:
