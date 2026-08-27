@@ -325,6 +325,12 @@ poetry run python -m scripts.keeper_bot --app-id N # other keeper instance
 
 - Signs as `KEEPER_MNEMONIC`, else `DEPLOYER_MNEMONIC`; fees are paid to that
   account, and it pays the outer fees, so keep it funded.
+- **How many keepers this needs: two or three, not a crowd.** One keeper is a
+  loop over boxes, so it does not shard: ten thousand upkeeps on a one hour
+  cadence average 7.8 due per round, which is one machine's work. Keeper count
+  is a liveness question, not a throughput one, and the escalating fee exists to
+  recruit the second keeper when the first stops rather than to run an auction.
+  The arithmetic and the evidence are in [prior art](prior-art.md).
 - Multiple competing bots are safe: the contract re-checks due-ness
   atomically, so exactly one keeper is paid per due round. **The loser pays
   nothing.** Algorand rejects a failing transaction at validation rather than

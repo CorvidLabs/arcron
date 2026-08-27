@@ -125,6 +125,35 @@ The Keep3r number worth carrying is this: sampling its whole history, **distinct
 active keepers peaked at six.** On Ethereum, at a peak TVL of $630M, with a
 token that traded in the four figures.
 
+## How many keepers does this actually need?
+
+Fewer than the word "network" suggests, and the reason is arithmetic rather than
+modesty.
+
+**A keeper is a loop over boxes, so it does not shard.** One keeper polling
+every 2.5 seconds services roughly 1,286 executions an hour at one due upkeep
+per round. Ten thousand upkeeps on a one hour cadence average **7.8 due per
+round**, which is still one machine's work. Keeper count is not a throughput
+constraint and never becomes one.
+
+**It is a liveness constraint.** One keeper and the network works until that
+machine dies. Two or three independent operators covers what actually goes
+wrong: a box that fails, a cloud region that goes down, and an operator who
+loses interest. Past that, another keeper adds redundancy nobody is paying for.
+
+So Keep3r's six was never a capacity ceiling. Six was what the money supported.
+Reading it as a shortfall is reading a liveness number as a throughput number,
+and the comparison flatters nobody: Ethereum's keeper counts reflect a gas
+auction where keepers compete on latency and burn margin doing it. Algorand has
+no priority auction, and a losing keeper here pays exactly zero, so that dynamic
+is absent.
+
+**This is what the escalating fee is for.** Not price discovery in a crowded
+market, which has never existed anywhere. It is the signal that recruits the
+second keeper when the first one stops, which is the failure that actually
+happens: to Keep3r, which is down to two, and to BiatecCron, which went quiet
+when one executor stopped.
+
 ## What this means for Arcron
 
 **Keeper diversity is small everywhere.** BiatecCron's single executor is not
