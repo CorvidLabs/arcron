@@ -17,7 +17,7 @@ poetry run python -m scripts.keeper_bot --once --network testnet --app-id 769891
 | **pulse** | [`769891902`](https://testnet.explorer.perawallet.app/application/769891902) | live | A heartbeat counter that exists to be called. No state worth protecting, cannot fail, which is what makes it the right first target. |
 | **rain** | [`770029154`](https://testnet.explorer.perawallet.app/application/770029154) | live, **not frozen** | A scheduled prize draw, gated on an NFT collection. Deployed 2026-08-27. |
 | **rain (gate test)** | [`770030875`](https://testnet.explorer.perawallet.app/application/770030875) | live | The same contract gated on a collection we hold keys for, so the gate can be proved from both sides. Not the dogfood. |
-| ~~rain~~ | [`769988156`](https://testnet.explorer.perawallet.app/application/769988156) | superseded | The ungated version. Its last draw aged out and was abandoned; the prize returned to the pot. |
+| ~~rain~~ | [`769988156`](https://testnet.explorer.perawallet.app/application/769988156) | superseded | The ungated version. Its last draw aged out and was abandoned, the prize returning to the pot, and the upkeep that drove it was cancelled and re-registered against the gated app as upkeep 77. |
 
 `not frozen` means the creator can still replace the programs. That is
 deliberate while these iterate and it is a real power over anything escrowed;
@@ -25,7 +25,7 @@ see [`security.md`](security.md).
 
 ## The upkeeps
 
-Read from the chain at round 66728345.
+Read from the chain at round 66729422.
 
 | id | target | every | escrow | runway | runs | policy |
 |---|---|---|---|---|---|---|
@@ -33,8 +33,8 @@ Read from the chain at round 66728345.
 | 20 | `769891902` pulse | 11.4 h | 0.3566 ALGO | ~42 days | 3 | skip ahead |
 | 21 | `769891902` pulse | 11.4 h | 0.4024 ALGO | ~48 days | 3 | skip ahead |
 | 22 | `769891902` pulse | 11.4 h | 0.3566 ALGO | ~42 days | 3 | skip ahead |
-| 73 | `769891902` pulse | 57 min | 0.9240 ALGO | ~9 days | 19 | skip ahead |
-| 76 | `769988156` rain (superseded) | 1.9 h | 1.9600 ALGO | ~39 days | 10 | skip ahead |
+| 73 | `769891902` pulse | 57 min | 0.9200 ALGO | ~9 days | 20 | skip ahead |
+| 77 | `770029154` rain (gated) | 1.9 h | 8.0000 ALGO | ~63 days | 0 | skip ahead |
 
 **Runway** is escrow divided by burn rate at the measured 2.66 s/round. It is
 what the upkeep can pay for, not a promise about keeper availability.
@@ -45,6 +45,12 @@ floor costs 0.6 to 13 ALGO a day each. They were not underfunded, they were
 misconfigured, and cancelling recovered their box minimum balance.
 
 ## rain: who can win, and how often
+
+**The comparison is case-sensitive, deliberately.** `corvid1` enters and
+`Corvid` does not. Unit names are bytes and the AVM compares them as bytes, so
+folding case would mean lowercasing on chain for the sake of one asset in a
+collection of fifteen. Anyone minting into a gated collection needs to know that
+capitalisation is part of the name, not decoration.
 
 **Who may enter.** Holders of an asset minted by
 `WGSHC4TYKYBS6EX5V5E377BQDLKWIIPBCFOLZQZIXCKHFIEKRPBFOMW25A` (`corvid.algo`)
