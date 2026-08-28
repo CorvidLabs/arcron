@@ -25,7 +25,7 @@ see [`security.md`](security.md).
 
 ## The upkeeps
 
-Read from the chain at round 66,754,157.
+Read from the chain at round 66,755,175.
 
 | id | target | every | escrow | runway | runs | policy |
 |---|---|---|---|---|---|---|
@@ -33,9 +33,24 @@ Read from the chain at round 66,754,157.
 | 20 | `769891902` pulse | 11.5 h | 0.3486 ALGO | ~42 days | 5 | skip ahead |
 | 21 | `769891902` pulse | 11.5 h | 0.3943 ALGO | ~47 days | 5 | skip ahead |
 | 22 | `769891902` pulse | 11.5 h | 0.3486 ALGO | ~42 days | 5 | skip ahead |
-| 73 | `769891902` pulse | 58 min | 0.8480 ALGO | ~9 days | 38 | skip ahead |
 | 79 | `770029154` rain (gated) | 1.9 h | 7.9300 ALGO | ~64 days | 7 | skip ahead |
-| 81 | `770041460` (not ours) | 58 min | 1.5400 ALGO | ~6 days | 14 | skip ahead |
+| 81 | `770041460` (not ours) | 58 min | 1.5300 ALGO | ~6 days | 15 | skip ahead |
+| 82 | `769891902` pulse | 58 min | 3.5000 ALGO | ~14 days | 0 | skip ahead |
+
+**Upkeep 82 replaced upkeep 73 on 2026-08-28**, and the reason is worth
+recording because nothing on chain shows it. 73 paid `MIN_UPKEEP_FEE` and also
+offered an ASA bonus. The bonus transfer is a third inner transaction, so a
+keeper spent 4,000 microAlgos to earn 4,000 and cleared exactly nothing. It was
+serviced 39 times for free before `fledge run health` was written and said so.
+
+A fee cannot be edited: like the method selector, it is fixed in the box at
+registration, so correcting it meant cancelling and re-registering. 82 pays
+10,000, which is what the console suggests and what 79 and 81 already pay, and
+carries a **fee cap of 20,000**, which 73 did not. That second part matters
+beyond this upkeep: the contract escalates only when `cap > fee`, so with a cap
+of zero our own dogfood had never once exercised the escalating fee, which is
+the mechanism [`prior-art.md`](prior-art.md) identifies as the thing no
+comparable system has anywhere.
 
 **Upkeep 81 is not ours.** It was registered on 2026-08-27 by
 `A3OZPORJ…`, against a contract that account deployed itself, and it has been
