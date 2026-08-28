@@ -12,6 +12,7 @@ Everything else is presentation.
 import pytest
 
 from scripts.keeper_assets import (
+    EXECUTION_COST_MICROALGO,
     OPT_IN_ROUND_TRIP_MICROALGO,
     SURCHARGE_MICROALGO,
     AssetInfo,
@@ -21,7 +22,13 @@ from scripts.keeper_assets import (
     forgone,
     positions,
 )
-from scripts.keeper_bot import BONUS_FEE_MICROALGO, Upkeep, _decode_upkeep, effective_fee
+from scripts.keeper_bot import (
+    BONUS_FEE_MICROALGO,
+    EXECUTION_COST_MICROALGO as BOT_EXECUTION_COST_MICROALGO,
+    Upkeep,
+    _decode_upkeep,
+    effective_fee,
+)
 from tests.test_keeper_bot import LIVE_BOX_HEX
 
 PINNED = _decode_upkeep(0, bytes.fromhex(LIVE_BOX_HEX))
@@ -327,3 +334,113 @@ def test_the_report_leads_with_the_break_even() -> None:
     assert "0.004 ALGO" in lines
     assert "opted in:      no" in lines
     assert f"{SURCHARGE_MICROALGO:,} per execution, unavoidable once opted in" in lines
+
+
+# ---------------------------------------------------------------------------
+# The ALGO margin
+#
+# The break-even price answers "is the bonus worth its surcharge". It does not
+# answer "does the ALGO side still pay", and the two come apart exactly at the
+# fee floor: an upkeep paying MIN_UPKEEP_FEE (4,000) earns 1,000 a run against
+# a 3,000 execution cost, and opting in costs precisely that 1,000. The margin
+# goes to zero and the bonus arithmetic does not move at all, so an operator
+# reading only the break-even would opt in, clear it, and execute for the token
+# alone without ever being told.
+# ---------------------------------------------------------------------------
+
+
+def test_the_mirrored_execution_cost_matches_the_bot() -> None:
+    # keeper_assets cannot import keeper_bot: the bot imports it, for its own
+    # startup warning. The constant is mirrored instead, and this is what stops
+    # the copy drifting from the original in silence.
+    assert EXECUTION_COST_MICROALGO == BOT_EXECUTION_COST_MICROALGO
+    assert SURCHARGE_MICROALGO == BONUS_FEE_MICROALGO
+
+
+def test_an_upkeep_at_the_fee_floor_has_its_whole_margin_taken() -> None:
+    (position,) = positions(
+        [upkeep(1, interval_rounds=1_000, fee_per_execution=4_000, fee_asset=7, asset_fee=5)]
+    )
+    per_day = executions_per_day(1_000)
+
+    # Earns 4,000, costs 3,000 to run: 1,000 a run before any opt-in.
+    assert position.algo_margin_per_day == pytest.approx(1_000 * per_day)
+    # And the surcharge is exactly that, so nothing is left.
+    # Mathematically zero; float cancellation puts it a few parts in a
+    # trillion off, which is the whole reason the predicate uses a
+    # tolerance rather than comparing against zero.
+    assert position.algo_margin_per_day_opted_in == pytest.approx(0.0, abs=1e-6)
+    assert position.surcharge_takes_the_whole_algo_margin is True
+
+
+def test_a_well_paid_upkeep_keeps_a_margin_and_raises_nothing() -> None:
+    (position,) = positions(
+        [upkeep(1, interval_rounds=1_000, fee_per_execution=20_000, fee_asset=7, asset_fee=5)]
+    )
+    assert position.algo_margin_per_day > 0
+    assert position.algo_margin_per_day_opted_in > 0
+    assert position.surcharge_takes_the_whole_algo_margin is False
+
+
+def test_the_warning_does_not_fire_when_there_was_never_a_margin() -> None:
+    # Below cost before any opt-in is a different message, and saying "opting
+    # in takes your whole margin" about a margin that was already negative
+    # would be false.
+    (position,) = positions(
+        [upkeep(1, interval_rounds=1_000, fee_per_execution=2_500, fee_asset=7, asset_fee=5)]
+    )
+    assert position.algo_margin_per_day < 0
+    assert position.surcharge_takes_the_whole_algo_margin is False
+
+
+def test_the_margin_counts_only_upkeeps_that_can_actually_execute() -> None:
+    # A dead upkeep pays no fee and costs nothing to run, so it must not drag
+    # the margin in either direction.
+    (position,) = positions(
+        [
+            upkeep(1, interval_rounds=1_000, fee_per_execution=20_000, fee_asset=7, asset_fee=5),
+            upkeep(2, interval_rounds=1_000, fee_per_execution=20_000, fee_asset=7,
+                   asset_fee=5, asset_balance=0),
+        ]
+    )
+    assert position.upkeeps == 2 and position.live == 1
+    assert position.micro_algo_per_day == pytest.approx(
+        20_000 * executions_per_day(1_000)
+    )
+
+
+def test_the_report_says_so_in_words() -> None:
+    (position,) = positions(
+        [upkeep(1, interval_rounds=1_000, fee_per_execution=4_000, fee_asset=7, asset_fee=5)]
+    )
+    text = "\n".join(describe(position, AssetInfo(7, "TOK", 0)))
+    assert "ALGO margin" in text
+    assert "WARNING" in text
+
+
+def test_the_warning_is_not_decided_by_rounding_error() -> None:
+    """The floor case must fire whichever way the float lands.
+
+    `algo_margin_per_day_opted_in` at `MIN_UPKEEP_FEE` is mathematically zero,
+    and the subtraction that produces it cancels, so the result is a few parts
+    in a trillion either side. Comparing that against zero would have made the
+    most important warning in this module a coin flip on the cadence: some
+    intervals land negative and warn, others land positive and stay silent
+    about an upkeep paying nothing.
+    """
+    for interval in (100, 213, 1_000, 2_571, 7_777, 12_900):
+        (position,) = positions(
+            [
+                upkeep(
+                    1,
+                    interval_rounds=interval,
+                    fee_per_execution=4_000,
+                    fee_asset=7,
+                    asset_fee=5,
+                )
+            ]
+        )
+        assert position.surcharge_takes_the_whole_algo_margin is True, (
+            f"the floor warning did not fire at interval {interval}, where the "
+            f"margin came out {position.algo_margin_per_day_opted_in!r}"
+        )

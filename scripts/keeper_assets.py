@@ -56,6 +56,24 @@ logger = logging.getLogger(__name__)
 # asset: the pooled fee for the bonus transfer, a third inner transaction.
 # The twin of `keeper_bot.BONUS_FEE_MICROALGO`, which is what actually pays it.
 SURCHARGE_MICROALGO = 1_000
+
+#: What a keeper spends in group fees on an execution that pays no bonus: the
+#: outer call plus the two inner transactions the contract submits.
+#:
+#: Mirrored from `keeper_bot.EXECUTION_COST_MICROALGO` rather than imported,
+#: because the bot imports this module and the cycle is worse than the
+#: duplication. `test_keeper_assets.py` asserts the two agree, so a change to
+#: one that is not made to the other fails rather than drifts.
+EXECUTION_COST_MICROALGO = 3_000
+
+#: Below this, a daily margin is treated as zero.
+#:
+#: Every rate here is a float over a per-day divisor, so a margin that is
+#: mathematically exactly zero, which is what an upkeep at `MIN_UPKEEP_FEE`
+#: produces once opted in, lands a few parts in a trillion either side of it.
+#: Comparing that against zero decides the most important case by rounding
+#: error. One microAlgo a day is far below anything an operator would act on.
+NEGLIGIBLE_MICROALGO_PER_DAY = 1.0
 # What an opt-in locks in the keeper's own minimum balance. Released in full
 # by a close-out, so this is capital tied up rather than money spent.
 OPT_IN_MBR_MICROALGO = 100_000
@@ -105,6 +123,9 @@ class AssetPosition:
     #: Executions per day those upkeeps represent, which is what the
     #: surcharge is charged on.
     executions_per_day: float
+    #: The ALGO fees those same live upkeeps pay per day. Needed because the
+    #: surcharge is charged against this, not only against the bonus.
+    micro_algo_per_day: float
     #: Bonus units left in escrow across every upkeep naming the asset,
     #: including ones that cannot currently execute.
     escrowed_units: int
@@ -161,6 +182,44 @@ class AssetPosition:
         if self.executions_per_day <= 0:
             return None
         return self.remaining_bonuses / self.executions_per_day
+
+    @property
+    def algo_margin_per_day(self) -> float:
+        """What these upkeeps pay in ALGO per day, net of what they cost to run.
+
+        This is the half the break-even price says nothing about. An operator
+        can clear the bonus break-even comfortably and still be executing for
+        nothing, because the surcharge is charged against the ALGO margin and
+        not against the bonus.
+        """
+        return self.micro_algo_per_day - self.executions_per_day * EXECUTION_COST_MICROALGO
+
+    @property
+    def algo_margin_per_day_opted_in(self) -> float:
+        """The same margin once the surcharge applies."""
+        return self.algo_margin_per_day - self.surcharge_per_day
+
+    @property
+    def surcharge_takes_the_whole_algo_margin(self) -> bool:
+        """True when opting in leaves nothing, or less than nothing, in ALGO.
+
+        The case that makes this worth reporting is an upkeep at
+        `MIN_UPKEEP_FEE`. It pays 4,000 and costs 3,000 to execute, so it
+        earns 1,000 a run. Opting in makes it cost 4,000, and the margin is
+        exactly zero: the keeper works for the token alone. Nothing in the
+        bonus arithmetic shows that, because the bonus is unchanged.
+
+        Compared against `NEGLIGIBLE_MICROALGO_PER_DAY` rather than against
+        zero, because that exact case is where the subtraction cancels and
+        floating point stops being reliable: the margin comes out at about
+        -4e-12 rather than 0, and it could as easily have come out a hair
+        positive, which would have silenced the warning on the one upkeep it
+        exists for. A margin under a microAlgo a day is not a margin.
+        """
+        return (
+            self.algo_margin_per_day > NEGLIGIBLE_MICROALGO_PER_DAY
+            and self.algo_margin_per_day_opted_in <= NEGLIGIBLE_MICROALGO_PER_DAY
+        )
 
     def net_micro_algo_per_day(self, micro_algo_per_unit: float) -> float:
         """What opting in would earn per day at an operator's own valuation.
@@ -241,6 +300,10 @@ def positions(
                 ),
                 executions_per_day=sum(
                     executions_per_day(upkeep.interval_rounds) for upkeep in live
+                ),
+                micro_algo_per_day=sum(
+                    upkeep.fee_per_execution * executions_per_day(upkeep.interval_rounds)
+                    for upkeep in live
                 ),
                 escrowed_units=sum(upkeep.asset_balance for upkeep in naming),
                 remaining_bonuses=sum(
@@ -386,6 +449,30 @@ def describe(position: AssetPosition, info: AssetInfo) -> list[str]:
         f"released on close-out; {micro_algo(OPT_IN_ROUND_TRIP_MICROALGO)} of "
         f"transaction fees is the only part that does not come back.",
     ]
+
+    # The break-even above answers "is the bonus worth its surcharge". It does
+    # not answer "does the ALGO side still pay", and those come apart at the
+    # fee floor: an upkeep paying MIN_UPKEEP_FEE earns 1,000 a run and opting
+    # in costs exactly that. An operator who read only the break-even would
+    # opt in, clear it, and execute for the token alone without being told.
+    lines.append(
+        f"  ALGO margin:   {micro_algo(position.algo_margin_per_day)} per day now, "
+        f"{micro_algo(position.algo_margin_per_day_opted_in)} once opted in "
+        f"(fees earned less {EXECUTION_COST_MICROALGO:,} per execution to run them)"
+    )
+    if position.surcharge_takes_the_whole_algo_margin:
+        lines.append(
+            "  WARNING:       opting in takes the whole ALGO margin on these "
+            "upkeeps. Past this point the bonus is not a bonus, it is the "
+            "entire payment, and the break-even above is the only thing "
+            "standing between you and working for nothing."
+        )
+    elif position.algo_margin_per_day <= 0:
+        lines.append(
+            "  WARNING:       these upkeeps do not cover their own execution "
+            "cost in ALGO before any opt-in. The bonus would have to carry "
+            "them outright."
+        )
     return lines
 
 
