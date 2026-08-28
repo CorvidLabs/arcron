@@ -44,6 +44,23 @@ logger = logging.getLogger(__name__)
 # The ARC-4 head of an Upkeep, in bytes. Also the value the contract writes as
 # the offset to the argument list, which makes it a version fingerprint.
 HEAD_BYTES = 130
+def _env_int_at_import(name: str) -> int | None:
+    """An integer from the environment, for constants defined at import time.
+
+    `_env_int` lives with the rest of the argument handling further down, which
+    is too late for a module-level constant. Unparseable is treated as unset,
+    so a typo falls back to the default rather than to zero.
+    """
+    raw = os.environ.get(name)
+    if raw is None:
+        return None
+    try:
+        value = int(raw)
+    except ValueError:
+        return None
+    return value if value > 0 else None
+
+
 # Covers the two inner transactions (app call + keeper payment); the outer
 # fee is the standard 1,000 µALGO.
 EXTRA_FEE_MICROALGO = 2_000
@@ -56,7 +73,19 @@ BONUS_FEE_MICROALGO = 1_000
 # inflated per-byte fee would otherwise be signed on the next execution. Ten
 # times the minimum leaves room for genuine congestion pricing and still
 # refuses a number that could only be wrong.
-MAX_OUTER_FEE_MICROALGO = 10_000
+#
+# It cannot tell a lying node from a legitimately large transaction, and there
+# is one real case where those look identical. Algorand charges
+# `max(min_fee, size x fee_per_byte)`, and a Falcon-signed `execute` is 4,384
+# bytes against ed25519's 340 (docs/arcron.md). The per-byte rate is zero
+# today, so both pay the minimum and this ceiling is never approached. If that
+# rate ever becomes non-zero, a post-quantum keeper would hit this and stop
+# rather than overpay.
+#
+# Stopping is the right way round, and an operator in that position should
+# raise this constant rather than remove the guard. `KEEPER_MAX_OUTER_FEE`
+# exists so it does not need a code change.
+MAX_OUTER_FEE_MICROALGO = _env_int_at_import("KEEPER_MAX_OUTER_FEE") or 10_000
 # First delay after an algod/endpoint error; it doubles up to the cap, so a
 # node that is down does not get hammered and a blip costs almost nothing.
 ERROR_RETRY_SECONDS = 5
