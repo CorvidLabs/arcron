@@ -31,7 +31,7 @@ is not deployed to any public network.
 
 | Type | Description |
 |------|-------------|
-| `ResourceProbe` | ARC-4 contract class; global state `subject: Address`, `subject_asset: uint64`, `subject_app: uint64`, `probes_run: uint64`, `last_reading: uint64`, `last_number: uint64`, `last_text: string`, `last_caller: Address`. |
+| `ResourceProbe` | ARC-4 contract class; global state `subject: Address`, `subject_asset: uint64`, `subject_app: uint64`, `probes_run: uint64`, `last_reading: uint64`, `last_number: uint64`, `last_text: string`, `last_caller: Address`, `keeper_app: uint64`, `keeper_upkeep: uint64` (the keeper application and upkeep `reenter` aims at, set by `configure_reentry`). |
 
 #### ResourceProbe Methods
 
@@ -125,3 +125,4 @@ is not deployed to any public network.
 | 2026-08-24 | CorvidLabs | Added `configure_reentry` and `reenter` for the #7/#14 security review: the AVM rejects a re-entrant `execute` outright (`attempt to re-enter`), so a target cannot call the keeper back under any catch-up policy. |
 | 2026-08-24 | CorvidLabs | Added `report_caller` for issue #9: an Arcron-executed call arrives as an inner transaction, so the target sees Arcron's app account and never learns who the keeper is. |
 | 2026-08-24 | CorvidLabs | Added `absorb` for issue #8: a hook taking real arguments, used to price a multi-arg call shape (1,216 budget for one argument, 1,139 for three). |
+| 2026-08-27 | CorvidLabs | Documented `keeper_app` and `keeper_upkeep` in the state row. Both were added with `configure_reentry` and never written down; `keeper_app` appeared only as one of its arguments. `specsync check --strict` passed throughout, because it checks a spec's shape and never reads the compiled contract. `tests/test_specs_match_contracts.py` now compares both against the ARC-56 artifact. |
