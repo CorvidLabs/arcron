@@ -17,7 +17,7 @@ poetry run python -m scripts.keeper_bot --once --network testnet --app-id 769891
 | **pulse** | [`769891902`](https://testnet.explorer.perawallet.app/application/769891902) | live | A heartbeat counter that exists to be called. No state worth protecting, cannot fail, which is what makes it the right first target. |
 | **rain** | [`770029154`](https://testnet.explorer.perawallet.app/application/770029154) | live, **not frozen** | A scheduled prize draw, gated on an NFT collection. Deployed 2026-08-27. |
 | **rain (gate test)** | [`770030875`](https://testnet.explorer.perawallet.app/application/770030875) | live | The same contract gated on a collection we hold keys for, so the gate can be proved from both sides. Not the dogfood. |
-| ~~rain~~ | [`769988156`](https://testnet.explorer.perawallet.app/application/769988156) | superseded | The ungated version. Its last draw aged out and was abandoned, the prize returning to the pot, and the upkeep that drove it was cancelled and re-registered against the gated app as upkeep 77. |
+| ~~rain~~ | [`769988156`](https://testnet.explorer.perawallet.app/application/769988156) | superseded | The ungated version. Its last draw aged out and was abandoned, the prize returning to the pot, and the upkeep that drove it was cancelled and re-registered against the gated app. |
 
 `not frozen` means the creator can still replace the programs. That is
 deliberate while these iterate and it is a real power over anything escrowed;
@@ -25,16 +25,16 @@ see [`security.md`](security.md).
 
 ## The upkeeps
 
-Read from the chain at round 66729422.
+Read from the chain at round 66,735,063.
 
 | id | target | every | escrow | runway | runs | policy |
 |---|---|---|---|---|---|---|
-| 19 | `769891902` pulse | 11.4 h | 0.3566 ALGO | ~42 days | 3 | catch up |
-| 20 | `769891902` pulse | 11.4 h | 0.3566 ALGO | ~42 days | 3 | skip ahead |
-| 21 | `769891902` pulse | 11.4 h | 0.4024 ALGO | ~48 days | 3 | skip ahead |
-| 22 | `769891902` pulse | 11.4 h | 0.3566 ALGO | ~42 days | 3 | skip ahead |
-| 73 | `769891902` pulse | 57 min | 0.9200 ALGO | ~9 days | 20 | skip ahead |
-| 77 | `770029154` rain (gated) | 1.9 h | 8.0000 ALGO | ~63 days | 0 | skip ahead |
+| 19 | `769891902` pulse | 11.4 h | 0.3526 ALGO | ~42 days | 4 | catch up |
+| 20 | `769891902` pulse | 11.4 h | 0.3526 ALGO | ~42 days | 4 | skip ahead |
+| 21 | `769891902` pulse | 11.4 h | 0.3983 ALGO | ~47 days | 4 | skip ahead |
+| 22 | `769891902` pulse | 11.4 h | 0.3526 ALGO | ~42 days | 4 | skip ahead |
+| 73 | `769891902` pulse | 57 min | 0.9080 ALGO | ~9 days | 23 | skip ahead |
+| 79 | `770029154` rain (gated) | 1.9 h | 8.0000 ALGO | ~63 days | 0 | skip ahead |
 
 **Runway** is escrow divided by burn rate at the measured 2.66 s/round. It is
 what the upkeep can pay for, not a promise about keeper availability.
