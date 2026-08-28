@@ -65,6 +65,8 @@ web-verify-hosted = "poetry run python -m scripts.publish_console --verify"
 web-serve = "cd web && bun run ng serve"
 # The keeper dashboard. Local only, never published: it is for somebody
 # running a keeper, not for somebody registering an upkeep.
+# How long the deployment has been the deployment, and what would reset it.
+clock = "poetry run python -m scripts.mainnet_clock --network testnet --app-id 769891898"
 keeper-ui = "cd web-keeper && bun run ng serve"
 keeper-ui-test = "cd web-keeper && bun test"
 keeper-ui-build = "cd web-keeper && bun run ng build"
