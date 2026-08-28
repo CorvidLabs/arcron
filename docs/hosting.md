@@ -214,6 +214,41 @@ Use an account that holds no more than it needs. It is a hot key on a machine
 that is running unattended, and its whole job is to spend small amounts
 constantly.
 
+### Forwarding what it earns
+
+A keeper earns into the same account it spends from. That is what makes it
+self-sustaining, and it is also why the balance on a profitable registry
+climbs indefinitely in a hot key on an unattended machine. `--sweep-to`
+forwards the surplus somewhere you actually control.
+
+```bash
+poetry run python -m scripts.keeper_bot --network testnet \
+    --sweep-to <your address> --sweep-above 5000000 --sweep-every 86400
+```
+
+Either trigger fires on its own: `--sweep-above` when the surplus reaches an
+amount, `--sweep-every` when a period has elapsed and there is anything worth
+sending. Naming a destination with neither is refused, because it would mean
+a sweep that never happens.
+
+**The reserve is the part worth understanding.** `--sweep-reserve` is what
+stays behind, and it is floored at `--min-balance` whatever you ask for. A
+keeper swept below the point where it can pay for executions stops earning,
+and the fee income that would have refilled it stops at the same moment, so
+the account cannot recover on its own. The default reserve keeps the account
+minimum plus about a hundred executions.
+
+Sweeping to the keeper's own address is refused. It looks like it works,
+because the transaction succeeds and the balance barely moves, and it burns a
+transaction fee every period for as long as it runs.
+
+`--sweep-dry-run` logs what would be sent and sends nothing, which is the
+right way to see what a configuration does before trusting it with a key.
+
+A sweep failure never stops execution. Trading the thing that earns for the
+thing that tidies up would be the wrong way round, so a failed sweep is
+logged and retried on the next heartbeat.
+
 ## Watching it
 
 `scripts/notifier.py` posts to a Discord webhook when the registry changes or
