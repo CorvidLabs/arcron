@@ -198,8 +198,17 @@ development. It sleeps, it travels, and a 30-day uptime record will notice.
 ## What the account needs
 
 A keeper pays 3,000 microAlgos per execution and collects the upkeep's fee, so
-it is profitable as long as fees exceed costs. It refuses to start below
-103,000 microAlgos: 100,000 to keep the account, plus one execution.
+it is profitable as long as fees exceed costs. It refuses to start when it
+cannot afford one execution.
+
+What it can afford is not what it holds. Every Algorand account has a minimum
+balance it cannot spend, and that floor is not a constant: it rises by 100,000
+microAlgos for every asset the account is opted in to, and again for every app
+and every asset it has created. A keeper opted in to eleven bonus assets was
+measured at a floor of 5,439,000 microAlgos. The bot reads the floor from the
+node rather than assuming it, and `--min-balance` is measured in spendable
+microAlgos, so an account can hold five ALGO and still be told, correctly, that
+it is nearly empty.
 
 Use an account that holds no more than it needs. It is a hot key on a machine
 that is running unattended, and its whole job is to spend small amounts
@@ -217,6 +226,69 @@ poetry run python -m scripts.keeper_bot --check --network testnet --app-id <id>
 
 exits non-zero if the registry has due upkeeps nobody is servicing, which is
 the one-line health check to hang a monitor on.
+
+## ASA bonuses, and whether to take them
+
+An upkeep can offer a bonus in an Algorand Standard Asset on top of its ALGO
+fee. The contract pays that bonus only to a keeper already opted in to the
+asset. A keeper that is not opted in still executes the upkeep and still
+collects the full ALGO fee; the bonus stays in escrow. Nothing fails, so
+nothing is logged, and the only symptom of leaving bonuses behind is earnings
+quietly lower than the board says they should be.
+
+So the opt-in is a decision, and it is worth being exact about what it costs.
+It is not the deposit. Opting in locks 100,000 microAlgos of minimum balance,
+but a close-out releases it again, so the only part genuinely spent is about
+2,000 microAlgos of transaction fees for the opt-in and the close-out.
+
+What it costs is a flow. The bonus is a third inner transaction, so a keeper
+that can receive one has to fund it, which is 1,000 microAlgos more per
+execution. It cannot decline: Algorand pools fees and does not refund the
+unused part, so skipping the surcharge and then receiving a bonus would mean
+an underfunded group and a failed execution. There is no per-execution
+opt-out, only opting out of the asset.
+
+| | keeper pays | keeper receives | net ALGO |
+|---|---|---|---|
+| not opted in | 3,000 | the fee | fee less 3,000 |
+| opted in | 4,000 | the fee and a bonus | fee less 4,000, plus the bonus |
+
+The difference an opt-in makes is therefore **the bonus, less 1,000 microAlgos,
+per execution**, and that holds whatever the fee is, however late the upkeep,
+and wherever its escalation cap sits. An asset worth less than that is not a
+missed opportunity if you decline it. It is a permanent tax on every upkeep
+naming it, for as long as the opt-in stands.
+
+```bash
+poetry run python -m scripts.keeper_assets --network testnet --app-id <id> \
+    --keeper-address <your keeper>
+```
+
+reports, for every fee asset in the registry, how many upkeeps name it, how
+much it is accruing per day, what the surcharge on that costs, how many
+bonuses are left in escrow, and the **break-even unit price**: what one unit of
+the asset has to be worth for the opt-in to pay for itself. Compare that with a
+price and the decision is made. `scripts/keeper_assets.py` deliberately does
+not source a price itself, because a price feed is a backend, and a keeper does
+not need one for anything else.
+
+`--check` reports the same thing in one line per asset when given
+`--keeper-address`, so a monitor already running the health check gets the
+warning without a second command:
+
+```bash
+poetry run python -m scripts.keeper_bot --check --network testnet --app-id <id> \
+    --keeper-address <your keeper>
+```
+
+Neither command signs anything, and neither opts in to anything. Opting in is
+an operator decision, made once, with a plain `AssetTransfer` of zero units to
+yourself. It is not something a bot should do at three in the morning on the
+strength of an accrual figure.
+
+Note the app account's opt-in is a different thing with different rules. That
+one is permanent: `opt_in_asset` on the contract takes a deposit and there is
+no way to release it, by design. Only the keeper's own opt-in can be closed out.
 
 ## Seeing a race afterwards
 

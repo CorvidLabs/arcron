@@ -31,7 +31,7 @@ from types import FrameType
 import algokit_utils
 from algosdk import constants, encoding
 
-from scripts import network as net
+from scripts import keeper_assets, network as net
 from scripts.keeper_backoff import Backoff, default_state_path
 from smart_contracts.artifacts.keeper.keeper_client import (
     ExecuteArgs,
@@ -63,13 +63,19 @@ ERROR_RETRY_SECONDS = 5
 MAX_ERROR_RETRY_SECONDS = 60
 # What one execution costs the keeper: the outer fee plus the pooled extra.
 EXECUTION_COST_MICROALGO = 1_000 + EXTRA_FEE_MICROALGO
-# The minimum balance every Algorand account must hold.
+# The minimum balance of an account that holds nothing but ALGO. Only a
+# fallback for a node that does not report `min-balance`: the real floor is
+# read from algod, because it is not a constant. Every asset opt-in adds
+# 100,000, and so does every app and asset the account has created. Measured
+# on a live keeper holding eleven assets: 5,439,000, against the 100,000 this
+# used to assume, so the bot believed it had 5.34 ALGO more to spend than it
+# did and would have found out by failing to broadcast.
 ACCOUNT_MBR_MICROALGO = 100_000
-# Below this a keeper cannot fund even one execution, so it refuses to start
-# rather than looking alive while failing to broadcast.
-HARD_MINIMUM_MICROALGO = ACCOUNT_MBR_MICROALGO + EXECUTION_COST_MICROALGO
-# Default warning floor: about a hundred executions of headroom.
-LOW_BALANCE_MICROALGO = ACCOUNT_MBR_MICROALGO + 100 * EXECUTION_COST_MICROALGO
+# Default warning floor, in *spendable* microAlgos: about a hundred executions
+# of headroom. Spendable rather than total, because a total compared against a
+# fixed floor is the same bug in a second place: an operator opted in to a few
+# assets sails past a threshold their spendable balance never reached.
+LOW_BALANCE_MICROALGO = 100 * EXECUTION_COST_MICROALGO
 # Scans between heartbeats while looping.
 HEARTBEAT_SCANS = 20
 # An upkeep overdue by more than this many of its own intervals is a stall.
@@ -576,12 +582,16 @@ def is_frozen(algod, app_id: int) -> bool:
     return True
 
 
-def check_registry(algod, app_id: int) -> int:
+def check_registry(algod, app_id: int, keeper_address: str | None = None) -> int:
     """Report how healthy a registry looks. Returns a process exit code.
 
     Reads public box state only, with no account and no signing, so this works as an
     external probe against a keeper you do not control. An upkeep overdue by
     more than a couple of its own intervals means nobody is servicing it.
+
+    `keeper_address` is optional and adds the one thing box state alone cannot
+    say: which bonuses this particular keeper is leaving behind. It is read,
+    never signed for, so it can name a keeper somebody else runs.
     """
     current = algod.status()["last-round"]
     upkeeps = scan_upkeeps(algod, app_id)
@@ -629,7 +639,71 @@ def check_registry(algod, app_id: int) -> int:
             overdue_rounds=overdue,
             intervals_overdue=round(overdue / max(upkeep.interval_rounds, 1), 1),
         )
+    report_forgone_bonuses(upkeeps, current, keeper_address, algod)
     return 1 if stalled else 0
+
+
+def report_forgone_bonuses(
+    upkeeps: list[Upkeep], current: int, keeper_address: str | None, algod
+) -> list:
+    """Name every bonus this keeper is not opted in to earn.
+
+    The leak `docs/design/asa-fees.md` predicted and asked for exactly this
+    warning against: an un-opted-in keeper executes normally and takes the
+    full ALGO fee, so nothing fails, nothing is logged, and the bonus stays in
+    escrow. Without something saying so, the only symptom is earnings that are
+    lower than the board says they should be.
+
+    Deliberately not an error. Declining a bonus is a legitimate operator
+    decision, and often the right one: opting in commits the keeper to 1,000
+    µALGO more on every execution of every upkeep naming that asset, whether
+    or not the bonus is worth having. So this reports the break-even and stops
+    there. `scripts/keeper_assets.py` is the full account.
+    """
+    if keeper_address is None:
+        return []
+    try:
+        held = keeper_assets.holdings(algod, keeper_address)
+    except Exception:
+        # A node that will not serve account state must not turn a registry
+        # health check into a failure. The rest of the report stands.
+        return []
+    missed = keeper_assets.forgone(keeper_assets.positions(upkeeps, opted_in=held))
+    for position in missed:
+        break_even = position.break_even_micro_algo_per_unit
+        emit(
+            "bonus_forgone",
+            f"  asset {position.asset_id}: {position.live} upkeep(s) are paying a "
+            f"bonus {keeper_address} cannot receive, worth "
+            f"{position.units_per_day:,.0f} base units a day. Opting in earns it "
+            f"and costs {BONUS_FEE_MICROALGO} µALGO per execution, so it pays only "
+            f"if a base unit is worth more than "
+            f"{keeper_assets.micro_algo(break_even)}",
+            level=logging.WARNING,
+            asset_id=position.asset_id,
+            upkeeps=position.live,
+            units_per_day=round(position.units_per_day, 2),
+            surcharge_per_day=round(position.surcharge_per_day, 2),
+            break_even_micro_algo_per_unit=round(break_even, 6) if break_even else None,
+        )
+    return missed
+
+
+def account_floor(algod, address: str) -> tuple[int, int]:
+    """What the account holds, and how much of it is minimum balance.
+
+    The floor is read rather than assumed. It is not a constant: it rises by
+    100,000 µALGO for every asset the account is opted in to, and again for
+    every app and every asset it has created. A keeper opted in to eleven
+    bonus assets was measured at 5,439,000 µALGO, so assuming the 100,000 of a
+    bare account overstated what it could spend by 5.34 ALGO.
+
+    `ACCOUNT_MBR_MICROALGO` is the fallback for a node that does not report
+    the field at all, and it is the only case where a guess is better than
+    refusing to start.
+    """
+    info = algod.account_info(address)
+    return int(info["amount"]), int(info.get("min-balance", ACCOUNT_MBR_MICROALGO))
 
 
 def guard_balance(algod, address: str, warn_below: int) -> int:
@@ -638,26 +712,36 @@ def guard_balance(algod, address: str, warn_below: int) -> int:
     A keeper earns its fees into the same account it spends from, so it is
     normally self-sustaining, right until it is empty, at which point it
     cannot earn its way back out. That is the failure this catches.
+
+    Returns what the account can actually spend, which is the number every
+    decision here is about: an account can hold several ALGO and be unable to
+    pay a 1,000 µALGO fee, because minimum balance is not a balance.
     """
-    balance = algod.account_info(address)["amount"]
-    if balance < HARD_MINIMUM_MICROALGO:
+    balance, floor = account_floor(algod, address)
+    spendable = balance - floor
+    if spendable < EXECUTION_COST_MICROALGO:
         raise UnrecoverableError(
-            f"Keeper {address} holds {balance} µALGO, below the "
-            f"{HARD_MINIMUM_MICROALGO} µALGO needed to keep its account and pay for "
-            f"one execution ({EXECUTION_COST_MICROALGO} µALGO). Fund it before starting."
+            f"Keeper {address} holds {balance} µALGO, of which {floor} is minimum "
+            f"balance it cannot spend. That leaves {spendable} µALGO, below the "
+            f"{EXECUTION_COST_MICROALGO} µALGO one execution costs. Every asset "
+            f"opt-in, and every app or asset this account created, raises that "
+            f"floor by 100,000 µALGO. Fund it before starting."
         )
-    if balance < warn_below:
-        runs = (balance - ACCOUNT_MBR_MICROALGO) // EXECUTION_COST_MICROALGO
+    if spendable < warn_below:
+        runs = spendable // EXECUTION_COST_MICROALGO
         emit(
             "low_balance",
-            f"Keeper balance {balance} µALGO is low: about {runs} execution(s) of "
-            f"headroom. Collected fees top it up, but a quiet registry will not.",
+            f"Keeper has {spendable} µALGO spendable of {balance} held: about "
+            f"{runs} execution(s) of headroom. Collected fees top it up, but a "
+            f"quiet registry will not.",
             level=logging.WARNING,
             balance=balance,
+            min_balance=floor,
+            spendable=spendable,
             executions_remaining=runs,
             warn_below=warn_below,
         )
-    return balance
+    return spendable
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -678,10 +762,22 @@ def main(argv: list[str] | None = None) -> None:
         help="report registry health and exit; signs nothing, executes nothing",
     )
     parser.add_argument(
+        "--keeper-address",
+        default=os.environ.get("KEEPER_ADDRESS"),
+        help=(
+            "with --check, also report the ASA bonuses this account is not opted "
+            "in to earn. Reads public state only, so it can name a keeper you do "
+            "not run (default: KEEPER_ADDRESS)"
+        ),
+    )
+    parser.add_argument(
         "--min-balance",
         type=int,
         default=int(os.environ.get("KEEPER_MIN_BALANCE", LOW_BALANCE_MICROALGO)),
-        help="warn below this signer balance in µALGO (default: %(default)s)",
+        help=(
+            "warn below this many *spendable* µALGO, which is what the account "
+            "holds less its minimum balance (default: %(default)s)"
+        ),
     )
     parser.add_argument(
         "--state-file",
@@ -740,8 +836,9 @@ def main(argv: list[str] | None = None) -> None:
 
     if args.check:
         # Nothing below this line needs an account, and a probe should not
-        # require one.
-        raise SystemExit(check_registry(algod, app_id))
+        # require one. --keeper-address is an address, not a key: it adds the
+        # forgone-bonus report without making the probe hold anything.
+        raise SystemExit(check_registry(algod, app_id, args.keeper_address))
 
     try:
         keeper = algorand.account.from_environment("KEEPER")
@@ -792,7 +889,28 @@ def main(argv: list[str] | None = None) -> None:
             cleared=backoff.clear(args.retry_now),
         )
 
-    balance = guard_balance(algod, keeper.address, args.min_balance)
+    spendable = guard_balance(algod, keeper.address, args.min_balance)
+    # Said once at startup rather than every scan. An operator who has decided
+    # to decline these does not need telling every round, and one who has not
+    # decided at all needs telling before the first execution, not after a
+    # month of them.
+    try:
+        report_forgone_bonuses(
+            scan_upkeeps(algod, app_id),
+            algod.status()["last-round"],
+            keeper.address,
+            algod,
+        )
+    except Exception as cause:
+        # Advisory. A registry it cannot read is the scan loop's problem to
+        # report, and it reports it properly; refusing to start over a warning
+        # would be worse than starting without one.
+        emit(
+            "bonus_check_failed",
+            f"Could not check which bonus assets this keeper is opted in to: {cause}",
+            level=logging.WARNING,
+            reason=str(cause),
+        )
     client = KeeperClient(
         algorand=algorand,
         app_id=app_id,
@@ -805,7 +923,7 @@ def main(argv: list[str] | None = None) -> None:
         keeper=keeper.address,
         app_id=app_id,
         network=args.network,
-        balance=balance,
+        spendable=spendable,
         backoff_state=str(state_file) if state_file else "memory",
     )
 
@@ -992,18 +1110,18 @@ def main(argv: list[str] | None = None) -> None:
                         )
             if scans % HEARTBEAT_SCANS == 0 or args.once:
                 # Proof of life, and the number that kills bots silently.
-                balance = guard_balance(algod, keeper.address, args.min_balance)
+                spendable = guard_balance(algod, keeper.address, args.min_balance)
                 emit(
                     "heartbeat",
                     f"Heartbeat: round {current}, {len(upkeeps)} upkeeps, "
                     f"{len(due)} due, {executed_count} executed this session, "
-                    f"balance {balance} µALGO",
+                    f"{spendable} µALGO spendable",
                     round=current,
                     upkeeps=len(upkeeps),
                     due=len(due),
                     executed_session=executed_count,
                     backed_off=len(backoff.blocked_ids(current)),
-                    balance=balance,
+                    spendable=spendable,
                 )
             if args.once:
                 return

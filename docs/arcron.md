@@ -510,7 +510,12 @@ So the balance is checked before the first scan and at every heartbeat:
 
 - Below `--min-balance` (default ~100 executions of headroom, or
   `KEEPER_MIN_BALANCE`) it warns each heartbeat with how many executions are
-  left, and keeps working.
+  left, and keeps working. **That threshold is spendable balance, not total.**
+  The message above quotes a total, because an account below its own minimum
+  balance cannot transact at all; this one quotes what is left after the
+  minimum balance is set aside, because that is what an execution can spend.
+  The two differ by the account's minimum balance, which is at least 100,000
+  µALGO and rises with every asset opt-in.
 
 ### Checking a keeper you do not run
 
