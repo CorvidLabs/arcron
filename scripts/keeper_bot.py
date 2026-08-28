@@ -63,6 +63,9 @@ ERROR_RETRY_SECONDS = 5
 MAX_ERROR_RETRY_SECONDS = 60
 # What one execution costs the keeper: the outer fee plus the pooled extra.
 EXECUTION_COST_MICROALGO = 1_000 + EXTRA_FEE_MICROALGO
+# Quoted in the refusal to sweep to one's own address; the real constant
+# lives in keeper_sweep, which cannot be imported here without a cycle.
+SWEEP_FEE_NOTE = "a transaction fee"
 # The minimum balance of an account that holds nothing but ALGO. Only a
 # fallback for a node that does not report `min-balance`: the real floor is
 # read from algod, because it is not a constant. Every asset opt-in adds
@@ -705,6 +708,90 @@ def account_floor(algod, address: str) -> tuple[int, int]:
     info = algod.account_info(address)
     return int(info["amount"]), int(info.get("min-balance", ACCOUNT_MBR_MICROALGO))
 
+def _env_int(name: str) -> int | None:
+    """An integer from the environment, or None when unset or unreadable.
+
+    Unset and unparseable are the same answer on purpose: a sweep setting that
+    cannot be read must not fall back to a number nobody chose.
+    """
+    raw = os.environ.get(name)
+    if raw is None:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        logger.warning("Ignoring %s=%r: not an integer.", name, raw)
+        return None
+
+
+def _validate_sweep(args, keeper_address: str) -> None:
+    """Refuse a sweep configuration that cannot do what it says.
+
+    Checked before the first scan rather than at the first heartbeat, because
+    a keeper that runs for an hour and then reveals it has been misconfigured
+    the whole time is worse than one that refuses to start.
+    """
+    if not encoding.is_valid_address(args.sweep_to):
+        raise UnrecoverableError(
+            f"--sweep-to {args.sweep_to!r} is not a valid Algorand address."
+        )
+    if args.sweep_to == keeper_address:
+        raise UnrecoverableError(
+            "--sweep-to is the keeper's own address. That sweeps nothing and "
+            f"burns {SWEEP_FEE_NOTE} every period for as long as it runs."
+        )
+    if args.sweep_above is None and args.sweep_every is None:
+        raise UnrecoverableError(
+            "--sweep-to needs a trigger: --sweep-above for an amount, "
+            "--sweep-every for a period, or both. Without one nothing would "
+            "ever sweep, which is not what naming a destination means."
+        )
+    for name, value in (("--sweep-above", args.sweep_above), ("--sweep-every", args.sweep_every)):
+        if value is not None and value <= 0:
+            raise UnrecoverableError(f"{name} must be positive, not {value}.")
+
+
+def _maybe_sweep(algorand, address: str, args, *, spendable: int, last_sweep: float | None) -> float | None:
+    """Forward the surplus if a trigger says to. Returns when it last swept.
+
+    Deliberately on the heartbeat rather than after each execution: a sweep is
+    a transaction, and one per execution would spend a meaningful part of what
+    it is forwarding on its own fees.
+
+    Never raises into the loop. A keeper that stopped executing because a
+    sweep failed would have traded the thing that earns for the thing that
+    tidies up, so a failure here is logged and the next heartbeat tries again.
+    """
+    from scripts import keeper_sweep
+
+    reserve = keeper_sweep.reserve_for(args.sweep_reserve, args.min_balance)
+    now = time.monotonic()
+    decision = keeper_sweep.decide(
+        spendable,
+        reserve=reserve,
+        threshold=args.sweep_above,
+        seconds_since_last=None if last_sweep is None else now - last_sweep,
+        every_seconds=args.sweep_every,
+    )
+    if not decision:
+        logger.debug("No sweep: %s", decision.reason)
+        return last_sweep
+    try:
+        keeper_sweep.send(
+            algorand, address, args.sweep_to, decision.amount, dry_run=args.sweep_dry_run
+        )
+    except Exception as exc:  # noqa: BLE001 - see the docstring
+        emit(
+            "sweep_failed",
+            f"Sweep of {decision.amount} µALGO to {args.sweep_to} failed, "
+            f"continuing to execute: {failure_text(exc)}",
+            level=logging.WARNING,
+            amount=decision.amount,
+            destination=args.sweep_to,
+        )
+        return last_sweep
+    return now
+
 
 def guard_balance(algod, address: str, warn_below: int) -> int:
     """Refuse to run below what it takes to broadcast; warn while it is low.
@@ -778,6 +865,37 @@ def main(argv: list[str] | None = None) -> None:
             "warn below this many *spendable* µALGO, which is what the account "
             "holds less its minimum balance (default: %(default)s)"
         ),
+    )
+    parser.add_argument(
+        "--sweep-to",
+        default=os.environ.get("KEEPER_SWEEP_TO"),
+        help="forward surplus earnings to this address; nothing sweeps without it",
+    )
+    parser.add_argument(
+        "--sweep-above",
+        type=int,
+        default=_env_int("KEEPER_SWEEP_ABOVE"),
+        help="sweep once the surplus reaches this many µALGO",
+    )
+    parser.add_argument(
+        "--sweep-every",
+        type=int,
+        default=_env_int("KEEPER_SWEEP_EVERY"),
+        help="sweep this many seconds after the last one, if there is a surplus",
+    )
+    parser.add_argument(
+        "--sweep-reserve",
+        type=int,
+        default=_env_int("KEEPER_SWEEP_RESERVE"),
+        help=(
+            "µALGO to keep behind. Floored at --min-balance whatever is asked, "
+            "because a keeper swept below that stops earning and cannot refill"
+        ),
+    )
+    parser.add_argument(
+        "--sweep-dry-run",
+        action="store_true",
+        help="log what a sweep would send, and send nothing",
     )
     parser.add_argument(
         "--state-file",
@@ -889,6 +1007,8 @@ def main(argv: list[str] | None = None) -> None:
             cleared=backoff.clear(args.retry_now),
         )
 
+    if args.sweep_to:
+        _validate_sweep(args, keeper.address)
     spendable = guard_balance(algod, keeper.address, args.min_balance)
     # Said once at startup rather than every scan. An operator who has decided
     # to decline these does not need telling every round, and one who has not
@@ -933,6 +1053,10 @@ def main(argv: list[str] | None = None) -> None:
     error_delay = ERROR_RETRY_SECONDS
     executed_count = 0
     scans = 0
+    # None rather than "now": the duration trigger measures from the last
+    # sweep, and on a fresh start there has not been one. Seeding it with the
+    # clock would make the first sweep wait a whole period for no reason.
+    last_sweep: float | None = None
     while True:
         if shutdown.requested:
             emit("stopped", "Shutting down cleanly")
@@ -1111,6 +1235,14 @@ def main(argv: list[str] | None = None) -> None:
             if scans % HEARTBEAT_SCANS == 0 or args.once:
                 # Proof of life, and the number that kills bots silently.
                 spendable = guard_balance(algod, keeper.address, args.min_balance)
+                if args.sweep_to:
+                    last_sweep = _maybe_sweep(
+                        algorand,
+                        keeper.address,
+                        args,
+                        spendable=spendable,
+                        last_sweep=last_sweep,
+                    )
                 emit(
                     "heartbeat",
                     f"Heartbeat: round {current}, {len(upkeeps)} upkeeps, "
