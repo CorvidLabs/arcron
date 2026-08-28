@@ -1,6 +1,10 @@
 {
   "name": "arcron-workspace",
   "private": true,
-  "description": "Bun workspace root. The contract's TypeScript lives in js/; web/ is the console that consumes it.",
-  "workspaces": ["js", "web"]
+  "description": "Bun workspace root. The contract TypeScript lives in js/; web/ is the published console and web-keeper/ is the local keeper dashboard.",
+  "workspaces": [
+    "js",
+    "web",
+    "web-keeper"
+  ]
 }

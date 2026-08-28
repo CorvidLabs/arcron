@@ -63,6 +63,11 @@ web-build-hosted = "cd web && bun run ng build --base-href /arcron/console/ --ou
 # it belongs in the lane rather than in somebody's memory.
 web-verify-hosted = "poetry run python -m scripts.publish_console --verify"
 web-serve = "cd web && bun run ng serve"
+# The keeper dashboard. Local only, never published: it is for somebody
+# running a keeper, not for somebody registering an upkeep.
+keeper-ui = "cd web-keeper && bun run ng serve"
+keeper-ui-test = "cd web-keeper && bun test"
+keeper-ui-build = "cd web-keeper && bun run ng build"
 # The console as a rendered page, which nothing checked until now.
 #
 # Builds it, serves it, and audits computed style and layout at 390, 768, 1280
@@ -115,11 +120,11 @@ race = "poetry run python -m scripts.keeper_race --network localnet"
 
 [lanes.ci]
 description = "Full CI pipeline: contracts + console, unit tests, spec drift check, rendered-page audit"
-steps = ["build", "test", "spec", "js-install", "js-test", "web-test", "web-build", "web-build-hosted", "web-verify-hosted", "web-render"]
+steps = ["build", "test", "spec", "js-install", "js-test", "web-test", "web-build", "web-build-hosted", "web-verify-hosted", "web-render", "keeper-ui-test", "keeper-ui-build"]
 
 [lanes.local]
 description = "CI plus the LocalNet end-to-end test and the console rendering audit (needs algokit localnet start, and web-render-install once)"
-steps = ["build", "test", "spec", "js-install", "js-test", "web-test", "web-build", "web-build-hosted", "web-verify-hosted", "web-render", "smoke-keeper", "smoke-rain", "smoke-community-rain", "smoke-subscription", "smoke-govern", "smoke-multisig", "smoke-clawback", "attacks", "smoke-reference-boundary"]
+steps = ["build", "test", "spec", "js-install", "js-test", "web-test", "web-build", "web-build-hosted", "web-verify-hosted", "web-render", "keeper-ui-test", "keeper-ui-build", "smoke-keeper", "smoke-rain", "smoke-community-rain", "smoke-subscription", "smoke-govern", "smoke-multisig", "smoke-clawback", "attacks", "smoke-reference-boundary"]
 
 [lanes.endurance]
 description = "The local lane plus a soak: many consecutive executions, no drift"

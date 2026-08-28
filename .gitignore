@@ -199,3 +199,6 @@ debug_traces/
 # Agent worktrees. Real git checkouts, which `git add -A` records as embedded
 # repositories: a clone gets an empty directory and no way to fill it.
 .claude/worktrees/
+
+# The keeper dashboard's build output. Never published; see web-keeper/README.md.
+web-keeper/dist/
