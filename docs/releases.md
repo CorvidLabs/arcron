@@ -80,6 +80,12 @@ and re-registering by hand.
       updatable and by whom. beta does not require freezing: a struct change
       is still a new app, but a fixable bug should be fixed
 - [ ] **30 days** of continuous TestNet uptime with a funded heartbeat, and the notifier running
+
+  `fledge run clock` measures this. It runs from the application's creation
+  round rather than from any commit date, and it refuses to count at all once
+  the local build stops matching what is deployed: time served by code that is
+  about to be replaced is not evidence about the code replacing it. Add
+  `--gate` to make it exit non-zero, which is what to hang a check on.
 - [ ] A keeper running somewhere that is not a laptop
 - [ ] Documentation an integrator can follow without asking us anything
 - [ ] **At least one upkeep registered by somebody who is not us, which survived a redeploy.**
