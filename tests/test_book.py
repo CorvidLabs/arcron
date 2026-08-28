@@ -246,7 +246,7 @@ ECONOMICS = [
         "round time",
         WHY,
         r"basis: ([\d.]+) s/round measured",
-        [r"\| Round time \(TestNet measured\) \| ([\d.]+) s \|", r"\*\*([\d.]+) s/round measured"],
+        [r"\| Round time \((?:TestNet|MainNet) measured\) \| ([\d.]+) s \|", r"\*\*([\d.]+) s/round measured"],
     ),
     (
         "nominal-hour rounds",

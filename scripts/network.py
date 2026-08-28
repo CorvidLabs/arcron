@@ -42,6 +42,38 @@ FOUNDATION_BEACON = {
 }
 
 
+#: Seconds per round, measured per network rather than assumed.
+#:
+#: Algorand's nominal block time is 2.8, and this repository used it in three
+#: places while `docs/why.md` used 2.66 from a 45 second sample. Measured over
+#: 1,000,000 rounds, about 31 days, on 2026-08-28:
+#:
+#:     TestNet  2.695    MainNet  2.752
+#:
+#: They genuinely differ, so one constant is wrong for one of them, and 2.8 is
+#: about 4% slow for both. On a daily cadence that compounds into an hour.
+#:
+#: LocalNet keeps the nominal figure because dev mode has no block time at all:
+#: a block is produced per transaction, so elapsed wall clock says nothing.
+#: `is_dev_mode` is how a caller finds out; this is only so a cadence can still
+#: be printed as a duration.
+ROUND_SECONDS: dict[str, float] = {
+    LOCALNET: 2.8,
+    TESTNET: 2.695,
+    MAINNET: 2.752,
+}
+
+
+def seconds_per_round(network: str) -> float:
+    """How long a round takes on this network.
+
+    A measured default, not a measurement. Anything reporting a schedule over a
+    long horizon should measure the chain it is talking to; this is the honest
+    starting point, and it is per network because the networks differ.
+    """
+    return ROUND_SECONDS.get(network, ROUND_SECONDS[MAINNET])
+
+
 def genesis_ids(network: str) -> tuple[str, ...]:
     """Every genesis id that counts as this network.
 

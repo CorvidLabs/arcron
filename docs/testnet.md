@@ -25,18 +25,25 @@ see [`security.md`](security.md).
 
 ## The upkeeps
 
-Read from the chain at round 66,735,063.
+Read from the chain at round 66,754,157.
 
 | id | target | every | escrow | runway | runs | policy |
 |---|---|---|---|---|---|---|
-| 19 | `769891902` pulse | 11.4 h | 0.3526 ALGO | ~42 days | 4 | catch up |
-| 20 | `769891902` pulse | 11.4 h | 0.3526 ALGO | ~42 days | 4 | skip ahead |
-| 21 | `769891902` pulse | 11.4 h | 0.3983 ALGO | ~47 days | 4 | skip ahead |
-| 22 | `769891902` pulse | 11.4 h | 0.3526 ALGO | ~42 days | 4 | skip ahead |
-| 73 | `769891902` pulse | 57 min | 0.9080 ALGO | ~9 days | 23 | skip ahead |
-| 79 | `770029154` rain (gated) | 1.9 h | 8.0000 ALGO | ~63 days | 0 | skip ahead |
+| 19 | `769891902` pulse | 11.5 h | 0.3486 ALGO | ~42 days | 5 | catch up |
+| 20 | `769891902` pulse | 11.5 h | 0.3486 ALGO | ~42 days | 5 | skip ahead |
+| 21 | `769891902` pulse | 11.5 h | 0.3943 ALGO | ~47 days | 5 | skip ahead |
+| 22 | `769891902` pulse | 11.5 h | 0.3486 ALGO | ~42 days | 5 | skip ahead |
+| 73 | `769891902` pulse | 58 min | 0.8480 ALGO | ~9 days | 38 | skip ahead |
+| 79 | `770029154` rain (gated) | 1.9 h | 7.9300 ALGO | ~64 days | 7 | skip ahead |
+| 81 | `770041460` (not ours) | 58 min | 1.5400 ALGO | ~6 days | 14 | skip ahead |
 
-**Runway** is escrow divided by burn rate at the measured 2.66 s/round. It is
+**Upkeep 81 is not ours.** It was registered on 2026-08-27 by
+`A3OZPORJ…`, against a contract that account deployed itself, and it has been
+serviced 14 times since. It is the first upkeep in this project's history
+created by somebody other than us, and it is the beta gate item that had been
+outstanding from the beginning. Nobody asked us for anything to make it work.
+
+**Runway** is escrow divided by burn rate at TestNet's measured 2.695 s/round. It is
 what the upkeep can pay for, not a promise about keeper availability.
 
 Nothing here is short-cadence any more. Five upkeeps were cancelled on

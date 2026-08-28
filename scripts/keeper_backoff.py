@@ -39,7 +39,7 @@ MAX_INTERVAL_MULTIPLIER = 8
 # And never wait longer than this in absolute terms, whatever the interval.
 # Retrying costs nothing, so a slow upkeep should not mean a slow recovery:
 # without this, a daily upkeep at 8x would go unretried for over a week.
-MAX_BACKOFF_ROUNDS = 1_286  # roughly an hour at 2.8 s/round
+MAX_BACKOFF_ROUNDS = 1_286  # roughly an hour at the measured 2.752 s/round
 # The keeper contract's own reasons for refusing: another keeper got there
 # first, or the upkeep is gone.
 RACE_MESSAGES = ("not due", "upkeep not found")

@@ -37,7 +37,17 @@ export interface NetworkConfig {
   readonly defaultAppId?: number;
   /**
    * Seconds per round to assume before the chain has been watched long
-   * enough to measure it, taken from Algorand's nominal block time.
+   * enough to measure it.
+   *
+   * Measured per network rather than taken from Algorand's nominal 2.8,
+   * because the networks genuinely differ: over a million rounds, about 31
+   * days, TestNet ran at 2.695 and MainNet at 2.752 on 2026-08-28. A single
+   * constant is wrong for one of them, and 2.8 is about 4% slow for both,
+   * which compounds into hours on a daily cadence.
+   *
+   * Still only a fallback. Anything showing a schedule to a person should
+   * measure the chain it is actually talking to; this is what to use before
+   * that measurement exists.
    */
   readonly nominalRoundSeconds: number;
   /**
@@ -57,6 +67,8 @@ export const NETWORKS: Readonly<Record<NetworkKey, NetworkConfig>> = {
     algod: { server: 'http://localhost', port: 4001, token: LOCALNET_TOKEN },
     kmd: { server: 'http://localhost', port: 4002, token: LOCALNET_TOKEN },
     genesisIds: ['dockernet-v1', 'sandnet-v1', 'devnet-v1'],
+    // Dev mode has no block time at all: a block is produced per transaction.
+    // The nominal figure is kept only so a cadence can be shown as a duration.
     nominalRoundSeconds: 2.8,
     devMode: true,
   },
@@ -65,7 +77,8 @@ export const NETWORKS: Readonly<Record<NetworkKey, NetworkConfig>> = {
     label: 'TestNet',
     algod: { server: 'https://testnet-api.algonode.cloud', port: '', token: '' },
     genesisIds: ['testnet-v1.0'],
-    nominalRoundSeconds: 2.8,
+    // Measured over 1,000,000 rounds on 2026-08-28.
+    nominalRoundSeconds: 2.695,
     explorerApp: (appId) => `https://testnet.explorer.perawallet.app/application/${appId}`,
     explorerAccount: (address) => `https://testnet.explorer.perawallet.app/address/${address}`,
     explorerTx: (txId) => `https://testnet.explorer.perawallet.app/tx/${txId}`,

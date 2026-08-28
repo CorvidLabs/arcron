@@ -136,8 +136,9 @@ explains which to pick and why the console suggests `SKIP_AHEAD`.
 
 ### Rounds are not a clock
 
-A cadence is a round count. A round is ~2.8 s nominally, less in practice
-(TestNet measured 2.66 s), so "daily" means "every ~30,857 rounds" and slides
+A cadence is a round count. A round is ~2.8 s nominally and ~2.75 s measured
+on MainNet, so a schedule runs slightly faster than the nominal figure suggests
+(TestNet measured 2.695 s), so "daily" means "every ~30,857 rounds" and slides
 against the calendar by about a day and a half over thirty cycles. Arcron
 promises "not before this round", never "at 09:00". If a wall-clock moment
 matters, have the *hook* check the time and no-op when early, and schedule it

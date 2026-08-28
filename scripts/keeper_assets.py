@@ -83,7 +83,16 @@ OPT_IN_ROUND_TRIP_MICROALGO = 2_000
 # Algorand's nominal block time, as everywhere else in this repository
 # (`scripts/keeper_e2e.py`, `js/src/networks.ts`). Accrual is quoted per day,
 # so it needs one; a real chain runs a little either side of this.
-SECONDS_PER_ROUND = 2.8
+#: Measured, not nominal, and taken from the network being read.
+#:
+#: This was 2.8, Algorand's nominal figure, while `docs/why.md` used 2.66 from
+#: a 45 second sample. Neither was right: measured over 1,000,000 rounds on
+#: 2026-08-28, TestNet runs at 2.695 and MainNet at 2.752.
+#:
+#: It matters here because every rate in this module is per day, so a 4% error
+#: in block time is a 4% error in the surcharge an operator is told they will
+#: pay, and in the break-even price they decide on.
+SECONDS_PER_ROUND = net.seconds_per_round(net.MAINNET)
 SECONDS_PER_DAY = 86_400
 
 

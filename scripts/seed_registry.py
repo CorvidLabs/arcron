@@ -38,7 +38,8 @@ from smart_contracts.keeper.contract import (
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
-SECONDS_PER_ROUND = 2.8
+# Measured over 1,000,000 rounds on 2026-08-28; the nominal figure is 2.8.
+SECONDS_PER_ROUND = 2.752
 TICK = abi.Method.from_signature("tick()uint64").get_selector()
 TICK_WITH = abi.Method.from_signature("tick_with(uint64,string)uint64").get_selector()
 
