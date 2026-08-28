@@ -21,8 +21,8 @@ Here it is honestly, which is less flattering than the first draft of this page:
 
 | one hourly schedule, per month | cost | what you give up |
 |---|---|---|
-| **Arcron** at the 4,000 µALGO floor | ~3.03 ALGO ≈ **$0.28** | see below — it is not nothing |
-| **Arcron** at the suggested 10,000 | ~7.58 ALGO ≈ **$0.69** | as above |
+| **Arcron** at the 4,000 µALGO floor | ~2.93 ALGO ≈ **$0.27** | see below — it is not nothing |
+| **Arcron** at the suggested 10,000 | ~7.32 ALGO ≈ **$0.66** | as above |
 | fly.io shared-cpu-1x | ~$2.02 | you write, host, key and monitor the bot |
 | Hetzner CX22 | ~$4.10 | as above |
 | AWS Lambda + EventBridge | **$0.00** | as above, but genuinely free at this volume |
@@ -31,15 +31,31 @@ Here it is honestly, which is less flattering than the first draft of this page:
 
 **Every figure on this page uses one basis**, because two earlier drafts mixed
 two and produced a multiplier that did not reproduce from their own tables. The
-basis: 2.66 s/round measured, so a nominal-hour upkeep of 1,286 rounds fires
-every 57.0 minutes, **758 times a month**, at ALGO $0.0907. Recompute rather
-than quote.
+basis: 2.752 s/round measured, so a nominal-hour upkeep of 1,286 rounds fires every
+59.0 minutes, **732 times a month**, at ALGO $0.0907 over a 30 day month.
 
-**About 7.2x cheaper than the cheapest paid host** at the floor, and **2.9x** at
-the suggested fee. An earlier draft said 7.7x in both places; against fly.io's
-$2.02 the first is 7.2x and the second is 2.9x, and repeating one number for
-both overstated the suggested fee by two and a half times. Two independent
-reviews caught it.
+That block time is MainNet's, measured over 1,000,000 rounds on 2026-08-28,
+because this page prices against hosting billed in dollars and MainNet is where
+anyone would actually make that comparison. TestNet runs at 2.695. An earlier
+version of this page used 2.66 from a 45 second sample, which is about 17
+rounds and far too short to mean anything.
+
+**Nothing on this page is quoted by hand any more.** `scripts/why_figures.py`
+derives every number below from that basis, and `tests/test_why_figures.py`
+fails if this page disagrees with it. The three arithmetic errors this page has
+had were all the same failure: a basis that moved while the figures derived
+from it did not.
+
+**About 7.6x cheaper than the cheapest paid host** at the floor, and **3.0x** at
+the suggested fee. An earlier draft said 7.7x in both places; repeating one
+number for both overstated the suggested fee by two and a half times, and two
+independent reviews caught it.
+
+These were 7.2x and 2.9x until the block time was measured properly, and the
+correction moves in this page's favour, which is a reason to be careful with it
+rather than pleased about it. A slower chain means fewer executions a month,
+which means Arcron costs less, which makes the multiple larger. The old 7.2 was
+also slightly wrong on its own stated basis, which produces 7.3.
 
 **Against the free options it is not cheaper at all**, and the honest thing is
 to say which ones actually work. AWS Lambda plus EventBridge Scheduler at 720
@@ -62,8 +78,8 @@ table quotes $2.02:
 | against | crossover |
 |---|---|
 | fly.io, $2.02 | **10 upkeeps** |
-| Hetzner, $4.10 | 20 |
-| a $5 host | 24 |
+| Hetzner, $4.10 | 21 |
+| a $5 host | 25 |
 
 **Those numbers do not come from dividing the host by the monthly cost**, and
 the arithmetic is worth spelling out because a reader who divides gets 7.2 and
@@ -76,11 +92,11 @@ saving per upkeep is the difference, 3,000 µALGO, not the whole 4,000:
 
 | | per upkeep per month |
 |---|---|
-| Arcron at the floor | $0.275 |
-| your own bot, still paying the outer fee | $0.069 |
-| **what self-hosting actually saves** | **$0.206** |
+| Arcron at the floor | $0.266 |
+| your own bot, still paying the outer fee | $0.066 |
+| **what self-hosting actually saves** | **$0.199** |
 
-$2.02 ÷ $0.206 ≈ **10**, which is the crossover. The 7.2 further up this page is
+$2.02 ÷ $0.199 ≈ **10**, which is the crossover. The 7.6 further up this page is
 a different and also true number: the ratio of total costs, not the point where
 one overtakes the other.
 
@@ -98,8 +114,8 @@ moves *against* Arcron precisely when Algorand succeeds:
 
 | against | parity at ALGO |
 |---|---|
-| $4.10/mo | $1.35 |
-| $2.02/mo | **$0.67** |
+| $4.10/mo | $1.40 |
+| $2.02/mo | **$0.69** |
 
 **ALGO has not traded near either price in years, and an earlier draft of this
 page said it had.** It last closed above $0.70 on 2022-04-28 and above $1.42 on
@@ -114,7 +130,7 @@ when Algorand does well. This page should not be read as if the multiple is a
 property of the design.
 
 That is the third correction to the numbers on this page, after a 19x that was
-really 7.2x and a crossover quoted against a host the page does not recommend.
+really 7.6x and a crossover quoted against a host the page does not recommend.
 Every one was found by a reviewer who recomputed instead of quoting. Do that.
 
 ## The floor price is below the cost of supplying it
@@ -122,7 +138,7 @@ Every one was found by a reviewer who recomputed instead of quoting. Do that.
 This is the structural finding, and it is not comfortable.
 
 At the 4,000 µALGO minimum a keeper nets 1,000 per execution, so **one keeper
-needs roughly 73 concurrent hourly upkeeps to fund a $5 host.** A creator
+needs roughly 75 concurrent hourly upkeeps to fund a $5 host.** A creator
 crosses over to self-hosting at 10 against the cheapest paid host. Those numbers
 are the wrong way round: the floor is priced for the creator and sits below the
 cost of supplying it.
@@ -148,7 +164,7 @@ above this floor."*
 The `plus: nothing` in an earlier draft was false. Concretely:
 
 - **Wall-clock drift, which accumulates.** Arcron schedules in rounds, and
-  rounds are not a clock. At the measured 2.66 s/round an upkeep set to a
+  rounds are not a clock. At the measured 2.752 s/round an upkeep set to a
   nominal hour fires every 57 minutes and slides **roughly 36 hours against the
   calendar over a month**. A cron fires at :00 forever and never gains phase. On
   the exact axis this page uses to dismiss GitHub Actions, Arcron is worse, and

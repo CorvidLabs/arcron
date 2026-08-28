@@ -92,7 +92,7 @@ emphasis they should never differ in fact.
 Money on-chain is in microALGO (µALGO), and 1 ALGO is 1,000,000 µALGO. The
 contract's floor fee is 4,000 µALGO, which is 0.004 ALGO.
 
-Arcron schedules in **rounds**, not seconds. A round is roughly 2.66 to 2.8
+Arcron schedules in **rounds**, not seconds. A round is roughly 2.70 to 2.8
 seconds. "Rounds are not a clock" is a running theme and Chapter 6 explains why
 it matters.
 
@@ -124,9 +124,9 @@ figure as a checkable claim and re-derive anything load-bearing against the live
 chain.
 
 The economics in Chapters 2 and 10 all sit on **one basis**, which is the first
-thing to check if a number looks wrong: **2.66 s/round measured on TestNet**, so
-a nominal-hour upkeep of 1,286 rounds fires every **57.0 minutes**, **758 times
-a month**, priced at **ALGO $0.0907**. Two earlier drafts of `docs/why.md` mixed
+thing to check if a number looks wrong: **2.752 s/round measured on MainNet**, so
+a nominal-hour upkeep of 1,286 rounds fires every **59.0 minutes**, **732 times
+a month**, priced at **ALGO $0.0907**. TestNet runs at 2.695. Two earlier drafts of `docs/why.md` mixed
 two bases and produced a multiplier that didn't reproduce from their own tables.
 
 
@@ -251,23 +251,23 @@ book.
 ### The honest cost case
 
 The project has corrected its own numbers here more than once, so this book is
-careful. Every row below uses the single basis named in the preface, 758
+careful. Every row below uses the single basis named in the preface, 732
 executions a month at ALGO $0.0907, because mixing two bases is exactly how the
 earlier drafts went wrong. [`docs/why.md`](../why.md) is the canonical version of
 this table.
 
 | One hourly schedule, per month | Cost | What you give up |
 |---|---|---|
-| **Arcron at the 4,000 µALGO floor** | ~3.03 ALGO ≈ $0.28 | not nothing, see below |
-| **Arcron at the suggested 10,000 µALGO** | ~7.58 ALGO ≈ $0.69 | as above |
+| **Arcron at the 4,000 µALGO floor** | ~2.93 ALGO ≈ $0.27 | not nothing, see below |
+| **Arcron at the suggested 10,000 µALGO** | ~7.32 ALGO ≈ $0.66 | as above |
 | fly.io shared-cpu-1x | ~$2.02 | you write, host, key, and monitor the bot |
 | Hetzner CX22 | ~$4.10 | as above |
 | AWS Lambda + EventBridge | $0.00 | as above, but genuinely free at this volume |
 | Oracle Always Free | $0.00 | free, but Oracle reclaims idle instances |
 | GitHub Actions cron (private repo) | $0.00 | delayed under load, runs may be dropped |
 
-So Arcron is **7.2x cheaper than the cheapest *paid* host at the floor fee, and
-2.9x cheaper at the fee the console actually suggests**. It is **not cheaper at
+So Arcron is **7.6x cheaper than the cheapest *paid* host at the floor fee, and
+3.0x cheaper at the fee the console actually suggests**. It is **not cheaper at
 all than the free options**. All three of those are true and the project says all
 three. What you're paying Arcron for isn't the lowest possible cost. It's the
 absence of a hot key, a host, and an on-call rotation, and a schedule that
@@ -276,7 +276,7 @@ outlives you.
 > **Quote the fee with the multiple, always.** The floor row is the one that
 > produces the flattering number, and it isn't the fee anyone should register at:
 > at 4,000 µALGO a keeper clears 1,000 and won't reliably run your upkeep. The
-> console suggests **10,000 µALGO**, where the multiple is 2.9x rather than 7.2x.
+> console suggests **10,000 µALGO**, where the multiple is 3.0x rather than 7.6x.
 > An earlier draft of `docs/why.md` printed a single multiple for both fees and
 > overstated the suggested one by two and a half times. Two independent reviews
 > caught it. Chapter 10 has the full reasoning. Recompute against the fee you
@@ -460,7 +460,7 @@ keeper will turn up, and whether the call's needs will grow later.
 
 | Field | Value | Why |
 |---|---|---|
-| INTERVAL (ROUNDS) | `215` | about 10 minutes at ~2.66 s/round |
+| INTERVAL (ROUNDS) | `215` | about 10 minutes at ~2.70 s/round |
 | FEE PER EXECUTION | `0.010` | what the console suggests. Keepers spend ~0.003 in group fees, so this leaves them ~0.007. The 0.004 minimum leaves only ~0.001, which can't fund a machine. |
 | FEE CEILING | `0` | off. Only raise it if an upkeep is actually going unserviced. |
 | FUNDING | `0.03` | three runs at the suggested fee |
@@ -852,10 +852,10 @@ together.
 
 ### Rounds are not a clock
 
-A cadence is a round count, and a round is about 2.8 s nominally, 2.66 s measured
+A cadence is a round count, and a round is about 2.8 s nominally, 2.752 s measured
 on TestNet. So "daily" means "every ~30,857 rounds", and the gap compounds.
 
-| Cadence | Rounds | At 2.8 s | At measured 2.66 s | Drift/cycle |
+| Cadence | Rounds | At 2.8 s | At measured 2.752 s | Drift/cycle |
 |---|---|---|---|---|
 | hourly | 1,286 | 1.0 h | ~0.95 h (57 min) | ~3 min |
 | daily | 30,857 | 24.0 h | 22.8 h | ~1.2 h |
@@ -863,9 +863,9 @@ on TestNet. So "daily" means "every ~30,857 rounds", and the gap compounds.
 
 A "daily" upkeep slides about **36 hours** against the calendar over thirty
 cycles, and which way it slides depends on how busy the network is. Even the
-hourly row drifts: at the measured rate it fires every 57.0 minutes, so a nominal
-month is **758 executions, not 720**. That's why every cost figure in this book
-is computed at 758 (Chapter 10).
+hourly row drifts: at the measured rate it fires every 59.0 minutes, so a nominal
+month is **732 executions, not 720**. That's why every cost figure in this book
+is computed at 732 (Chapter 10).
 
 > **Arcron promises "not before this round". It never promises "at 09:00".** If a
 > wall-clock moment matters, have the *hook* check the time and no-op when it's
@@ -1453,15 +1453,15 @@ a normal issue.
 ### Cheaper than a paid host, not cheaper than free
 
 Chapter 2 gave the table. Here's what it means. Against paid hosts you'd
-otherwise run a bot on, Arcron **at the 4,000 µALGO floor** is **7.2x** cheaper,
-$0.28 against fly.io's $2.02. At the fee the console actually suggests, 10,000
-µALGO and about $0.69 a month, the gap narrows to **2.9x**. Smaller, still real.
+otherwise run a bot on, Arcron **at the 4,000 µALGO floor** is **7.6x** cheaper,
+$0.27 against fly.io's $2.02. At the fee the console actually suggests, 10,000
+µALGO and about $0.66 a month, the gap narrows to **3.0x**. Smaller, still real.
 Against the free options, Lambda plus EventBridge or GitHub Actions in a private
 repo, it isn't cheaper at all, and the project says so.
 
 > **One multiple does not cover both fees.** An earlier draft of
 > [`docs/why.md`](../why.md) printed 7.7x for the floor *and* the suggested fee.
-> The floor's real ratio against $2.02 is 7.2x and the suggested fee's is 2.9x,
+> The floor's real ratio against $2.02 is 7.6x and the suggested fee's is 3.0x,
 > so reusing one number overstated the suggested fee by two and a half times.
 > Quote the fee alongside the multiple, or quote neither.
 
@@ -1473,7 +1473,7 @@ moves *against* Arcron precisely when Algorand succeeds:
 | against | parity at ALGO |
 |---|---|
 | $4.10/mo | $1.35 |
-| $2.02/mo | **$0.67** |
+| $2.02/mo | **$0.69** |
 
 **ALGO hasn't traded near either price in years.** It last closed above $0.70 on
 **2022-04-28** and above $1.42 on 2022-01-13, and its high over the last two
@@ -1507,7 +1507,7 @@ own table quotes $2.02.
 > **Where the crossover comes from**, so you can check it. Self-hosting doesn't
 > make the chain free: calling your own target still costs the 1,000 µALGO outer
 > fee. So the *incremental* cost of Arcron at the floor is 4,000 - 1,000 = 3,000
-> µALGO per execution, or 758 x 3,000 = 2.27 ALGO, about $0.206 a month per
+> µALGO per execution, or 732 x 3,000 = 2.20 ALGO, about $0.199 a month per
 > schedule. A $2.02 host divided by that is 9.8, hence 10.
 
 The asymmetry that survives is narrower and real: **no hot key, and no
@@ -1519,20 +1519,20 @@ This is the part the project flags as not comfortable, and it's the most
 important thing in the chapter.
 
 At the 4,000 µALGO floor a keeper nets about 1,000 µALGO per execution, so one
-keeper needs roughly 73 concurrent hourly upkeeps to fund a $5 host. But a
+keeper needs roughly 75 concurrent hourly upkeeps to fund a $5 host. But a
 *creator* crosses over to self-hosting at **10** against the cheapest paid host.
 Those numbers are the wrong way round. The ratio that closes the gap is
 `(fee - 1000) / (fee - 3000)`:
 
 | Fee | Creator pays/mo | Creator crossover vs $2.02 | Keeper funds a $5 host at |
 |---|---|---|---|
-| 4,000 µALGO (the floor) | $0.28 | 10 | **73** |
-| 10,000 µALGO (suggested) | $0.69 | 3 | **10** |
-| 20,000 µALGO | $1.38 | 2 | 5 |
+| 4,000 µALGO (the floor) | $0.27 | 10 | **75** |
+| 10,000 µALGO (suggested) | $0.66 | 3 | **11** |
+| 20,000 µALGO | $1.33 | 2 | 4 |
 
 **The floor is priced for the creator and sits below the cost of supplying it.**
 Raising the fee closes that. Around 10,000 µALGO the two converge at about ten
-upkeeps and the network pays for itself, still 2.9x cheaper than the cheapest paid
+upkeeps and the network pays for itself, still 3.0x cheaper than the cheapest paid
 host. That's the sustainable operating point, and it isn't the one the minimum
 advertises. The contract half-admits it already: *"A creator who wants keepers who
 do not care about their token should set a fee above this floor."*
@@ -1546,10 +1546,10 @@ do not care about their token should set a fee above this floor."*
 ### Rounds drift, and that costs you too
 
 A cadence is a round count and rounds run slightly faster than nominal, so an
-"hourly" upkeep fires every 57.0 minutes and slides ~36 hours against the calendar
-over a month. That also means it fires **758 times, not 720**, so at the floor it
-costs 3.03 ALGO a month rather than the naive 2.88. Every figure in this chapter
-is computed at 758. Budget against your real cadence, not the nominal one.
+"hourly" upkeep fires every 59.0 minutes and slides ~36 hours against the calendar
+over a month. That also means it fires **732 times, not 720**, so at the floor it
+costs 2.93 ALGO a month rather than the naive 2.88. Every figure in this chapter
+is computed at 732. Budget against your real cadence, not the nominal one.
 
 ## Chapter 11. Is a keeper network the right idea?
 
@@ -1913,7 +1913,7 @@ scheduled call is a heartbeat, not a courier."*
 | **Keeper** | An off-chain process that calls `execute` on due upkeeps and collects fees. |
 | **Creator** | The account that registered an upkeep; the only one who can cancel it. |
 | **Target app** | The app an upkeep calls. Chosen and fixed by the creator. |
-| **Round** | Algorand's block unit, about 2.66 to 2.8 s. Arcron's unit of time. |
+| **Round** | Algorand's block unit, about 2.70 to 2.8 s. Arcron's unit of time. |
 | **Escrow / balance** | The ALGO an upkeep holds to pay for its executions. |
 | **Box deposit** | The minimum-balance cost of an upkeep's box; refunded on cancel. |
 | **CATCH_UP / SKIP_AHEAD** | Missed-run policy: replay every missed interval, or drop the backlog and keep phase. |
@@ -1958,13 +1958,13 @@ scheduled call is a heartbeat, not a courier."*
 | Keeper cost per execution | ~3,000 µALGO (4,000 with an ASA bonus) |
 | Keeper start floor | 103,000 µALGO |
 
-**Drift (rounds are not a clock; TestNet measured 2.66 s/round):**
+**Drift (rounds are not a clock; MainNet measured 2.752 s/round):**
 
-| Cadence | Rounds | At 2.8 s | At 2.66 s | Drift/cycle |
+| Cadence | Rounds | At 2.8 s | At 2.752 s | Drift/cycle |
 |---|---|---|---|---|
-| hourly | 1,286 | 1.0 h | ~0.95 h (57 min) | ~3 min |
-| daily | 30,857 | 24.0 h | 22.8 h | ~1.2 h |
-| weekly | 216,000 | 168.0 h | 159.7 h | ~8.3 h |
+| hourly | 1,286 | 1.0 h | ~0.98 h (59 min) | ~1 min |
+| daily | 30,857 | 24.0 h | 23.6 h | ~25 min |
+| weekly | 216,000 | 168.0 h | 165.1 h | ~2.9 h |
 
 **Runway (at the 4,000 µALGO floor):**
 
@@ -1980,16 +1980,16 @@ recompute. [`docs/why.md`](../why.md) owns them.
 
 | | |
 |---|---|
-| Round time (TestNet measured) | 2.66 s |
-| Nominal-hour upkeep | 1,286 rounds = 57.0 minutes |
-| Executions per month | **758** (not 720) |
+| Round time (MainNet measured) | 2.752 s |
+| Nominal-hour upkeep | 1,286 rounds = 59.0 minutes |
+| Executions per month | **732** (not 720) |
 | ALGO price used | **$0.0907** |
-| Monthly cost, hourly upkeep at the floor | 3.03 ALGO ≈ $0.28 |
-| Monthly cost, hourly upkeep at the suggested fee | 7.58 ALGO ≈ $0.69 |
-| Cheaper than the cheapest paid host by | **7.2x** at the floor, **2.9x** suggested |
+| Monthly cost, hourly upkeep at the floor | 2.93 ALGO ≈ $0.27 |
+| Monthly cost, hourly upkeep at the suggested fee | 7.32 ALGO ≈ $0.66 |
+| Cheaper than the cheapest paid host by | **7.6x** at the floor, **3.0x** suggested |
 | Creator crossover to self-hosting (vs fly.io $2.02) | 10 upkeeps at the floor, 3 at the suggested fee |
-| Keeper funds a $5 host at | 73 upkeeps at the floor, 10 at the suggested fee |
-| Parity with a $2.02 host at | ALGO $0.67 (two-year high: $0.6135) |
+| Keeper funds a $5 host at | 75 upkeeps at the floor, 11 at the suggested fee |
+| Parity with a $2.02 host at | ALGO $0.69 (two-year high: $0.6135) |
 
 ---
 

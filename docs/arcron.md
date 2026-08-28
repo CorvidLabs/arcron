@@ -297,14 +297,17 @@ missed prize draw probably should not. That is the argument in
 ### Rounds are not a clock
 
 A cadence is a round count, and rounds are not seconds. TestNet measured
-**2.66 s/round** over a 45-second sample; the nominal figure is 2.8. The gap
+**2.752 s/round** on MainNet and **2.695** on TestNet, each measured over
+1,000,000 rounds (about 31 days) on 2026-08-28; the nominal figure is 2.8. An
+earlier version of this section used 2.66 from a 45 second sample, which is
+about 17 rounds. The gap
 compounds:
 
-| Cadence | Rounds | At 2.8 s | At the measured 2.66 s | Drift per cycle |
+| Cadence | Rounds | At 2.8 s | At the measured 2.752 s | Drift per cycle |
 |---------|--------|----------|------------------------|-----------------|
-| hourly | 1,286 | 1.0 h | 1.0 h | ~3 min |
-| daily | 30,857 | 24.0 h | 22.8 h | ~1.2 h |
-| weekly | 216,000 | 168.0 h | 159.7 h | ~8.3 h |
+| hourly | 1,286 | 1.0 h | 1.0 h | ~1 min |
+| daily | 30,857 | 24.0 h | 23.6 h | ~25 min |
+| weekly | 216,000 | 168.0 h | 165.1 h | ~2.9 h |
 
 A "daily" upkeep therefore slides about **36 hours** (a day and a half)
 against the calendar over thirty cycles, and which way it slides depends on
