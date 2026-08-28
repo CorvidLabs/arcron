@@ -34,7 +34,7 @@ Read from the chain at round 66,755,175.
 | 21 | `769891902` pulse | 11.5 h | 0.3943 ALGO | ~47 days | 5 | skip ahead |
 | 22 | `769891902` pulse | 11.5 h | 0.3486 ALGO | ~42 days | 5 | skip ahead |
 | 79 | `770029154` rain (gated) | 1.9 h | 7.9300 ALGO | ~64 days | 7 | skip ahead |
-| 81 | `770041460` (not ours) | 58 min | 1.5300 ALGO | ~6 days | 15 | skip ahead |
+| 81 | `770041460` (our agent) | 58 min | 1.5300 ALGO | ~6 days | 15 | skip ahead |
 | 82 | `769891902` pulse | 58 min | 3.5000 ALGO | ~14 days | 0 | skip ahead |
 
 **Upkeep 82 replaced upkeep 73 on 2026-08-28**, and the reason is worth
@@ -52,11 +52,22 @@ of zero our own dogfood had never once exercised the escalating fee, which is
 the mechanism [`prior-art.md`](prior-art.md) identifies as the thing no
 comparable system has anywhere.
 
-**Upkeep 81 is not ours.** It was registered on 2026-08-27 by
-`A3OZPORJ…`, against a contract that account deployed itself, and it has been
-serviced 14 times since. It is the first upkeep in this project's history
-created by somebody other than us, and it is the beta gate item that had been
-outstanding from the beginning. Nobody asked us for anything to make it work.
+**Upkeep 81 was registered by an agent we are running**, not by an outside
+party. It came from `A3OZPORJ...`, a fresh account funded once by the TestNet
+dispenser, which deployed its own target contract and registered against it.
+
+It is worth recording anyway, for what it does show. The whole sequence took
+**29 seconds**: deploy, configure, call twice, then register on Arcron. Nothing
+in it was hand-held, and nobody adjusted the docs to make it work. An agent
+given the public repository was able to go from an empty account to a
+serviced upkeep without asking us anything, which is the closest thing to a
+test of [`integrating.md`](integrating.md) that exists so far.
+
+What it is not is evidence of adoption. The beta gate in
+[`releases.md`](releases.md) asks for an upkeep registered by somebody who is
+not us, and an agent we dispatched is us. That item is still open. An earlier
+version of this page claimed it was met, on the strength of the address not
+matching two we had hardcoded, which is not the same question.
 
 **Runway** is escrow divided by burn rate at TestNet's measured 2.695 s/round. It is
 what the upkeep can pay for, not a promise about keeper availability.
