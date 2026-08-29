@@ -236,31 +236,58 @@ def test_a_genuine_update_of_the_named_app_is_allowed(configured, tmp_path) -> N
 # fixed at creation, so a MainNet app made from a single key carries an admin
 # key over every escrow in it forever.
 
-def test_mainnet_refuses_without_a_multisig(monkeypatch) -> None:
+def test_mainnet_refuses_when_no_signer_is_known(monkeypatch) -> None:
     from scripts import network as net
 
     monkeypatch.delenv(ms.ADDRESSES_VAR, raising=False)
     monkeypatch.delenv(ms.THRESHOLD_VAR, raising=False)
-    with pytest.raises(RuntimeError, match="without a configured multisig"):
-        net.require_mainnet_multisig()
+    with pytest.raises(RuntimeError, match="without knowing which account"):
+        net.require_mainnet_creator()
 
 
-def test_mainnet_refuses_a_multisig_that_is_not_the_expected_one(configured) -> None:
-    """Member order is part of the address, so this catches a permutation too."""
+def test_mainnet_refuses_the_wrong_account() -> None:
+    """The one mistake with no way back, so the gate exists for exactly this."""
     from scripts import network as net
 
-    configured(2, [CORVID, LEDGER, GASPAR])  # LEDGER and CORVID swapped
     with pytest.raises(RuntimeError, match="not the expected"):
-        net.require_mainnet_multisig()
+        net.require_mainnet_creator(
+            "E5M2OH5XNDMNABJ6VOFOUVR2IKRPCGQH43PVC5P3DWQQ2LV2VJV2FJZQ3E"
+        )
 
 
-def test_mainnet_accepts_the_real_two_of_three(configured) -> None:
+def test_mainnet_accepts_the_recorded_creator() -> None:
     """A gate that refuses the intended creator is an outage, not a gate."""
     from scripts import network as net
 
+    net.require_mainnet_creator(net.MAINNET_CREATOR)
+
+
+def test_a_multisig_would_still_satisfy_the_gate(configured) -> None:
+    """The creator being a single account is a decision, not a constraint.
+
+    MainNet moved to one account because no wallet will sign for a multisig
+    sender: asked directly through its own SDK with `msig` metadata, Pera
+    answers "multisig signing is not supported". None of that is baked into the
+    gate. If a wallet ever ships it, restoring a multisig is a one line change
+    to `MAINNET_CREATOR`, and this proves the surrounding machinery already
+    accepts one.
+    """
+    from scripts import network as net
+
     configured(2, SIGNERS)
-    assert ms.address() == net.MAINNET_CREATOR
-    net.require_mainnet_multisig()
+    derived = ms.address()
+    with pytest.raises(RuntimeError, match="not the expected"):
+        net.require_mainnet_creator(derived)
+    # ...and it would pass if that address were the recorded creator, which is
+    # the only thing standing between here and a multisig again.
+    assert derived == "LUH77ATPWS4ZTCO7OZ3YM2DP5M2BXN53CHPFFQCFBATRFCYEB3NKTGMBNI"
+
+
+def test_the_old_name_still_works() -> None:
+    """Kept so nothing importing it breaks while the docs catch up."""
+    from scripts import network as net
+
+    assert net.require_mainnet_multisig is net.require_mainnet_creator
 
 
 # --- the beacon ids, recorded once -------------------------------------
@@ -440,5 +467,5 @@ def test_load_network_itself_enforces_the_mainnet_gate(monkeypatch) -> None:
     monkeypatch.setenv("ARCRON_ALLOW_MAINNET", "1")
     monkeypatch.delenv(ms.ADDRESSES_VAR, raising=False)
     monkeypatch.delenv(ms.THRESHOLD_VAR, raising=False)
-    with pytest.raises(RuntimeError, match="without a configured multisig"):
+    with pytest.raises(RuntimeError, match="without knowing which account"):
         net.load_network(net.MAINNET)

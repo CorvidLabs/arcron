@@ -339,29 +339,45 @@ secret in the project, not as a funding account.
   could replace `execute` with something that pays them and drain every
   escrow. That is the cost of keeping an update path, and it is why `frozen`
   is readable on-chain rather than promised in a document.
-- **For MainNet it should not be a bare mnemonic on a laptop.** Set
-  `ARCRON_MULTISIG_THRESHOLD` and `ARCRON_MULTISIG_ADDRESSES` and the creator
-  becomes a multisig address: `govern update` and `govern freeze` then write an
-  unsigned transaction for the holders to sign wherever their keys live, and
-  `scripts/deploy.py` refuses to run at all rather than quietly deploying from
-  the single key instead. `fledge run smoke-multisig` proves on LocalNet that
-  one holder of three cannot update and two can.
-- **More keys than the threshold, on different devices held by different
-  people.** Any one can then be lost without losing control, and any one can be
-  compromised without losing the contract. Keys in one drawer are one key.
+- **For MainNet it is one account, held in a wallet, and that is a deliberate
+  step down from a multisig.** The creator is `corvid.algo`,
+  `WGSHC4TYKYBS6EX5V5E377BQDLKWIIPBCFOLZQZIXCKHFIEKRPBFOMW25A`, and
+  `require_mainnet_creator` refuses `--network mainnet` for any other signer.
+  A creator is fixed at creation, so deploying from the wrong account is the
+  one mistake with no way back.
 
-  The MainNet deployment uses **three keys with a threshold of two**
-  (`LUH77ATPWS4ZTCO7OZ3YM2DP5M2BXN53CHPFFQCFBATRFCYEB3NKTGMBNI`). **One** can
-  be lost and **one** can be compromised without either losing control or losing
-  the contract. Two lost is below the threshold and control is gone
-  permanently, because a creator cannot be changed after creation; two
-  compromised *is* the threshold. That is the whole margin, and it is smaller
-  than the 3-of-5 this replaced, which tolerated two of each. The LocalNet smoke test uses three keys with a threshold of two
-  because it only has to prove the mechanism, not carry anything.
+  **Why not a multisig.** Because no wallet will sign for one. Asked directly
+  through Pera's own SDK with ARC-1 `msig` metadata, on TestNet, with an
+  account that is genuinely a member, Pera answers `multisig signing is not
+  supported`. ARC-1 defines the field; `@txnlab/use-wallet` exports the type
+  and implements none of it; Pera's SDK declares it and refuses it. So a 2-of-3
+  in practice means every governance action is a mnemonic typed into a shell by
+  three people, one of whom keeps their key on a hardware device precisely so
+  that never has to happen. Trading one wallet signature for three exported
+  mnemonics is not obviously a security gain.
 
-  Member order is part of the address. A multisig address is the hash of
+  **What is actually lost.** One key can replace `execute` with something that
+  drains every escrow, for as long as `frozen` is 0. There is no second holder
+  to stop it, and no tolerance for a lost key: lose it and control is gone
+  permanently. That is the honest cost and it is not small.
+
+  **What makes it defensible.** `freeze` is one way, and after it the creator
+  can never replace the programs again, so the key stops mattering. A
+  single-key deployment frozen early is a smaller exposure than a multisig left
+  upgradeable indefinitely because signing it is too painful to do, and the
+  commitment attached to this decision is to freeze promptly rather than keep
+  the option open. Until then the state is readable on chain and the console
+  says so on every page.
+
+  `scripts/multisig.py` is kept, `fledge run smoke-multisig` still proves one
+  holder of three cannot update and two can, and a test proves a multisig would
+  still satisfy the MainNet gate. If a wallet ships multisig signing, going
+  back is one constant.
+
+  Member order is part of a multisig address, which is the hash of
   `"MultisigAddr" || version || threshold || each public key in order`, so the
-  same keys in a different order are a different account holding nothing.
+  same keys in a different order are a different account holding nothing. That
+  still applies to the 2-of-3 this replaced.
 - **Once frozen, the key stops mattering** to anyone but its own ALGO. There
   is no owner, no admin, and no path back to one.
 
