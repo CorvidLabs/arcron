@@ -66,7 +66,12 @@ from smart_contracts.artifacts.rain.rain_client import (
     DepositArgs,
     RainClient,
 )
-from smart_contracts.rain.contract import ALLOCATION_PREFIX, BEACON_WINDOW
+from smart_contracts.rain.contract import TICKET_PREFIX
+
+# Drip rain has no beacon window. Kept so existing unit tests of the old
+# jackpot bot's predicates can stay until that bot is deleted.
+BEACON_WINDOW = 1_000
+ALLOCATION_PREFIX = TICKET_PREFIX
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -241,96 +246,18 @@ def scan_once(
     """
     state = read_state(algod, app_id)
     current = algod.status()["last-round"]
-    acted = False
-    to_deposit = _read_pending(pending_path)
-
-    if should_resolve(state, current):
-        beacon_app = int(state["beacon_app"])
-        winner = client.send.resolve(
-            params=algokit_utils.CommonAppCallParams(
-                extra_fee=algokit_utils.AlgoAmount(micro_algo=EXTRA_FEE_MICROALGO),
-                app_references=[beacon_app],
-            )
-        ).abi_return
-        emit(
-            "resolved",
-            f"Round {current}: resolved draw {state.get('draw_id')}; winner {winner}",
-            round=current,
-            app_id=app_id,
-            draw_id=state.get("draw_id"),
-            winner=str(winner),
-        )
-        acted = True
-        state = read_state(algod, app_id)
-    elif should_abandon(state, current):
-        returned = client.send.abandon().abi_return
-        emit(
-            "abandoned",
-            f"Round {current}: beacon window closed unresolved; {returned} µALGO "
-            f"returned to the pot",
-            level=logging.WARNING,
-            round=current,
-            app_id=app_id,
-            returned=returned,
-        )
-        acted = True
-        state = read_state(algod, app_id)
-
-    allocation = read_allocation(algod, app_id, address)
-    if allocation > 0:
-        claimed = client.send.claim(
-            args=ClaimArgs(gate_asset=0),
-            params=algokit_utils.CommonAppCallParams(
-                extra_fee=algokit_utils.AlgoAmount(micro_algo=EXTRA_FEE_MICROALGO)
-            ),
-        ).abi_return
-        emit(
-            "claimed",
-            f"Round {current}: claimed {claimed} µALGO",
-            round=current,
-            app_id=app_id,
-            claimed=claimed,
-        )
-        # Recorded before the deposit is attempted, not after: if the
-        # deposit itself is what fails or times out, the amount must still
-        # be here to retry next time. Cleared only once `deposit` confirms.
-        to_deposit += claimed
-        _write_pending(pending_path, to_deposit)
-        acted = True
-
-    if to_deposit > 0:
-        new_pot = client.send.deposit(
-            args=DepositArgs(
-                payment=client.algorand.create_transaction.payment(
-                    algokit_utils.PaymentParams(
-                        sender=address,
-                        receiver=client.app_address,
-                        amount=algokit_utils.AlgoAmount(micro_algo=to_deposit),
-                    )
-                )
-            )
-        ).abi_return
-        _write_pending(pending_path, 0)
-        emit(
-            "deposited",
-            f"Round {current}: deposited {to_deposit} µALGO back into the pot "
-            f"(pot now {new_pot})",
-            round=current,
-            app_id=app_id,
-            deposited=to_deposit,
-            pot=new_pot,
-        )
-        acted = True
-
-    if not acted:
-        emit(
-            "idle",
-            f"Round {current}: nothing to do (draw_open={state.get('draw_open', 0)})",
-            round=current,
-            app_id=app_id,
-            draw_open=int(state.get("draw_open", 0)),
-        )
-    return acted
+    # Drip rain has no resolve and no second bot. Holders claim themselves.
+    # Kept as a scan so the existing cron unit does not start failing.
+    emit(
+        "idle",
+        f"Round {current}: drip rain; holders claim (tickets={state.get('tickets', 0)} "
+        f"pot={state.get('pot', 0)})",
+        round=current,
+        app_id=app_id,
+        tickets=int(state.get("tickets", 0)),
+        pot=int(state.get("pot", 0)),
+    )
+    return False
 
 
 def main(argv: list[str] | None = None) -> None:
