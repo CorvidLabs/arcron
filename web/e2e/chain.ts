@@ -34,6 +34,8 @@ export const CANONICAL_APP_ID = 769891898;
 export const FOREIGN_APP_ID = 771234567;
 /** The demo target, `pulse`. */
 export const TARGET_APP_ID = 769891902;
+/** Live TestNet Rain. Stubbed so `/rain` does not 404 the draw. */
+export const RAIN_APP_ID = 770029154;
 
 /** Frozen. Every "due in N rounds" on the page is derived from this one number. */
 export const ROUND = 55_400_000n;
@@ -221,7 +223,7 @@ const BOXES = UPKEEPS.map((upkeep) => ({
 }));
 
 /** Every app id the stub answers for. Anything else is a genuine 404. */
-const KNOWN_APPS = new Set([CANONICAL_APP_ID, FOREIGN_APP_ID]);
+const KNOWN_APPS = new Set([CANONICAL_APP_ID, FOREIGN_APP_ID, RAIN_APP_ID]);
 
 function statusBody(): unknown {
   return {
@@ -247,7 +249,48 @@ function paramsBody(): unknown {
   };
 }
 
+function rainState(): unknown[] {
+  const gate = creator(11);
+  return [
+    { key: base64(new TextEncoder().encode('beacon_app')), value: { bytes: '', type: 2, uint: 600011887 } },
+    { key: base64(new TextEncoder().encode('pot')), value: { bytes: '', type: 2, uint: 0 } },
+    { key: base64(new TextEncoder().encode('tickets')), value: { bytes: '', type: 2, uint: 0 } },
+    { key: base64(new TextEncoder().encode('draw_id')), value: { bytes: '', type: 2, uint: 0 } },
+    { key: base64(new TextEncoder().encode('draw_open')), value: { bytes: '', type: 2, uint: 0 } },
+    { key: base64(new TextEncoder().encode('commit_round')), value: { bytes: '', type: 2, uint: 0 } },
+    { key: base64(new TextEncoder().encode('prize')), value: { bytes: '', type: 2, uint: 0 } },
+    { key: base64(new TextEncoder().encode('tickets_snapshot')), value: { bytes: '', type: 2, uint: 0 } },
+    { key: base64(new TextEncoder().encode('draws_resolved')), value: { bytes: '', type: 2, uint: 0 } },
+    { key: base64(new TextEncoder().encode('prize_asset')), value: { bytes: '', type: 2, uint: 0 } },
+    {
+      key: base64(new TextEncoder().encode('gate_creator')),
+      value: { bytes: base64(gate), type: 1, uint: 0 },
+    },
+    {
+      key: base64(new TextEncoder().encode('last_winner')),
+      value: { bytes: base64(new Uint8Array(32)), type: 1, uint: 0 },
+    },
+    {
+      key: base64(new TextEncoder().encode('gate_unit_prefix')),
+      value: { bytes: base64(new TextEncoder().encode('corvid')), type: 1, uint: 0 },
+    },
+  ];
+}
+
 function applicationBody(appId: number): unknown {
+  if (appId === RAIN_APP_ID) {
+    return {
+      id: appId,
+      params: {
+        'approval-program': base64(new Uint8Array([0x0a, 0x81, 0x01])),
+        'clear-state-program': base64(new Uint8Array([0x0a, 0x81, 0x01])),
+        creator: algosdk.encodeAddress(creator(9)),
+        'global-state': rainState(),
+        'global-state-schema': { 'num-byte-slice': 3, 'num-uint': 10 },
+        'local-state-schema': { 'num-byte-slice': 0, 'num-uint': 0 },
+      },
+    };
+  }
   return {
     id: appId,
     params: {
@@ -328,6 +371,8 @@ export async function stubAlgod(page: Page): Promise<void> {
 
     const boxes = /^\/v2\/applications\/(\d+)\/boxes$/.exec(path);
     if (boxes) {
+      const appId = Number(boxes[1]);
+      if (appId === RAIN_APP_ID) return route.fulfill(json({ boxes: [] }));
       return route.fulfill(json({ boxes: BOXES.map((box) => ({ name: box.name })) }));
     }
 

@@ -18,7 +18,10 @@
     "./target-test": "./src/target-test.ts",
     "./board": "./src/board.ts",
     "./format": "./src/format.ts",
-    "./networks": "./src/networks.ts"
+    "./networks": "./src/networks.ts",
+    "./rain": "./src/rain.ts",
+    "./rain-abi": "./src/rain-abi.ts",
+    "./rain-txns": "./src/rain-txns.ts"
   },
   "files": [
     "src"
