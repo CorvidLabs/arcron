@@ -212,7 +212,16 @@ A signature is not a secret, so the file can be emailed, committed to a private
 gist, or carried on a stick. Only the mnemonics stay put. Submitting below the
 threshold is refused locally, and would be refused by the network anyway.
 
-## Creating a MainNet app from the multisig
+## Creating the MainNet app
+
+**The MainNet creator is one account**, `corvid.algo`,
+`WGSHC4TYKYBS6EX5V5E377BQDLKWIIPBCFOLZQZIXCKHFIEKRPBFOMW25A`. It was a 2-of-3
+multisig until 2026-08-29, and the whole reasoning for the change, including
+what it costs, is in [`security.md`](security.md#key-handling). The short
+version: no wallet will sign for a multisig sender, so a 2-of-3 meant three
+people exporting mnemonics into a shell for every governance action, and
+`freeze` is what makes a single key defensible because it retires that key
+permanently.
 
 Use `govern create`. Everything an application-create sets is permanent: the
 creator cannot be changed, the state schema cannot be resized, and extra
@@ -221,10 +230,10 @@ nothing else, so none of it has a way back.
 
 ```sh
 poetry run python -m scripts.govern create --network mainnet \
-  --expect-creator LUH77ATPWS4ZTCO7OZ3YM2DP5M2BXN53CHPFFQCFBATRFCYEB3NKTGMBNI
+  --expect-creator WGSHC4TYKYBS6EX5V5E377BQDLKWIIPBCFOLZQZIXCKHFIEKRPBFOMW25A
 ```
 
-It refuses unless a multisig is configured and hashes to exactly the address
+It refuses unless the signer hashes to exactly the address
 you typed, refuses an uncommitted working tree, rebuilds from source, reads
 the state schema out of the compiled spec rather than trusting a hand-typed
 number, computes the extra pages from the real program sizes, prints the
@@ -263,7 +272,7 @@ which is worse than not checking.
 **Which holders, and how many.** Three keys with a threshold of two is the
 usual shape: any one can be lost without losing control, and any one can be
 compromised without losing the contract. Keep them on different devices held by
-different people; keys in one drawer are one key. MainNet uses three keys with a threshold of two (`LUH77ATPWS4ZTCO7OZ3YM2DP5M2BXN53CHPFFQCFBATRFCYEB3NKTGMBNI`); the LocalNet smoke test uses three with a threshold of two because it only has to prove the mechanism. Member order is part of the address, so the same keys in a different order are a different account holding nothing.
+different people; keys in one drawer are one key. The LocalNet smoke test uses three with a threshold of two because it only has to prove the mechanism. Member order is part of the address, so the same keys in a different order are a different account holding nothing. **MainNet no longer uses a multisig**, for the reasons in [`security.md`](security.md#key-handling); this machinery is kept working so that decision can be reversed with one constant if a wallet ever ships multisig signing.
 
 ## Checking a deployment you did not make
 

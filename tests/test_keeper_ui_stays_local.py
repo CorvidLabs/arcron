@@ -23,6 +23,10 @@ import re
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 KEEPER_UI = ROOT / "web-keeper"
+GOVERN_UI = ROOT / "web-govern"
+
+#: Every app that must never reach the public site.
+LOCAL_ONLY = ("web-keeper", "web-govern")
 
 
 def test_the_keeper_ui_exists_to_be_checked() -> None:
@@ -39,9 +43,10 @@ def test_no_publish_step_names_the_keeper_ui() -> None:
     been lost by editing rather than by decision.
     """
     publish = (ROOT / "scripts" / "publish_console.py").read_text()
-    assert "web-keeper" not in publish
     sync = (ROOT / "scripts" / "sync_site_docs.py").read_text()
-    assert "web-keeper" not in sync
+    for name in LOCAL_ONLY:
+        assert name not in publish, f"{name} is named in the publish script"
+        assert name not in sync, f"{name} is named in the docs sync"
 
 
 def test_the_keeper_ui_has_no_base_href_for_the_site() -> None:
@@ -49,9 +54,10 @@ def test_the_keeper_ui_has_no_base_href_for_the_site() -> None:
     # public site. The console's build carries one on purpose; this must not.
     fledge = (ROOT / "fledge.toml").read_text()
     for line in fledge.splitlines():
-        if "web-keeper" in line:
-            assert "--base-href" not in line, line
-            assert "/arcron/" not in line, line
+        for name in LOCAL_ONLY:
+            if name in line:
+                assert "--base-href" not in line, line
+                assert "/arcron/" not in line, line
 
 
 def test_the_keeper_ui_asks_not_to_be_indexed() -> None:
@@ -77,3 +83,36 @@ def test_the_keeper_ui_is_in_the_workspace_so_ci_sees_it() -> None:
     assert "web-keeper" in root_package
     fledge = (ROOT / "fledge.toml").read_text()
     assert "keeper-ui-test" in fledge and "keeper-ui-build" in fledge
+
+
+def test_the_governance_app_is_local_only_too() -> None:
+    """The one page that can reach MainNet, so the one that must not be served.
+
+    The console's address is a security property: the contract is
+    permissionless, so that address is the only thing separating our front end
+    from a copy. A page whose purpose is authorizing permanent changes to a live
+    contract raises the stakes of a convincing clone from "somebody loses their
+    own escrow" to "the programs are replaced for everyone". It runs locally.
+    """
+    assert (GOVERN_UI / "angular.json").is_file()
+    index = (GOVERN_UI / "src" / "index.html").read_text()
+    assert re.search(r'name="robots"[^>]*noindex', index)
+
+
+def test_the_governance_app_says_so_on_the_page() -> None:
+    # Not only in a test and a comment. Whoever opens it should be able to tell
+    # they are somewhere that is not the published console.
+    page = (GOVERN_UI / "src" / "app" / "govern-page.ts").read_text()
+    assert "Local only" in page
+    assert "corvidlabs.xyz" in page
+
+
+def test_the_governance_app_offers_no_update() -> None:
+    """A browser cannot compile Algorand Python.
+
+    An update whose payload the page cannot verify would be worse than no
+    update, so that stays where `verify_build` rebuilds from source.
+    """
+    page = (GOVERN_UI / "src" / "app" / "govern-page.ts").read_text()
+    assert "update()void" not in page
+    assert "freeze()void" in page

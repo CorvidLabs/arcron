@@ -102,47 +102,77 @@ def add_network_argument(parser: argparse.ArgumentParser) -> None:
 # creation, so a MainNet app made from anything else is the admin-key problem
 # permanently, with no way back.
 #
-# A 2-of-3, decided 2026-08-27 in issue #79. Member order is part of the
-# address: the same three keys in a different order derive a different account,
-# so the order below is the order, and it is Ledger, Corvid, Gaspar.
+# A single account, `corvid.algo`, decided 2026-08-29. This replaces the 2-of-3
+# from issue #79, and the reason is not convenience.
 #
-# The trade, stated rather than assumed: 2-of-3 survives one lost key and needs
-# two to collude. The 3-of-5 this replaces survived two losses and needed three.
-# Both margins are smaller. That is the price of three people instead of five,
-# and it resolves a contradiction rather than creating one: docs/security.md and
-# docs/deploying.md already described a 2-of-3 while this constant and issue #79
-# said 3-of-5.
-MAINNET_CREATOR = "LUH77ATPWS4ZTCO7OZ3YM2DP5M2BXN53CHPFFQCFBATRFCYEB3NKTGMBNI"
+# Wallets do not sign for multisig. Tested on TestNet against a real member
+# account, asked directly through Pera's own SDK with `msig` metadata and with
+# use-wallet's filter bypassed, Pera answers "multisig signing is not
+# supported". ARC-1 defines that field, use-wallet exports the type and
+# implements none of it, and Pera's SDK declares it and refuses it. So a 2-of-3
+# means every governance action is a mnemonic pasted into a shell by three
+# people, including one whose key lives on a hardware device precisely so that
+# never has to happen.
+#
+# The trade, stated rather than assumed. A single key can replace the programs
+# governing every upkeep's escrow while `frozen == 0`. That is a real loss, and
+# `docs/deploying.md` said a single mnemonic on a single machine is the wrong
+# home for such a key. What makes it defensible is that `freeze` is one way and
+# retires the key permanently: a single-key deployment frozen early is a smaller
+# exposure than a 2-of-3 left upgradeable because signing is too painful to
+# actually do. The commitment that goes with this decision is to freeze
+# promptly, and the console discloses upgradeable status on every page until
+# then.
+#
+# `scripts/multisig.py` is kept and still works. If a wallet ever ships multisig
+# signing, this is one constant away from going back.
+MAINNET_CREATOR = "WGSHC4TYKYBS6EX5V5E377BQDLKWIIPBCFOLZQZIXCKHFIEKRPBFOMW25A"
 
 
-def require_mainnet_multisig() -> None:
-    """Refuse MainNet unless the configured signer is the 2-of-3.
+def require_mainnet_creator(signer_address: str | None = None) -> None:
+    """Refuse MainNet unless the signer is the account MainNet is deployed from.
 
     `ARCRON_ALLOW_MAINNET=1` was the entire gate, and a shell that exports it
     once turns `--network mainnet` back into an ordinary argument. The flag
     stops a typo; it does nothing about the thing that actually matters, which
     is which account signs.
 
-    Checked here rather than in each script so it applies to every entry point
-    at once, including ones written later. Read lazily to avoid a circular
-    import: `scripts.multisig` imports this module.
-    """
-    from scripts import multisig as ms
+    This used to require a multisig. It now requires the *right account*, which
+    is the part that was ever load-bearing: a MainNet app's creator is fixed at
+    creation, so deploying from the wrong key is unfixable whether that key is
+    one account or three. Whether the creator is a multisig is a separate
+    decision, recorded above `MAINNET_CREATOR`.
 
-    if not ms.configured():
+    A multisig still satisfies this, so nothing has to change if one is ever
+    configured again: `scripts.multisig` derives an address like any other, and
+    if it equals `MAINNET_CREATOR` this passes. Read lazily to avoid a circular
+    import, since that module imports this one.
+
+    Checked here rather than in each script so it applies to every entry point
+    at once, including ones written later.
+    """
+    if signer_address is None:
+        from scripts import multisig as ms
+
+        signer_address = ms.address() if ms.configured() else None
+
+    if signer_address is None:
         raise RuntimeError(
-            "Refusing MainNet without a configured multisig. An app's creator cannot be "
-            "changed after creation, so a MainNet app deployed from a single key holds "
-            "an admin key over every escrow in it for as long as it exists. Set "
-            "ARCRON_MULTISIG_ADDRESSES and ARCRON_MULTISIG_THRESHOLD."
+            "Refusing MainNet without knowing which account will sign. An app's "
+            "creator cannot be changed after creation, so deploying from the wrong "
+            "key holds an admin key over every escrow in the app for as long as it "
+            f"exists. MainNet must be created by {MAINNET_CREATOR}."
         )
-    if ms.address() != MAINNET_CREATOR:
+    if signer_address != MAINNET_CREATOR:
         raise RuntimeError(
-            f"Refusing MainNet: the configured multisig is {ms.address()}, not the "
-            f"expected {MAINNET_CREATOR}. Member order is part of a multisig address, "
-            "so the same keys in a different order are a different account holding "
-            "nothing. Check ARCRON_MULTISIG_ADDRESSES against docs/security.md."
+            f"Refusing MainNet: the configured signer is {signer_address}, not the "
+            f"expected {MAINNET_CREATOR}. A creator is fixed at creation, so this is "
+            "the one mistake with no way back. Check docs/deploying.md."
         )
+
+
+#: The old name, kept so nothing that imports it breaks while docs catch up.
+require_mainnet_multisig = require_mainnet_creator
 
 
 def load_network(network: str) -> str:

@@ -69,6 +69,11 @@ web-serve = "cd web && bun run ng serve"
 health = "poetry run python -m scripts.registry_health --network testnet --app-id 769891898"
 # How long the deployment has been the deployment, and what would reset it.
 clock = "poetry run python -m scripts.mainnet_clock --network testnet --app-id 769891898"
+# Governance, for the creator account. Local only, never published: it is the
+# one page that can reach MainNet, and it authorizes permanent changes.
+govern-ui = "cd web-govern && bun run ng serve"
+govern-ui-test = "cd web-govern && bun test"
+govern-ui-build = "cd web-govern && bun run ng build"
 keeper-ui = "cd web-keeper && bun run ng serve"
 keeper-ui-test = "cd web-keeper && bun test"
 keeper-ui-build = "cd web-keeper && bun run ng build"
@@ -124,11 +129,11 @@ race = "poetry run python -m scripts.keeper_race --network localnet"
 
 [lanes.ci]
 description = "Full CI pipeline: contracts + console, unit tests, spec drift check, rendered-page audit"
-steps = ["build", "test", "spec", "js-install", "js-test", "web-test", "web-build", "web-build-hosted", "web-verify-hosted", "web-render", "keeper-ui-test", "keeper-ui-build"]
+steps = ["build", "test", "spec", "js-install", "js-test", "web-test", "web-build", "web-build-hosted", "web-verify-hosted", "web-render", "keeper-ui-test", "keeper-ui-build", "govern-ui-test", "govern-ui-build"]
 
 [lanes.local]
 description = "CI plus the LocalNet end-to-end test and the console rendering audit (needs algokit localnet start, and web-render-install once)"
-steps = ["build", "test", "spec", "js-install", "js-test", "web-test", "web-build", "web-build-hosted", "web-verify-hosted", "web-render", "keeper-ui-test", "keeper-ui-build", "smoke-keeper", "smoke-rain", "smoke-community-rain", "smoke-subscription", "smoke-govern", "smoke-multisig", "smoke-clawback", "attacks", "smoke-reference-boundary"]
+steps = ["build", "test", "spec", "js-install", "js-test", "web-test", "web-build", "web-build-hosted", "web-verify-hosted", "web-render", "keeper-ui-test", "keeper-ui-build", "govern-ui-test", "govern-ui-build", "smoke-keeper", "smoke-rain", "smoke-community-rain", "smoke-subscription", "smoke-govern", "smoke-multisig", "smoke-clawback", "attacks", "smoke-reference-boundary"]
 
 [lanes.endurance]
 description = "The local lane plus a soak: many consecutive executions, no drift"

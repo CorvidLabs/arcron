@@ -173,7 +173,7 @@ If you looked and decided *not* to use it, that is worth more still:
 | Deployment age | Days, not months |
 | Upkeeps registered by strangers | **Zero** |
 | Keepers not run by us | **Zero** |
-| MainNet | Not deployed. Gated on sustained TestNet time and a 2-of-3 multisig |
+| MainNet | Not deployed. Gated on sustained TestNet time; the creator will be `corvid.algo` |
 | Review history | Every round, including the ones that said no, is in `docs/reviews/` |
 
 If that reads as underselling, it is deliberate. The failure mode this project

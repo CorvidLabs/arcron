@@ -96,14 +96,33 @@ that app is unfrozen it can replace the app's programs, which means it can
 rewrite the rules and reach every escrow.
 
 On TestNet that key is `DEPLOYER_MNEMONIC`, a throwaway. **On MainNet it is
-the 2-of-3 multisig** `LUH77ATPWS4ZTCO7OZ3YM2DP5M2BXN53CHPFFQCFBATRFCYEB3NKTGMBNI`,
-and no single mnemonic can act for it. A MainNet deployment created from a
-single key would be the admin-key problem this whole section exists to avoid,
-permanently, because an app's creator cannot be changed afterwards. `poetry run python -m
-scripts.govern status` reports whether a deployment is still in that state.
-Everything below is less valuable than that key. For anything holding real
-money it should be a multisig rather than one mnemonic: see
-[`docs/deploying.md`](docs/deploying.md).
+`corvid.algo`**, `WGSHC4TYKYBS6EX5V5E377BQDLKWIIPBCFOLZQZIXCKHFIEKRPBFOMW25A`,
+a single account held in a wallet. An app's creator cannot be changed
+afterwards, so deploying from anything else is unfixable; `require_mainnet_creator`
+refuses `--network mainnet` for any other signer.
+
+**This was a 2-of-3 multisig until 2026-08-29, and giving that up is a real
+loss.** One key can replace the programs governing every upkeep's escrow while
+`frozen == 0`. The reason is that no wallet will sign for a multisig. Asked
+directly through Pera's own SDK with ARC-1 `msig` metadata, on TestNet, with
+an account that is genuinely a member, Pera answers `multisig signing is not
+supported`. ARC-1 defines the field, `@txnlab/use-wallet` exports the type and
+implements none of it, and Pera declares it and refuses it. A 2-of-3 therefore
+means every governance action is a mnemonic pasted into a shell by three
+people, including one whose key is on a hardware device precisely so that never
+has to happen.
+
+**What makes one key defensible is `freeze`.** It is one way, and after it the
+creator can never replace the programs again, so the key stops mattering. A
+single-key deployment frozen early is a smaller exposure than a multisig left
+upgradeable because signing is too painful to actually do. The commitment that
+comes with this decision is to freeze promptly. Until then
+`poetry run python -m scripts.govern status` reports the deployment as
+upgradeable and the console says so on every page.
+
+`scripts/multisig.py` is kept and still works, and a test proves a multisig
+would still satisfy the gate. If a wallet ships multisig signing this is one
+constant away from going back. See [`docs/deploying.md`](docs/deploying.md).
 
 Nothing else in this repository should ever hold a key it does not need:
 
