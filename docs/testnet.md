@@ -25,7 +25,7 @@ see [`security.md`](security.md).
 
 ## The upkeeps
 
-Read from the chain at round 66,754,157.
+Read from the chain at round 66,755,175.
 
 | id | target | every | escrow | runway | runs | policy |
 |---|---|---|---|---|---|---|
@@ -33,15 +33,41 @@ Read from the chain at round 66,754,157.
 | 20 | `769891902` pulse | 11.5 h | 0.3486 ALGO | ~42 days | 5 | skip ahead |
 | 21 | `769891902` pulse | 11.5 h | 0.3943 ALGO | ~47 days | 5 | skip ahead |
 | 22 | `769891902` pulse | 11.5 h | 0.3486 ALGO | ~42 days | 5 | skip ahead |
-| 73 | `769891902` pulse | 58 min | 0.8480 ALGO | ~9 days | 38 | skip ahead |
 | 79 | `770029154` rain (gated) | 1.9 h | 7.9300 ALGO | ~64 days | 7 | skip ahead |
-| 81 | `770041460` (not ours) | 58 min | 1.5400 ALGO | ~6 days | 14 | skip ahead |
+| 81 | `770041460` (our agent) | 58 min | 1.5300 ALGO | ~6 days | 15 | skip ahead |
+| 82 | `769891902` pulse | 58 min | 3.5000 ALGO | ~14 days | 0 | skip ahead |
 
-**Upkeep 81 is not ours.** It was registered on 2026-08-27 by
-`A3OZPORJ…`, against a contract that account deployed itself, and it has been
-serviced 14 times since. It is the first upkeep in this project's history
-created by somebody other than us, and it is the beta gate item that had been
-outstanding from the beginning. Nobody asked us for anything to make it work.
+**Upkeep 82 replaced upkeep 73 on 2026-08-28**, and the reason is worth
+recording because nothing on chain shows it. 73 paid `MIN_UPKEEP_FEE` and also
+offered an ASA bonus. The bonus transfer is a third inner transaction, so a
+keeper spent 4,000 microAlgos to earn 4,000 and cleared exactly nothing. It was
+serviced 39 times for free before `fledge run health` was written and said so.
+
+A fee cannot be edited: like the method selector, it is fixed in the box at
+registration, so correcting it meant cancelling and re-registering. 82 pays
+10,000, which is what the console suggests and what 79 and 81 already pay, and
+carries a **fee cap of 20,000**, which 73 did not. That second part matters
+beyond this upkeep: the contract escalates only when `cap > fee`, so with a cap
+of zero our own dogfood had never once exercised the escalating fee, which is
+the mechanism [`prior-art.md`](prior-art.md) identifies as the thing no
+comparable system has anywhere.
+
+**Upkeep 81 was registered by an agent we are running**, not by an outside
+party. It came from `A3OZPORJ...`, a fresh account funded once by the TestNet
+dispenser, which deployed its own target contract and registered against it.
+
+It is worth recording anyway, for what it does show. The whole sequence took
+**29 seconds**: deploy, configure, call twice, then register on Arcron. Nothing
+in it was hand-held, and nobody adjusted the docs to make it work. An agent
+given the public repository was able to go from an empty account to a
+serviced upkeep without asking us anything, which is the closest thing to a
+test of [`integrating.md`](integrating.md) that exists so far.
+
+What it is not is evidence of adoption. The beta gate in
+[`releases.md`](releases.md) asks for an upkeep registered by somebody who is
+not us, and an agent we dispatched is us. That item is still open. An earlier
+version of this page claimed it was met, on the strength of the address not
+matching two we had hardcoded, which is not the same question.
 
 **Runway** is escrow divided by burn rate at TestNet's measured 2.695 s/round. It is
 what the upkeep can pay for, not a promise about keeper availability.
