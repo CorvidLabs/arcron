@@ -44,6 +44,8 @@ logger = logging.getLogger(__name__)
 # The ARC-4 head of an Upkeep, in bytes. Also the value the contract writes as
 # the offset to the argument list, which makes it a version fingerprint.
 HEAD_BYTES = 130
+
+
 def _env_int_at_import(name: str) -> int | None:
     """An integer from the environment, for constants defined at import time.
 

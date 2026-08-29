@@ -446,6 +446,13 @@ All three read the same environment: `KEEPER_MNEMONIC`, `KEEPER_APP_ID` and an
 algod endpoint. Keep the mnemonic in a `chmod 600` file the unit points at
 rather than inline. A launchd plist under `LaunchAgents` is world-readable.
 
+`KEEPER_MAX_OUTER_FEE` raises the ceiling on the outer fee the keeper will
+sign, which defaults to 10,000 microAlgos and exists to refuse a node quoting
+an absurd one. A post-quantum keeper would need it if Algorand ever prices
+bytes; see [`docs/hosting.md`](docs/hosting.md). Anything that is not a
+positive integer falls back to the default, so neither a typo nor a zero can
+switch the guard off.
+
 A keeper is close to self-sustaining: it spends 0.003 ALGO of transaction fees
 per execution and collects at least 0.004, so it needs a starting balance
 rather than a budget. It refuses to start below 0.103 ALGO and warns below 0.4.

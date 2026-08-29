@@ -235,13 +235,27 @@ learns what kind of account is signing, which is the right place for that
 knowledge to be absent.
 
 **The bot would stop before it overpaid**, and the message would not explain
-why. `MAX_OUTER_FEE_MICROALGO` is 10,000, and it exists to refuse a node
-quoting an absurd fee, because verifying a genesis id proves which network a
-node speaks for and not that it is honest. It cannot tell a lying node from a
-legitimately large transaction. Under per-byte pricing a Falcon keeper would
-hit that ceiling and refuse to broadcast rather than pay. Failing that way
-round is correct, and the fix is to raise the constant for that operator
-rather than to remove the guard.
+why. The keeper refuses to sign an outer fee above 10,000 microAlgos, because
+verifying a genesis id proves which network a node speaks for and not that it
+is honest. That guard cannot tell a lying node from a legitimately large
+transaction. Under per-byte pricing a Falcon keeper would hit the ceiling and
+refuse to broadcast rather than pay.
+
+Failing that way round is correct. Raise the ceiling with
+**`KEEPER_MAX_OUTER_FEE`**, in microAlgos, rather than removing the guard:
+
+| `KEEPER_MAX_OUTER_FEE` | ceiling used |
+|---|---|
+| unset | 10,000 |
+| `60000` | 60,000 |
+| `nonsense` | 10,000 |
+| `0` or negative | 10,000 |
+
+A value that is not a positive integer falls back to the default rather than
+being honoured. Neither a typo nor a zero should be a way to switch a guard
+off: zero would make every fee look too high and stop the keeper dead, which
+is a confusing way to express "no ceiling" and is not what anyone means by
+it.
 
 ### Forwarding what it earns
 
