@@ -122,7 +122,12 @@ def main(argv: list[str] | None = None) -> None:
         args=OptInPrizeAssetArgs(
             prize=prize,
             mbr_payment=_payment(algorand, founder.address, rain.app_address, ASSET_OPT_IN_MBR),
-        )
+        ),
+        # The hub opts itself in with an inner transaction sent at fee=0, so
+        # the group has to carry it.
+        params=algokit_utils.CommonAppCallParams(
+            extra_fee=algokit_utils.AlgoAmount(micro_algo=1_000)
+        ),
     )
     rain_id = rain.send.create_rain(
         args=CreateRainArgs(
@@ -175,14 +180,19 @@ def main(argv: list[str] | None = None) -> None:
 
     # First fire waits one interval from create.
     start = algorand.client.algod.status()["last-round"]
-    while algorand.client.algod.status()["last-round"] < start + INTERVAL_ROUNDS:
-        pass
+    # LocalNet is dev mode: a block is only produced per transaction, so
+    # polling for a round that nothing is advancing never returns.
+    net.wait_for_round(algorand, start + INTERVAL_ROUNDS, poker=founder)
     rain.send.draw()
     rec = rain.send.rain_of(args=RainOfArgs(rain_id=rain_id)).abi_return
     _assert("one ticket took the drip", rec.pot, POT - DRIP)
     claimed = rain.send.claim(
         args=ClaimArgs(rain_id=rain_id, gate_asset=nft),
-        params=algokit_utils.CommonAppCallParams(sender=holder.address),
+        params=algokit_utils.CommonAppCallParams(
+            sender=holder.address,
+            # The payout is an inner transaction sent at fee=0.
+            extra_fee=algokit_utils.AlgoAmount(micro_algo=1_000),
+        ),
     ).abi_return
     _assert("holder claimed the drip", claimed, DRIP)
     logger.info("Community rain demo passed.")

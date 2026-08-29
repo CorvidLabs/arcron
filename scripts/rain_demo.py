@@ -141,14 +141,18 @@ def main(argv: list[str] | None = None) -> None:
         )
     )
     upkeep_id = register.abi_return
-    rec = _read_upkeep(algod, keeper_client.app_id, upkeep_id)
+    rec, _ = _read_upkeep(algorand, keeper_client.app_id, upkeep_id)
     due = rec.next_execution_round
     logger.info(f"  Upkeep {upkeep_id} due at {due}")
 
     with _quiet():
-        while algod.status()["last-round"] < due:
-            pass
-        keeper_bot.scan_once(algorand, keeper_client.app_id, founder)
+        # LocalNet is dev mode: a block is only produced per transaction, so
+        # polling for a round that nothing is advancing never returns. This is
+        # what wait_for_round's poker is for.
+        net.wait_for_round(algorand, due, poker=founder)
+        keeper_bot.main(
+            ["--once", "--network", args.network, "--app-id", str(keeper_client.app_id)]
+        )
 
     rec = rain.send.rain_of(args=RainOfArgs(rain_id=rain_id)).abi_return
     share = DRIP // PLAYERS
@@ -162,11 +166,22 @@ def main(argv: list[str] | None = None) -> None:
         _assert("allocation", owed, share)
         claimed = rain.send.claim(
             args=ClaimArgs(rain_id=rain_id, gate_asset=0),
-            params=algokit_utils.CommonAppCallParams(sender=who.address),
+            params=algokit_utils.CommonAppCallParams(
+                sender=who.address,
+                # The payout is an inner transaction sent with Fee: 0, so the
+                # group has to carry it.
+                extra_fee=algokit_utils.AlgoAmount(micro_algo=1_000),
+            ),
         ).abi_return
         _assert("claim", claimed, share)
 
-    keeper_client.send.cancel(args=CancelArgs(upkeep_id=upkeep_id))
+    keeper_client.send.cancel(
+        args=CancelArgs(upkeep_id=upkeep_id),
+        # cancel refunds escrow and box MBR by inner payment, also Fee: 0.
+        params=algokit_utils.CommonAppCallParams(
+            extra_fee=algokit_utils.AlgoAmount(micro_algo=1_000)
+        ),
+    )
     logger.info("Rain hub demo passed.")
     logger.info(f"  Hub {rain.app_id}, keeper {keeper_client.app_id}, upkeep {upkeep_id}")
 
