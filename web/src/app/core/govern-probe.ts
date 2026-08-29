@@ -20,7 +20,7 @@
  * that errors for an unrelated reason must not be recorded as refusing.
  */
 
-export type ProbeOutcome = 'signed' | 'refused' | 'errored' | 'not-tried';
+export type ProbeOutcome = 'signed' | 'refused' | 'errored' | 'not-asked' | 'not-tried';
 
 export interface ProbeResult {
   readonly wallet: string;
@@ -59,6 +59,13 @@ export function classify(error: unknown): { outcome: ProbeOutcome; detail: strin
     'invalid signer',
     'cannot sign',
     'unsupported',
+    // Pera says "multisig signing is not supported (entry index 0)". The
+    // space is the whole difference, and matching only "unsupported" filed a
+    // flat refusal as an inconclusive error, which is the exact mistake this
+    // function exists to prevent. Substring matching on prose is fragile;
+    // these are the phrasings actually observed, not guesses.
+    'not supported',
+    'multisig signing is not',
   ];
   if (refusalWords.some((word) => lowered.includes(word))) {
     return { outcome: 'refused', detail: message };
@@ -75,6 +82,12 @@ export function describeResult(result: ProbeResult): string {
       return `${result.wallet}: refused to sign for a multisig sender. ${result.detail ?? ''}`.trim();
     case 'errored':
       return `${result.wallet}: errored, which is not the same as refusing. ${result.detail ?? ''}`.trim();
+    case 'not-asked':
+      return (
+        `${result.wallet}: never asked. The use-wallet adapter tagged the transaction ` +
+        '`signers: []` before sending it, because its sender is not an address this ' +
+        'wallet holds, so the wallet was told not to sign rather than choosing not to.'
+      );
     case 'not-tried':
       return `${result.wallet}: not tried.`;
   }
@@ -98,12 +111,25 @@ export function summariseProbe(results: readonly ProbeResult[]): {
     .map((r) => r.wallet);
   const refused = results.filter((r) => r.outcome === 'refused').map((r) => r.wallet);
   const unclear = results.filter((r) => r.outcome === 'errored').map((r) => r.wallet);
+  const notAsked = results.filter((r) => r.outcome === 'not-asked').map((r) => r.wallet);
 
   let verdict: string;
   if (usable.length > 0) {
     verdict =
       `Wallet signing works for governance with ${usable.join(', ')}. ` +
       'Holders on other wallets keep using the command line.';
+  } else if (notAsked.length > 0 && refused.length === 0) {
+    // The distinction that matters, and the one this probe originally got
+    // wrong. The adapter filters on `addresses.includes(txn.sender)` and tags
+    // anything else `signers: []`, which is ARC-1 for "do not sign this". The
+    // wallet is never asked, so it never refuses, and reporting a refusal here
+    // would blame the wallet for the library's decision.
+    verdict =
+      `${notAsked.join(', ')} never saw the request. The use-wallet adapter drops any ` +
+      'transaction whose sender is not an address the wallet holds, before the wallet ' +
+      'is involved. That is a limitation of the library rather than of the wallet, and ' +
+      'it is fixable: ARC-1 already carries the msig field that would make this legal, ' +
+      'and reaching the wallet another way would answer the real question.';
   } else if (refused.length > 0) {
     verdict =
       'No wallet tried would sign for a multisig sender. Wallet-based governance ' +

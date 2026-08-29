@@ -130,3 +130,28 @@ describe('the line a person pastes into an issue', () => {
     expect(line).toContain('not the same as refusing');
   });
 });
+
+describe('what Pera actually said, on TestNet, 2026-08-29', () => {
+  test('"multisig signing is not supported" is a refusal', () => {
+    // Verbatim from Pera 1.6.0 asked directly with msig metadata. This was
+    // first classified as an error because the refusal list held "unsupported"
+    // and Pera wrote "not supported". A space turned a definitive finding into
+    // "nothing conclusive", which is precisely the failure this module was
+    // written to avoid, so the real string is pinned here.
+    const { outcome } = classify(new Error('multisig signing is not supported (entry index 0)'));
+    expect(outcome).toBe('refused');
+  });
+
+  test('and the verdict says the command line stays', () => {
+    const { verdict } = summariseProbe([
+      result({
+        wallet: 'Pera',
+        outcome: 'refused',
+        detail: 'multisig signing is not supported (entry index 0)',
+        signature: null,
+      }),
+    ]);
+    expect(verdict).toContain('command line');
+    expect(verdict).not.toContain('Nothing conclusive');
+  });
+});
