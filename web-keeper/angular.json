@@ -39,7 +39,12 @@
         "serve": {
           "builder": "@angular/build:dev-server",
           "options": {
-            "port": 4300
+            "port": 4300,
+            "prebundle": {
+              "exclude": [
+                "@corvidlabs/arcron"
+              ]
+            }
           },
           "configurations": {
             "production": {
@@ -53,5 +58,8 @@
         }
       }
     }
+  },
+  "cli": {
+    "analytics": "38bc5f3a-2293-4d8b-ab82-84a8e4c8dd82"
   }
 }

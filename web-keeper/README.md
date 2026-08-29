@@ -42,6 +42,18 @@ is a security property: the contract is permissionless, so that address is the
 only thing separating our front end from a look-alike. A second Arcron-branded
 page whose purpose is to be pointed at arbitrary app ids would undo it.
 
+## If the dev server will not start
+
+`ng build` works and `ng serve` fails with `Could not resolve './upkeep' in
+../js/src/board.ts`. The build and the dev server resolve the workspace package
+differently: the dev server's dependency optimizer does not follow extensionless
+relative imports inside `@corvidlabs/arcron`, and the build does.
+
+The fix is `prebundle.exclude` on the serve target in `angular.json`, which is
+already there. The console hit this first and
+[`docs/first-upkeep.md`](../docs/first-upkeep.md) records it. If a third Angular
+app is ever added here, it needs the same line.
+
 ## Block time
 
 It measures block time from the chain rather than assuming a constant. The
