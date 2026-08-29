@@ -64,10 +64,12 @@ footer p {
   margin: 0;
 }
 
-/* The routed region takes focus on navigation. It must not draw a focus ring
-   for that, because nobody clicked it, but it must still take one if a
-   keyboard ever lands on it, so only the programmatic case is quieted. */
-.routed:focus:not(:focus-visible) {
+/* The routed region takes focus on navigation so a screen reader moves with
+   the URL. It is not a control. `tabindex="-1"` plus the global
+   `[tabindex]:focus-visible` rule painted a sheen box around the whole page
+   after every click in the nav, which read as a nested selected panel. */
+.routed:focus,
+.routed:focus-visible {
   outline: none;
 }
 

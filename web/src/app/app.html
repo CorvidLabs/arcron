@@ -12,9 +12,10 @@
 
   <arcron-quarantine-panel />
   <arcron-trust-banner />
-
   <arcron-signer-bar />
-  @if (!rainSurface()) {
+  @if (rainSurface()) {
+    <arcron-rain-stat-tiles />
+  } @else {
     <arcron-stat-tiles />
   }
 
@@ -24,18 +25,18 @@
     <router-outlet />
   </div>
 
-  <arcron-activity-log />
+  @if (!rainSurface()) {
+    <arcron-activity-log />
+  }
 </main>
 
 <footer class="chrome">
   <p>
+    Arcron, a permissionless keeper network.
     @if (rainSurface()) {
-      Rain, a scheduled draw for Corvid holders. Arcron is the clock.
-    } @else {
-      Arcron, a permissionless keeper network.
-      @if (appAddress(); as address) {
-        <span>App account {{ address }}</span>
-      }
+      <span>Rain hub {{ rain.deployment()?.appId ?? '' }}</span>
+    } @else if (appAddress(); as address) {
+      <span>App account {{ address }}</span>
     }
   </p>
   <p>

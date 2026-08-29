@@ -33,6 +33,7 @@ export interface NetworkConfig {
   readonly explorerApp?: (appId: number | bigint) => string;
   readonly explorerAccount?: (address: string) => string;
   readonly explorerTx?: (txId: string) => string;
+  readonly explorerAsset?: (assetId: number | bigint) => string;
   /** Canonical app id, where one exists. */
   readonly defaultAppId?: number;
   /**
@@ -82,6 +83,7 @@ export const NETWORKS: Readonly<Record<NetworkKey, NetworkConfig>> = {
     explorerApp: (appId) => `https://testnet.explorer.perawallet.app/application/${appId}`,
     explorerAccount: (address) => `https://testnet.explorer.perawallet.app/address/${address}`,
     explorerTx: (txId) => `https://testnet.explorer.perawallet.app/tx/${txId}`,
+    explorerAsset: (assetId) => `https://testnet.explorer.perawallet.app/asset/${assetId}`,
     defaultAppId: 769891898,
   },
 };

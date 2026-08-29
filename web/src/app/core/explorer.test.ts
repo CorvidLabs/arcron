@@ -26,6 +26,10 @@ describe('explorerUrl', () => {
         expect(explorerUrl('testnet', 'transaction', 'ABC123')).toContain('/tx/ABC123');
     });
 
+    test('links an asset', () => {
+        expect(explorerUrl('testnet', 'asset', '770131837')).toContain('/asset/770131837');
+    });
+
     test('every link is to the TestNet explorer, not MainNet', () => {
         // A MainNet explorer showing "no such application" for a TestNet id is
         // the kind of link that makes a visitor doubt the app rather than the
@@ -34,6 +38,7 @@ describe('explorerUrl', () => {
             explorerUrl('testnet', 'app', '1'),
             explorerUrl('testnet', 'account', 'A'),
             explorerUrl('testnet', 'transaction', 'B'),
+            explorerUrl('testnet', 'asset', '1'),
         ]) {
             expect(url).toContain('testnet.');
         }
@@ -45,5 +50,6 @@ describe('explorerUrl', () => {
         expect(explorerUrl('localnet', 'app', '1002')).toBeNull();
         expect(explorerUrl('localnet', 'account', 'A')).toBeNull();
         expect(explorerUrl('localnet', 'transaction', 'B')).toBeNull();
+        expect(explorerUrl('localnet', 'asset', '1')).toBeNull();
     });
 });

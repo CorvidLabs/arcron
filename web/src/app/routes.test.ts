@@ -1,22 +1,30 @@
 /**
- * Four destinations: registry, one upkeep, register, and Rain.
+ * Six destinations: registry, one upkeep, register, Rain, open a rain, one rain.
  *
  * Rain is a separate contract and a holder-facing surface, so it is a route
- * rather than a tab. Bound to the array the application boots with.
+ * rather than a tab. Opening a rain is its own page, declared before
+ * `rain/:id` so "new" is not an id. Bound to the array the application boots with.
  */
 
 import { describe, expect, test } from 'bun:test';
 
 import { routerOptions, routes } from './routes';
 
-describe('the console has four destinations', () => {
-    test('exactly the registry, one upkeep, the register form, and rain', () => {
+describe('the console has six destinations', () => {
+    test('exactly the registry, one upkeep, the register form, rain, open a rain, and one rain', () => {
         expect(routes.filter((route) => route.path !== '**').map((route) => route.path)).toEqual([
             '',
             'u/:id',
             'register',
             'rain',
+            'rain/new',
+            'rain/:id',
         ]);
+    });
+
+    test('rain/new is declared before rain/:id, so opening one is not rain 0', () => {
+        const paths = routes.map((route) => route.path);
+        expect(paths.indexOf('rain/new')).toBeLessThan(paths.indexOf('rain/:id'));
     });
 
     test('every one of them loads a component', () => {

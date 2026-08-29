@@ -14,10 +14,12 @@ import { filter, map } from 'rxjs';
 import { ActivityLog } from './components/activity-log';
 import { NetworkBar } from './components/network-bar';
 import { QuarantinePanel } from './components/quarantine-panel';
+import { RainStatTiles } from './components/rain-stat-tiles';
 import { SignerBar } from './components/signer-bar';
 import { StatTiles } from './components/stat-tiles';
 import { TrustBanner } from './components/trust-banner';
 import { ArcronService } from './core/arcron.service';
+import { RainService } from './core/rain.service';
 import { entryParams } from './core/entry';
 import { shortAddress } from '@corvidlabs/arcron/format';
 
@@ -28,6 +30,7 @@ import { shortAddress } from '@corvidlabs/arcron/format';
     ActivityLog,
     NetworkBar,
     QuarantinePanel,
+    RainStatTiles,
     RouterOutlet,
     SignerBar,
     StatTiles,
@@ -38,6 +41,7 @@ import { shortAddress } from '@corvidlabs/arcron/format';
 })
 export class App {
   protected readonly arcron = inject(ArcronService);
+  protected readonly rain = inject(RainService);
   private readonly router = inject(Router);
 
   /** The routed region: everything that changes when the URL changes. */
@@ -75,7 +79,11 @@ export class App {
       // The first settled path is the page opening. Focus belongs at the top
       // of the document then, not stolen from it.
       if (previous === null || previous === path) return;
-      this.routed()?.nativeElement.focus();
+      // preventScroll: default focus() scrolls `.routed` (below the banner and
+      // tiles) to the top of the viewport, so Registry / Rain / Register
+      // landed a screen-height of chrome down instead of at the top. The
+      // router already restores or resets scroll; this only moves the caret.
+      this.routed()?.nativeElement.focus({ preventScroll: true });
     });
 
     // Keep the address bar describing what is on screen, so the URL is always
@@ -118,9 +126,9 @@ export class App {
     return this.arcron.error();
   });
 
-  /** Rain is a holder surface on a different app; keeper tiles would lie. */
+  /** Rain swaps the keeper tiles for hub tiles; the rest of the chrome stays. */
   protected readonly rainSurface = computed(() => {
     const path = this.path();
-    return path === '/rain' || path.endsWith('/rain');
+    return path === '/rain' || path.startsWith('/rain/');
   });
 }
