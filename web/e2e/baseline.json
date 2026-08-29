@@ -6,9 +6,69 @@
     "table-cell": "A td whose display is not table-cell is wrapped in an anonymous cell, and the row's background and bottom border stop at the last real cell. The measurable symptom is a cell shorter than its row. That premise holds for a table and stops holding for the mobile registry, which deliberately stops being one: under 480px every row is a card, the tr carries its own border, radius, background and state stripe, and each td is a label/value line inside it. So a td is shorter than its tr by design, and the thing this rule protects, a row whose paint stops short, is drawn by the tr itself."
   },
   "accepted": {
+    "table-cell:td.actions@1280": {
+      "worst": 344.53,
+      "why": "the registry cards at 1280px: td.actions is a label/value line inside a card-shaped tr, 344.53px shorter by design. Cards run to 1379px now, so this viewport is in card mode; the breakpoint carries slack because the width a nine-column table needs depends on what is in the registry. See rules.table-cell."
+    },
+    "table-cell:td.actions@390": {
+      "worst": 487.52,
+      "why": "the mobile registry cards: td.actions is a label/value line inside a card-shaped tr, 487.52px shorter than it by design. See rules.table-cell for why the rule stops applying to a table that deliberately stops being one."
+    },
+    "table-cell:td.actions@768": {
+      "worst": 374.34,
+      "why": "the registry cards at 768px: td.actions is a label/value line inside a card-shaped tr, 374.34px shorter by design. Cards now run to 1219px rather than 480px, because the table needs 1074px and the content box only reaches that at a 1240px viewport. See rules.table-cell."
+    },
+    "table-cell:td.mono@1280": {
+      "worst": 371.72,
+      "why": "the registry cards at 1280px: td.mono is a label/value line inside a card-shaped tr, 371.72px shorter by design. Cards run to 1379px now, so this viewport is in card mode; the breakpoint carries slack because the width a nine-column table needs depends on what is in the registry. See rules.table-cell."
+    },
+    "table-cell:td.mono@390": {
+      "worst": 513.38,
+      "why": "the mobile registry cards: td.mono is a label/value line inside a card-shaped tr, 513.38px shorter than it by design. See rules.table-cell for why the rule stops applying to a table that deliberately stops being one."
+    },
+    "table-cell:td.mono@768": {
+      "worst": 401.53,
+      "why": "the registry cards at 768px: td.mono is a label/value line inside a card-shaped tr, 401.53px shorter by design. Cards now run to 1219px rather than 480px, because the table needs 1074px and the content box only reaches that at a 1240px viewport. See rules.table-cell."
+    },
+    "table-cell:td@1280": {
+      "worst": 374.7,
+      "why": "the registry cards at 1280px: td is a label/value line inside a card-shaped tr, 374.7px shorter by design. Cards run to 1379px now, so this viewport is in card mode; the breakpoint carries slack because the width a nine-column table needs depends on what is in the registry. See rules.table-cell."
+    },
+    "table-cell:td@390": {
+      "worst": 516.72,
+      "why": "the mobile registry cards. Each td is a 516.72px-shorter line inside a card-shaped tr, which is the layout rather than a fault: the nine-column table was a sideways scroller on a phone with the Execute button off the right edge. Verified by measurement that no cell escapes its card and the document does not scroll sideways. See rules.table-cell."
+    },
+    "table-cell:td@768": {
+      "worst": 404.52,
+      "why": "the registry cards at 768px: td is a label/value line inside a card-shaped tr, 404.52px shorter by design. Cards now run to 1219px rather than 480px, because the table needs 1074px and the content box only reaches that at a 1240px viewport. See rules.table-cell."
+    },
+    "table-cell:th.mono@1280": {
+      "worst": 370.69,
+      "why": "the registry cards at 1280px: th.mono is a label/value line inside a card-shaped tr, 370.69px shorter by design. Cards run to 1379px now, so this viewport is in card mode; the breakpoint carries slack because the width a nine-column table needs depends on what is in the registry. See rules.table-cell."
+    },
+    "table-cell:th.mono@390": {
+      "worst": 467.7,
+      "why": "the mobile registry cards: th.mono is a label/value line inside a card-shaped tr, 467.7px shorter than it by design. See rules.table-cell for why the rule stops applying to a table that deliberately stops being one."
+    },
+    "table-cell:th.mono@768": {
+      "worst": 400.5,
+      "why": "the registry cards at 768px: th.mono is a label/value line inside a card-shaped tr, 400.5px shorter by design. Cards now run to 1219px rather than 480px, because the table needs 1074px and the content box only reaches that at a 1240px viewport. See rules.table-cell."
+    },
+    "table-cell:th@390": {
+      "worst": 284.23,
+      "why": "the rain cards at 390px: th is the rain's name and thumbnail as the first line inside a card-shaped tr, 284.23px shorter than it by design. The tr carries its own border, radius, background and state stripe, so the paint this rule protects is drawn by the row. Same case as the registry cards. See rules.table-cell."
+    },
+    "table-cell:th@768": {
+      "worst": 252.97,
+      "why": "the rain cards at 768px: th is a label/value line inside a card-shaped tr, 252.97px shorter by design. Cards run to 1219px, matching the registry. See rules.table-cell."
+    },
     "text-size:a": {
       "worst": 11.52,
       "why": "a renders at 11.52px, below the 14px floor. See rules.text-size."
+    },
+    "text-size:a.breakable": {
+      "worst": 12.48,
+      "why": "a.breakable renders at 12.48px, below the 14px floor. Not new small text: this is the same account address already accepted as text-size:a, which gained a class when explorer links learned to break an address and not an id. See rules.text-size."
     },
     "text-size:button.current.ghost.small": {
       "worst": 12.8,
@@ -138,13 +198,29 @@
       "worst": 10.56,
       "why": "span.chip.starved renders at 10.56px, below the 14px floor. See rules.text-size."
     },
+    "text-size:span.chip.waiting": {
+      "worst": 10.56,
+      "why": "span.chip.waiting renders at 10.56px, below the 14px floor. The same size as span.chip.due and span.chip.scheduled, already recorded; it is the third state of that one chip, not a new decision. See rules.text-size."
+    },
+    "text-size:span.connect.you": {
+      "worst": 12.16,
+      "why": "span.connect.you renders at 12.16px, below the 14px floor. See rules.text-size."
+    },
     "text-size:span.count": {
       "worst": 11.52,
       "why": "span.count renders at 11.52px, below the 14px floor. See rules.text-size."
     },
+    "text-size:span.dot": {
+      "worst": 12.16,
+      "why": "span.dot renders at 12.16px, below the 14px floor. It is the separator between a rain's id and its ticket count. Its colour was var(--hairline), a border token, drawing 1.28:1; that is fixed and it now uses var(--text-faint). The size is the type scale. See rules.text-size."
+    },
     "text-size:span.eyebrow": {
       "worst": 11.2,
       "why": "span.eyebrow renders at 11.2px, below the 14px floor. See rules.text-size."
+    },
+    "text-size:span.gate": {
+      "worst": 12.16,
+      "why": "span.gate renders at 12.16px, below the 14px floor. See rules.text-size."
     },
     "text-size:span.mono": {
       "worst": 12.48,
@@ -158,6 +234,18 @@
       "worst": 12.16,
       "why": "span.now.sub renders at 12.16px, below the 14px floor. See rules.text-size."
     },
+    "text-size:span.pace.part": {
+      "worst": 12.48,
+      "why": "span.pace.part renders at 12.48px. These are not new small text: the status line was always this size, and splitting it into named spans so a phone can hide the round rate is what made it selectable. See rules.text-size."
+    },
+    "text-size:span.part": {
+      "worst": 12.48,
+      "why": "span.part renders at 12.96px. These are not new small text: the status line was always this size, and splitting it into named spans so a phone can hide the round rate is what made it selectable. See rules.text-size."
+    },
+    "text-size:span.prize.sub": {
+      "worst": 12.16,
+      "why": "span.prize.sub renders at 12.16px, below the 14px floor. The same size as span.sub, already recorded. See rules.text-size."
+    },
     "text-size:span.sub": {
       "worst": 12.16,
       "why": "span.sub renders at 12.16px, below the 14px floor. See rules.text-size."
@@ -170,6 +258,10 @@
       "worst": 13.6,
       "why": "strong renders at 13.6px, below the 14px floor. See rules.text-size."
     },
+    "text-size:th": {
+      "worst": 10.88,
+      "why": "th renders at 10.88px, below the 14px floor. It left this list briefly while the head was .sr-only, which turned out to be hiding it from the audit rather than from the page. See rules.text-size."
+    },
     "touch-target:a@390": {
       "worst": 8.45,
       "why": "an 8.45x16px anchor, still the worst target here. Three fixes were tried in registry-table.ts on 2026-08-27 \u2014 min-height with display:flex, th a[href] as well as td a[href], and content-box padding \u2014 and the measurement did not move, though the media query is present in the built bundle. So the element being measured is probably not the registry id link this entry originally described. Needs identifying in a browser before a fourth guess."
@@ -177,70 +269,6 @@
     "touch-target:input@390": {
       "worst": 13,
       "why": "the native radio and checkbox in the register form. Sized to 24x24 with 10px of margin on 2026-08-27, which the audit still measures as the 13x13 the user agent draws, so the rule is not reaching them either. Grouped with a@390: both need identifying in a browser rather than another guess."
-    },
-    "text-size:span.part": {
-      "worst": 12.48,
-      "why": "span.part renders at 12.96px. These are not new small text: the status line was always this size, and splitting it into named spans so a phone can hide the round rate is what made it selectable. See rules.text-size."
-    },
-    "text-size:span.pace.part": {
-      "worst": 12.48,
-      "why": "span.pace.part renders at 12.48px. These are not new small text: the status line was always this size, and splitting it into named spans so a phone can hide the round rate is what made it selectable. See rules.text-size."
-    },
-    "table-cell:td@390": {
-      "worst": 516.72,
-      "why": "the mobile registry cards. Each td is a 516.72px-shorter line inside a card-shaped tr, which is the layout rather than a fault: the nine-column table was a sideways scroller on a phone with the Execute button off the right edge. Verified by measurement that no cell escapes its card and the document does not scroll sideways. See rules.table-cell."
-    },
-    "table-cell:td.actions@390": {
-      "worst": 487.52,
-      "why": "the mobile registry cards: td.actions is a label/value line inside a card-shaped tr, 487.52px shorter than it by design. See rules.table-cell for why the rule stops applying to a table that deliberately stops being one."
-    },
-    "table-cell:td.mono@390": {
-      "worst": 513.38,
-      "why": "the mobile registry cards: td.mono is a label/value line inside a card-shaped tr, 513.38px shorter than it by design. See rules.table-cell for why the rule stops applying to a table that deliberately stops being one."
-    },
-    "table-cell:th.mono@390": {
-      "worst": 467.7,
-      "why": "the mobile registry cards: th.mono is a label/value line inside a card-shaped tr, 467.7px shorter than it by design. See rules.table-cell for why the rule stops applying to a table that deliberately stops being one."
-    },
-    "table-cell:td@768": {
-      "worst": 404.52,
-      "why": "the registry cards at 768px: td is a label/value line inside a card-shaped tr, 404.52px shorter by design. Cards now run to 1219px rather than 480px, because the table needs 1074px and the content box only reaches that at a 1240px viewport. See rules.table-cell."
-    },
-    "table-cell:td.mono@768": {
-      "worst": 401.53,
-      "why": "the registry cards at 768px: td.mono is a label/value line inside a card-shaped tr, 401.53px shorter by design. Cards now run to 1219px rather than 480px, because the table needs 1074px and the content box only reaches that at a 1240px viewport. See rules.table-cell."
-    },
-    "table-cell:th.mono@768": {
-      "worst": 400.5,
-      "why": "the registry cards at 768px: th.mono is a label/value line inside a card-shaped tr, 400.5px shorter by design. Cards now run to 1219px rather than 480px, because the table needs 1074px and the content box only reaches that at a 1240px viewport. See rules.table-cell."
-    },
-    "table-cell:td.actions@768": {
-      "worst": 374.34,
-      "why": "the registry cards at 768px: td.actions is a label/value line inside a card-shaped tr, 374.34px shorter by design. Cards now run to 1219px rather than 480px, because the table needs 1074px and the content box only reaches that at a 1240px viewport. See rules.table-cell."
-    },
-    "text-size:th": {
-      "worst": 10.88,
-      "why": "th renders at 10.88px, below the 14px floor. It left this list briefly while the head was .sr-only, which turned out to be hiding it from the audit rather than from the page. See rules.text-size."
-    },
-    "text-size:a.breakable": {
-      "worst": 12.48,
-      "why": "a.breakable renders at 12.48px, below the 14px floor. Not new small text: this is the same account address already accepted as text-size:a, which gained a class when explorer links learned to break an address and not an id. See rules.text-size."
-    },
-    "table-cell:td.actions@1280": {
-      "worst": 344.53,
-      "why": "the registry cards at 1280px: td.actions is a label/value line inside a card-shaped tr, 344.53px shorter by design. Cards run to 1379px now, so this viewport is in card mode; the breakpoint carries slack because the width a nine-column table needs depends on what is in the registry. See rules.table-cell."
-    },
-    "table-cell:td.mono@1280": {
-      "worst": 371.72,
-      "why": "the registry cards at 1280px: td.mono is a label/value line inside a card-shaped tr, 371.72px shorter by design. Cards run to 1379px now, so this viewport is in card mode; the breakpoint carries slack because the width a nine-column table needs depends on what is in the registry. See rules.table-cell."
-    },
-    "table-cell:td@1280": {
-      "worst": 374.7,
-      "why": "the registry cards at 1280px: td is a label/value line inside a card-shaped tr, 374.7px shorter by design. Cards run to 1379px now, so this viewport is in card mode; the breakpoint carries slack because the width a nine-column table needs depends on what is in the registry. See rules.table-cell."
-    },
-    "table-cell:th.mono@1280": {
-      "worst": 370.69,
-      "why": "the registry cards at 1280px: th.mono is a label/value line inside a card-shaped tr, 370.69px shorter by design. Cards run to 1379px now, so this viewport is in card mode; the breakpoint carries slack because the width a nine-column table needs depends on what is in the registry. See rules.table-cell."
     }
   }
 }

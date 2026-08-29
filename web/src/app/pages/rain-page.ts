@@ -264,7 +264,7 @@ interface Row {
       color: var(--text-faint);
       font-size: 0.76rem;
     }
-    .dot { color: var(--hairline); }
+    .dot { color: var(--text-faint); }
     .you.yes, .you.in { color: var(--sheen); }
     .you.no { color: var(--text-faint); }
     .gate { color: var(--text-faint); font-size: 0.76rem; }
@@ -292,7 +292,11 @@ interface Row {
     .chip.waiting { border: 1px solid var(--hairline); color: var(--text-faint); }
 
     @media (max-width: 1219px) {
-      table, thead, tbody, tr, th, td { display: block; }
+      table, thead, tbody, th, td { display: block; }
+      /* The rule above is two type selectors, and a media query adds no
+         specificity of its own, so a bare tr here loses to it and the row
+         stays a grid whose five tracks need ~744px. Match it to beat it. */
+      thead tr, tbody tr { display: block; }
       thead { display: none; }
       tbody {
         display: grid;
