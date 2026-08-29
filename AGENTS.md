@@ -15,6 +15,12 @@ TestNet (app 769891898; 769802474 and 769772891 are superseded and predate the
 - Everything, on a real chain: `fledge lanes run local` (ci + the keeper e2e; needs `algokit localnet start`)
 - Sustained operation: `fledge lanes run endurance` (adds a soak; ~3 min)
 - Console: `cd web && bun run ng serve` (LocalNet by default), `bun test` for its unit tests
+- Reading the live deployment (all read-only, none of them signs anything):
+  `fledge run health` (upkeeps about to starve, upkeeps that pay a keeper
+  nothing, keeper solvency), `fledge run clock` (how long the deployment has
+  been the deployment, and it refuses to count once the local build stops
+  matching the chain), `fledge run keeper-ui` (a local dashboard on 4300, never
+  published).
 - Console as a rendered page: `fledge run web-render`. Builds it, serves it, and audits computed style and layout at four viewports in both themes against a stubbed chain. Needs `fledge run web-render-install` once, for a Chromium build. In the `local` lane, not `ci`.
 - Console for hosting: `fledge run web-build-hosted` (base href `/arcron/console/`), then `fledge run web-verify-hosted` (serves it at that subpath and fetches every file). Stage it into a `CorvidLabs/site` checkout with `fledge run site-console -- --site ../../site`; neither script commits or pushes.
 - Build: `poetry run python -m smart_contracts build` (rebuilds artifacts and typed clients; always rebuild after contract changes)

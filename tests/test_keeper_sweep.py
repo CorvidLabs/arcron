@@ -265,3 +265,59 @@ def test_a_keeper_holding_assets_does_not_have_its_minimum_balance_swept() -> No
     # as spendable offers most of the minimum balance up.
     naive = sweep.sweepable(total, reserve)
     assert naive > spendable
+
+
+# --- the outer fee ceiling ----------------------------------------------
+#
+# The ceiling refuses a node quoting an absurd fee, because verifying a genesis
+# id proves which network a node speaks for and not that it is honest. It
+# cannot tell a lying node from a legitimately large transaction, and there is
+# one real case where those look the same: a Falcon-signed execute is 4,384
+# bytes against ed25519's 340, and Algorand charges max(min_fee, size x
+# fee_per_byte). The rate is zero today. If it ever is not, a post-quantum
+# keeper hits this and stops.
+#
+# Stopping is the right way round. These pin that an operator in that position
+# can raise the ceiling without editing code, and that a mistyped value cannot
+# silently remove the guard.
+
+
+def _ceiling(raw: str | None) -> int:
+    import importlib
+    import os
+
+    from scripts import keeper_bot
+
+    before = os.environ.get("KEEPER_MAX_OUTER_FEE")
+    try:
+        if raw is None:
+            os.environ.pop("KEEPER_MAX_OUTER_FEE", None)
+        else:
+            os.environ["KEEPER_MAX_OUTER_FEE"] = raw
+        return importlib.reload(keeper_bot).MAX_OUTER_FEE_MICROALGO
+    finally:
+        if before is None:
+            os.environ.pop("KEEPER_MAX_OUTER_FEE", None)
+        else:
+            os.environ["KEEPER_MAX_OUTER_FEE"] = before
+        importlib.reload(keeper_bot)
+
+
+def test_the_default_ceiling_is_ten_times_the_minimum_fee() -> None:
+    assert _ceiling(None) == 10_000
+
+
+def test_an_operator_can_raise_it_without_editing_code() -> None:
+    # A post-quantum keeper under per-byte pricing needs this, and should not
+    # have to patch a constant to keep running.
+    assert _ceiling("60000") == 60_000
+
+
+def test_a_mistyped_value_falls_back_rather_than_disabling_the_guard() -> None:
+    assert _ceiling("nonsense") == 10_000
+
+
+def test_zero_cannot_be_used_to_turn_the_guard_off() -> None:
+    # Zero would make every fee look too high and stop the bot dead, which is
+    # a confusing way to express "no ceiling" and is not what anyone means.
+    assert _ceiling("0") == 10_000

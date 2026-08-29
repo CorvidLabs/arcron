@@ -96,7 +96,9 @@ the references. The Python bot does this by simulating the call and naming the r
 the TypeScript client (`js/src/keeper-txns.ts`, which the console also
 imports) does it too, so an upkeep whose target reaches an account, asset or
 app beyond the target itself is servable from either.
-Fees ≥ 4000 µALGO (keepers pay ~3000 µALGO in group fees per execution).
+Fees ≥ 4000 µALGO (keepers pay ~3000 µALGO in group fees per execution; the
+console suggests 10,000). A post-quantum keeper pays the same today, because
+Algorand's per-byte fee is zero; see [`docs/hosting.md`](docs/hosting.md).
 Interval ≥ 10 rounds.
 
 ### Who actually runs it?
@@ -198,6 +200,22 @@ poetry run pytest tests/ -q                  # unit tests (algorand-python-testi
 specsync check --strict                      # spec drift check
 poetry run python -m scripts.keeper_e2e --network localnet   # full e2e
 ```
+
+### Looking at the live deployment
+
+Three read-only commands, none of which signs anything:
+
+```bash
+fledge run health      # what is wrong with the registry right now
+fledge run clock       # how long the deployment has been the deployment
+fledge run keeper-ui   # a local dashboard, on localhost:4300
+```
+
+`health` reports upkeeps about to starve, upkeeps that pay a keeper nothing,
+and whether the keepers can still afford to run. `clock` measures the MainNet
+hold from the application's creation round, and refuses to count once the local
+build stops matching what is deployed, because time served by code that is
+about to be replaced is not evidence about the code replacing it.
 
 ### The console
 
@@ -427,6 +445,13 @@ The bot is meant to run continuously, and `deploy/` has three ways to do it:
 All three read the same environment: `KEEPER_MNEMONIC`, `KEEPER_APP_ID` and an
 algod endpoint. Keep the mnemonic in a `chmod 600` file the unit points at
 rather than inline. A launchd plist under `LaunchAgents` is world-readable.
+
+`KEEPER_MAX_OUTER_FEE` raises the ceiling on the outer fee the keeper will
+sign, which defaults to 10,000 microAlgos and exists to refuse a node quoting
+an absurd one. A post-quantum keeper would need it if Algorand ever prices
+bytes; see [`docs/hosting.md`](docs/hosting.md). Anything that is not a
+positive integer falls back to the default, so neither a typo nor a zero can
+switch the guard off.
 
 A keeper is close to self-sustaining: it spends 0.003 ALGO of transaction fees
 per execution and collects at least 0.004, so it needs a starting balance

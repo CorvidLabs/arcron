@@ -214,6 +214,49 @@ Use an account that holds no more than it needs. It is a hot key on a machine
 that is running unattended, and its whole job is to spend small amounts
 constantly.
 
+### If the keeper is a post-quantum account
+
+It works, and it costs the same today. `docs/arcron.md` has the measurements:
+a Falcon-signed `execute` is **4,384 bytes against ed25519's 340**, and
+Algorand charges `max(min_fee, size x fee_per_byte)`. The per-byte rate is
+zero, so both pay the flat 1,000 microAlgo minimum and a post-quantum keeper
+spends the same 3,000 on an execution as any other.
+
+That is a property of current network conditions, not of the design, and
+`arcron.md` is explicit about what follows: a chain that ever prices bytes
+would leave post-quantum keepers underpaid at the floor.
+
+**Two things follow for you as an operator.**
+
+The contract needs no change for it. An upkeep nobody can profitably serve
+goes unserviced, its fee climbs toward the creator's ceiling, and either a
+cheaper keeper takes it or the creator raises the price. The contract never
+learns what kind of account is signing, which is the right place for that
+knowledge to be absent.
+
+**The bot would stop before it overpaid**, and the message would not explain
+why. The keeper refuses to sign an outer fee above 10,000 microAlgos, because
+verifying a genesis id proves which network a node speaks for and not that it
+is honest. That guard cannot tell a lying node from a legitimately large
+transaction. Under per-byte pricing a Falcon keeper would hit the ceiling and
+refuse to broadcast rather than pay.
+
+Failing that way round is correct. Raise the ceiling with
+**`KEEPER_MAX_OUTER_FEE`**, in microAlgos, rather than removing the guard:
+
+| `KEEPER_MAX_OUTER_FEE` | ceiling used |
+|---|---|
+| unset | 10,000 |
+| `60000` | 60,000 |
+| `nonsense` | 10,000 |
+| `0` or negative | 10,000 |
+
+A value that is not a positive integer falls back to the default rather than
+being honoured. Neither a typo nor a zero should be a way to switch a guard
+off: zero would make every fee look too high and stop the keeper dead, which
+is a confusing way to express "no ceiling" and is not what anyone means by
+it.
+
 ### Forwarding what it earns
 
 A keeper earns into the same account it spends from. That is what makes it

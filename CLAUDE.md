@@ -16,6 +16,12 @@ TestNet (app 769891898; 769802474 and 769772891 are superseded, predating the
 - On a real chain: `fledge lanes run local` (ci + the keeper e2e; needs `algokit localnet start`)
 - Endurance: `fledge lanes run endurance` (adds `scripts/keeper_soak.py`, ~3 min)
 - Console: `cd web && bun run ng serve`; `bun test` for its unit tests
+- Reading the live deployment (all read-only, none of them signs anything):
+  `fledge run health` (upkeeps about to starve, upkeeps that pay a keeper
+  nothing, keeper solvency), `fledge run clock` (how long the deployment has
+  been the deployment, and it refuses to count once the local build stops
+  matching the chain), `fledge run keeper-ui` (a local dashboard on 4300, never
+  published).
 - Console as a rendered page: `fledge run web-render` (needs `fledge run web-render-install` once)
 - Console for hosting: `fledge run web-build-hosted` then `fledge run web-verify-hosted`; stage with `fledge run site-console -- --site <site checkout>`
 - Build: `poetry run python -m smart_contracts build` (always rebuild after contract changes)
