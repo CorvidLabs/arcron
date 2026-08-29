@@ -27,7 +27,7 @@ Here it is honestly, which is less flattering than the first draft of this page:
 | Hetzner CX22 | ~$4.10 | as above |
 | AWS Lambda + EventBridge | **$0.00** | as above, but genuinely free at this volume |
 | Oracle Always Free | $0.00 | free, but Oracle reclaims idle instances — see below |
-| GitHub Actions cron | $0.00 | delayed under load, and runs may be dropped |
+| GitHub Actions cron | $0.00 | **delivered 7% of a half-hourly schedule when measured** |
 
 **Every figure on this page uses one basis**, because two earlier drafts mixed
 two and produced a multiplier that did not reproduce from their own tables. The
@@ -64,9 +64,19 @@ does not expire; it defeats this comparison outright for anyone already on AWS.
 Oracle's Always Free tier is genuinely free for the life of the account, but it
 reclaims instances whose CPU, network **and** memory 95th percentiles all sit
 under 20% over seven days, which is the exact profile of a polling keeper.
-GitHub Actions is free and does not auto-disable in a **private** repository —
+GitHub Actions is free and does not auto-disable in a **private** repository;
 the 60-day rule an earlier draft stated unconditionally applies only to public
-ones.
+ones. **What it does instead is not run.** Measured on 2026-08-29 across two
+independent workflows in this repository, both scheduled every 30 minutes, it
+delivered 7% and 10% of their runs over 41 and 25 hour windows, with a mean gap
+of 8.2 hours and a longest gap of 12.9. See
+[`hosting.md`](hosting.md) for the table.
+
+That is the honest comparison against the free options, and it cuts the other
+way from the fee arithmetic above. The cost table says Arcron is a few tens of
+cents a month against zero. The delivery measurement says the zero does not buy
+a keeper on a schedule, and a scheduler that fires seven times in a hundred is
+not a cheaper scheduler, it is a different product.
 
 ## Where this stops being true
 

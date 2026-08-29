@@ -1,0 +1,529 @@
+<title>Arcron Evidence Ledger</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+
+<style>
+  :root {
+    --ink:        #131A24;
+    --ink-2:      #1D2733;
+    --paper:      #FAF8F4;
+    --paper-2:    #F1EEE7;
+    --rule:       #DCD6CA;
+    --slate:      #5A6672;
+    --slate-2:    #7C8794;
+    --brass:      #8A6420;
+    --brass-lift: #B8862F;
+    --verdigris:  #2E6B5E;
+    --rust:       #A34A2A;
+
+    --bg:         var(--paper);
+    --surface:    #FFFFFF;
+    --surface-2:  var(--paper-2);
+    --text:       var(--ink);
+    --text-dim:   var(--slate);
+    --text-faint: var(--slate-2);
+    --border:     var(--rule);
+    --accent:     var(--brass);
+    --good:       var(--verdigris);
+    --bad:        var(--rust);
+
+    --f-display: "Newsreader", Georgia, "Times New Roman", serif;
+    --f-body:    "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+    --f-mono:    "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+    --step--1: clamp(0.76rem, 0.74rem + 0.1vw, 0.82rem);
+    --step-0:  clamp(0.94rem, 0.91rem + 0.15vw, 1.02rem);
+    --step-1:  clamp(1.15rem, 1.08rem + 0.35vw, 1.35rem);
+    --step-2:  clamp(1.45rem, 1.3rem + 0.7vw, 1.9rem);
+    --step-3:  clamp(2rem, 1.6rem + 1.9vw, 3.2rem);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg:         var(--ink);
+      --surface:    var(--ink-2);
+      --surface-2:  #172029;
+      --text:       #EDE9E1;
+      --text-dim:   #A2ADBA;
+      --text-faint: #7C8794;
+      --border:     #2C3742;
+      --accent:     var(--brass-lift);
+      --good:       #5FA894;
+      --bad:        #D97A55;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg:         var(--ink);
+    --surface:    var(--ink-2);
+    --surface-2:  #172029;
+    --text:       #EDE9E1;
+    --text-dim:   #A2ADBA;
+    --text-faint: #7C8794;
+    --border:     #2C3742;
+    --accent:     var(--brass-lift);
+    --good:       #5FA894;
+    --bad:        #D97A55;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--f-body);
+    font-size: var(--step-0);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 74rem;
+    margin: 0 auto;
+    padding: clamp(1.5rem, 4vw, 3.5rem) clamp(1rem, 4vw, 2.5rem) 5rem;
+    display: flex;
+    flex-direction: column;
+    gap: clamp(2.5rem, 5vw, 4rem);
+  }
+
+  .eyebrow {
+    font-family: var(--f-mono);
+    font-size: var(--step--1);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    margin: 0;
+  }
+
+  h1 {
+    font-family: var(--f-display);
+    font-size: var(--step-3);
+    font-weight: 500;
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+    margin: 0.4rem 0 0;
+  }
+
+  h2 {
+    font-family: var(--f-display);
+    font-size: var(--step-2);
+    font-weight: 500;
+    line-height: 1.15;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+    margin: 0;
+  }
+
+  h3 {
+    font-family: var(--f-body);
+    font-size: var(--step-0);
+    font-weight: 600;
+    margin: 0;
+  }
+
+  p { margin: 0; max-width: 66ch; }
+  section { display: flex; flex-direction: column; gap: 1.25rem; }
+  .lede { font-size: var(--step-1); color: var(--text-dim); line-height: 1.5; max-width: 60ch; }
+
+  /* ---- masthead ---- */
+  .mast { border-bottom: 2px solid var(--text); padding-bottom: 1.5rem; }
+  .mast-meta {
+    display: flex; flex-wrap: wrap; gap: 0.5rem 1.75rem;
+    font-family: var(--f-mono); font-size: var(--step--1);
+    color: var(--text-faint); margin-top: 1.25rem;
+  }
+  .mast-meta b { color: var(--text-dim); font-weight: 500; }
+
+  /* ---- verdict ---- */
+  .verdict {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--accent);
+    padding: clamp(1.25rem, 3vw, 2rem);
+    display: flex; flex-direction: column; gap: 0.85rem;
+  }
+  .verdict p { font-size: var(--step-1); line-height: 1.45; }
+
+  /* ---- stat strip ---- */
+  .stats {
+    display: grid; gap: 1px;
+    grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+    background: var(--border);
+    border: 1px solid var(--border);
+  }
+  .stat { background: var(--surface); padding: 1.1rem 1.15rem; display: grid; gap: 0.2rem; }
+  .stat dt {
+    font-family: var(--f-mono); font-size: var(--step--1);
+    letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-faint);
+  }
+  .stat dd {
+    margin: 0; font-family: var(--f-mono); font-size: var(--step-2);
+    font-weight: 500; font-variant-numeric: tabular-nums; line-height: 1.1;
+  }
+  .stat small { font-size: var(--step--1); color: var(--text-dim); font-family: var(--f-body); }
+
+  /* ---- evidence ledger ---- */
+  .ledger { display: flex; flex-direction: column; gap: 1px; background: var(--border); border: 1px solid var(--border); }
+  .claim {
+    background: var(--surface);
+    padding: 1.1rem clamp(1rem, 2.5vw, 1.4rem);
+    display: grid; gap: 0.5rem;
+    grid-template-columns: 1fr auto;
+    align-items: start;
+  }
+  .claim > .body { display: grid; gap: 0.35rem; }
+  .claim .what { font-weight: 600; }
+  .claim .ev {
+    font-family: var(--f-mono); font-size: var(--step--1);
+    color: var(--text-dim); line-height: 1.55;
+  }
+  .claim .ev b { color: var(--text); font-weight: 600; }
+
+  .chip {
+    font-family: var(--f-mono); font-size: 0.68rem;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    padding: 0.28rem 0.55rem; white-space: nowrap;
+    border: 1px solid currentColor; align-self: start;
+  }
+  .chip.proven   { color: var(--good); }
+  .chip.partial  { color: var(--accent); }
+  .chip.unproven { color: var(--bad); }
+
+  /* ---- tables ---- */
+  .scroller { overflow-x: auto; border: 1px solid var(--border); background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; font-size: var(--step--1); }
+  th, td { text-align: left; padding: 0.6rem 0.85rem; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th {
+    font-family: var(--f-mono); font-size: 0.7rem; letter-spacing: 0.09em;
+    text-transform: uppercase; color: var(--text-faint); font-weight: 500;
+    background: var(--surface-2); position: sticky; top: 0;
+  }
+  tbody tr:last-child td { border-bottom: 0; }
+  td.num { font-family: var(--f-mono); font-variant-numeric: tabular-nums; text-align: right; }
+  td.mono { font-family: var(--f-mono); }
+  .dim { color: var(--text-faint); }
+  .flag { color: var(--bad); font-family: var(--f-mono); font-size: 0.7rem; letter-spacing: 0.06em; }
+  .ok   { color: var(--good); font-family: var(--f-mono); font-size: 0.7rem; letter-spacing: 0.06em; }
+
+  /* ---- bar ---- */
+  .bar { height: 6px; background: var(--surface-2); border: 1px solid var(--border); overflow: hidden; }
+  .bar > span { display: block; height: 100%; background: var(--accent); }
+
+  /* ---- notes ---- */
+  .notes { display: grid; gap: 1px; background: var(--border); border: 1px solid var(--border); }
+  .note { background: var(--surface); padding: 1.1rem clamp(1rem, 2.5vw, 1.4rem); display: grid; gap: 0.4rem; }
+  .note .ev { font-family: var(--f-mono); font-size: var(--step--1); color: var(--text-dim); }
+
+  .two { display: grid; gap: 1.5rem; grid-template-columns: 1fr; }
+  @media (min-width: 62rem) { .two { grid-template-columns: 1fr 1fr; } }
+
+  footer {
+    border-top: 1px solid var(--border); padding-top: 1.5rem;
+    font-family: var(--f-mono); font-size: var(--step--1); color: var(--text-faint);
+    display: grid; gap: 0.4rem;
+  }
+  a { color: var(--accent); text-underline-offset: 0.15em; }
+  a:focus-visible, :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+</style>
+
+<div class="wrap">
+
+  <header class="mast">
+    <p class="eyebrow">Arcron &middot; Algorand TestNet &middot; 29 August 2026</p>
+    <h1>What is actually true about this network</h1>
+    <div class="mast-meta">
+      <span><b>Keeper app</b> 769891898</span>
+      <span><b>Round</b> 66,790,692</span>
+      <span><b>Contract age</b> 3.8 days</span>
+      <span><b>Source matches chain</b> yes</span>
+    </div>
+  </header>
+
+  <section class="verdict">
+    <p class="eyebrow">The short version</p>
+    <p>
+      The machine works. Twelve upkeeps, three independent keepers, <b>165 executions in
+      the last 24 hours</b>, and the escalating fee has now fired on chain across its
+      whole range. What is <em>not</em> established is anything about demand: every
+      upkeep on this registry was registered by us or by an agent we run, and three of
+      the four agent experiments have not actually started measuring anything yet.
+    </p>
+  </section>
+
+  <section>
+    <h2>Where the hold stands</h2>
+    <p>
+      MainNet is gated on sustained TestNet time with no contract change. The clock runs
+      from the deployment's creation round, and stops counting entirely if the local
+      build stops matching the chain.
+    </p>
+    <div class="bar" role="img" aria-label="3.8 of 30 days elapsed"><span style="width: 12.7%"></span></div>
+    <dl class="stats">
+      <div class="stat"><dt>Elapsed</dt><dd>3.8</dd><small>days of 30</small></div>
+      <div class="stat"><dt>Remaining</dt><dd>26.2</dd><small>days, if nothing changes</small></div>
+      <div class="stat"><dt>Executions / 24h</dt><dd>165</dd><small>across 12 upkeeps</small></div>
+      <div class="stat"><dt>Keepers</dt><dd>3</dd><small>independent accounts</small></div>
+      <div class="stat"><dt>Agent contracts</dt><dd>9</dd><small>4 live on chain</small></div>
+      <div class="stat"><dt>Outside users</dt><dd>0</dd><small>the blocking item</small></div>
+    </dl>
+  </section>
+
+  <section>
+    <h2>The evidence ledger</h2>
+    <p>
+      Every claim this project makes, with what actually backs it. A claim is
+      <b>proven</b> only if a stranger could verify it from a block explorer without
+      access to any of our machines.
+    </p>
+
+    <div class="ledger">
+
+      <div class="claim">
+        <div class="body">
+          <span class="what">A contract can be called on a schedule with no server</span>
+          <span class="ev">165 executions in 24h across 12 upkeeps, by 3 accounts. Longest-running upkeep <b>#81</b> at 40 runs.</span>
+        </div>
+        <span class="chip proven">Proven on chain</span>
+      </div>
+
+      <div class="claim">
+        <div class="body">
+          <span class="what">The fee escalates when work goes unserviced</span>
+          <span class="ev">A cron keeper stalled. <b>#86</b> and <b>#87</b> paid the full 20,000 ceiling against a 10,000 base; <b>#85</b> caught mid-climb at 17,503. Control: <b>#81</b>, cap 0, paid flat 10,000 throughout.</span>
+        </div>
+        <span class="chip proven">Proven on chain</span>
+      </div>
+
+      <div class="claim">
+        <div class="body">
+          <span class="what">Escrow is untouched when a call fails</span>
+          <span class="ev">Upkeep <b>#83</b> pointed at a contract with a broken auth check. 2,682 rounds overdue, 0 executions, escrow intact at <b>4,000,000</b> of 4,000,000. Cancel refunded 4,062,100 including box MBR.</span>
+        </div>
+        <span class="chip proven">Proven on chain</span>
+      </div>
+
+      <div class="claim">
+        <div class="body">
+          <span class="what">A method selector cannot be changed after registration</span>
+          <span class="ev">Upkeep <b>#77</b> named a method its target does not have. Failed forever; cancelling was the only exit. This is a limitation, proven the expensive way.</span>
+        </div>
+        <span class="chip proven">Proven on chain</span>
+      </div>
+
+      <div class="claim">
+        <div class="body">
+          <span class="what">The deployed contract is the published source</span>
+          <span class="ev"><code>verify_build</code> matches byte for byte, <b>sha256 c94c6e0c…</b>. Anyone can run it.</span>
+        </div>
+        <span class="chip proven">Proven on chain</span>
+      </div>
+
+      <div class="claim">
+        <div class="body">
+          <span class="what">A post-quantum keeper costs the same today</span>
+          <span class="ev">Falcon <code>execute</code> is 4,384 bytes against ed25519's 340, and the per-byte fee is <b>0</b>, so both pay the flat minimum. True only while bytes are unpriced.</span>
+        </div>
+        <span class="chip proven">Proven on chain</span>
+      </div>
+
+      <div class="claim">
+        <div class="body">
+          <span class="what">Cadence holds close to schedule</span>
+          <span class="ev">Measured mean gap <b>1,236 rounds</b> against a registered 1,286. But Bellwether, the contract built to measure this, mis-calibrated: it inferred 616 from an unrepresentative first sample and reports 18 false misses. The number is right; its own instrument is not.</span>
+        </div>
+        <span class="chip partial">Partly</span>
+      </div>
+
+      <div class="claim">
+        <div class="body">
+          <span class="what">Keepers compete on price</span>
+          <span class="ev">Toll exists to test this. 19 calls, <b>same_round = 0</b>: no two upkeeps have ever hit it in the same round, so nothing has been compared. Needs a second upkeep at a different fee.</span>
+        </div>
+        <span class="chip unproven">Not yet tested</span>
+      </div>
+
+      <div class="claim">
+        <div class="body">
+          <span class="what">One keeper absorbs a burst without sharding</span>
+          <span class="ev">Stampede exists to test this. 20 calls, <b>bursts = 0</b>, every call idle. Never primed, so it has measured nothing.</span>
+        </div>
+        <span class="chip unproven">Not yet tested</span>
+      </div>
+
+      <div class="claim">
+        <div class="body">
+          <span class="what">Keepers back off from a target that goes bad</span>
+          <span class="ev">Rot exists to test this. <b>mode = 0</b>, <b>rotten_calls = 0</b>. Armed and never fired. What we know came from the accidental version, not the designed one.</span>
+        </div>
+        <span class="chip unproven">Not yet tested</span>
+      </div>
+
+      <div class="claim">
+        <div class="body">
+          <span class="what">Somebody outside this project wants it</span>
+          <span class="ev">Zero. All 12 upkeeps were registered by us or by agents we run. This is the beta gate's blocking item and no amount of TestNet activity substitutes for it.</span>
+        </div>
+        <span class="chip unproven">Not yet tested</span>
+      </div>
+
+      <div class="claim">
+        <div class="body">
+          <span class="what">It is safe to hold value on MainNet</span>
+          <span class="ev">MainNet multisig <code>LUH77ATP…</code> holds <b>0 ALGO</b> and has created <b>0 apps</b>. No third-party audit exists; five reviews were by language models, which is useful and is not an audit.</span>
+        </div>
+        <span class="chip unproven">Not yet tested</span>
+      </div>
+
+    </div>
+  </section>
+
+  <section>
+    <h2>The keepers</h2>
+    <p>
+      Three accounts have executed in the last 24 hours. Nobody outside the project runs
+      one, so this measures redundancy rather than a market.
+    </p>
+    <div class="scroller">
+      <table>
+        <thead>
+          <tr><th>Account</th><th>Runs / 24h</th><th>Spendable</th><th>Executions left</th><th>Role</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="mono">GCQL3M7A…</td><td class="num">152</td><td class="num">1.448</td><td class="num">~482</td><td class="dim">cron keeper, 7% of schedule</td></tr>
+          <tr><td class="mono">NUGVPQGZ…</td><td class="num">12</td><td class="num">0.924</td><td class="num">~308</td><td class="dim">second keeper</td></tr>
+          <tr><td class="mono">WGSHC4TY…</td><td class="num">1</td><td class="num">3.107</td><td class="num">~1,035</td><td class="dim">corvid.algo, refilled today</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="verdict" style="border-left-color: var(--bad);">
+      <p class="eyebrow">Measured, not estimated</p>
+      <p>
+        <b>GitHub Actions delivers about 7% of a 30-minute cron.</b> Two independent
+        workflows, both scheduled <code>*/30</code>, over the last two days:
+      </p>
+      <div class="scroller">
+        <table>
+          <thead>
+            <tr><th>Workflow</th><th>Runs</th><th>Window</th><th>Expected</th><th>Delivered</th><th>Mean gap</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="mono">keeper-bot</td><td class="num">6</td><td class="num">41.2h</td><td class="num">82</td><td class="num"><span class="flag">7%</span></td><td class="num">8.2h</td></tr>
+            <tr><td class="mono">keeper-bot-2</td><td class="num">5</td><td class="num">25.0h</td><td class="num">50</td><td class="num"><span class="flag">10%</span></td><td class="num">6.3h</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="ev" style="font-family: var(--f-mono); font-size: var(--step--1); color: var(--text-dim);">
+        Observed gaps on keeper-bot: 8.4h, 12.9h, 7.4h, 7.0h, 5.5h. Not an occasional
+        dropped run: the mean gap is <b>16x the schedule</b>, and the second workflow
+        fails the same way independently, so it is the platform rather than the job.
+        This is what pushed upkeeps #86 and #87 to the fee ceiling, and it is the
+        clearest argument yet for the beta gate item asking for a keeper on a real host.
+        <code>docs/why.md</code> lists GitHub Actions cron as free with &ldquo;runs may
+        be dropped&rdquo;; that can now be a number.
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <h2>The registry</h2>
+    <p>Twelve upkeeps. The four agent contracts were topped up today and now hold about three weeks each.</p>
+    <div class="scroller">
+      <table>
+        <thead>
+          <tr><th>Upkeep</th><th>Contract</th><th>Owner</th><th>Runs</th><th>Fee</th><th>Cap</th><th>Runway</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="mono">#81</td><td>Vigil</td><td class="dim">grok-4.6</td><td class="num">40</td><td class="num">10,000</td><td class="num dim">&mdash;</td><td class="num">17.2d</td></tr>
+          <tr><td class="mono">#84</td><td>Bellwether</td><td class="dim">claude-sonnet-5</td><td class="num">22</td><td class="num">10,000</td><td class="num">20,000</td><td class="num">23.1d</td></tr>
+          <tr><td class="mono">#85</td><td>Stampede</td><td class="dim">grok-4.6</td><td class="num">20</td><td class="num">10,000</td><td class="num">20,000</td><td class="num">23.1d</td></tr>
+          <tr><td class="mono">#86</td><td>Toll</td><td class="dim">kimi-k3</td><td class="num">19</td><td class="num">10,000</td><td class="num">20,000</td><td class="num">23.2d</td></tr>
+          <tr><td class="mono">#87</td><td>Rot</td><td class="dim">claude-opus-5</td><td class="num">20</td><td class="num">10,000</td><td class="num">20,000</td><td class="num">23.1d</td></tr>
+          <tr><td class="mono">#79</td><td>Rain (gated draw)</td><td class="dim">arcron</td><td class="num">20</td><td class="num">10,000</td><td class="num dim">&mdash;</td><td class="num">62.6d</td></tr>
+          <tr><td class="mono">#82</td><td>Pulse</td><td class="dim">arcron</td><td class="num">23</td><td class="num">10,000</td><td class="num">20,000</td><td class="num">12.9d</td></tr>
+          <tr><td class="mono">#19&ndash;22</td><td>Pulse &times;4</td><td class="dim">arcron</td><td class="num">7 ea</td><td class="num">4,000</td><td class="num dim">mostly &mdash;</td><td class="num">~41d</td></tr>
+          <tr><td class="mono">#89</td><td class="dim">unrostered</td><td class="dim">an agent of ours</td><td class="num">1</td><td class="num">4,000</td><td class="num dim">&mdash;</td><td class="num">4.0d</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="ev" style="font-family: var(--f-mono); font-size: var(--step--1); color: var(--text-dim);">
+      Upkeeps #19&ndash;22 sit at the 4,000 floor deliberately, as the control: they are
+      being serviced on schedule, which is the first evidence that a floor-fee upkeep
+      gets taken at all.
+    </p>
+  </section>
+
+  <section>
+    <h2>The agent workshop</h2>
+    <p>
+      Four models each own contracts that Arcron calls. Nine contracts exist, 105 unit
+      tests pass, and four are deployed and being executed by a keeper none of their
+      authors runs.
+    </p>
+    <div class="two">
+      <div class="notes">
+        <div class="note">
+          <h3>Vigil &middot; grok-4.6</h3>
+          <span class="ev">38 watches, 36 recorded as missed, 220,000 microAlgos accrued and unclaimed. Working as designed; the agent has simply not come back to claim.</span>
+        </div>
+        <div class="note">
+          <h3>Bellwether &middot; claude-sonnet-5</h3>
+          <span class="ev">22 marks. Produced a real negative result about its own method: a contract cannot self-calibrate from a first sample taken while the keeper is catching up.</span>
+        </div>
+        <div class="note">
+          <h3>Rain &middot; arcron</h3>
+          <span class="ev">draw_id 1, draws_resolved 1, pot 1,018,900. A gated draw ran and resolved against the live Foundation beacon.</span>
+        </div>
+      </div>
+      <div class="notes">
+        <div class="note">
+          <h3>Stampede &middot; grok-4.6</h3>
+          <span class="ev">20 calls, 0 bursts. Needs <code>prime(count, due_round)</code> before it tests anything.</span>
+        </div>
+        <div class="note">
+          <h3>Toll &middot; kimi-k3</h3>
+          <span class="ev">19 calls, 0 same-round arrivals. Needs a second upkeep at a different fee before the comparison exists.</span>
+        </div>
+        <div class="note">
+          <h3>Rot &middot; claude-opus-5</h3>
+          <span class="ev">20 calls, mode 0. Armed to fail on command and never triggered.</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Where this report has been wrong</h2>
+    <p>
+      The status reporting has been wrong four times in four days, always in the
+      flattering direction. Worth stating, because it is the reason for the evidence
+      column above.
+    </p>
+    <div class="notes">
+      <div class="note">
+        <h3>Called an agent we run a stranger</h3>
+        <span class="ev">Upkeep #81 was recorded as the first registered by somebody outside the project, on the strength of one address not matching two hardcoded ones. It was a Grok agent. The beta gate item was ticked and had to be un-ticked.</span>
+      </div>
+      <div class="note">
+        <h3>Counted registrations as executions</h3>
+        <span class="ev">A hand-rolled query grouped every application call by sender and reported five keepers. Filtering on the <code>execute</code> selector gives two. An execution is a call to <code>execute</code>, not a call to the app.</span>
+      </div>
+      <div class="note">
+        <h3>Reported a branch green when it was red</h3>
+        <span class="ev">A CI run from before the change was read as current. It reproduced locally in one command.</span>
+      </div>
+      <div class="note">
+        <h3>Shipped a contract whose tests could not catch its bug</h3>
+        <span class="ev">Rot authorized against an app id instead of an app address. 15 unit tests passed before and after the fix, because the mock does not model address derivation. Only the live chain caught it.</span>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <span>Figures read from Algorand TestNet at round 66,790,692 on 29 August 2026.</span>
+    <span>Keeper app 769891898 &middot; bank 31.88 ALGO &middot; 105 unit tests passing &middot; hold clock 26.2 days remaining.</span>
+    <span>Nothing on MainNet. No third-party audit. TestNet ALGO has no value.</span>
+  </footer>
+
+</div>

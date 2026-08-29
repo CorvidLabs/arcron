@@ -16,7 +16,7 @@ upkeep, which is not yet true.
 | | Cost | Uptime | Key lives | Effort |
 |---|---|---|---|---|
 | **A server you already run** | nothing extra | continuous | on your box | one script |
-| GitHub Actions cron | free to ~$115/mo, by cadence | best-effort | repo secrets | uncomment a line |
+| GitHub Actions cron | free to ~$115/mo, by cadence | ~7% of schedule, measured | repo secrets | uncomment a line |
 | A small always-on host | ~$2 to $5/mo | continuous | on that host | container |
 | A laptop | nothing | poor | on your laptop | one plist |
 
@@ -57,6 +57,25 @@ the app to service.
 half-hourly. It skips itself cleanly when `KEEPER_MNEMONIC` is not set, so the
 workflow being on before the secret exists produces a green run with a notice
 rather than a failure every half hour that everyone learns to ignore.
+
+**It does not run half-hourly.** That is not a caveat about load, it is the
+normal behaviour, and it was measured on 2026-08-29 across two independent
+workflows in this repository, both scheduled `*/30`:
+
+| Workflow | Runs | Window | Expected | Delivered | Mean gap |
+|---|---|---|---|---|---|
+| `keeper-bot` | 6 | 41.2 h | 82 | **7%** | 8.2 h |
+| `keeper-bot-2` | 5 | 25.0 h | 50 | **10%** | 6.3 h |
+
+The gaps on the first were 8.4, 12.9, 7.4, 7.0 and 5.5 hours. There is no
+half-hour interval anywhere in the history. The mean gap is **sixteen times the
+schedule**, and the second workflow fails the same way on its own, which is
+what rules out anything particular to the job: it is the platform.
+
+Two upkeeps went 3,524 and 2,104 rounds unserviced during one of those gaps and
+climbed to their fee ceiling before a keeper took them. Nothing was lost, and
+the escalating fee did exactly what it exists for, but the schedule you write
+in the cron expression is not the schedule you get.
 
 To start keeping, add `KEEPER_MNEMONIC` as a repository secret. Generate the
 account yourself and give it only what it needs: it refuses to start below
