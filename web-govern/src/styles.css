@@ -1,0 +1,9 @@
+/* Deliberately minimal. This never ships anywhere, so it carries none of the
+   published console's brand vendoring: it inherits the operator's own light
+   or dark preference and otherwise gets out of the way. */
+:root { color-scheme: light dark; }
+body {
+    margin: 0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    line-height: 1.5;
+}

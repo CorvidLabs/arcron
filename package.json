@@ -5,6 +5,7 @@
   "workspaces": [
     "js",
     "web",
-    "web-keeper"
+    "web-keeper",
+    "web-govern"
   ]
 }
