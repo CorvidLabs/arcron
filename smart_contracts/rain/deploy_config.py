@@ -17,12 +17,10 @@ def deploy(app_id: int | None = None) -> "RainClient":
     needs no indexer at all, and re-running against a known `app_id` needs
     none either.
 
-    This only creates the app. `rain` has no pre-fund step the way keeper
-    and pulse do: its app account MBR is collected by `configure`'s own
-    `mbr_payment` argument, which also fixes the beacon, the entry gate and
-    the prize asset for the app's whole lifetime. Calling `configure` is
-    deliberately left to the caller, who knows those three things and this
-    function does not.
+    This only creates the app. The hub's own floor is collected by
+    `bootstrap`, and each rain's box MBR by `create_rain`. Neither is called
+    here: the caller knows the keeper and the first rain, and this function
+    does not.
     """
     from smart_contracts.artifacts.rain.rain_client import (
         RainClient,

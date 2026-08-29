@@ -17,7 +17,7 @@ from scripts.rain_bot import (
     should_abandon,
     should_resolve,
 )
-from smart_contracts.rain.contract import BEACON_WINDOW
+from scripts.rain_bot import BEACON_WINDOW
 
 
 def _state(*, draw_open: int, commit_round: int) -> dict:

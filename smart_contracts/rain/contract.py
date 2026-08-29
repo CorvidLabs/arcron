@@ -1,36 +1,37 @@
 # pyright: reportMissingModuleSource=false
-"""A pot that pays a random ticket holder on a schedule, run by nobody.
+"""A hub of rains: anyone makes one, Arcron fires them.
 
-The scheduled call does **accounting only**. `draw` locks a prize, snapshots
-the ticket count and fixes a future beacon round; it moves no money, calls no
-other app, and touches nothing it cannot reach. That is what makes it callable
-by a bare Arcron upkeep.
+One app, many rains, one upkeep. Each rain is a box. `draw` is the Arcron
+hook: it walks a few rains, rains on the ones that are due, and returns
+rather than failing when there is nothing to do. It moves no money and
+makes no inner call. Holders pull `claim` for themselves.
 
-Everything that needs a resource happens in a transaction somebody sends for
-themselves:
+Three ways a rain can fall, picked at create:
 
-* `resolve` inner-calls the randomness beacon, so its caller attaches the
-  beacon reference, which a scheduled call could not do, because an Arcron inner call
-  reaches only what the keeper's transaction makes available (measured in
-  `docs/arcron.md`).
-* `claim` pays the winner, who is the sender, and is therefore always
-  available.
+* SPLIT — enter once. Each fire takes `drip` from the pot and credits every
+  ticket the same share. Fill a billion of a token, drip ten thousand a
+  day, forget it.
+* ONE — enter once. Each fire locks `drip` for one random ticket. A later
+  `resolve` reads that round's block seed; `abandon` returns the lock if
+  nobody does in time.
+* WAVE — Discord rain. People `gm` during the interval. The next fire
+  splits `drip` across up to `wave_cap` of them (the first to check in).
+  Unclaimed shares from the last drop return to the pot at the next fire.
 
-Pull, not push, for both money and resources. A push payout to a closed
-account would fail the whole execution and stall the schedule for everyone;
-so would a beacon that happened to be unreachable.
+Anyone may create a rain: any NFT collection as the gate, ALGO or any ASA
+as the prize, any drip, any interval. Corvid Labs uses this same hub.
 """
+
+from typing import Literal
 
 from algopy import (
     ARC4Contract,
     Account,
-    Application,
     Asset,
     Box,
     Bytes,
     Global,
     GlobalState,
-    OnCompleteAction,
     Txn,
     UInt64,
     arc4,
@@ -38,294 +39,295 @@ from algopy import (
     itxn,
     op,
     subroutine,
+    urange,
 )
 from algopy.arc4 import abimethod
 
-# Rounds between opening a draw and the beacon value being readable. The
-# beacon answers for a past round only, so at the moment a draw opens the
-# winner cannot be known by anyone, including whoever opened it.
-BEACON_DELAY = 8
-# How long after `commit_round` the beacon still answers. The Algorand
-# Foundation beacon retains roughly 1,512 rounds, so a draw nobody resolves
-# inside that window can never be resolved: `must_get` panics outside it. Held
-# short of the real retention so `abandon` cannot race a `resolve` that would
-# still have worked.
-BEACON_WINDOW = 1_000
-# One box per ticket: b"t" + itob(index) -> the holder's 32-byte address.
+Label = arc4.StaticArray[arc4.Byte, Literal[32]]
+
+# Rain box: b"r" + itob(id). Ticket: b"t" + itob(id) + address.
+# Lottery index: b"n" + itob(id) + itob(index) -> address.
+RAIN_PREFIX = b"r"
 TICKET_PREFIX = b"t"
-# One box per unclaimed prize: b"a" + address -> uint64 µALGO.
-ALLOCATION_PREFIX = b"a"
+INDEX_PREFIX = b"n"
+
 # 2,500 per box + 400 per byte of name and value.
-# Ticket: 9-byte name, 32-byte value.
-TICKET_MBR = 2_500 + 400 * 41
-# Allocation: 33-byte name, 8-byte value.
-ALLOCATION_MBR = 2_500 + 400 * 41
-# What holding one asset costs an account, permanently.
+# Rain: 9-byte name, 224-byte value.
+RAIN_BOX_MBR = 2_500 + 400 * 233
+# Ticket: 41-byte name, 24-byte value.
+TICKET_MBR = 2_500 + 400 * 65
+# Lottery index: 17-byte name, 32-byte address.
+INDEX_MBR = 2_500 + 400 * 49
 ASSET_OPT_IN_MBR = 100_000
-# Every Algorand account must hold this much before it can send anything, and
-# an app account is no exception. This contract pays out by inner payment (the
-# whole pot can be won, and the whole prize claimed), so without a floor held
-# back from the pot, the last winner's payment would drop the account below
-# its minimum and revert after the draw had already booked the allocation.
-# `configure` collects this once, up front, and never credits it to the pot.
+# Held aside at bootstrap, never credited to any pot.
 APP_BASE_MBR = 100_000
 
+SPLIT = 0
+ONE = 1
+WAVE = 2
 
-class Drawn(arc4.Struct):
-    """Emitted when a draw opens, before anyone can know the outcome."""
+MIN_INTERVAL_ROUNDS = 10
+MAX_INTERVAL_ROUNDS = 1_000_000_000
+# How many rain boxes `draw` will open. Arcron spends 2 of 8 reference slots;
+# a stock keeper discovers the rest by simulation. Four leaves headroom.
+DRAW_SCAN = 4
+# ONE: lock now, resolve against the seed of this future round.
+COMMIT_DELAY = 8
+# Block seed is only readable for ~1,000 past rounds. Inside that, `resolve`;
+# past it, `abandon`.
+SEED_WINDOW = 800
 
-    draw_id: arc4.UInt64
-    commit_round: arc4.UInt64
-    prize: arc4.UInt64
+
+class RainRec(arc4.Struct):
+    """One rain, stored at `r` + itob(id)."""
+
+    creator: arc4.Address
+    gate_creator: arc4.Address
+    label: Label
+    prize_asset: arc4.UInt64
+    drip: arc4.UInt64
+    interval_rounds: arc4.UInt64
+    last_rain_round: arc4.UInt64
+    pot: arc4.UInt64
     tickets: arc4.UInt64
-
-
-class Resolved(arc4.Struct):
-    """Emitted when the beacon has spoken."""
-
     draw_id: arc4.UInt64
-    winner: arc4.Address
-    prize: arc4.UInt64
-    winning_ticket: arc4.UInt64
+    cumulative: arc4.UInt64
+    mode: arc4.UInt64
+    wave_cap: arc4.UInt64
+    wave_count: arc4.UInt64
+    last_share: arc4.UInt64
+    last_wave_id: arc4.UInt64
+    wave_unclaimed: arc4.UInt64
+    commit_round: arc4.UInt64
+    prize_locked: arc4.UInt64
+
+
+class Ticket(arc4.Struct):
+    """Per (rain, account). SPLIT uses `credit` as debt; WAVE/ONE as owed."""
+
+    credit: arc4.UInt64
+    wave_id: arc4.UInt64
+    settled_id: arc4.UInt64
+
+
+class Rained(arc4.Struct):
+    """Emitted when a rain actually falls (or a lottery locks)."""
+
+    rain_id: arc4.UInt64
+    draw_id: arc4.UInt64
+    mode: arc4.UInt64
+    paid: arc4.UInt64
+    share: arc4.UInt64
+    count: arc4.UInt64
 
 
 class Rain(ARC4Contract):
-    """Tickets in, a scheduled draw, a pulled prize."""
+    """Anyone creates a rain. Arcron fires the ones that are due."""
 
     def __init__(self) -> None:
-        self.beacon_app = GlobalState(UInt64(0))
-        self.pot = GlobalState(UInt64(0))
-        self.tickets = GlobalState(UInt64(0))
-        self.draw_id = GlobalState(UInt64(0))
-        self.draw_open = GlobalState(UInt64(0))
-        self.commit_round = GlobalState(UInt64(0))
-        self.prize = GlobalState(UInt64(0))
-        self.tickets_snapshot = GlobalState(UInt64(0))
-        self.draws_resolved = GlobalState(UInt64(0))
-        self.last_winner = GlobalState(Account())
-        # Zero address: anyone may enter. Set: only holders of an asset this
-        # account created, which is how an NFT collection gates a draw. A
-        # collection on Algorand is many assets rather than one, so the check
-        # has to be on who minted them.
-        # 0 while the creator may still replace the programs, 1 once that is
-        # given up for good. Readable before anyone stakes anything, because a
-        # promise is only worth what it can be checked against.
-        #
-        # This contract is a demo and it iterates: the unit-name gate below was
-        # added after a deployment, and without an update path that meant a new
-        # app id, an abandoned draw and an upkeep re-pointed by hand. But it
-        # also holds entrants' money, so an upgradeable version is one the
-        # creator can change the rules under. Both are true, which is why it
-        # gets the keeper's arrangement rather than one or the other: cheap to
-        # iterate now, and a one-way door to close before the money matters.
-        self.frozen = GlobalState(UInt64(0))
-        self.gate_creator = GlobalState(Account())
-        # Empty: the creator is the whole gate. Set: an asset must also carry a
-        # unit name starting with these bytes.
-        #
-        # This is not decoration. A minting account is usually somebody's
-        # working wallet, and the corvid.algo account on TestNet holds 31 live
-        # assets of which 15 belong to the collection; the rest are called
-        # things like `asdf` and `Test`. Gating on the creator alone would sell
-        # a ticket to any of them. The comparison is on bytes, so it is
-        # case-sensitive: `corvid` does not admit `Corvid`.
-        self.gate_unit_prefix = GlobalState(Bytes(b""))
-        # Zero: the pot and the prize are ALGO. Set: both are this asset.
-        self.prize_asset = GlobalState(UInt64(0))
-
-    @abimethod(allow_actions=["UpdateApplication"])
-    def update(self) -> None:
-        """Replace the programs. Creator only, and only before `freeze`.
-
-        A demo contract earns its keep by changing. Without this, adding the
-        unit-name gate meant deploying a new app, abandoning an open draw with
-        a prize in it, and re-pointing the upkeep that drives it.
-
-        It is still a real power: while `frozen` is 0 the creator can change
-        the rules under people who have already entered, and no statement of
-        intent removes that. Temporary by construction, readable on chain, and
-        given up before anyone is asked to rely on it.
-        """
-        assert Txn.sender == Global.creator_address, "Only the creator can update"
-        assert self.frozen.value == 0, "Frozen: the programs cannot be replaced"
+        self.next_rain_id = GlobalState(UInt64(0))
+        self.cursor = GlobalState(UInt64(0))
+        self.bootstrapped = GlobalState(UInt64(0))
 
     @abimethod()
-    def freeze(self) -> None:
-        """Give up the ability to update, permanently. Creator only.
-
-        One way. Nothing sets `frozen` back to 0, and the only call that could
-        add such a path is an update, which is refused from here on.
-        """
-        assert Txn.sender == Global.creator_address, "Only the creator can freeze"
-        assert self.frozen.value == 0, "Already frozen"
-        self.frozen.value = UInt64(1)
-
-    @abimethod()
-    def configure(
-        self,
-        mbr_payment: gtxn.PaymentTransaction,
-        beacon_app: UInt64,
-        gate_creator: arc4.Address,
-        gate_unit_prefix: Bytes,
-        prize_asset: UInt64,
-    ) -> None:
-        """Point at the beacon, and decide who may enter and what they win.
-
-        Creator only, once. The beacon differs per network, and LocalNet has
-        none, so tests point this at a stub implementing the same interface.
-
-        `gate_creator` zero leaves entry open to anyone. Set to a collection's
-        minting account, only holders of something it created may enter.
-
-        `gate_unit_prefix` narrows that further: empty accepts anything the
-        creator minted, set requires the asset's unit name to start with these
-        bytes. A minting account is usually somebody's working wallet with test
-        assets in it, so the creator alone is rarely the collection.
-
-        `prize_asset` zero keeps the pot and the prize in ALGO. Set, both are
-        that asset, and the app must opt in before it can be funded.
-
-        `mbr_payment` funds the app account's own base minimum balance, once,
-        up front. Every Algorand account needs it before it can send anything,
-        and this contract pays out by inner payment, so without it the last
-        winner to claim could not: the payment would drop the account below
-        its floor and revert, after `resolve` had already booked the
-        allocation. The payment is held aside here and never credited to the
-        pot, so the whole pot can still be won.
-        """
-        assert Txn.sender == Global.creator_address, "Only the creator can configure"
-        assert self.beacon_app.value == 0, "Already configured"
-        assert beacon_app > 0, "Beacon app id required"
-        # Nothing may have been staked on the old denomination. Without this,
-        # a pot filled with ALGO could be re-pointed at a worthless asset and
-        # the ALGO would have no payout path on a contract that cannot be
-        # updated or deleted.
-        assert self.pot.value == 0, "Configure before the pot is funded"
-        assert self.tickets.value == 0, "Configure before anyone enters"
-        assert (
-            mbr_payment.receiver == Global.current_application_address
-        ), "MBR payment must fund the app account"
-        assert mbr_payment.sender == Txn.sender, "MBR payment must come from the caller"
-        # A rekey hands control of the sender's account to whoever the group
-        # names, and a close sweeps it empty to whoever the group names.
-        # Both harm only the sender, so the contract loses nothing by
-        # refusing them. The exposure is a front end putting either into a
-        # group a user signs without reading it closely.
-        assert mbr_payment.rekey_to == Global.zero_address, "MBR payment must not rekey"
-        assert (
-            mbr_payment.close_remainder_to == Global.zero_address
-        ), "MBR payment must not close"
-        assert mbr_payment.amount >= APP_BASE_MBR, "MBR payment too small"
-        self.beacon_app.value = beacon_app
-        self.gate_creator.value = gate_creator.native
-        self.gate_unit_prefix.value = gate_unit_prefix
-        self.prize_asset.value = prize_asset
+    def bootstrap(self, mbr_payment: gtxn.PaymentTransaction) -> None:
+        """Fund the app account's own floor. Creator only, once."""
+        assert Txn.sender == Global.creator_address, "Only the creator can bootstrap"
+        assert self.bootstrapped.value == 0, "Already bootstrapped"
+        self._require_mbr(mbr_payment, UInt64(APP_BASE_MBR))
+        self.bootstrapped.value = UInt64(1)
 
     @abimethod()
     def opt_in_prize_asset(self, prize: Asset, mbr_payment: gtxn.PaymentTransaction) -> UInt64:
-        """Let the app hold the prize asset. Anyone may pay for it, once.
-
-        An account must opt in before it can receive an asset, and holding one
-        costs 100,000 microAlgos of minimum balance permanently. That is not
-        the app's to find, so whoever wants the draw running provides it.
-
-        This is also where the asset is checked, because it is the first call
-        that has the asset as an available resource and so the first that can
-        read its parameters. A prize whose issuer kept clawback can be emptied
-        out of the app account at any time while `pot` goes on claiming the
-        tokens are there; one whose issuer kept freeze can be made unclaimable
-        forever. Either strands the pot on a contract that cannot be updated,
-        so a draw that has not been checked cannot be funded: `deposit_asset`
-        requires the opt-in, and the opt-in requires this.
-        """
-        asset = self.prize_asset.value
-        assert asset > 0, "Prize is ALGO"
-        assert prize.id == asset, "Wrong asset"
+        """Let the hub hold an asset so rains can pay in it. Anyone, once per asset."""
+        assert self.bootstrapped.value == 1, "Not bootstrapped"
         assert prize.clawback == Global.zero_address, "Prize asset has a clawback address"
         assert prize.freeze == Global.zero_address, "Prize asset has a freeze address"
-        # Manager too: a manager can set clawback and freeze back again, so
-        # checking only the other two would be checking a promise rather than
-        # a property.
         assert prize.manager == Global.zero_address, "Prize asset has a manager address"
-        # default_frozen is fixed at creation and no address can ever change
-        # it, so an asset that starts frozen with no freeze address to thaw it
-        # can be received but never sent. The pot would take a prize in and
-        # hold it forever, which is the exact failure these checks exist for.
         assert not prize.default_frozen, "Prize asset is frozen by default"
-        assert not Global.current_application_address.is_opted_in(
-            Asset(asset)
-        ), "Already opted in"
-        assert (
-            mbr_payment.receiver == Global.current_application_address
-        ), "MBR payment must fund the app account"
-        # A rekey hands control of the sender's account to whoever the group
-        # names, and a close sweeps it empty to whoever the group names.
-        # Both harm only the sender, so the contract loses nothing by
-        # refusing them. The exposure is a front end putting either into a
-        # group a user signs without reading it closely.
-        assert mbr_payment.rekey_to == Global.zero_address, "MBR payment must not rekey"
-        assert (
-            mbr_payment.close_remainder_to == Global.zero_address
-        ), "MBR payment must not close"
-        assert mbr_payment.amount >= ASSET_OPT_IN_MBR, "MBR payment too small"
+        assert not Global.current_application_address.is_opted_in(prize), "Already opted in"
+        self._require_mbr(mbr_payment, UInt64(ASSET_OPT_IN_MBR))
         itxn.AssetTransfer(
-            xfer_asset=Asset(asset),
+            xfer_asset=prize,
             asset_receiver=Global.current_application_address,
             asset_amount=0,
             fee=0,
         ).submit()
-        return asset
+        return prize.id
 
     @abimethod()
-    def enter(self, mbr_payment: gtxn.PaymentTransaction, gate_asset: Asset) -> UInt64:
-        """Buy one ticket for the sender. Returns its index.
+    def create_rain(
+        self,
+        mbr_payment: gtxn.PaymentTransaction,
+        label: Label,
+        gate_creator: arc4.Address,
+        prize_asset: UInt64,
+        drip: UInt64,
+        interval_rounds: UInt64,
+        mode: UInt64,
+        wave_cap: UInt64,
+    ) -> UInt64:
+        """Open a rain. Returns its id. Anyone, after bootstrap.
 
-        Tickets persist across draws: buying once enters every future draw.
-        Buying twice doubles the holder's odds and costs them two MBRs, which
-        is the honest version of "one entry per person" on a chain where
-        identity is free.
+        `gate_creator` zero leaves entry open. Set to a collection's minting
+        account, only holders of something it created may enter.
+
+        `prize_asset` zero keeps the pot in ALGO. Set, the hub must already
+        be opted into that asset.
+
+        `mode` is SPLIT (0), ONE (1), or WAVE (2). WAVE needs `wave_cap` > 0;
+        the others need it 0.
         """
-        assert self.beacon_app.value > 0, "Not configured"
-        assert (
-            mbr_payment.receiver == Global.current_application_address
-        ), "MBR payment must fund the app account"
-        assert mbr_payment.rekey_to == Global.zero_address, "MBR payment must not rekey"
-        assert (
-            mbr_payment.close_remainder_to == Global.zero_address
-        ), "MBR payment must not close"
-        assert mbr_payment.amount >= TICKET_MBR, "MBR payment too small"
+        assert self.bootstrapped.value == 1, "Not bootstrapped"
+        assert drip > 0, "Drip must be positive"
+        assert interval_rounds >= MIN_INTERVAL_ROUNDS, "Interval below minimum"
+        assert interval_rounds <= MAX_INTERVAL_ROUNDS, "Interval above maximum"
+        assert mode <= WAVE, "Unknown mode"
+        if mode == WAVE:
+            assert wave_cap > 0, "Wave cap must be positive"
+        else:
+            assert wave_cap == 0, "Wave cap is for WAVE rains"
+        if prize_asset > 0:
+            assert Global.current_application_address.is_opted_in(
+                Asset(prize_asset)
+            ), "Hub is not opted into the prize asset"
+        self._require_mbr(mbr_payment, UInt64(RAIN_BOX_MBR))
 
-        # The entrant supplies the asset they are claiming membership with,
-        # and sends this transaction, so the reference is available. A
-        # scheduled call could not do this, which is why the gate lives here
-        # and not in `draw`.
-        gate = self.gate_creator.value
-        if gate != Global.zero_address:
-            assert Txn.sender.is_opted_in(gate_asset), "Hold a token from the collection"
-            assert gate_asset.balance(Txn.sender) > 0, "Hold a token from the collection"
-            assert gate_asset.creator == gate, "That asset is not from the collection"
-            # A project usually mints its prize token from the same account as
-            # its collection, which would make holding the prize a ticket.
-            assert gate_asset.id != self.prize_asset.value, "The prize is not a ticket"
-            # And the unit name, when one is required. The creator is the
-            # security property; this is what separates a collection from the
-            # rest of a working wallet.
-            prefix = self.gate_unit_prefix.value
-            if prefix.length > 0:
-                unit = gate_asset.unit_name
-                assert unit.length >= prefix.length, "Wrong collection"
-                assert op.substring(unit, 0, prefix.length) == prefix, "Wrong collection"
-
-        index = self.tickets.value
-        Box(Account, key=op.concat(TICKET_PREFIX, op.itob(index))).value = Txn.sender
-        self.tickets.value = index + 1
-        return index
+        rain_id = self.next_rain_id.value + 1
+        box = Box(RainRec, key=op.concat(RAIN_PREFIX, op.itob(rain_id)))
+        box.value = RainRec(
+            creator=arc4.Address(Txn.sender),
+            gate_creator=gate_creator,
+            label=label.copy(),
+            prize_asset=arc4.UInt64(prize_asset),
+            drip=arc4.UInt64(drip),
+            interval_rounds=arc4.UInt64(interval_rounds),
+            last_rain_round=arc4.UInt64(Global.round),
+            pot=arc4.UInt64(0),
+            tickets=arc4.UInt64(0),
+            draw_id=arc4.UInt64(0),
+            cumulative=arc4.UInt64(0),
+            mode=arc4.UInt64(mode),
+            wave_cap=arc4.UInt64(wave_cap),
+            wave_count=arc4.UInt64(0),
+            last_share=arc4.UInt64(0),
+            last_wave_id=arc4.UInt64(0),
+            wave_unclaimed=arc4.UInt64(0),
+            commit_round=arc4.UInt64(0),
+            prize_locked=arc4.UInt64(0),
+        )
+        self.next_rain_id.value = rain_id
+        return rain_id
 
     @abimethod()
-    def deposit(self, payment: gtxn.PaymentTransaction) -> UInt64:
-        """Add ALGO to the pot. Anyone, any amount. Returns the new pot."""
-        assert self.beacon_app.value > 0, "Not configured"
-        assert self.prize_asset.value == 0, "This draw pays an asset; use deposit_asset"
+    def set_rain(self, rain_id: UInt64, drip: UInt64, interval_rounds: UInt64) -> None:
+        """Tune the slice and the interval. The rain's creator, after it exists."""
+        box = Box(RainRec, key=op.concat(RAIN_PREFIX, op.itob(rain_id)))
+        assert box, "No such rain"
+        rec = box.value.copy()
+        assert rec.creator.native == Txn.sender, "Only the rain's creator can tune it"
+        assert drip > 0, "Drip must be positive"
+        assert interval_rounds >= MIN_INTERVAL_ROUNDS, "Interval below minimum"
+        assert interval_rounds <= MAX_INTERVAL_ROUNDS, "Interval above maximum"
+        box.value = rec._replace(
+            drip=arc4.UInt64(drip),
+            interval_rounds=arc4.UInt64(interval_rounds),
+            label=rec.label.copy(),
+        )
+
+    @abimethod()
+    def enter(self, mbr_payment: gtxn.PaymentTransaction, rain_id: UInt64, gate_asset: Asset) -> UInt64:
+        """Take a ticket on one rain. One per account per rain.
+
+        SPLIT/ONE: you are in every future drop. WAVE: you also check in for
+        the open drop if there is still a seat.
+        """
+        box = Box(RainRec, key=op.concat(RAIN_PREFIX, op.itob(rain_id)))
+        assert box, "No such rain"
+        rec = box.value.copy()
+        self._require_gate(rec, gate_asset)
+
+        needed = UInt64(TICKET_MBR)
+        if rec.mode.native == ONE:
+            needed = UInt64(TICKET_MBR + INDEX_MBR)
+        self._require_mbr(mbr_payment, needed)
+
+        ticket = Box(Ticket, key=self._ticket_key(rain_id, Txn.sender))
+        assert not ticket, "Already entered"
+
+        credit: UInt64 = rec.cumulative.native if rec.mode.native == SPLIT else UInt64(0)
+        wave_id = UInt64(0)
+        tickets: UInt64 = rec.tickets.native + 1
+        wave_count: UInt64 = rec.wave_count.native
+
+        if rec.mode.native == ONE:
+            index = Box(
+                arc4.Address,
+                key=op.concat(INDEX_PREFIX, op.concat(op.itob(rain_id), op.itob(rec.tickets.native))),
+            )
+            index.value = arc4.Address(Txn.sender)
+        elif rec.mode.native == WAVE:
+            if rec.wave_count.native < rec.wave_cap.native:
+                wave_id = rec.last_wave_id.native + 1
+                wave_count = rec.wave_count.native + 1
+
+        ticket.value = Ticket(
+            credit=arc4.UInt64(credit),
+            wave_id=arc4.UInt64(wave_id),
+            settled_id=arc4.UInt64(0),
+        )
+        box.value = rec._replace(
+            tickets=arc4.UInt64(tickets),
+            wave_count=arc4.UInt64(wave_count),
+            label=rec.label.copy(),
+        )
+        return tickets
+
+    @abimethod()
+    def gm(self, rain_id: UInt64, gate_asset: Asset) -> UInt64:
+        """Check in for this WAVE drop. First `wave_cap` people this interval.
+
+        Also settles any unclaimed share from the last drop you were in.
+        Returns the open wave id, or 0 if you were already in or it is full.
+        """
+        box = Box(RainRec, key=op.concat(RAIN_PREFIX, op.itob(rain_id)))
+        assert box, "No such rain"
+        rec = box.value.copy()
+        assert rec.mode.native == WAVE, "Not a WAVE rain"
+        self._require_gate(rec, gate_asset)
+
+        ticket_box = Box(Ticket, key=self._ticket_key(rain_id, Txn.sender))
+        if not ticket_box:
+            return UInt64(0)
+        ticket = ticket_box.value.copy()
+        rec, ticket = self._settle_wave(rec, ticket)
+
+        open_wave: UInt64 = rec.last_wave_id.native + 1
+        if ticket.wave_id.native == open_wave:
+            ticket_box.value = ticket.copy()
+            box.value = rec._replace(label=rec.label.copy())
+            return UInt64(0)
+        if rec.wave_count.native >= rec.wave_cap.native:
+            ticket_box.value = ticket.copy()
+            box.value = rec._replace(label=rec.label.copy())
+            return UInt64(0)
+
+        ticket = ticket._replace(wave_id=arc4.UInt64(open_wave))
+        rec = rec._replace(
+            wave_count=arc4.UInt64(rec.wave_count.native + 1),
+            label=rec.label.copy(),
+        )
+        ticket_box.value = ticket.copy()
+        box.value = rec.copy()
+        return open_wave
+
+    @abimethod()
+    def deposit(self, payment: gtxn.PaymentTransaction, rain_id: UInt64) -> UInt64:
+        """Add ALGO to a rain's pot. Anyone, any amount. Returns the new pot."""
+        box = Box(RainRec, key=op.concat(RAIN_PREFIX, op.itob(rain_id)))
+        assert box, "No such rain"
+        rec = box.value.copy()
+        assert rec.prize_asset.native == 0, "This rain pays an asset; use deposit_asset"
         assert (
             payment.receiver == Global.current_application_address
         ), "Deposit must go to the app account"
@@ -334,19 +336,18 @@ class Rain(ARC4Contract):
             payment.close_remainder_to == Global.zero_address
         ), "Deposit must not close"
         assert payment.amount > 0, "Amount must be positive"
-        self.pot.value += payment.amount
-        return self.pot.value
+        pot: UInt64 = rec.pot.native + payment.amount
+        box.value = rec._replace(pot=arc4.UInt64(pot), label=rec.label.copy())
+        return pot
 
     @abimethod()
-    def deposit_asset(self, transfer: gtxn.AssetTransferTransaction) -> UInt64:
-        """Add the prize asset to the pot. Anyone, any amount.
-
-        Refilling is deliberately open. A draw that only its creator can fund
-        stops the day they lose interest, and the whole point is a schedule
-        that does not depend on anyone in particular.
-        """
-        asset = self.prize_asset.value
-        assert asset > 0, "This draw pays ALGO; use deposit"
+    def deposit_asset(self, transfer: gtxn.AssetTransferTransaction, rain_id: UInt64) -> UInt64:
+        """Add the prize asset to a rain's pot. Anyone, any amount."""
+        box = Box(RainRec, key=op.concat(RAIN_PREFIX, op.itob(rain_id)))
+        assert box, "No such rain"
+        rec = box.value.copy()
+        asset = rec.prize_asset.native
+        assert asset > 0, "This rain pays ALGO; use deposit"
         assert (
             transfer.asset_receiver == Global.current_application_address
         ), "Deposit must go to the app account"
@@ -356,173 +357,322 @@ class Rain(ARC4Contract):
         ), "Deposit must not close the asset"
         assert transfer.xfer_asset.id == asset, "Wrong asset"
         assert transfer.asset_amount > 0, "Amount must be positive"
-        self.pot.value += transfer.asset_amount
-        return self.pot.value
+        pot: UInt64 = rec.pot.native + transfer.asset_amount
+        box.value = rec._replace(pot=arc4.UInt64(pot), label=rec.label.copy())
+        return pot
 
     @abimethod()
     def draw(self) -> UInt64:
-        """Open a draw. Zero arguments, which is what Arcron calls.
+        """Rain on up to DRAW_SCAN due rains. Zero arguments.
 
-        A no-op returning 0 when there is nothing to draw for, because a
-        scheduled call that fails would trip keeper backoff and stop the whole
-        demo. Being called on a quiet week must be uneventful, not an error.
+        A no-op returning 0 when the hub is empty or nothing is due. A
+        scheduled call that fails would trip keeper backoff; a quiet week
+        must be uneventful. Fires every due rain it opens, not just the first.
         """
-        # An asset pot is counted in token units, so the ALGO the allocation
-        # box costs cannot be taken out of it. Only an ALGO pot can pay for
-        # its own bookkeeping.
-        reserve: UInt64 = (
-            UInt64(ALLOCATION_MBR) if self.prize_asset.value == 0 else UInt64(0)
+        n = self.next_rain_id.value
+        if n == 0:
+            return UInt64(0)
+        start = self.cursor.value
+        fired = UInt64(0)
+        for step in urange(DRAW_SCAN):
+            rid = (start + step) % n + 1
+            fired += self._try_fire(rid)
+        self.cursor.value = (start + DRAW_SCAN) % n
+        return fired
+
+    @abimethod()
+    def resolve(self, rain_id: UInt64) -> UInt64:
+        """Pick the ONE winner from the committed round's block seed.
+
+        Anyone, once the committed round has passed and while its seed is
+        still readable. Credits that ticket. Returns the winning index.
+        """
+        box = Box(RainRec, key=op.concat(RAIN_PREFIX, op.itob(rain_id)))
+        assert box, "No such rain"
+        rec = box.value.copy()
+        assert rec.mode.native == ONE, "Not a ONE rain"
+        assert rec.prize_locked.native > 0, "No draw is open"
+        assert Global.round > rec.commit_round.native, "Too early"
+        assert Global.round <= rec.commit_round.native + SEED_WINDOW, "Window closed; abandon"
+
+        seed = op.Block.blk_seed(rec.commit_round.native)
+        index: UInt64 = op.extract_uint64(seed, 0) % rec.tickets.native
+        winner_box = Box(
+            arc4.Address,
+            key=op.concat(INDEX_PREFIX, op.concat(op.itob(rain_id), op.itob(index))),
         )
-        if (
-            self.draw_open.value == 1
-            or self.tickets.value == 0
-            or self.pot.value <= reserve
-        ):
+        assert winner_box, "Missing ticket index"
+        winner = winner_box.value.copy()
+        ticket_box = Box(Ticket, key=self._ticket_key(rain_id, winner.native))
+        assert ticket_box, "Missing ticket"
+        ticket = ticket_box.value.copy()
+        ticket_box.value = ticket._replace(
+            credit=arc4.UInt64(ticket.credit.native + rec.prize_locked.native),
+        )
+        box.value = rec._replace(
+            prize_locked=arc4.UInt64(0),
+            commit_round=arc4.UInt64(0),
+            label=rec.label.copy(),
+        )
+        return index
+
+    @abimethod()
+    def abandon(self, rain_id: UInt64) -> UInt64:
+        """Return a ONE lock to the pot after the seed window. Anyone."""
+        box = Box(RainRec, key=op.concat(RAIN_PREFIX, op.itob(rain_id)))
+        assert box, "No such rain"
+        rec = box.value.copy()
+        assert rec.mode.native == ONE, "Not a ONE rain"
+        assert rec.prize_locked.native > 0, "No draw is open"
+        assert Global.round > rec.commit_round.native + SEED_WINDOW, "Window still open"
+        pot: UInt64 = rec.pot.native + rec.prize_locked.native
+        box.value = rec._replace(
+            pot=arc4.UInt64(pot),
+            prize_locked=arc4.UInt64(0),
+            commit_round=arc4.UInt64(0),
+            label=rec.label.copy(),
+        )
+        return pot
+
+    @abimethod()
+    def claim(self, rain_id: UInt64, gate_asset: Asset) -> UInt64:
+        """Pull the rain credited to you on this rain.
+
+        On a gated rain you must still hold a collection token. WAVE also
+        settles the last drop you checked in for. Returns 0 when there is
+        nothing to collect, rather than failing.
+        """
+        box = Box(RainRec, key=op.concat(RAIN_PREFIX, op.itob(rain_id)))
+        if not box:
+            return UInt64(0)
+        rec = box.value.copy()
+        ticket_box = Box(Ticket, key=self._ticket_key(rain_id, Txn.sender))
+        if not ticket_box:
+            return UInt64(0)
+        ticket = ticket_box.value.copy()
+
+        if rec.mode.native == WAVE:
+            rec, ticket = self._settle_wave(rec, ticket)
+
+        owed: UInt64 = UInt64(0)
+        if rec.mode.native == SPLIT:
+            owed = rec.cumulative.native - ticket.credit.native
+            if owed > 0:
+                ticket = ticket._replace(credit=arc4.UInt64(rec.cumulative.native))
+        else:
+            owed = ticket.credit.native
+            if owed > 0:
+                ticket = ticket._replace(credit=arc4.UInt64(0))
+
+        if owed == 0:
+            ticket_box.value = ticket.copy()
+            box.value = rec._replace(label=rec.label.copy())
             return UInt64(0)
 
-        # An asset draw reserves nothing from the pot, so the ALGO for the
-        # winner's allocation box has to already be in the app account. If it
-        # is not, `resolve` would fail on minimum balance with the draw open,
-        # and a draw that cannot be resolved can never be reopened. Decline to
-        # open one instead: returning 0 is the no-op path a keeper expects,
-        # and the pot stays where it is until somebody funds the account.
-        if self.prize_asset.value != 0:
-            available = (
-                Global.current_application_address.balance
-                - Global.current_application_address.min_balance
-            )
-            if available < ALLOCATION_MBR:
+        self._require_gate(rec, gate_asset)
+        ticket_box.value = ticket.copy()
+        box.value = rec._replace(label=rec.label.copy())
+        self._pay(rec.prize_asset.native, owed)
+        return owed
+
+    @abimethod(readonly=True)
+    def allocation_of(self, rain_id: UInt64, who: arc4.Address) -> UInt64:
+        """What `who` can claim on this rain right now."""
+        box = Box(RainRec, key=op.concat(RAIN_PREFIX, op.itob(rain_id)))
+        if not box:
+            return UInt64(0)
+        rec = box.value.copy()
+        ticket_box = Box(Ticket, key=self._ticket_key(rain_id, who.native))
+        if not ticket_box:
+            return UInt64(0)
+        ticket = ticket_box.value.copy()
+        if rec.mode.native == SPLIT:
+            owed_split: UInt64 = rec.cumulative.native - ticket.credit.native
+            return owed_split
+        owed: UInt64 = ticket.credit.native
+        if rec.mode.native == WAVE:
+            if (
+                ticket.wave_id.native == rec.last_wave_id.native
+                and ticket.settled_id.native != rec.last_wave_id.native
+            ):
+                owed += rec.last_share.native
+        return owed
+
+    @abimethod(readonly=True)
+    def rain_of(self, rain_id: UInt64) -> RainRec:
+        """The rain box, for clients that would rather not decode it."""
+        box = Box(RainRec, key=op.concat(RAIN_PREFIX, op.itob(rain_id)))
+        assert box, "No such rain"
+        return box.value.copy()
+
+    @subroutine
+    def _try_fire(self, rain_id: UInt64) -> UInt64:
+        box = Box(RainRec, key=op.concat(RAIN_PREFIX, op.itob(rain_id)))
+        if not box:
+            return UInt64(0)
+        rec = box.value.copy()
+        if rec.last_rain_round.native != 0:
+            if Global.round < rec.last_rain_round.native + rec.interval_rounds.native:
                 return UInt64(0)
 
-        # Reserve the winner's allocation box, so resolving can never fail for
-        # want of minimum balance. For an ALGO pot that comes out of the pot
-        # and returns to it when the prize is claimed. For an asset pot it
-        # comes from the app account, which is also where it goes back to.
-        prize: UInt64 = self.pot.value - reserve
-        self.pot.value = UInt64(0)
-        self.prize.value = prize
-        self.tickets_snapshot.value = self.tickets.value
-        self.commit_round.value = Global.round + BEACON_DELAY
-        self.draw_id.value += 1
-        self.draw_open.value = UInt64(1)
+        mode = rec.mode.native
+        if mode == SPLIT:
+            return self._fire_split(rain_id, rec)
+        if mode == WAVE:
+            return self._fire_wave(rain_id, rec)
+        return self._fire_one(rain_id, rec)
 
+    @subroutine
+    def _fire_split(self, rain_id: UInt64, rec: RainRec) -> UInt64:
+        box = Box(RainRec, key=op.concat(RAIN_PREFIX, op.itob(rain_id)))
+        if rec.tickets.native == 0:
+            return UInt64(0)
+        share = rec.drip.native // rec.tickets.native
+        if share == 0:
+            return UInt64(0)
+        paid = share * rec.tickets.native
+        if rec.pot.native < paid:
+            return UInt64(0)
+        draw_id = rec.draw_id.native + 1
+        box.value = rec._replace(
+            pot=arc4.UInt64(rec.pot.native - paid),
+            cumulative=arc4.UInt64(rec.cumulative.native + share),
+            draw_id=arc4.UInt64(draw_id),
+            last_rain_round=arc4.UInt64(Global.round),
+            label=rec.label.copy(),
+        )
         arc4.emit(
-            Drawn(
-                draw_id=arc4.UInt64(self.draw_id.value),
-                commit_round=arc4.UInt64(self.commit_round.value),
-                prize=arc4.UInt64(prize),
-                tickets=arc4.UInt64(self.tickets_snapshot.value),
+            Rained(
+                rain_id=arc4.UInt64(rain_id),
+                draw_id=arc4.UInt64(draw_id),
+                mode=arc4.UInt64(SPLIT),
+                paid=arc4.UInt64(paid),
+                share=arc4.UInt64(share),
+                count=arc4.UInt64(rec.tickets.native),
             )
         )
-        return self.draw_id.value
+        return UInt64(1)
 
-    @abimethod()
-    def resolve(self) -> arc4.Address:
-        """Ask the beacon who won. Permissionless.
-
-        Sent by a participant rather than a keeper, because reading the beacon
-        means an inner call to it and only the sender of the outer transaction
-        can make that app available.
-        """
-        assert self.draw_open.value == 1, "No draw is open"
-        assert Global.round > self.commit_round.value, "Beacon round has not passed"
-        assert (
-            Global.round <= self.commit_round.value + BEACON_WINDOW
-        ), "Beacon window has closed; abandon the draw"
-
-        randomness = self._beacon_value(self.commit_round.value)
-        winning_ticket = op.extract_uint64(randomness, 0) % self.tickets_snapshot.value
-        winner = Box(
-            Account, key=op.concat(TICKET_PREFIX, op.itob(winning_ticket))
-        ).value
-
-        allocation = Box(UInt64, key=op.concat(ALLOCATION_PREFIX, winner.bytes))
-        if allocation:
-            allocation.value += self.prize.value
-            # This winner already has an unclaimed prize, so the reservation
-            # made at draw time is not needed. Hand it back only if there was
-            # one: an asset draw reserves nothing from the pot, and crediting
-            # an ALGO constant to a pot counted in token units would invent
-            # tokens the contract does not hold. The same conditional as
-            # `draw` and `claim`, and the one place it was missed.
-            if self.prize_asset.value == 0:
-                self.pot.value += ALLOCATION_MBR
-        else:
-            allocation.value = self.prize.value
-
-        self.last_winner.value = winner
-        self.draws_resolved.value += 1
-        self.draw_open.value = UInt64(0)
-
+    @subroutine
+    def _fire_wave(self, rain_id: UInt64, rec: RainRec) -> UInt64:
+        box = Box(RainRec, key=op.concat(RAIN_PREFIX, op.itob(rain_id)))
+        pot = rec.pot.native + rec.last_share.native * rec.wave_unclaimed.native
+        if rec.wave_count.native == 0:
+            if rec.wave_unclaimed.native > 0:
+                box.value = rec._replace(
+                    pot=arc4.UInt64(pot),
+                    wave_unclaimed=arc4.UInt64(0),
+                    last_share=arc4.UInt64(0),
+                    label=rec.label.copy(),
+                )
+            return UInt64(0)
+        share = rec.drip.native // rec.wave_count.native
+        if share == 0:
+            return UInt64(0)
+        paid = share * rec.wave_count.native
+        if pot < paid:
+            return UInt64(0)
+        draw_id = rec.draw_id.native + 1
+        wave_id = rec.last_wave_id.native + 1
+        box.value = rec._replace(
+            pot=arc4.UInt64(pot - paid),
+            draw_id=arc4.UInt64(draw_id),
+            last_rain_round=arc4.UInt64(Global.round),
+            last_share=arc4.UInt64(share),
+            last_wave_id=arc4.UInt64(wave_id),
+            wave_unclaimed=arc4.UInt64(rec.wave_count.native),
+            wave_count=arc4.UInt64(0),
+            label=rec.label.copy(),
+        )
         arc4.emit(
-            Resolved(
-                draw_id=arc4.UInt64(self.draw_id.value),
-                winner=arc4.Address(winner),
-                prize=arc4.UInt64(self.prize.value),
-                winning_ticket=arc4.UInt64(winning_ticket),
+            Rained(
+                rain_id=arc4.UInt64(rain_id),
+                draw_id=arc4.UInt64(draw_id),
+                mode=arc4.UInt64(WAVE),
+                paid=arc4.UInt64(paid),
+                share=arc4.UInt64(share),
+                count=arc4.UInt64(rec.wave_count.native),
             )
         )
-        return arc4.Address(winner)
+        return UInt64(1)
 
-    @abimethod()
-    def claim(self, gate_asset: Asset) -> UInt64:
-        """Pull your prize. Only the winner can, and only for themselves.
+    @subroutine
+    def _fire_one(self, rain_id: UInt64, rec: RainRec) -> UInt64:
+        box = Box(RainRec, key=op.concat(RAIN_PREFIX, op.itob(rain_id)))
+        if rec.prize_locked.native > 0:
+            return UInt64(0)
+        if rec.tickets.native == 0:
+            return UInt64(0)
+        if rec.pot.native < rec.drip.native:
+            return UInt64(0)
+        draw_id = rec.draw_id.native + 1
+        box.value = rec._replace(
+            pot=arc4.UInt64(rec.pot.native - rec.drip.native),
+            prize_locked=arc4.UInt64(rec.drip.native),
+            commit_round=arc4.UInt64(Global.round + COMMIT_DELAY),
+            draw_id=arc4.UInt64(draw_id),
+            last_rain_round=arc4.UInt64(Global.round),
+            label=rec.label.copy(),
+        )
+        arc4.emit(
+            Rained(
+                rain_id=arc4.UInt64(rain_id),
+                draw_id=arc4.UInt64(draw_id),
+                mode=arc4.UInt64(ONE),
+                paid=arc4.UInt64(rec.drip.native),
+                share=arc4.UInt64(rec.drip.native),
+                count=arc4.UInt64(rec.tickets.native),
+            )
+        )
+        return UInt64(1)
 
-        `gate_asset` is the token you are still claiming membership with. It
-        is ignored on an ungated draw, and it is checked the same way `enter`
-        checks it on a gated one, because the gate has to be asked twice.
+    @subroutine
+    def _settle_wave(self, rec: RainRec, ticket: Ticket) -> tuple[RainRec, Ticket]:
+        if ticket.wave_id.native != rec.last_wave_id.native:
+            return rec.copy(), ticket.copy()
+        if ticket.settled_id.native == rec.last_wave_id.native:
+            return rec.copy(), ticket.copy()
+        unclaimed = rec.wave_unclaimed.native
+        if unclaimed > 0:
+            unclaimed -= 1
+        return rec._replace(
+            wave_unclaimed=arc4.UInt64(unclaimed),
+            label=rec.label.copy(),
+        ), ticket._replace(
+            credit=arc4.UInt64(ticket.credit.native + rec.last_share.native),
+            settled_id=rec.last_wave_id,
+        )
 
-        Be precise about what this buys, because an earlier version of this
-        docstring was not. A ticket is a box that never expires, and `enter`
-        only ever asked whether the buyer held a collection token at that
-        moment, so one token walked through ten accounts buys ten permanent
-        tickets. Asking again here does **not** neutralise that walk: the
-        walker holds all ten accounts and the token, so when a walked ticket
-        wins they move the token into that account and this check passes. The
-        walk costs one extra transfer, not nine dead tickets.
-
-        What it does close is narrower and still worth having: an account that
-        no longer holds a collection token at all cannot collect. That covers
-        the ticket sold or given away, and the holder who left the community
-        between the draw and the claim.
-
-        Closing the walk itself needs one ticket per asset id, which is new box
-        semantics and therefore a new app id, since this contract has no update
-        path. That is a deliberate deferral, not an oversight.
-
-        The cost is a real rule and should be stated as one: **you must still
-        hold a token from the collection when you collect.** A winner who sells
-        between the draw and the claim forfeits, and the contract cannot tell
-        that apart from someone selling to dodge the gate.
-        """
-        allocation = Box(UInt64, key=op.concat(ALLOCATION_PREFIX, Txn.sender.bytes))
-        assert allocation, "Nothing allocated to you"
-
-        gate = self.gate_creator.value
+    @subroutine
+    def _require_gate(self, rec: RainRec, gate_asset: Asset) -> None:
+        gate = rec.gate_creator.native
         if gate != Global.zero_address:
             assert Txn.sender.is_opted_in(gate_asset), "Hold a token from the collection"
             assert gate_asset.balance(Txn.sender) > 0, "Hold a token from the collection"
             assert gate_asset.creator == gate, "That asset is not from the collection"
-            # `enter` refuses the prize as a ticket, and `claim` has to refuse
-            # it for the same reason: a project usually mints its prize from
-            # the same account as its collection, so a past winner holding
-            # nothing but prize tokens would otherwise satisfy this gate while
-            # holding no collection token at all.
-            assert gate_asset.id != self.prize_asset.value, "The prize is not a ticket"
+            assert gate_asset.id != rec.prize_asset.native, "The prize is not a ticket"
 
-        amount = allocation.value
-        del allocation.value
-        asset = self.prize_asset.value
+    @subroutine
+    def _require_mbr(self, payment: gtxn.PaymentTransaction, minimum: UInt64) -> None:
+        assert (
+            payment.receiver == Global.current_application_address
+        ), "MBR payment must fund the app account"
+        assert payment.sender == Txn.sender, "MBR payment must come from the caller"
+        assert payment.rekey_to == Global.zero_address, "MBR payment must not rekey"
+        assert (
+            payment.close_remainder_to == Global.zero_address
+        ), "MBR payment must not close"
+        assert payment.amount >= minimum, "MBR payment too small"
+
+    @subroutine
+    def _ticket_key(self, rain_id: UInt64, who: Account) -> Bytes:
+        return op.concat(TICKET_PREFIX, op.concat(op.itob(rain_id), who.bytes))
+
+    @subroutine
+    def _pay(self, asset: UInt64, amount: UInt64) -> None:
         if asset == 0:
-            # Deleting the box releases its minimum balance back to the pot,
-            # where it pays for the next winner's allocation.
-            self.pot.value += ALLOCATION_MBR
             itxn.Payment(receiver=Txn.sender, amount=amount, fee=0).submit()
         else:
-            # The freed minimum balance is ALGO and the pot is not, so it
-            # cannot be recycled into it. It stays in the app account, which is
-            # where the next allocation box's minimum balance comes from
-            # anyway, so nothing is stranded.
             assert Txn.sender.is_opted_in(Asset(asset)), "Opt in to the prize asset first"
             itxn.AssetTransfer(
                 xfer_asset=Asset(asset),
@@ -530,56 +680,3 @@ class Rain(ARC4Contract):
                 asset_amount=amount,
                 fee=0,
             ).submit()
-        return amount
-
-    @abimethod()
-    def abandon(self) -> UInt64:
-        """Reopen a draw whose beacon window closed. Permissionless.
-
-        Without this a single unresolved draw is fatal. `draw` refuses to open
-        another while one is open, `resolve` cannot answer once the beacon has
-        forgotten the round, and the contract cannot be updated or deleted, so
-        the whole pot would sit locked in `prize` forever.
-
-        Nobody can profit by calling it. The prize returns to the pot intact
-        and the next draw commits to a fresh round, so abandoning is only ever
-        available once the outcome has become unknowable to everyone.
-        """
-        assert self.draw_open.value == 1, "No draw is open"
-        assert (
-            Global.round > self.commit_round.value + BEACON_WINDOW
-        ), "The beacon can still answer; resolve it"
-        # `draw` took a reservation out of an ALGO pot for a winner's
-        # allocation box. No box was created, so it comes back with the prize;
-        # otherwise every abandoned draw would strand one box's worth.
-        reserve: UInt64 = (
-            UInt64(ALLOCATION_MBR) if self.prize_asset.value == 0 else UInt64(0)
-        )
-        returned: UInt64 = self.prize.value + reserve
-        self.pot.value += returned
-        self.prize.value = UInt64(0)
-        self.draw_open.value = UInt64(0)
-        return returned
-
-    @abimethod(readonly=True)
-    def allocation_of(self, who: arc4.Address) -> UInt64:
-        """What `who` can claim right now."""
-        allocation = Box(UInt64, key=op.concat(ALLOCATION_PREFIX, who.bytes))
-        return allocation.value if allocation else UInt64(0)
-
-    @subroutine
-    def _beacon_value(self, round_number: UInt64) -> Bytes:
-        """The VRF output for a past round, straight from the beacon."""
-        result = itxn.ApplicationCall(
-            fee=0,
-            app_id=Application(self.beacon_app.value),
-            app_args=(
-                arc4.arc4_signature("must_get(uint64,byte[])byte[]"),
-                op.itob(round_number),
-                # An empty user_data argument, ARC-4 encoded.
-                op.bzero(2),
-            ),
-            on_completion=OnCompleteAction.NoOp,
-        ).submit()
-        # ARC-4 return: 4-byte log prefix, then a byte[] as uint16 length + data.
-        return op.extract(result.last_log, 6, 32)

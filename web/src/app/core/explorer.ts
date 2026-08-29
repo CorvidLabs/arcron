@@ -15,7 +15,7 @@
 
 import { NETWORKS, type NetworkKey } from '@corvidlabs/arcron/networks';
 
-export type ExplorerKind = 'app' | 'account' | 'transaction';
+export type ExplorerKind = 'app' | 'account' | 'transaction' | 'asset';
 
 export function explorerUrl(
   network: NetworkKey,
@@ -30,5 +30,7 @@ export function explorerUrl(
       return config.explorerAccount?.(value) ?? null;
     case 'transaction':
       return config.explorerTx?.(value) ?? null;
+    case 'asset':
+      return config.explorerAsset?.(Number(value)) ?? null;
   }
 }

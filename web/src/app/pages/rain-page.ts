@@ -4,353 +4,396 @@ import {
   computed,
   DestroyRef,
   inject,
+  signal,
 } from '@angular/core';
 import { RouterLink } from '@angular/router';
 
 import { ExplorerLink } from '../components/explorer-link';
-import { ArcronService } from '../core/arcron.service';
 import { RainService } from '../core/rain.service';
-import { WalletService } from '../core/wallet.service';
+import { ArcronService } from '../core/arcron.service';
+import { dueLabel, rounds, roundsAsTime } from '@corvidlabs/arcron/format';
 import {
-  algos,
-  roundsAsTime,
-  shortAddress,
-} from '@corvidlabs/arcron/format';
-import { roundsUntilDue } from '@corvidlabs/arcron/upkeep';
-import { ZERO_ADDRESS, abandonOpen, resolveOpen } from '@corvidlabs/arcron/rain';
+  modeLabel,
+  rainStanding,
+  roundsUntilRain,
+  type RainRec,
+  type RainStanding,
+} from '@corvidlabs/arcron/rain';
+import type { YouStatus } from '../core/rain.service';
+
+interface Row {
+  readonly rain: RainRec;
+  readonly id: string;
+  readonly name: string;
+  readonly who: string;
+  readonly cadence: string;
+  readonly cadenceDetail: string | null;
+  readonly drip: string;
+  readonly pot: string;
+  readonly prizeName: string | null;
+  readonly prizeId: string | null;
+  readonly inCount: string;
+  readonly next: string;
+  readonly state: RainStanding;
+  readonly gate: string;
+  readonly gateName: string;
+  readonly gateId: string | null;
+  readonly you: string;
+  readonly youKind: YouStatus;
+  readonly thumb: string | null;
+}
 
 /**
- * The holder-facing Rain draw.
- *
- * This is not the keeper console. Tickets persist across draws, so the page
- * says "enter once" and never "come back tomorrow". Arcron still fires
- * `draw`; this page is enter, deposit, resolve, claim.
+ * The hub, in the same chrome as the registry: a table of rains and a
+ * primary action that leaves the list. Opening one is `/rain/new`, the way
+ * registering an upkeep is `/register`. Arcron fires `draw`; this page lists
+ * and links into `/rain/:id`.
  */
 @Component({
   selector: 'arcron-rain-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [ExplorerLink, RouterLink],
   template: `
-    <header class="intro">
-      <p class="eyebrow">TestNet · Corvid holders</p>
-      <h2>Rain</h2>
-      <p class="lede">
-        Hold a Corvid NFT. Enter once. You stay in every draw after that —
-        daily, weekly, whatever cadence the keeper is on. You do not check in
-        again. Arcron calls the contract on a schedule; a winner pulls the pot.
-      </p>
-    </header>
-
     @if (!rain.available()) {
-      <section class="panel" aria-labelledby="missing-heading">
-        <h3 id="missing-heading">Rain lives on TestNet</h3>
-        <p>
-          This draw is the TestNet dogfood, app
-          <span class="mono">770029154</span>. Switch the console to TestNet
-          to enter it.
-        </p>
-        <p>
-          <a routerLink="/">Back to the keeper registry</a>
-        </p>
+      <section class="panel">
+        <header>
+          <h2>Rain lives on TestNet</h2>
+          <p class="subtitle">Switch the console to TestNet to see the hub.</p>
+        </header>
+        <p><a routerLink="/">Back to the registry</a></p>
       </section>
     } @else {
-      @if (rain.status() === 'loading' && rain.state() === null) {
-        <p class="quiet">Reading the draw…</p>
-      }
+      <div class="head">
+        <p class="lede">Anyone can open a pot on this hub.</p>
+        <a class="primary" routerLink="/rain/new">Open a rain</a>
+      </div>
 
-      @if (rain.state(); as state) {
-        <dl class="tiles">
-          <div class="tile">
-            <dt class="eyebrow">Pot</dt>
-            <dd class="mono">{{ algos(state.pot) }}</dd>
-            <dd class="hint">Anyone can add to it</dd>
-          </div>
-          <div class="tile">
-            <dt class="eyebrow">Tickets</dt>
-            <dd class="mono">{{ state.tickets.toString() }}</dd>
-            <dd class="hint">One ticket is every future draw</dd>
-          </div>
-          <div class="tile" [class.live]="drawOpen()">
-            <dt class="eyebrow">Draw</dt>
-            <dd class="mono">{{ drawLabel() }}</dd>
-            <dd class="hint">{{ cadenceHint() }}</dd>
-          </div>
-          <div class="tile">
-            <dt class="eyebrow">Last winner</dt>
-            <dd class="mono">{{ winnerLabel() }}</dd>
-            <dd class="hint">{{ state.drawsResolved.toString() }} resolved</dd>
-          </div>
-        </dl>
-
-        <section class="panel" aria-labelledby="you-heading">
-          <h3 id="you-heading">You</h3>
-
-          @if (!wallet.connected()) {
-            <p>
-              Connect a wallet that holds a TestNet Corvid NFT (unit name starting
-              <span class="mono">corvid</span>, minted by
-              <span class="mono">{{ short(state.gateCreator) }}</span>).
-            </p>
-            <p class="hint">Reads work without a wallet. Entering, depositing and claiming need a signature.</p>
-          } @else if (rain.qualifying().length === 0) {
-            <p>
-              This account does not hold a qualifying Corvid NFT, so it cannot
-              enter or claim. The gate is the collection minter, not a single
-              asset id.
-            </p>
-          } @else if (rain.entered()) {
-            <p class="yes">
-              You are in. {{ rain.ticketCount() }}
-              ticket{{ rain.ticketCount() === 1 ? '' : 's' }}. You stay in every
-              draw; you do not enter again for a daily or weekly fire.
-            </p>
-            <p class="hint">
-              Holding
-              @for (nft of rain.qualifying(); track nft.id; let last = $last) {
-                <span class="mono">{{ nft.unitName || nft.name }}</span>{{ last ? '.' : ', ' }}
+      <section class="panel">
+        <header class="spread">
+          <div>
+            <h2>Rains</h2>
+            <p class="subtitle">
+              One box per rain, read from the hub
+              @if (rain.deployment(); as deployment) {
+                <arcron-explorer-link kind="app" [value]="deployment.appId.toString()" />.
               }
-              Sell the NFT before a claim and a win is forfeit.
-            </p>
-          } @else {
-            <p>
-              You hold
-              @for (nft of rain.qualifying(); track nft.id; let last = $last) {
-                <span class="mono">{{ nft.unitName || nft.name }}</span>{{ last ? '.' : ', ' }}
-              }
-              Enter once. The ticket is a box that never expires.
-            </p>
-            <button
-              type="button"
-              class="primary"
-              [disabled]="!rain.canEnter() || rain.busy() !== null"
-              (click)="rain.enter()"
-            >
-              {{ rain.busy() === 'enter' ? 'Entering…' : 'Enter this draw, once' }}
-            </button>
-            <p class="hint">Costs {{ rain.ticketCost() }} of box minimum balance, paid to the app.</p>
-          }
-
-          @if (hasPrize()) {
-            <p class="yes">This account has {{ algos(rain.allocation()) }} waiting to be claimed.</p>
-            <button
-              type="button"
-              class="primary"
-              [disabled]="!rain.canClaim()"
-              (click)="rain.claim()"
-            >
-              {{ rain.busy() === 'claim' ? 'Claiming…' : 'Claim' }}
-            </button>
-            <p class="hint">You must still hold a Corvid NFT in this account to collect.</p>
-          }
-        </section>
-
-        <section class="panel" aria-labelledby="pot-heading">
-          <h3 id="pot-heading">Fund the pot</h3>
-          <p>Anyone can deposit TestNet ALGO. The next keeper call that finds tickets and a pot opens a draw.</p>
-          <form class="row" (submit)="deposit($event)">
-            <label>
-              <span class="eyebrow">ALGO</span>
-              <input
-                name="algo"
-                type="number"
-                min="0.1"
-                step="0.1"
-                value="1"
-                inputmode="decimal"
-                [disabled]="!wallet.connected() || rain.busy() !== null"
-              />
-            </label>
-            <button
-              type="submit"
-              class="ghost"
-              [disabled]="!wallet.connected() || rain.busy() !== null"
-            >
-              {{ rain.busy() === 'deposit' ? 'Sending…' : 'Deposit' }}
-            </button>
-          </form>
-        </section>
-
-        @if (state.drawOpen) {
-          <section class="panel" aria-labelledby="open-heading">
-            <h3 id="open-heading">A draw is open</h3>
-            <p>
-              Prize {{ algos(state.prize) }} · committed at round
-              <span class="mono">{{ state.commitRound.toString() }}</span>
-              · {{ state.ticketsSnapshot.toString() }} tickets in the snapshot.
-            </p>
-            @if (canResolveNow()) {
-              <button type="button" class="primary" [disabled]="rain.busy() !== null" (click)="rain.resolve()">
-                {{ rain.busy() === 'resolve' ? 'Asking the beacon…' : 'Resolve this draw' }}
-              </button>
-              <p class="hint">Permissionless. Needs the Foundation randomness beacon as a foreign app.</p>
-            } @else if (canAbandonNow()) {
-              <p>The beacon window has closed. Resolve will never work; abandon puts the prize back.</p>
-              <button type="button" class="ghost" [disabled]="rain.busy() !== null" (click)="rain.abandon()">
-                {{ rain.busy() === 'abandon' ? 'Abandoning…' : 'Abandon and return the pot' }}
-              </button>
-            } @else {
-              <p class="hint">Waiting for the committed round to pass so the beacon can answer.</p>
-            }
-          </section>
-        }
-
-        <section class="panel quiet-panel" aria-labelledby="how-heading">
-          <h3 id="how-heading">How this is wired</h3>
-          <ol>
-            <li>You enter once. The ticket lives in a box on the rain app.</li>
-            <li>
-              Arcron upkeep
+              Upkeep
               <a routerLink="/u/{{ rain.deployment()?.upkeepId }}">{{ rain.deployment()?.upkeepId }}</a>
-              calls <span class="mono">draw()uint64</span> on a schedule. Missed runs skip ahead.
-            </li>
-            <li>A keeper you do not control executes that upkeep. That is the clock.</li>
-            <li>Someone resolves against the beacon, then the winner claims.</li>
-          </ol>
-          <p>
-            Rain app
-            <arcron-explorer-link kind="app" [value]="state.appId.toString()" />.
-            Keeper
-            <a routerLink="/">console</a>.
+              fires it. A Corvid NFT rain checks a TestNet Nevermore token, not the CORVID ASA.
+            </p>
+          </div>
+          <p class="eyebrow">{{ summary() }}</p>
+        </header>
+
+        @if (rain.status() !== 'ready' && rows().length === 0) {
+          <p class="empty">Reading the hub…</p>
+        } @else if (rows().length === 0) {
+          <p class="empty">
+            No rains on this hub yet.
+            <a routerLink="/rain/new">Open one</a> to start a drip.
           </p>
-        </section>
-      }
-
-      @if (rain.error(); as message) {
-        <p class="banner" role="alert">{{ message }}</p>
-      }
-
-      @if (rain.activity().length > 0) {
-        <ol class="log">
-          @for (entry of rain.activity(); track entry.txId) {
-            <li>
-              {{ entry.message }}
-              <span class="hint">round {{ entry.round.toString() }}</span>
-            </li>
-          }
-        </ol>
-      }
+        } @else {
+          <div class="scroll">
+            <table>
+              <caption class="sr-only">Open rains</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Rain</th>
+                  <th scope="col">Pays</th>
+                  <th scope="col">Who</th>
+                  <th scope="col">Cadence</th>
+                  <th scope="col">Next</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (row of rows(); track row.rain.id) {
+                  <tr [class]="row.state">
+                    <th scope="row">
+                      <a class="row-link" [routerLink]="['/rain', row.id]" [attr.aria-label]="row.name"></a>
+                      <span class="identity">
+                        @if (row.gate !== 'Open') {
+                          @if (row.thumb; as src) {
+                            <img
+                              class="thumb"
+                              [src]="src"
+                              [alt]="row.gateName"
+                              (error)="markBroken(src)"
+                            />
+                          } @else {
+                            <span class="thumb empty" aria-hidden="true"></span>
+                          }
+                        }
+                        <span class="copy">
+                          <span class="title">{{ row.name }}</span>
+                          <span class="meta">
+                            <span class="mono">#{{ row.id }}</span>
+                            <span class="dot" aria-hidden="true">·</span>
+                            <span class="mono">{{ row.inCount }} in</span>
+                            <span class="dot" aria-hidden="true">·</span>
+                            <span [class]="'you ' + row.youKind">{{ row.you }}</span>
+                          </span>
+                          <span class="gate">
+                            {{ row.gate }}
+                            @if (row.gateId) {
+                              · ASA <span class="mono">{{ row.gateId }}</span>
+                            }
+                          </span>
+                        </span>
+                      </span>
+                    </th>
+                    <td data-label="Pays">
+                      <span class="mono">{{ row.drip }}</span>
+                      <span class="sub">each fire</span>
+                      <span class="mono pot">{{ row.pot }}</span>
+                      <span class="sub">in the pot</span>
+                      @if (row.prizeId) {
+                        <span class="sub prize">
+                          {{ row.prizeName ?? 'ASA' }} · <span class="mono">{{ row.prizeId }}</span>
+                        </span>
+                      }
+                    </td>
+                    <td data-label="Who">{{ row.who }}</td>
+                    <td data-label="Cadence">
+                      <span class="mono">{{ row.cadence }}</span>
+                      @if (row.cadenceDetail) {
+                        <span class="sub">{{ row.cadenceDetail }}</span>
+                      }
+                    </td>
+                    <td data-label="Next">
+                      <span class="chip" [class]="'chip ' + row.state">{{ row.state }}</span>
+                      <span class="sub" [class.now]="row.state === 'due'">{{ row.next }}</span>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+          <p class="legend">
+            <span class="chip due">due</span> a fire can run
+            <span class="chip scheduled">scheduled</span> waiting for its round
+            <span class="chip waiting">waiting</span> no tickets or an empty pot
+          </p>
+          <p class="note">
+            Entering always takes a little ALGO for the ticket box, even when the pot is an ASA.
+            To claim an ASA rain, the connected account has to opt in to that asset first — open
+            the rain for the id and the opt-in.
+          </p>
+        }
+      </section>
     }
   `,
   styles: `
-    :host { display: grid; gap: 1.5rem; align-content: start; max-width: 42rem; }
-    .intro { display: grid; gap: 0.45rem; }
-    h2 { margin: 0; font-size: 2rem; }
-    h3 { margin: 0 0 0.4rem; font-size: 1.05rem; }
-    .lede { margin: 0; color: var(--text-faint); max-width: 36rem; }
-    .tiles {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr));
-      gap: 0.7rem;
-      margin: 0;
-    }
-    .tile {
-      margin: 0;
-      padding: 0.75rem 0.85rem;
-      border: 1px solid var(--hairline);
-      border-radius: 3px;
-      background: var(--ink-06);
-    }
-    .tile.live { border-color: var(--sheen); }
-    .tile dt { margin: 0; }
-    .tile dd { margin: 0; }
-    .tile .mono { font-size: 1.15rem; font-weight: 600; }
-    .panel {
-      display: grid;
-      gap: 0.65rem;
-      padding: 1rem 1.05rem;
-      border: 1px solid var(--hairline);
-      border-radius: 3px;
-    }
-    .quiet-panel { color: var(--text-faint); }
-    .quiet-panel ol { margin: 0; padding-left: 1.2rem; display: grid; gap: 0.35rem; }
-    .yes { margin: 0; }
-    .hint { margin: 0; color: var(--text-faint); font-size: 0.85rem; }
-    .quiet { margin: 0; color: var(--text-faint); }
-    .row {
+    :host { display: grid; gap: 1.75rem; align-content: start; }
+    .head {
       display: flex;
       flex-wrap: wrap;
-      gap: 0.6rem;
-      align-items: end;
+      gap: 0.6rem 1rem;
+      align-items: center;
+      justify-content: space-between;
     }
-    .row label { display: grid; gap: 0.25rem; }
-    .row input { width: 8rem; }
-    .banner {
+    .lede { margin: 0; color: var(--text-faint); }
+    .panel { display: grid; gap: 1.1rem; }
+    header h2 { margin: 0; font-size: 1.1rem; }
+    .spread { display: flex; flex-wrap: wrap; gap: 0.5rem 1.5rem; align-items: baseline; justify-content: space-between; }
+    .subtitle { margin: 0.2rem 0 0; color: var(--text-faint); font-size: 0.85rem; max-width: 62ch; }
+    .empty {
       margin: 0;
-      padding: 0.75rem 1rem;
-      border: 1px solid var(--danger);
+      padding: 1.75rem;
+      border: 1px dashed var(--hairline);
       border-radius: 3px;
-      color: var(--danger);
-      font-size: 0.88rem;
+      color: var(--text-faint);
+      text-align: center;
     }
-    .log { margin: 0; padding-left: 1.2rem; display: grid; gap: 0.3rem; font-size: 0.9rem; }
-    .primary:disabled, .ghost:disabled { opacity: 0.55; }
+    .scroll { overflow-x: auto; border: 1px solid var(--hairline); border-radius: 3px; }
+    table { width: 100%; font-size: 0.88rem; }
+    /* A table-row is not a containing block for an absolutely positioned
+       overlay, so the last rain ate every click. Rows are a grid so each
+       overlay stays inside its rain. */
+    table, thead, tbody { display: block; }
+    thead tr,
+    tbody tr {
+      display: grid;
+      grid-template-columns: minmax(17rem, 2.4fr) minmax(8.5rem, 1.15fr) minmax(6.5rem, 0.8fr) minmax(7rem, 0.85fr) minmax(7.5rem, 0.9fr);
+      width: 100%;
+    }
+    th, td { padding: 0.95rem 1rem; text-align: left; border-bottom: 1px solid var(--hairline); vertical-align: top; min-width: 0; }
+    thead th {
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      font-weight: 500;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-faint);
+      background: var(--ink-06);
+    }
+    tbody tr:last-child td, tbody tr:last-child th { border-bottom: none; }
+    tbody tr { position: relative; isolation: isolate; }
+    tbody tr:hover { background: color-mix(in srgb, var(--sheen) 6%, transparent); }
+    tbody th { font-weight: 500; }
+    a.row-link {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      color: inherit;
+      text-decoration: none;
+    }
+    .identity {
+      display: flex;
+      align-items: center;
+      gap: 0.85rem;
+      min-width: 0;
+    }
+    .thumb {
+      width: 3.5rem;
+      height: 3.5rem;
+      border-radius: 3px;
+      object-fit: cover;
+      background: var(--ink-06);
+      border: 1px solid var(--hairline);
+      flex: 0 0 auto;
+      image-rendering: pixelated;
+    }
+    .thumb.empty { display: block; }
+    .copy { display: grid; gap: 0.18rem; min-width: 0; }
+    .title { font-weight: 700; font-size: 1rem; letter-spacing: -0.015em; }
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.3rem 0.35rem;
+      color: var(--text-faint);
+      font-size: 0.76rem;
+    }
+    .dot { color: var(--text-faint); }
+    .you.yes, .you.in { color: var(--sheen); }
+    .you.no { color: var(--text-faint); }
+    .gate { color: var(--text-faint); font-size: 0.76rem; }
+    .sub { display: block; color: var(--text-faint); font-size: 0.76rem; }
+    .sub.now { color: var(--sheen); font-weight: 500; }
+    .pot { display: block; margin-top: 0.35rem; }
+    .prize { margin-top: 0.35rem; }
+    tr.due { background: color-mix(in srgb, var(--sheen) 8%, transparent); }
+    tr.due th[scope='row'] { box-shadow: inset 3px 0 0 var(--success); }
+    tr.waiting th[scope='row'] { box-shadow: inset 3px 0 0 var(--hairline); }
+    .legend { margin: 0; color: var(--text-faint); font-size: 0.76rem; display: flex; flex-wrap: wrap; gap: 0.4rem 0.75rem; align-items: center; }
+    .note { margin: 0; color: var(--text-faint); font-size: 0.78rem; max-width: 72ch; }
+    .chip {
+      display: inline-block;
+      font-family: var(--font-mono);
+      font-size: 0.66rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 0.18rem 0.5rem;
+      border-radius: 2px;
+      white-space: nowrap;
+    }
+    .chip.due { background: color-mix(in srgb, var(--sheen) 18%, transparent); color: var(--sheen-strong); }
+    .chip.scheduled { border: 1px solid var(--hairline); }
+    .chip.waiting { border: 1px solid var(--hairline); color: var(--text-faint); }
+
+    @media (max-width: 1219px) {
+      table, thead, tbody, th, td { display: block; }
+      /* The rule above is two type selectors, and a media query adds no
+         specificity of its own, so a bare tr here loses to it and the row
+         stays a grid whose five tracks need ~744px. Match it to beat it. */
+      thead tr, tbody tr { display: block; }
+      thead { display: none; }
+      tbody {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr));
+        gap: 0.85rem;
+        align-items: start;
+      }
+      tbody tr {
+        border: 1px solid var(--hairline);
+        border-left: 3px solid transparent;
+        border-radius: 4px;
+        padding: 0.85rem;
+        background: var(--surface);
+      }
+      tbody tr.due { border-left-color: var(--success); }
+      tbody tr.waiting { border-left-color: var(--hairline); }
+      tbody th[scope='row'] { box-shadow: none; padding: 0 0 0.7rem; }
+      tbody td {
+        display: grid;
+        grid-template-columns: 6.5rem minmax(0, 1fr);
+        column-gap: 0.75rem;
+        border: 0;
+        padding: 0.35rem 0;
+      }
+      tbody td[data-label]::before {
+        content: attr(data-label);
+        color: var(--text-faint);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        font-size: 0.72rem;
+        white-space: nowrap;
+      }
+      .scroll { border: 0; }
+    }
   `,
 })
 export class RainPage {
   protected readonly rain = inject(RainService);
-  protected readonly wallet = inject(WalletService);
-  protected readonly arcron = inject(ArcronService);
+  private readonly arcron = inject(ArcronService);
+  private readonly broken = signal<ReadonlySet<string>>(new Set());
 
   constructor() {
     const stop = this.rain.watch();
     inject(DestroyRef).onDestroy(stop);
   }
 
-  protected readonly algos = algos;
-
-  protected short(address: string): string {
-    return address === ZERO_ADDRESS ? 'ungated' : shortAddress(address);
+  protected markBroken(src: string): void {
+    this.broken.update((current) => new Set([...current, src]));
   }
 
-  protected drawOpen(): boolean {
-    return this.rain.state()?.drawOpen === true;
-  }
-
-  protected drawLabel(): string {
-    const state = this.rain.state();
-    if (state === null) return '—';
-    if (state.drawOpen) return 'Open';
-    if (state.tickets === 0n || state.pot === 0n) return 'Waiting';
-    return 'Armed';
-  }
-
-  protected cadenceHint(): string {
-    const upkeep = this.rain.upkeep();
+  protected readonly rows = computed(() => {
     const round = this.arcron.round();
-    if (upkeep === null) return 'Keeper upkeep not read yet';
-    const due = roundsUntilDue(upkeep, round);
-    const time = roundsAsTime(due < 0n ? 0n : due, this.arcron.secondsPerRound());
-    if (due <= 0n) return 'Keeper draw is due';
-    return time === null ? `Next draw in ${due.toString()} rounds` : `Next draw in ${time}`;
+    const pace = this.arcron.secondsPerRound();
+    return this.rain.rains().map((item) => this.toRow(item, round, pace));
+  });
+
+  protected summary(): string {
+    const count = this.rain.rains().length;
+    if (this.rain.status() !== 'ready') return 'reading';
+    return `${count} rain${count === 1 ? '' : 's'}`;
   }
 
-  protected winnerLabel(): string {
-    const winner = this.rain.state()?.lastWinner;
-    if (winner === undefined || winner === ZERO_ADDRESS) return 'None yet';
-    return shortAddress(winner);
+  private toRow(rain: RainRec, round: bigint, pace: number | null): Row {
+    const state = rainStanding(rain, round);
+    const until = roundsUntilRain(rain, round);
+    const inCount =
+      rain.mode.toString() === '2'
+        ? `${rain.waveCount.toString()} / ${rain.waveCap.toString()}`
+        : rain.tickets.toString();
+    const time = roundsAsTime(rain.intervalRounds, pace);
+    const waiting = state === 'waiting' ? this.rain.waitingHint(rain) : null;
+    return {
+      rain,
+      id: rain.id.toString(),
+      name: rain.label || `Rain #${rain.id.toString()}`,
+      who: modeLabel(rain.mode),
+      cadence: time === null ? rounds(rain.intervalRounds) : `~${time}`,
+      cadenceDetail: time === null ? null : rounds(rain.intervalRounds),
+      drip: this.rain.prizeText(rain.drip, rain),
+      pot: this.rain.prizeText(rain.pot, rain),
+      prizeName: this.rain.prizeName(rain),
+      prizeId: this.rain.prizeId(rain),
+      inCount,
+      next: waiting ?? dueLabel(until, pace),
+      state,
+      gate: this.rain.gateLabel(rain),
+      gateName: this.rain.gateName(rain),
+      gateId: this.rain.gateAssetId(rain),
+      you: this.rain.youLabel(rain),
+      youKind: this.rain.youStatus(rain),
+      thumb: this.thumbFor(rain),
+    };
   }
 
-  protected hasPrize(): boolean {
-    return this.rain.allocation() > 0n;
-  }
-
-  protected canResolveNow(): boolean {
-    const state = this.rain.state();
-    if (state === null) return false;
-    return resolveOpen(state, this.arcron.round());
-  }
-
-  protected canAbandonNow(): boolean {
-    const state = this.rain.state();
-    if (state === null) return false;
-    return abandonOpen(state, this.arcron.round());
-  }
-
-  protected deposit(event: Event): void {
-    event.preventDefault();
-    const form = event.target as HTMLFormElement;
-    const field = form.elements.namedItem('algo');
-    const value = field instanceof HTMLInputElement ? Number(field.value) : 0;
-    void this.rain.depositAlgo(value);
+  private thumbFor(rain: RainRec): string | null {
+    const src = this.rain.thumbnail(rain);
+    if (src === null) return null;
+    return this.broken().has(src) ? null : src;
   }
 }

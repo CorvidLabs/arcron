@@ -62,6 +62,7 @@ export const SCENARIOS: readonly Scenario[] = [
   { name: 'upkeep', path: `/u/7?app=${CANONICAL_APP_ID}` },
   { name: 'register', path: `/register?app=${CANONICAL_APP_ID}` },
   { name: 'rain', path: `/rain?app=${CANONICAL_APP_ID}` },
+  { name: 'rain-detail', path: `/rain/1?app=${CANONICAL_APP_ID}` },
   { name: 'quarantined', path: `/?app=${FOREIGN_APP_ID}` },
 ];
 

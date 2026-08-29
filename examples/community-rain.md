@@ -1,141 +1,46 @@
-# A draw for your holders
+# A rain for your holders
 
-Gate entry to an NFT collection, pay the prize in your own token, and let a
-keeper fire it on whatever cadence you like. Nobody runs it, and anybody can
-keep it funded.
+Gate entry to an NFT collection, pay in your own token, fill the pot, forget
+it. Nobody runs it, and anybody can keep it funded.
 
 `smart_contracts/rain/` with `scripts/community_rain_demo.py`.
 `fledge run smoke-community-rain`.
 
-## What a project configures
+## What a project creates
+
+One hub, many rains. After `bootstrap` and (for an ASA prize)
+`opt_in_prize_asset`:
 
 ```python
-rain.send.configure(
-    args=ConfigureArgs(
-        beacon_app=<the randomness beacon for your network>,
+rain.send.create_rain(
+    args=CreateRainArgs(
+        mbr_payment=...,
+        label=b"holders".ljust(32, b"\x00"),
         gate_creator=<the account that minted your collection>,
         prize_asset=<your token, or 0 for ALGO>,
+        drip=<how much leaves the pot each fire>,
+        interval_rounds=<daily is 30_857>,
+        mode=0,          # SPLIT: everyone who entered
+        wave_cap=0,
     )
 )
 ```
 
-Then register an upkeep against `draw()uint64` at whatever interval you want.
-Rounds are about 2.8 seconds, so:
-
-| Cadence | Interval |
-|---|---|
-| hourly | 1,286 rounds |
-| daily | 30,857 rounds |
-| weekly | 216,000 rounds |
-| monthly | 925,714 rounds |
-
-Arcron's ceiling is 1,000,000,000 rounds, so a yearly draw is expressible too.
-A draw is best registered with `SKIP_AHEAD`: nobody wants yesterday's draw run
-today, and catching up a missed month would open several draws in a row.
+Then register one upkeep against `draw()uint64`. WAVE (`mode=2`, `wave_cap=10`)
+is Discord rain: the first ten to check in this interval split the drip. ONE
+(`mode=1`) is one random ticket.
 
 ## The gate is on the creator, not the asset
 
-The part worth understanding. **A collection on Algorand is not one asset.** It
-is many assets that share a minting account, so "do you hold my collection"
-cannot be answered by comparing an asset id.
+A collection on Algorand is not one asset. It is many assets that share a
+minting account. The entrant names an asset they hold; the contract checks
+who made it.
 
-So the entrant names an asset they hold, and the contract checks who made it:
-
-```python
-assert Txn.sender.is_opted_in(gate_asset), "Hold a token from the collection"
-assert gate_asset.balance(Txn.sender) > 0, "Hold a token from the collection"
-assert gate_asset.creator == gate, "That asset is not from the collection"
-```
-
-Holding any one of the collection qualifies. Holding somebody else's NFT does
-not, which the demo proves by minting an impostor from a second account and
-watching the entry fail.
-
-This works because the entrant sends the transaction and supplies the asset
-reference themselves. A scheduled call could not: it reaches only what the
-keeper's transaction made available, and nothing tells a keeper which asset a
-given entrant would name. That is why the gate lives on `enter` and the
-scheduled call stays pure accounting.
+Holding any one of the collection qualifies. Holding somebody else's NFT
+does not.
 
 ## Anyone can keep it running
 
-Two costs, and neither falls on the creator by design.
-
-Holding your token costs the app 100,000 microAlgos of minimum balance,
+Holding your token costs the hub 100,000 microAlgos of minimum balance,
 permanently. `opt_in_prize_asset` takes that from whoever calls it. Refilling
-the pot is open to anyone through `deposit_asset`.
-
-A draw only its creator can fund stops the day they lose interest, and a
-schedule that depends on one person is the thing this is supposed to replace.
-In the demo, a passer-by pays for the opt-in **and** fills the pot.
-
-## Trusting a rain deployment means trusting its beacon
-
-`configure` takes a `beacon_app` and checks only that it is not zero. It runs
-once, and rain has no update path, so whatever is set there decides every draw
-this instance will ever run.
-
-A deployer who points it at a contract they control picks every winner and
-takes every pot, and nothing about the draw would look wrong from the outside.
-A mistyped id is the other failure: resolution can never complete, and a pot
-that has already been deposited has no exit except a winner's claim that will
-never happen.
-
-**So check it before you enter a draw somebody else deployed.** The beacon id
-is in the app's global state:
-
-```sh
-poetry run python -m scripts.rain_demo --network testnet --show <app id>
-```
-
-Compare it against the Algorand Foundation's randomness beacon for that
-network. If a draw's organiser cannot tell you which beacon it uses, that is
-the answer.
-
-This is not a flaw in the contract so much as a property of deploying one per
-community: the fairness of the draw rests on one value that only the deployer
-chose. Say which beacon yours uses, where people running it will see it.
-
-## The one asymmetry worth knowing
-
-An ALGO pot pays for its own bookkeeping. Each draw reserves one allocation
-box out of the pot and returns it on claim.
-
-An asset pot cannot: it is counted in token units, and the box costs ALGO. So
-for an asset draw the box comes from the app account and the freed minimum
-balance stays there rather than being recycled into a pot it cannot be added
-to. Nothing is stranded, but **the app account needs enough ALGO to cover one
-allocation box per unclaimed prize**.
-
-This was a real bug before it was a design note: `draw` originally took the
-reserve out of the pot unconditionally, which for a 5,000 token pot meant
-comparing 5,000 tokens against 18,900 microAlgos and quietly declining to draw.
-
-## What it does not do
-
-No per-holder entry limit. Buying two tickets doubles your odds and costs two
-box minimum balances, which is the honest version of "one entry per person" on
-a chain where making another account is free.
-
-Gating on a collection narrows that, but not to "one entry per NFT you hold",
-which is what this said before and what the contract never enforced. A ticket
-is a box that never expires, and the gate is only asked when the ticket is
-bought, so **one NFT walked through ten accounts buys ten permanent tickets**.
-
-The gate is asked a second time at `claim`: the winner has to still hold a
-token from the collection. Be clear about what that does and does not buy.
-
-It does **not** stop the walk. Whoever walked the NFT through ten accounts
-holds all ten and the NFT, so when one of those tickets wins they move the
-NFT into that account and collect. The walk costs them one extra transfer.
-
-What it closes is the account that no longer holds a collection token at all:
-a ticket sold on, given away, or left behind by someone who has left the
-community. Closing the walk itself needs one ticket per asset id, which is new
-box semantics and so a new app id, since rain has no update path. That is a
-decision taken deliberately, not an oversight.
-
-The rule that follows is worth stating to your community up front, because it
-is a real one: **you must still hold a token from the collection when you
-collect.** Someone who wins and then sells before claiming forfeits, and the
-contract cannot tell that from someone who sold to dodge the gate.
+the pot is open through `deposit` / `deposit_asset`.

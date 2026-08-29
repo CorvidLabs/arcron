@@ -116,6 +116,8 @@ export class ExplorerLink {
         return `Account ${this.value()} ${where}`;
       case 'transaction':
         return `Transaction ${this.value()} ${where}`;
+      case 'asset':
+        return `Asset ${this.value()} ${where}`;
     }
   });
 }

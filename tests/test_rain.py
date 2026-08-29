@@ -1,32 +1,34 @@
-"""The rain draw's accounting.
+"""The rain hub's accounting.
 
-The scheduled call is the one that must never misbehave: Arcron calls `draw`
-on every cadence whether or not there is anything to draw for, so the quiet
-path has to be a clean no-op rather than a failure that would trip keeper
-backoff. Most of what follows is about that, and about the money adding up.
-
-Resolution needs an inner call to a beacon, which mocks record without
-executing. That half lives in scripts/rain_demo.py on LocalNet.
+Anyone creates a rain. Arcron calls `draw` on a cadence; too soon, an empty
+hub, or a pot that cannot cover a share is a clean no-op, never a failure
+that would trip keeper backoff.
 """
 
 from collections.abc import Iterator
 
 import pytest
-from algopy import Asset, UInt64, arc4, op, Bytes
+from algopy import Asset, Global, UInt64, arc4
 from algopy_testing import AlgopyTestContext, algopy_testing_context
 
 from smart_contracts.rain.contract import (
-    ALLOCATION_PREFIX,
     APP_BASE_MBR,
-    ASSET_OPT_IN_MBR,
-    BEACON_WINDOW,
-    ALLOCATION_MBR,
-    BEACON_DELAY,
+    COMMIT_DELAY,
+    INDEX_MBR,
+    MIN_INTERVAL_ROUNDS,
+    ONE,
+    RAIN_BOX_MBR,
+    SEED_WINDOW,
+    SPLIT,
     TICKET_MBR,
+    TICKET_PREFIX,
+    WAVE,
+    Label,
     Rain,
 )
 
-BEACON_APP = 600_011_887
+DRIP = 100_000
+INTERVAL = 10
 START_ROUND = 1_000
 
 
@@ -36,240 +38,290 @@ def context() -> Iterator[AlgopyTestContext]:
         yield ctx
 
 
-def _configure(
-    context: AlgopyTestContext,
-    contract: Rain,
-    beacon_app,
-    gate_creator,
-    prize_asset,
-    *,
-    gate_unit_prefix: Bytes | None = None,
-    amount: int = APP_BASE_MBR,
-    payment_fields: dict | None = None,
-) -> None:
+def _label(text: str = "rain") -> Label:
+    raw = text.encode()[:32].ljust(32, b"\x00")
+    return Label.from_bytes(raw)
+
+
+def _bootstrap(context: AlgopyTestContext, contract: Rain, amount: int = APP_BASE_MBR) -> None:
     payment = context.any.txn.payment(
         receiver=context.ledger.get_app(contract).address,
         amount=amount,
-        **(payment_fields or {}),
     )
-    contract.configure(
+    contract.bootstrap(payment)
+
+
+def _create(
+    context: AlgopyTestContext,
+    contract: Rain,
+    *,
+    label: str = "rain",
+    gate_creator=None,
+    prize_asset: int = 0,
+    drip: int = DRIP,
+    interval: int = INTERVAL,
+    mode: int = SPLIT,
+    wave_cap: int = 0,
+    amount: int = RAIN_BOX_MBR,
+) -> int:
+    payment = context.any.txn.payment(
+        receiver=context.ledger.get_app(contract).address,
+        amount=amount,
+    )
+    gate = gate_creator if gate_creator is not None else arc4.Address()
+    return contract.create_rain(
         payment,
-        beacon_app,
-        gate_creator,
-        gate_unit_prefix if gate_unit_prefix is not None else Bytes(b""),
-        prize_asset,
+        _label(label),
+        gate,
+        UInt64(prize_asset),
+        UInt64(drip),
+        UInt64(interval),
+        UInt64(mode),
+        UInt64(wave_cap),
     )
-
-
-@pytest.fixture()
-def rain(context: AlgopyTestContext) -> Rain:
-    """Open entry, ALGO prize: the original shape, still the default."""
-    context.ledger.patch_global_fields(round=UInt64(START_ROUND))
-    contract = Rain()
-    _configure(context, contract, UInt64(BEACON_APP), arc4.Address(), UInt64(0))
-    return contract
 
 
 def _enter(
     context: AlgopyTestContext,
     rain: Rain,
-    amount: int = TICKET_MBR,
+    rain_id: int,
+    *,
+    amount: int | None = None,
     gate_asset=None,
-    payment_fields: dict | None = None,
+    sender=None,
+    mode: int = SPLIT,
 ) -> int:
+    if amount is None:
+        amount = TICKET_MBR + INDEX_MBR if mode == ONE else TICKET_MBR
+    fields = {}
+    if sender is not None:
+        fields["sender"] = sender
     payment = context.any.txn.payment(
         receiver=context.ledger.get_app(rain).address,
         amount=amount,
-        **(payment_fields or {}),
+        **fields,
     )
-    return rain.enter(payment, gate_asset if gate_asset is not None else Asset(0))
+    asset = gate_asset if gate_asset is not None else Asset(0)
+    if sender is None:
+        return rain.enter(payment, rain_id, asset)
+    with context.txn.create_group(active_txn_overrides={"sender": sender}):
+        return rain.enter(payment, rain_id, asset)
 
 
-def _deposit(
-    context: AlgopyTestContext, rain: Rain, amount: int, *, payment_fields: dict | None = None
-) -> int:
+def _deposit(context: AlgopyTestContext, rain: Rain, rain_id: int, amount: int) -> int:
     payment = context.any.txn.payment(
         receiver=context.ledger.get_app(rain).address,
         amount=amount,
-        **(payment_fields or {}),
     )
-    return rain.deposit(payment)
+    return rain.deposit(payment, rain_id)
 
 
-# --- configuration ----------------------------------------------------
+def _advance(context: AlgopyTestContext, rounds: int) -> None:
+    context.ledger.patch_global_fields(round=UInt64(int(Global.round) + rounds))
 
-def test_configure_is_once_and_creator_only(context: AlgopyTestContext) -> None:
+
+def _opt_hub_into(context: AlgopyTestContext, hub: Rain, asset) -> None:
+    context.ledger.update_asset_holdings(
+        asset, context.ledger.get_app(hub).address, balance=0
+    )
+
+
+@pytest.fixture()
+def hub(context: AlgopyTestContext) -> Rain:
+    context.ledger.patch_global_fields(round=UInt64(START_ROUND))
+    contract = Rain()
+    _bootstrap(context, contract)
+    return contract
+
+
+@pytest.fixture()
+def split(context: AlgopyTestContext, hub: Rain) -> tuple[Rain, int]:
+    rain_id = _create(context, hub, label="split")
+    return hub, rain_id
+
+
+def test_bootstrap_is_once_and_creator_only(context: AlgopyTestContext) -> None:
+    context.ledger.patch_global_fields(round=UInt64(START_ROUND))
     rain = Rain()
-    _configure(context, rain, UInt64(BEACON_APP), arc4.Address(), UInt64(0))
-    assert rain.beacon_app.value == BEACON_APP
-    with pytest.raises(AssertionError, match="Already configured"):
-        _configure(context, rain, UInt64(123), arc4.Address(), UInt64(0))
+    _bootstrap(context, rain)
+    assert rain.bootstrapped.value == 1
+    with pytest.raises(AssertionError, match="Already bootstrapped"):
+        _bootstrap(context, rain)
 
 
-def test_configure_refuses_an_mbr_payment_below_the_app_floor(
+def test_bootstrap_refuses_an_mbr_payment_below_the_app_floor(
     context: AlgopyTestContext,
 ) -> None:
-    """The whole point of #105: a floor that is never in place cannot be
-    reserved, and the last winner would find that out only at claim time."""
     contract = Rain()
     payment = context.any.txn.payment(
         receiver=context.ledger.get_app(contract).address, amount=APP_BASE_MBR - 1
     )
     with pytest.raises(AssertionError, match="MBR payment too small"):
-        contract.configure(
-            payment, UInt64(BEACON_APP), arc4.Address(), Bytes(b""), UInt64(0)
-        )
+        contract.bootstrap(payment)
 
 
-def test_configure_accepts_an_mbr_payment_that_covers_the_floor(
-    context: AlgopyTestContext,
-) -> None:
+def test_create_needs_bootstrap(context: AlgopyTestContext) -> None:
+    context.ledger.patch_global_fields(round=UInt64(START_ROUND))
     contract = Rain()
-    payment = context.any.txn.payment(
-        receiver=context.ledger.get_app(contract).address, amount=APP_BASE_MBR
-    )
-    contract.configure(
-        payment, UInt64(BEACON_APP), arc4.Address(), Bytes(b""), UInt64(0)
-    )
-    assert contract.beacon_app.value == BEACON_APP
+    with pytest.raises(AssertionError, match="Not bootstrapped"):
+        _create(context, contract)
 
 
-# --- tickets and pot --------------------------------------------------
-
-def test_tickets_are_numbered_from_zero(context: AlgopyTestContext, rain: Rain) -> None:
-    assert _enter(context, rain) == 0
-    assert _enter(context, rain) == 1
-    assert rain.tickets.value == 2
+def test_create_refuses_a_zero_drip(context: AlgopyTestContext, hub: Rain) -> None:
+    with pytest.raises(AssertionError, match="Drip must be positive"):
+        _create(context, hub, drip=0)
 
 
-def test_a_ticket_must_pay_its_own_box(context: AlgopyTestContext, rain: Rain) -> None:
+def test_create_assigns_sequential_ids(context: AlgopyTestContext, hub: Rain) -> None:
+    assert _create(context, hub, label="one") == 1
+    assert _create(context, hub, label="two") == 2
+    assert hub.next_rain_id.value == 2
+
+
+def test_a_ticket_must_pay_its_own_box(context: AlgopyTestContext, split: tuple[Rain, int]) -> None:
+    rain, rain_id = split
     with pytest.raises(AssertionError, match="MBR payment too small"):
-        _enter(context, rain, amount=TICKET_MBR - 1)
+        _enter(context, rain, rain_id, amount=TICKET_MBR - 1)
 
 
-def test_deposits_accumulate(context: AlgopyTestContext, rain: Rain) -> None:
-    assert _deposit(context, rain, 500_000) == 500_000
-    assert _deposit(context, rain, 250_000) == 750_000
+def test_one_ticket_per_account(context: AlgopyTestContext, split: tuple[Rain, int]) -> None:
+    rain, rain_id = split
+    assert _enter(context, rain, rain_id) == 1
+    with pytest.raises(AssertionError, match="Already entered"):
+        _enter(context, rain, rain_id)
+    rec = rain.rain_of(rain_id)
+    assert rec.tickets.native == 1
 
 
-def test_a_deposit_must_be_positive(context: AlgopyTestContext, rain: Rain) -> None:
+def test_deposits_accumulate(context: AlgopyTestContext, split: tuple[Rain, int]) -> None:
+    rain, rain_id = split
+    assert _deposit(context, rain, rain_id, 500_000) == 500_000
+    assert _deposit(context, rain, rain_id, 250_000) == 750_000
+
+
+def test_a_deposit_must_be_positive(context: AlgopyTestContext, split: tuple[Rain, int]) -> None:
+    rain, rain_id = split
     with pytest.raises(AssertionError, match="Amount must be positive"):
-        _deposit(context, rain, 0)
+        _deposit(context, rain, rain_id, 0)
 
 
-# --- the scheduled call, which must never blow up ---------------------
-
-def test_draw_is_a_no_op_with_no_tickets(context: AlgopyTestContext, rain: Rain) -> None:
-    _deposit(context, rain, 1_000_000)
+def test_draw_is_a_no_op_with_no_tickets(context: AlgopyTestContext, split: tuple[Rain, int]) -> None:
+    rain, rain_id = split
+    _deposit(context, rain, rain_id, 1_000_000)
+    _advance(context, INTERVAL)
     assert rain.draw() == 0
-    assert rain.draw_open.value == 0
-    assert rain.pot.value == 1_000_000  # untouched
+    assert rain.rain_of(rain_id).pot.native == 1_000_000
 
 
-def test_draw_is_a_no_op_with_an_empty_pot(context: AlgopyTestContext, rain: Rain) -> None:
-    _enter(context, rain)
+def test_draw_is_a_no_op_with_an_empty_pot(context: AlgopyTestContext, split: tuple[Rain, int]) -> None:
+    rain, rain_id = split
+    _enter(context, rain, rain_id)
+    _advance(context, INTERVAL)
     assert rain.draw() == 0
-    assert rain.draw_open.value == 0
 
 
-def test_draw_is_a_no_op_when_the_pot_only_covers_the_reservation(
-    context: AlgopyTestContext, rain: Rain
+def test_draw_is_a_no_op_when_the_pot_cannot_cover_a_share_each(
+    context: AlgopyTestContext, split: tuple[Rain, int]
 ) -> None:
-    # A prize of zero is not a prize; the reservation alone must not trigger one.
-    _enter(context, rain)
-    _deposit(context, rain, ALLOCATION_MBR)
+    rain, rain_id = split
+    _enter(context, rain, rain_id)
+    _deposit(context, rain, rain_id, DRIP - 1)
+    _advance(context, INTERVAL)
     assert rain.draw() == 0
+    assert rain.rain_of(rain_id).pot.native == DRIP - 1
 
 
-def test_draw_is_a_no_op_while_one_is_already_open(
-    context: AlgopyTestContext, rain: Rain
+def test_draw_splits_the_drip_across_every_ticket(
+    context: AlgopyTestContext, split: tuple[Rain, int]
 ) -> None:
-    _enter(context, rain)
-    _deposit(context, rain, 1_000_000)
-    assert rain.draw() == 1
-    # Arcron will call again on the next cadence, before anyone resolved.
-    assert rain.draw() == 0
-    assert rain.draw_id.value == 1
-
-
-def test_draw_locks_the_prize_and_a_future_beacon_round(
-    context: AlgopyTestContext, rain: Rain
-) -> None:
-    _enter(context, rain)
-    _enter(context, rain)
-    _deposit(context, rain, 1_000_000)
+    rain, rain_id = split
+    _enter(context, rain, rain_id)
+    other = context.any.account()
+    _enter(context, rain, rain_id, sender=other)
+    _deposit(context, rain, rain_id, 1_000_000)
+    _advance(context, INTERVAL)
 
     assert rain.draw() == 1
-    assert rain.draw_open.value == 1
-    assert rain.prize.value == 1_000_000 - ALLOCATION_MBR
-    assert rain.pot.value == 0
-    assert rain.tickets_snapshot.value == 2
-    # The deciding round is in the future, so nobody can know the winner yet.
-    assert rain.commit_round.value == START_ROUND + BEACON_DELAY
+    rec = rain.rain_of(rain_id)
+    assert rec.cumulative.native == 50_000
+    assert rec.pot.native == 900_000
+    assert rain.allocation_of(rain_id, arc4.Address(other)) == 50_000
 
 
-def test_a_later_deposit_belongs_to_the_next_draw(
-    context: AlgopyTestContext, rain: Rain
+def test_draw_leaves_the_division_remainder_in_the_pot(
+    context: AlgopyTestContext, split: tuple[Rain, int]
 ) -> None:
-    _enter(context, rain)
-    _deposit(context, rain, 1_000_000)
+    rain, rain_id = split
+    rain.set_rain(rain_id, UInt64(100_000), UInt64(INTERVAL))
+    for _ in range(3):
+        _enter(context, rain, rain_id, sender=context.any.account())
+    _deposit(context, rain, rain_id, 1_000_000)
+    _advance(context, INTERVAL)
     rain.draw()
-    assert _deposit(context, rain, 400_000) == 400_000
-    assert rain.prize.value == 1_000_000 - ALLOCATION_MBR
+    rec = rain.rain_of(rain_id)
+    assert rec.cumulative.native == 33_333
+    assert rec.pot.native == 1_000_000 - 99_999
 
 
-# --- resolution guards (the beacon call itself needs a real AVM) -------
-
-def test_resolve_needs_an_open_draw(context: AlgopyTestContext, rain: Rain) -> None:
-    with pytest.raises(AssertionError, match="No draw is open"):
-        rain.resolve()
-
-
-def test_resolve_waits_for_the_beacon_round(context: AlgopyTestContext, rain: Rain) -> None:
-    _enter(context, rain)
-    _deposit(context, rain, 1_000_000)
-    rain.draw()
-    for round_number in (START_ROUND, START_ROUND + BEACON_DELAY):
-        context.ledger.patch_global_fields(round=UInt64(round_number))
-        with pytest.raises(AssertionError, match="Beacon round has not passed"):
-            rain.resolve()
-
-
-# --- claiming ---------------------------------------------------------
-
-def test_claiming_nothing_is_rejected(context: AlgopyTestContext, rain: Rain) -> None:
-    with pytest.raises(AssertionError, match="Nothing allocated to you"):
-        # Ungated draw, so the gate asset is not consulted.
-        rain.claim(context.any.asset())
-
-
-def test_allocation_of_an_unknown_account_is_zero(
-    context: AlgopyTestContext, rain: Rain
+def test_draw_no_ops_until_the_interval_has_passed(
+    context: AlgopyTestContext, split: tuple[Rain, int]
 ) -> None:
-    stranger = context.any.account()
-    assert rain.allocation_of(arc4.Address(stranger)) == 0
+    rain, rain_id = split
+    _enter(context, rain, rain_id)
+    _deposit(context, rain, rain_id, 1_000_000)
+    assert rain.draw() == 0
+    _advance(context, INTERVAL - 1)
+    assert rain.draw() == 0
+    _advance(context, 1)
+    assert rain.draw() == 1
+    rec = rain.rain_of(rain_id)
+    assert rec.cumulative.native == DRIP
+    assert rec.pot.native == 1_000_000 - DRIP
 
 
-def test_reservation_covers_the_allocation_box(context: AlgopyTestContext, rain: Rain) -> None:
-    """The prize is the pot less exactly one allocation box.
-
-    Resolving must never fail for want of minimum balance, so the box the
-    winner's allocation will live in is paid for when the draw opens.
-    """
-    _enter(context, rain)
-    _deposit(context, rain, 1_000_000)
+def test_a_late_arriver_does_not_collect_past_rain(
+    context: AlgopyTestContext, split: tuple[Rain, int]
+) -> None:
+    rain, rain_id = split
+    _enter(context, rain, rain_id)
+    _deposit(context, rain, rain_id, 1_000_000)
+    _advance(context, INTERVAL)
     rain.draw()
-    assert rain.prize.value + ALLOCATION_MBR == 1_000_000
-    # And that reservation is exactly what a box of that shape costs.
-    assert ALLOCATION_MBR == 2_500 + 400 * (1 + 32 + 8)
+    late = context.any.account()
+    _enter(context, rain, rain_id, sender=late)
+    assert rain.allocation_of(rain_id, arc4.Address(late)) == 0
 
 
-# --- gating and asset prizes ------------------------------------------
+def test_claiming_with_no_ticket_is_zero(context: AlgopyTestContext, split: tuple[Rain, int]) -> None:
+    rain, rain_id = split
+    assert rain.claim(rain_id, Asset(0)) == 0
+
+
+def test_claim_pays_the_owed_share_and_clears_it(
+    context: AlgopyTestContext, split: tuple[Rain, int]
+) -> None:
+    rain, rain_id = split
+    holder = context.default_sender
+    _enter(context, rain, rain_id)
+    _deposit(context, rain, rain_id, 1_000_000)
+    _advance(context, INTERVAL)
+    rain.draw()
+    assert rain.allocation_of(rain_id, arc4.Address(holder)) == DRIP
+    assert rain.claim(rain_id, Asset(0)) == DRIP
+    assert rain.allocation_of(rain_id, arc4.Address(holder)) == 0
+    assert rain.claim(rain_id, Asset(0)) == 0
+
+
+def test_open_entry_ignores_whatever_asset_is_supplied(
+    context: AlgopyTestContext, split: tuple[Rain, int]
+) -> None:
+    rain, rain_id = split
+    unrelated = context.any.asset()
+    assert _enter(context, rain, rain_id, gate_asset=unrelated) == 1
 
 
 @pytest.fixture()
 def collection(context: AlgopyTestContext):
-    """A minting account, and two assets it created."""
     creator = context.any.account()
     return creator, [
         context.any.asset(creator=creator),
@@ -277,289 +329,76 @@ def collection(context: AlgopyTestContext):
     ]
 
 
-@pytest.fixture()
-def gated(context: AlgopyTestContext, collection) -> Rain:
-    creator, _ = collection
-    context.ledger.patch_global_fields(round=UInt64(START_ROUND))
-    contract = Rain()
-    _configure(context, contract, UInt64(BEACON_APP), arc4.Address(creator), UInt64(0))
-    return contract
-
-
-def test_only_the_creator_can_freeze(context: AlgopyTestContext, rain: Rain) -> None:
-    stranger = context.any.account()
-    with context.txn.create_group(active_txn_overrides={"sender": stranger}):
-        with pytest.raises(AssertionError, match="Only the creator can freeze"):
-            rain.freeze()
-
-
-def test_freezing_is_one_way(context: AlgopyTestContext, rain: Rain) -> None:
-    rain.freeze()
-    assert rain.frozen.value == 1
-    with pytest.raises(AssertionError, match="Already frozen"):
-        rain.freeze()
-
-
-def test_a_frozen_contract_refuses_an_update(
-    context: AlgopyTestContext, rain: Rain
-) -> None:
-    # The whole point. After freeze the only call that could restore an update
-    # path is an update, and this is it being refused.
-    rain.freeze()
-    with pytest.raises(AssertionError, match="Frozen: the programs cannot be replaced"):
-        rain.update()
-
-
-def test_only_the_creator_can_update(context: AlgopyTestContext, rain: Rain) -> None:
-    stranger = context.any.account()
-    with context.txn.create_group(active_txn_overrides={"sender": stranger}):
-        with pytest.raises(AssertionError, match="Only the creator can update"):
-            rain.update()
-
-
-def test_an_unfrozen_contract_allows_the_creator_to_update(
-    context: AlgopyTestContext, rain: Rain
-) -> None:
-    # Deliberately not asserting anything about what an update does: this
-    # contract's `update` only decides *whether*, and the AVM replaces the
-    # programs. Asserting it does not raise is the whole contract here.
-    rain.update()
-    assert rain.frozen.value == 0
-
-
-@pytest.fixture()
-def prefixed(context: AlgopyTestContext, collection) -> Rain:
-    """A draw gated on the creator *and* a unit-name prefix."""
-    creator, _ = collection
-    context.ledger.patch_global_fields(round=UInt64(START_ROUND))
-    contract = Rain()
-    _configure(
-        context,
-        contract,
-        UInt64(BEACON_APP),
-        arc4.Address(creator),
-        UInt64(0),
-        gate_unit_prefix=Bytes(b"corvid"),
-    )
-    return contract
-
-
-def _holder(context: AlgopyTestContext, asset):
-    """Somebody opted in and holding one, which is what the gate asks first."""
-    return context.any.account(opted_asset_balances={asset.id: UInt64(1)})
-
-
-def _enter_holding(context: AlgopyTestContext, rain: Rain, asset) -> int:
-    holder = _holder(context, asset)
-    with context.txn.create_group(active_txn_overrides={"sender": holder}):
-        return _enter(context, rain, gate_asset=asset)
-
-
-def test_the_prefix_admits_a_collection_token(
-    context: AlgopyTestContext, prefixed: Rain, collection
-) -> None:
-    creator, _ = collection
-    token = context.any.asset(creator=creator, unit_name=Bytes(b"corvid7"))
-    assert _enter_holding(context, prefixed, token) == 0
-
-
-def test_the_prefix_refuses_a_token_the_same_account_minted(
-    context: AlgopyTestContext, prefixed: Rain, collection
-) -> None:
-    """The reason this exists at all.
-
-    A minting account is somebody's working wallet. The corvid.algo account on
-    TestNet holds 31 live assets, of which 15 are the collection and the rest
-    are called things like `asdf` and `Test`. Gating on the creator alone sells
-    a ticket to any of them.
-    """
-    creator, _ = collection
-    junk = context.any.asset(creator=creator, unit_name=Bytes(b"asdf"))
-    with pytest.raises(AssertionError, match="Wrong collection"):
-        _enter_holding(context, prefixed, junk)
-
-
-def test_the_prefix_is_a_prefix_and_not_a_substring(
-    context: AlgopyTestContext, prefixed: Rain, collection
-) -> None:
-    # substring(unit, 0, len) anchors at the start; a unit name that merely
-    # contains the word must not pass.
-    creator, _ = collection
-    contains = context.any.asset(creator=creator, unit_name=Bytes(b"notcorvid"))
-    with pytest.raises(AssertionError, match="Wrong collection"):
-        _enter_holding(context, prefixed, contains)
-
-
-def test_the_prefix_comparison_is_case_sensitive(
-    context: AlgopyTestContext, prefixed: Rain, collection
-) -> None:
-    # The AVM compares bytes. Recorded rather than fixed: the collection this
-    # was built for has one asset called `Corvid` and fourteen called `corvid`,
-    # and lowercasing on chain costs opcodes for a single outlier.
-    creator, _ = collection
-    capital = context.any.asset(creator=creator, unit_name=Bytes(b"Corvid"))
-    with pytest.raises(AssertionError, match="Wrong collection"):
-        _enter_holding(context, prefixed, capital)
-
-
-def test_a_unit_name_shorter_than_the_prefix_is_refused_not_crashed(
-    context: AlgopyTestContext, prefixed: Rain, collection
-) -> None:
-    # substring past the end panics rather than failing an assert, so the
-    # length is checked first and the caller gets the same message as any
-    # other wrong token.
-    creator, _ = collection
-    short = context.any.asset(creator=creator, unit_name=Bytes(b"cor"))
-    with pytest.raises(AssertionError, match="Wrong collection"):
-        _enter_holding(context, prefixed, short)
-
-
-def test_an_empty_prefix_leaves_the_creator_gate_alone(
-    context: AlgopyTestContext, gated: Rain, collection
-) -> None:
-    # The default. Everything the creator minted is still a ticket.
-    creator, _ = collection
-    junk = context.any.asset(creator=creator, unit_name=Bytes(b"asdf"))
-    assert _enter_holding(context, gated, junk) == 0
-
-
-def test_open_entry_ignores_whatever_asset_is_supplied(
-    context: AlgopyTestContext, rain: Rain
-) -> None:
-    """An ungated draw must not start caring what you hold."""
-    unrelated = context.any.asset()
-    assert _enter(context, rain, gate_asset=unrelated) == 0
-
-
-def test_a_ticket_is_worthless_once_the_token_has_moved_on(
-    context: AlgopyTestContext, gated: Rain, collection
-) -> None:
-    """The whole point of asking the gate a second time.
-
-    A ticket is a box that never expires, and `enter` only ever asked whether
-    the buyer held a collection token at that moment. Walking one token
-    through ten accounts therefore bought ten permanent tickets, each of which
-    diluted every honest holder, and `examples/community-rain.md` promised one
-    entry per NFT held. Asking again at `claim` does not un-buy those tickets;
-    it makes them uncollectable by anyone who no longer holds the token, which
-    is nine of those ten accounts.
-    """
-    creator, assets = collection
-    # Entered while holding the token, then passed it on: opted in, zero held.
-    passed_through = context.any.account(opted_asset_balances={assets[0].id: UInt64(0)})
-    # A won-but-unclaimed allocation. `resolve` cannot produce one here,
-    # because the beacon call is recorded rather than executed under the
-    # mocks, so the state is written directly.
-    context.ledger.set_box(
-        gated, ALLOCATION_PREFIX + passed_through.bytes, op.itob(UInt64(1_000))
-    )
-
-    with context.txn.create_group(active_txn_overrides={"sender": passed_through}):
-        with pytest.raises(AssertionError, match="Hold a token from the collection"):
-            gated.claim(assets[0])
-
-
-def test_the_prize_asset_is_not_a_gate_token_at_claim_either(
-    context: AlgopyTestContext, gated: Rain, collection
-) -> None:
-    """`enter` refuses the prize as a ticket, so `claim` has to as well.
-
-    A project usually mints its prize from the same account as its collection,
-    which is exactly the case the gate is checked against. Without this, a
-    past winner holding nothing but prize tokens satisfies the claim gate
-    while holding no collection token at all, which is a permanent exemption
-    for the one group the rule is aimed at.
-    """
-    creator, assets = collection
-    prize = context.any.asset(creator=creator)
-    contract = Rain()
-    context.ledger.patch_global_fields(round=UInt64(START_ROUND))
-    _configure(context, contract, UInt64(BEACON_APP), arc4.Address(creator), prize.id)
-
-    holder = context.any.account(opted_asset_balances={prize.id: UInt64(5)})
-    context.ledger.set_box(contract, ALLOCATION_PREFIX + holder.bytes, op.itob(UInt64(1_000)))
-
-    with context.txn.create_group(active_txn_overrides={"sender": holder}):
-        with pytest.raises(AssertionError, match="The prize is not a ticket"):
-            contract.claim(prize)
-
-
-def test_a_winner_still_holding_the_token_can_collect(
-    context: AlgopyTestContext, gated: Rain, collection
-) -> None:
-    """The other half: the check must not lock out an honest winner.
-
-    A gate that refuses everybody is not a gate, and this is the case that
-    proves the refusal above is about the token having moved rather than about
-    the check being unpassable.
-    """
-    creator, assets = collection
-    winner = context.any.account(opted_asset_balances={assets[0].id: UInt64(1)})
-    context.ledger.set_box(
-        gated, ALLOCATION_PREFIX + winner.bytes, op.itob(UInt64(1_000))
-    )
-
-    with context.txn.create_group(active_txn_overrides={"sender": winner}):
-        assert gated.claim(assets[0]) == 1_000
-
-
 def test_a_holder_of_the_collection_may_enter(
-    context: AlgopyTestContext, gated: Rain, collection
+    context: AlgopyTestContext, hub: Rain, collection
 ) -> None:
     creator, assets = collection
+    rain_id = _create(context, hub, gate_creator=arc4.Address(creator), label="gated")
     holder = context.any.account(opted_asset_balances={assets[0].id: UInt64(1)})
-    payment = context.any.txn.payment(
-        sender=holder, receiver=context.ledger.get_app(gated).address, amount=TICKET_MBR
-    )
-    with context.txn.create_group(active_txn_overrides={"sender": holder}):
-        assert gated.enter(payment, assets[0]) == 0
+    assert _enter(context, hub, rain_id, sender=holder, gate_asset=assets[0]) == 1
 
 
 def test_any_asset_from_the_collection_works_not_just_one(
-    context: AlgopyTestContext, gated: Rain, collection
+    context: AlgopyTestContext, hub: Rain, collection
 ) -> None:
-    """A collection is many assets by one creator, which is the whole point."""
     creator, assets = collection
+    rain_id = _create(context, hub, gate_creator=arc4.Address(creator), label="gated")
     holder = context.any.account(opted_asset_balances={assets[1].id: UInt64(1)})
-    payment = context.any.txn.payment(
-        sender=holder, receiver=context.ledger.get_app(gated).address, amount=TICKET_MBR
-    )
-    with context.txn.create_group(active_txn_overrides={"sender": holder}):
-        assert gated.enter(payment, assets[1]) == 0
+    assert _enter(context, hub, rain_id, sender=holder, gate_asset=assets[1]) == 1
 
 
 def test_an_asset_from_another_creator_is_refused(
-    context: AlgopyTestContext, gated: Rain
+    context: AlgopyTestContext, hub: Rain, collection
 ) -> None:
-    """Holding *an* NFT is not holding one of these."""
+    creator, _ = collection
+    rain_id = _create(context, hub, gate_creator=arc4.Address(creator), label="gated")
     impostor = context.any.asset()
     outsider = context.any.account(opted_asset_balances={impostor.id: UInt64(1)})
-    payment = context.any.txn.payment(
-        sender=outsider, receiver=context.ledger.get_app(gated).address, amount=TICKET_MBR
-    )
-    with context.txn.create_group(active_txn_overrides={"sender": outsider}):
-        with pytest.raises(AssertionError, match="not from the collection"):
-            gated.enter(payment, impostor)
+    with pytest.raises(AssertionError, match="not from the collection"):
+        _enter(context, hub, rain_id, sender=outsider, gate_asset=impostor)
 
 
 def test_not_holding_the_asset_is_refused(
-    context: AlgopyTestContext, gated: Rain, collection
+    context: AlgopyTestContext, hub: Rain, collection
 ) -> None:
-    """Naming a collection asset you do not hold must not get you a ticket."""
     creator, assets = collection
+    rain_id = _create(context, hub, gate_creator=arc4.Address(creator), label="gated")
     stranger = context.any.account(opted_asset_balances={assets[0].id: UInt64(0)})
-    payment = context.any.txn.payment(
-        sender=stranger, receiver=context.ledger.get_app(gated).address, amount=TICKET_MBR
-    )
-    with context.txn.create_group(active_txn_overrides={"sender": stranger}):
-        with pytest.raises(AssertionError, match="Hold a token from the collection"):
-            gated.enter(payment, assets[0])
+    with pytest.raises(AssertionError, match="Hold a token from the collection"):
+        _enter(context, hub, rain_id, sender=stranger, gate_asset=assets[0])
 
 
-def test_an_algo_draw_refuses_asset_deposits_and_the_reverse(
-    context: AlgopyTestContext, rain: Rain
+def test_claim_on_a_gated_rain_still_needs_the_token(
+    context: AlgopyTestContext, hub: Rain, collection
 ) -> None:
-    """The pot is denominated one way or the other, never both."""
+    creator, assets = collection
+    rain_id = _create(context, hub, gate_creator=arc4.Address(creator), label="gated")
+    holder = context.any.account(opted_asset_balances={assets[0].id: UInt64(1)})
+    _enter(context, hub, rain_id, sender=holder, gate_asset=assets[0])
+    _deposit(context, hub, rain_id, 1_000_000)
+    _advance(context, INTERVAL)
+    hub.draw()
+
+    gone = context.any.account(opted_asset_balances={assets[0].id: UInt64(0)})
+    from algopy import op as algopy_op
+
+    key = TICKET_PREFIX + algopy_op.itob(rain_id) + gone.bytes
+    # credit 0, wave 0, settled 0
+    context.ledger.set_box(hub, key, (0).to_bytes(8, "big") * 3)
+    rec = hub.rain_of(rain_id)
+    with context.txn.create_group(active_txn_overrides={"sender": gone}):
+        with pytest.raises(AssertionError, match="Hold a token from the collection"):
+            hub.claim(rain_id, assets[0])
+
+    still = context.any.account(opted_asset_balances={assets[0].id: UInt64(1)})
+    still_key = TICKET_PREFIX + algopy_op.itob(rain_id) + still.bytes
+    context.ledger.set_box(hub, still_key, (0).to_bytes(8, "big") * 3)
+    with context.txn.create_group(active_txn_overrides={"sender": still}):
+        assert hub.claim(rain_id, assets[0]) == rec.cumulative.native
+
+
+def test_an_algo_rain_refuses_asset_deposits(context: AlgopyTestContext, split: tuple[Rain, int]) -> None:
+    rain, rain_id = split
     asset = context.any.asset()
     transfer = context.any.txn.asset_transfer(
         xfer_asset=asset,
@@ -567,379 +406,195 @@ def test_an_algo_draw_refuses_asset_deposits_and_the_reverse(
         asset_amount=10,
     )
     with pytest.raises(AssertionError, match="pays ALGO; use deposit"):
-        rain.deposit_asset(transfer)
+        rain.deposit_asset(transfer, rain_id)
 
 
-def test_an_asset_draw_refuses_algo_deposits(context: AlgopyTestContext) -> None:
+def test_an_asset_rain_refuses_algo_deposits(context: AlgopyTestContext, hub: Rain) -> None:
     asset = context.any.asset()
-    context.ledger.patch_global_fields(round=UInt64(START_ROUND))
-    contract = Rain()
-    _configure(context, contract, UInt64(BEACON_APP), arc4.Address(), asset.id)
+    _opt_hub_into(context, hub, asset)
+    rain_id = _create(context, hub, prize_asset=int(asset.id), label="asa")
     payment = context.any.txn.payment(
-        receiver=context.ledger.get_app(contract).address, amount=1_000
+        receiver=context.ledger.get_app(hub).address, amount=1_000
     )
     with pytest.raises(AssertionError, match="pays an asset; use deposit_asset"):
-        contract.deposit(payment)
+        hub.deposit(payment, rain_id)
 
 
-def test_an_asset_pot_grows_by_the_transfer(context: AlgopyTestContext) -> None:
+def test_an_asset_pot_grows_by_the_transfer(context: AlgopyTestContext, hub: Rain) -> None:
     asset = context.any.asset()
-    context.ledger.patch_global_fields(round=UInt64(START_ROUND))
-    contract = Rain()
-    _configure(context, contract, UInt64(BEACON_APP), arc4.Address(), asset.id)
+    _opt_hub_into(context, hub, asset)
+    rain_id = _create(context, hub, prize_asset=int(asset.id), label="asa")
     transfer = context.any.txn.asset_transfer(
         xfer_asset=asset,
-        asset_receiver=context.ledger.get_app(contract).address,
+        asset_receiver=context.ledger.get_app(hub).address,
         asset_amount=250,
     )
-    assert contract.deposit_asset(transfer) == 250
-    assert contract.pot.value == 250
+    assert hub.deposit_asset(transfer, rain_id) == 250
+    assert hub.rain_of(rain_id).pot.native == 250
 
 
-def test_the_wrong_asset_is_refused(context: AlgopyTestContext) -> None:
-    prize, other = context.any.asset(), context.any.asset()
-    context.ledger.patch_global_fields(round=UInt64(START_ROUND))
-    contract = Rain()
-    _configure(context, contract, UInt64(BEACON_APP), arc4.Address(), prize.id)
-    transfer = context.any.txn.asset_transfer(
-        xfer_asset=other,
-        asset_receiver=context.ledger.get_app(contract).address,
-        asset_amount=10,
-    )
-    with pytest.raises(AssertionError, match="Wrong asset"):
-        contract.deposit_asset(transfer)
-
-
-@pytest.fixture()
-def asset_rain_pair(context: AlgopyTestContext):
-    """A configured asset draw, and the asset it pays in."""
-    prize = context.any.asset()
-    context.ledger.patch_global_fields(round=UInt64(START_ROUND))
-    contract = Rain()
-    _configure(context, contract, UInt64(BEACON_APP), arc4.Address(), prize.id)
-    return contract, prize
-
-
-# --- regressions from the adversarial review ---------------------------
-
-
-def test_configure_is_refused_once_a_pot_exists(context: AlgopyTestContext) -> None:
-    """Nobody may repoint the denomination under people who already funded it."""
-    contract = Rain()
-    context.ledger.patch_global_fields(round=UInt64(START_ROUND))
-    _configure(context, contract, UInt64(BEACON_APP), arc4.Address(), UInt64(0))
-    _deposit(context, contract, 100_000)
-    contract.beacon_app.value = UInt64(0)  # pretend the one-shot latch is open
-    with pytest.raises(AssertionError, match="before the pot is funded"):
-        _configure(context, contract, UInt64(BEACON_APP), arc4.Address(), UInt64(999))
-
-
-def test_entering_and_depositing_need_configuration_first(
-    context: AlgopyTestContext,
-) -> None:
-    """Otherwise the pot's unit is decided after money is already in it."""
-    contract = Rain()
-    context.ledger.patch_global_fields(round=UInt64(START_ROUND))
-    with pytest.raises(AssertionError, match="Not configured"):
-        _enter(context, contract)
-    with pytest.raises(AssertionError, match="Not configured"):
-        _deposit(context, contract, 100_000)
-
-
-def test_the_prize_asset_cannot_buy_a_ticket(context: AlgopyTestContext) -> None:
-    """A project mints its collection and its prize from the same account."""
+def test_the_prize_asset_cannot_buy_a_ticket(context: AlgopyTestContext, hub: Rain) -> None:
     artist = context.any.account()
     nft = context.any.asset(creator=artist)
     prize = context.any.asset(creator=artist)
-    context.ledger.patch_global_fields(round=UInt64(START_ROUND))
-    contract = Rain()
-    _configure(context, contract, UInt64(BEACON_APP), arc4.Address(artist), prize.id)
+    _opt_hub_into(context, hub, prize)
+    rain_id = _create(
+        context, hub, gate_creator=arc4.Address(artist), prize_asset=int(prize.id), label="mix"
+    )
 
     holder = context.any.account(opted_asset_balances={prize.id: UInt64(1)})
-    payment = context.any.txn.payment(
-        sender=holder, receiver=context.ledger.get_app(contract).address, amount=TICKET_MBR
-    )
-    with context.txn.create_group(active_txn_overrides={"sender": holder}):
-        with pytest.raises(AssertionError, match="The prize is not a ticket"):
-            contract.enter(payment, prize)
+    with pytest.raises(AssertionError, match="The prize is not a ticket"):
+        _enter(context, hub, rain_id, sender=holder, gate_asset=prize)
 
-    # The collection itself still works.
     nft_holder = context.any.account(opted_asset_balances={nft.id: UInt64(1)})
-    nft_payment = context.any.txn.payment(
-        sender=nft_holder,
-        receiver=context.ledger.get_app(contract).address,
-        amount=TICKET_MBR,
-    )
-    with context.txn.create_group(active_txn_overrides={"sender": nft_holder}):
-        assert contract.enter(nft_payment, nft) == 0
+    assert _enter(context, hub, rain_id, sender=nft_holder, gate_asset=nft) == 1
 
 
-def test_a_draw_past_the_beacon_window_can_be_abandoned(
-    context: AlgopyTestContext, rain: Rain
+def test_set_rain_is_the_rain_creator_only(context: AlgopyTestContext, split: tuple[Rain, int]) -> None:
+    rain, rain_id = split
+    rain.set_rain(rain_id, UInt64(50_000), UInt64(20))
+    rec = rain.rain_of(rain_id)
+    assert rec.drip.native == 50_000
+    assert rec.interval_rounds.native == 20
+    other = context.any.account()
+    with context.txn.create_group(active_txn_overrides={"sender": other}):
+        with pytest.raises(AssertionError, match="Only the rain's creator"):
+            rain.set_rain(rain_id, UInt64(1), UInt64(MIN_INTERVAL_ROUNDS))
+
+
+def test_wave_rains_on_the_people_who_checked_in(
+    context: AlgopyTestContext, hub: Rain
 ) -> None:
-    """Otherwise one unresolved draw locks the pot on an immutable contract."""
-    _enter(context, rain)
-    _deposit(context, rain, 100_000)
-    rain.draw()
-    assert rain.draw_open.value == 1
-    commit = rain.commit_round.value
-
-    # Still inside the window: resolving is the right answer, not abandoning.
-    context.ledger.patch_global_fields(round=commit + 1)
-    with pytest.raises(AssertionError, match="beacon can still answer"):
-        rain.abandon()
-
-    context.ledger.patch_global_fields(round=commit + BEACON_WINDOW + 1)
-    with pytest.raises(AssertionError, match="window has closed"):
-        rain.resolve()
-    # The prize plus the reservation `draw` took for a box that never existed.
-    returned = rain.abandon()
-    assert returned == 100_000
-    assert rain.draw_open.value == 0
-    assert rain.pot.value == 100_000
-    # And the pot can be drawn again rather than being locked forever.
-    assert rain.draw() > 0
-
-
-def test_a_rugable_prize_asset_is_refused(context: AlgopyTestContext) -> None:
-    """An issuer who kept clawback can empty the pot whenever they like.
-
-    `pot` would go on claiming the tokens are there, every claim would fail on
-    insufficient balance, and none of it is fixable on a contract with no
-    update path. Freeze is the same story with the pot stranded rather than
-    stolen, and a manager can set either back, so all three are refused.
-    """
-    context.ledger.patch_global_fields(round=UInt64(START_ROUND))
-
-    def app_for(asset) -> Rain:
-        contract = Rain()
-        _configure(context, contract, UInt64(BEACON_APP), arc4.Address(), asset.id)
-        return contract
-
-    for field, message in (
-        ("clawback", "clawback address"),
-        ("freeze", "freeze address"),
-        ("manager", "manager address"),
-    ):
-        rugger = context.any.account()
-        asset = context.any.asset(**{field: rugger})
-        contract = app_for(asset)
-        payment = context.any.txn.payment(
-            receiver=context.ledger.get_app(contract).address, amount=ASSET_OPT_IN_MBR
-        )
-        with pytest.raises(Exception, match=message):
-            contract.opt_in_prize_asset(asset, payment)
+    rain_id = _create(context, hub, mode=WAVE, wave_cap=2, label="gm")
+    a = context.default_sender
+    b = context.any.account()
+    c = context.any.account()
+    _enter(context, hub, rain_id, sender=a)
+    _enter(context, hub, rain_id, sender=b)
+    _enter(context, hub, rain_id, sender=c)
+    # Cap is 2; the third enter still gets a ticket but not a seat this drop
+    # if the first two already filled it. Enter auto-GMs, so a and b took the
+    # seats; c is in for later.
+    rec = hub.rain_of(rain_id)
+    assert rec.wave_count.native == 2
+    _deposit(context, hub, rain_id, 1_000_000)
+    _advance(context, INTERVAL)
+    assert hub.draw() == 1
+    rec = hub.rain_of(rain_id)
+    assert rec.last_share.native == DRIP // 2
+    assert rec.wave_count.native == 0
+    assert hub.allocation_of(rain_id, arc4.Address(a)) == DRIP // 2
+    assert hub.allocation_of(rain_id, arc4.Address(b)) == DRIP // 2
+    assert hub.allocation_of(rain_id, arc4.Address(c)) == 0
+    assert hub.claim(rain_id, Asset(0)) == DRIP // 2
 
 
-def test_a_prize_asset_frozen_by_default_is_refused(context: AlgopyTestContext) -> None:
-    """A frozen holding can receive tokens but can never send them.
-
-    `default_frozen` is fixed when the asset is created and no address can
-    change it afterwards, so an asset that starts frozen with its freeze
-    address already renounced passes every other check here and still traps
-    the prize: the pot opts in, accepts the tokens, and can never pay a
-    winner. That combination looks like the safest possible asset from the
-    outside, having renounced clawback, freeze and manager, which is exactly
-    what makes it worth refusing on its own.
-    """
-    context.ledger.patch_global_fields(round=UInt64(START_ROUND))
-    asset = context.any.asset(default_frozen=True)
-    contract = Rain()
-    _configure(context, contract, UInt64(BEACON_APP), arc4.Address(), asset.id)
-    payment = context.any.txn.payment(
-        receiver=context.ledger.get_app(contract).address, amount=ASSET_OPT_IN_MBR
-    )
-    with pytest.raises(Exception, match="frozen by default"):
-        contract.opt_in_prize_asset(asset, payment)
-
-
-def test_a_clean_prize_asset_is_accepted(context: AlgopyTestContext) -> None:
-    """The check must not reject an ordinary immutable token."""
-    context.ledger.patch_global_fields(round=UInt64(START_ROUND))
-    clean = context.any.asset()
-    contract = Rain()
-    _configure(context, contract, UInt64(BEACON_APP), arc4.Address(), clean.id)
-    payment = context.any.txn.payment(
-        receiver=context.ledger.get_app(contract).address, amount=ASSET_OPT_IN_MBR
-    )
-    assert int(contract.opt_in_prize_asset(clean, payment)) == clean.id
-
-
-def test_the_opt_in_refuses_a_different_asset(context: AlgopyTestContext) -> None:
-    """Otherwise a clean asset could be shown to pass the check for a dirty one."""
-    context.ledger.patch_global_fields(round=UInt64(START_ROUND))
-    prize, decoy = context.any.asset(), context.any.asset()
-    contract = Rain()
-    _configure(context, contract, UInt64(BEACON_APP), arc4.Address(), prize.id)
-    payment = context.any.txn.payment(
-        receiver=context.ledger.get_app(contract).address, amount=ASSET_OPT_IN_MBR
-    )
-    with pytest.raises(Exception, match="Wrong asset"):
-        contract.opt_in_prize_asset(decoy, payment)
-
-
-def test_an_asset_draw_will_not_open_without_algo_for_the_winners_box(
-    context: AlgopyTestContext, asset_rain_pair
+def test_wave_unclaimed_share_returns_to_the_pot(
+    context: AlgopyTestContext, hub: Rain
 ) -> None:
-    """Invariant 12, which had no test.
-
-    An asset draw reserves nothing from the pot, so the ALGO for the winner's
-    allocation box has to already be in the app account. Without this check
-    `resolve` would fail on minimum balance with the draw open, and a draw
-    that cannot be resolved can never be reopened.
-    """
-    contract, prize = asset_rain_pair
-    _enter(context, contract)
-    contract.deposit_asset(
-        context.any.txn.asset_transfer(
-            xfer_asset=prize,
-            asset_receiver=context.ledger.get_app(contract).address,
-            asset_amount=500,
-        )
-    )
-
-    app = context.ledger.get_app(contract)
-    # Spendable ALGO below one allocation box: the draw declines rather than
-    # opening one it cannot resolve.
-    context.ledger.update_account(app.address, balance=UInt64(200_000), min_balance=UInt64(190_000))
-    assert int(contract.draw()) == 0
-    assert contract.draw_open.value == 0
-
-    # Funded, it opens.
-    context.ledger.update_account(app.address, balance=UInt64(500_000), min_balance=UInt64(100_000))
-    assert int(contract.draw()) > 0
+    rain_id = _create(context, hub, mode=WAVE, wave_cap=10, label="snooze")
+    _enter(context, hub, rain_id)
+    _deposit(context, hub, rain_id, 1_000_000)
+    _advance(context, INTERVAL)
+    hub.draw()
+    rec = hub.rain_of(rain_id)
+    assert rec.pot.native == 1_000_000 - DRIP
+    assert rec.wave_unclaimed.native == 1
+    # Nobody claimed. Next fire with no GMs puts it back.
+    _advance(context, INTERVAL)
+    hub.draw()
+    rec = hub.rain_of(rain_id)
+    assert rec.pot.native == 1_000_000
+    assert rec.wave_unclaimed.native == 0
 
 
-def test_tick_with_refuses_an_increment_that_could_wedge_the_counter(
-    context: AlgopyTestContext,
+def test_gm_after_a_drop_settles_the_last_share(
+    context: AlgopyTestContext, hub: Rain
 ) -> None:
-    """The bound that stops one call making every later tick overflow."""
-    from smart_contracts.pulse.contract import MAX_BEATS_PER_TICK, Pulse
-
-    pulse = Pulse()
-    assert int(pulse.tick_with(UInt64(MAX_BEATS_PER_TICK), arc4.String("ok"))) == MAX_BEATS_PER_TICK
-    with pytest.raises(Exception, match="Too many beats"):
-        pulse.tick_with(UInt64(MAX_BEATS_PER_TICK + 1), arc4.String("no"))
-
-
-# --- #102: rekey and close must not reach an escrowing transaction ----
-#
-# Neither harms the contract; both harm only the sender who signed them. What
-# this guards against is a malicious front end slipping either into a group a
-# user signs without reading closely.
-
-def test_enter_rejects_a_rekeyed_mbr_payment(context: AlgopyTestContext, rain: Rain) -> None:
-    with pytest.raises(AssertionError, match="MBR payment must not rekey"):
-        _enter(context, rain, payment_fields={"rekey_to": context.any.account()})
+    rain_id = _create(context, hub, mode=WAVE, wave_cap=10, label="again")
+    _enter(context, hub, rain_id)
+    _deposit(context, hub, rain_id, 1_000_000)
+    _advance(context, INTERVAL)
+    hub.draw()
+    # Checking in for the next drop also banks the last one.
+    assert hub.gm(rain_id, Asset(0)) == 2
+    assert hub.allocation_of(rain_id, arc4.Address(context.default_sender)) == DRIP
+    assert hub.claim(rain_id, Asset(0)) == DRIP
 
 
-def test_enter_rejects_a_closing_mbr_payment(context: AlgopyTestContext, rain: Rain) -> None:
-    with pytest.raises(AssertionError, match="MBR payment must not close"):
-        _enter(context, rain, payment_fields={"close_remainder_to": context.any.account()})
-
-
-def test_deposit_rejects_a_rekeyed_payment(context: AlgopyTestContext, rain: Rain) -> None:
-    with pytest.raises(AssertionError, match="Deposit must not rekey"):
-        _deposit(context, rain, 1_000, payment_fields={"rekey_to": context.any.account()})
-
-
-def test_deposit_rejects_a_closing_payment(context: AlgopyTestContext, rain: Rain) -> None:
-    with pytest.raises(AssertionError, match="Deposit must not close"):
-        _deposit(
-            context, rain, 1_000,
-            payment_fields={"close_remainder_to": context.any.account()},
-        )
-
-
-def test_deposit_asset_rejects_a_rekeyed_transfer(context: AlgopyTestContext) -> None:
-    asset = context.any.asset()
-    context.ledger.patch_global_fields(round=UInt64(START_ROUND))
-    contract = Rain()
-    _configure(context, contract, UInt64(BEACON_APP), arc4.Address(), asset.id)
-    transfer = context.any.txn.asset_transfer(
-        xfer_asset=asset,
-        asset_receiver=context.ledger.get_app(contract).address,
-        asset_amount=250,
-        rekey_to=context.any.account(),
-    )
-    with pytest.raises(AssertionError, match="Deposit must not rekey"):
-        contract.deposit_asset(transfer)
-
-
-def test_deposit_asset_rejects_a_closing_transfer(context: AlgopyTestContext) -> None:
-    asset = context.any.asset()
-    context.ledger.patch_global_fields(round=UInt64(START_ROUND))
-    contract = Rain()
-    _configure(context, contract, UInt64(BEACON_APP), arc4.Address(), asset.id)
-    transfer = context.any.txn.asset_transfer(
-        xfer_asset=asset,
-        asset_receiver=context.ledger.get_app(contract).address,
-        asset_amount=250,
-        asset_close_to=context.any.account(),
-    )
-    with pytest.raises(AssertionError, match="Deposit must not close the asset"):
-        contract.deposit_asset(transfer)
-
-
-def test_opt_in_prize_asset_rejects_a_rekeyed_mbr_payment(context: AlgopyTestContext) -> None:
-    context.ledger.patch_global_fields(round=UInt64(START_ROUND))
-    clean = context.any.asset()
-    contract = Rain()
-    _configure(context, contract, UInt64(BEACON_APP), arc4.Address(), clean.id)
-    payment = context.any.txn.payment(
-        receiver=context.ledger.get_app(contract).address,
-        amount=ASSET_OPT_IN_MBR,
-        rekey_to=context.any.account(),
-    )
-    with pytest.raises(AssertionError, match="MBR payment must not rekey"):
-        contract.opt_in_prize_asset(clean, payment)
-
-
-def test_opt_in_prize_asset_rejects_a_closing_mbr_payment(context: AlgopyTestContext) -> None:
-    context.ledger.patch_global_fields(round=UInt64(START_ROUND))
-    clean = context.any.asset()
-    contract = Rain()
-    _configure(context, contract, UInt64(BEACON_APP), arc4.Address(), clean.id)
-    payment = context.any.txn.payment(
-        receiver=context.ledger.get_app(contract).address,
-        amount=ASSET_OPT_IN_MBR,
-        close_remainder_to=context.any.account(),
-    )
-    with pytest.raises(AssertionError, match="MBR payment must not close"):
-        contract.opt_in_prize_asset(clean, payment)
-
-
-def test_configure_rejects_a_rekeyed_mbr_payment(context: AlgopyTestContext) -> None:
-    contract = Rain()
-    with pytest.raises(AssertionError, match="MBR payment must not rekey"):
-        _configure(
-            context, contract, UInt64(BEACON_APP), arc4.Address(), UInt64(0),
-            payment_fields={"rekey_to": context.any.account()},
-        )
-
-
-def test_configure_rejects_a_closing_mbr_payment(context: AlgopyTestContext) -> None:
-    contract = Rain()
-    with pytest.raises(AssertionError, match="MBR payment must not close"):
-        _configure(
-            context, contract, UInt64(BEACON_APP), arc4.Address(), UInt64(0),
-            payment_fields={"close_remainder_to": context.any.account()},
-        )
-
-
-def test_configure_refuses_an_mbr_payment_from_anyone_but_the_caller(
-    context: AlgopyTestContext,
+def test_one_locks_the_drip_and_resolve_credits_the_seed_winner(
+    context: AlgopyTestContext, hub: Rain
 ) -> None:
-    """A victim's payment must not be usable to fund somebody else's call.
+    rain_id = _create(context, hub, mode=ONE, label="lotto")
+    a = context.default_sender
+    b = context.any.account()
+    _enter(context, hub, rain_id, sender=a, mode=ONE)
+    _enter(context, hub, rain_id, sender=b, mode=ONE)
+    _deposit(context, hub, rain_id, 1_000_000)
+    _advance(context, INTERVAL)
+    fire_round = int(Global.round)
+    assert hub.draw() == 1
+    rec = hub.rain_of(rain_id)
+    assert rec.prize_locked.native == DRIP
+    assert rec.pot.native == 1_000_000 - DRIP
+    commit = int(rec.commit_round.native)
+    assert commit == fire_round + COMMIT_DELAY
 
-    The same class of finding as #90 in `keeper.register`: receiver, amount,
-    rekey and close all check out, and the sender of the payment is the one
-    field nothing here would otherwise compare against the caller.
-    """
-    contract = Rain()
-    stranger = context.any.account()
-    with pytest.raises(AssertionError, match="must come from the caller"):
-        _configure(
-            context, contract, UInt64(BEACON_APP), arc4.Address(), UInt64(0),
-            payment_fields={"sender": stranger},
-        )
+    with pytest.raises(AssertionError, match="Too early"):
+        hub.resolve(rain_id)
+
+    context.ledger.set_block(index=commit, seed=1, timestamp=1)
+    context.ledger.patch_global_fields(round=UInt64(commit + 1))
+    # seed 1 % 2 tickets = index 1 → second enterer (b)
+    assert hub.resolve(rain_id) == 1
+    assert hub.allocation_of(rain_id, arc4.Address(a)) == 0
+    assert hub.allocation_of(rain_id, arc4.Address(b)) == DRIP
+    with context.txn.create_group(active_txn_overrides={"sender": b}):
+        assert hub.claim(rain_id, Asset(0)) == DRIP
+
+
+def test_abandon_returns_the_lock_after_the_window(
+    context: AlgopyTestContext, hub: Rain
+) -> None:
+    rain_id = _create(context, hub, mode=ONE, label="stale")
+    _enter(context, hub, rain_id, mode=ONE)
+    _deposit(context, hub, rain_id, 1_000_000)
+    _advance(context, INTERVAL)
+    hub.draw()
+    rec = hub.rain_of(rain_id)
+    commit = int(rec.commit_round.native)
+    context.ledger.patch_global_fields(round=UInt64(commit + SEED_WINDOW))
+    with pytest.raises(AssertionError, match="Window still open"):
+        hub.abandon(rain_id)
+    context.ledger.patch_global_fields(round=UInt64(commit + SEED_WINDOW + 1))
+    assert hub.abandon(rain_id) == 1_000_000
+    rec = hub.rain_of(rain_id)
+    assert rec.prize_locked.native == 0
+    assert rec.pot.native == 1_000_000
+
+
+def test_two_rains_can_fire_in_one_draw(context: AlgopyTestContext, hub: Rain) -> None:
+    first = _create(context, hub, label="a")
+    second = _create(context, hub, label="b")
+    _enter(context, hub, first)
+    _enter(context, hub, second, sender=context.any.account())
+    _deposit(context, hub, first, 1_000_000)
+    _deposit(context, hub, second, 1_000_000)
+    _advance(context, INTERVAL)
+    assert hub.draw() == 2
+    assert hub.rain_of(first).draw_id.native == 1
+    assert hub.rain_of(second).draw_id.native == 1
+
+
+def test_draw_on_an_empty_hub_is_zero(context: AlgopyTestContext, hub: Rain) -> None:
+    assert hub.draw() == 0
+
+
+def test_wave_cap_must_be_positive(context: AlgopyTestContext, hub: Rain) -> None:
+    with pytest.raises(AssertionError, match="Wave cap must be positive"):
+        _create(context, hub, mode=WAVE, wave_cap=0)
+
+
+def test_split_refuses_a_wave_cap(context: AlgopyTestContext, hub: Rain) -> None:
+    with pytest.raises(AssertionError, match="Wave cap is for WAVE rains"):
+        _create(context, hub, mode=SPLIT, wave_cap=10)

@@ -23,6 +23,15 @@
 import algosdk from 'algosdk';
 import type { Page } from '@playwright/test';
 
+import {
+  CORVID_TESTNET_MINTER,
+  encodeRainRec,
+  ONE,
+  rainBoxName,
+  SPLIT,
+  WAVE,
+  type RainRec,
+} from '@corvidlabs/arcron/rain';
 import { encodeCallArgs, upkeepBoxName } from '@corvidlabs/arcron/upkeep';
 
 /** The deployment the console ships pointing at; anything else is quarantined. */
@@ -35,7 +44,7 @@ export const FOREIGN_APP_ID = 771234567;
 /** The demo target, `pulse`. */
 export const TARGET_APP_ID = 769891902;
 /** Live TestNet Rain. Stubbed so `/rain` does not 404 the draw. */
-export const RAIN_APP_ID = 770029154;
+export const RAIN_APP_ID = 770130162;
 
 /** Frozen. Every "due in N rounds" on the page is derived from this one number. */
 export const ROUND = 55_400_000n;
@@ -249,35 +258,93 @@ function paramsBody(): unknown {
   };
 }
 
-function rainState(): unknown[] {
-  const gate = creator(11);
+function rainState(nextRainId: number): unknown[] {
   return [
-    { key: base64(new TextEncoder().encode('beacon_app')), value: { bytes: '', type: 2, uint: 600011887 } },
-    { key: base64(new TextEncoder().encode('pot')), value: { bytes: '', type: 2, uint: 0 } },
-    { key: base64(new TextEncoder().encode('tickets')), value: { bytes: '', type: 2, uint: 0 } },
-    { key: base64(new TextEncoder().encode('draw_id')), value: { bytes: '', type: 2, uint: 0 } },
-    { key: base64(new TextEncoder().encode('draw_open')), value: { bytes: '', type: 2, uint: 0 } },
-    { key: base64(new TextEncoder().encode('commit_round')), value: { bytes: '', type: 2, uint: 0 } },
-    { key: base64(new TextEncoder().encode('prize')), value: { bytes: '', type: 2, uint: 0 } },
-    { key: base64(new TextEncoder().encode('tickets_snapshot')), value: { bytes: '', type: 2, uint: 0 } },
-    { key: base64(new TextEncoder().encode('draws_resolved')), value: { bytes: '', type: 2, uint: 0 } },
-    { key: base64(new TextEncoder().encode('prize_asset')), value: { bytes: '', type: 2, uint: 0 } },
-    {
-      key: base64(new TextEncoder().encode('gate_creator')),
-      value: { bytes: base64(gate), type: 1, uint: 0 },
-    },
-    {
-      key: base64(new TextEncoder().encode('last_winner')),
-      value: { bytes: base64(new Uint8Array(32)), type: 1, uint: 0 },
-    },
-    {
-      key: base64(new TextEncoder().encode('gate_unit_prefix')),
-      value: { bytes: base64(new TextEncoder().encode('corvid')), type: 1, uint: 0 },
-    },
+    { key: base64(new TextEncoder().encode('next_rain_id')), value: { bytes: '', type: 2, uint: nextRainId } },
+    { key: base64(new TextEncoder().encode('cursor')), value: { bytes: '', type: 2, uint: 0 } },
+    { key: base64(new TextEncoder().encode('bootstrapped')), value: { bytes: '', type: 2, uint: 1 } },
   ];
 }
 
-function applicationBody(appId: number): unknown {
+function rainBox(
+  partial: Pick<RainRec, 'id' | 'label' | 'mode' | 'waveCap' | 'pot'> &
+    Partial<Pick<RainRec, 'tickets' | 'lastRainRound' | 'waveCount' | 'prizeAsset' | 'drip' | 'gateCreator'>>,
+): { name: string; value: string } {
+  const raw = encodeRainRec({
+    id: partial.id,
+    creator: algosdk.encodeAddress(creator(9)),
+    gateCreator: partial.gateCreator ?? CORVID_TESTNET_MINTER,
+    label: partial.label,
+    prizeAsset: partial.prizeAsset ?? 0n,
+    drip: partial.drip ?? 50_000n,
+    intervalRounds: 30_857n,
+    lastRainRound: partial.lastRainRound ?? 0n,
+    pot: partial.pot,
+    tickets: partial.tickets ?? 0n,
+    drawId: 0n,
+    cumulative: 0n,
+    mode: partial.mode,
+    waveCap: partial.waveCap,
+    waveCount: partial.waveCount ?? 0n,
+    lastShare: 0n,
+    lastWaveId: 0n,
+    waveUnclaimed: 0n,
+    commitRound: 0n,
+    prizeLocked: 0n,
+  });
+  return { name: base64(rainBoxName(partial.id)), value: base64(raw) };
+}
+
+/**
+ * Four rains, one of each mode plus an ASA pot, so the hub table and each
+ * detail page have something to draw. Daily is due (tickets and a pot, never
+ * fired). GM is waiting (nobody checked in). Lottery is armed. ASA split
+ * shows a prize asset id a person can opt in to.
+ */
+const RAIN_BOXES = [
+  rainBox({ id: 1n, label: 'Corvid daily', mode: SPLIT, waveCap: 0n, pot: 1_000_000n, tickets: 4n }),
+  rainBox({ id: 2n, label: 'Corvid GM', mode: WAVE, waveCap: 10n, pot: 0n }),
+  rainBox({
+    id: 3n,
+    label: 'Corvid lottery',
+    mode: ONE,
+    waveCap: 0n,
+    pot: 500_000n,
+    tickets: 7n,
+    lastRainRound: ROUND - 1_000n,
+  }),
+  rainBox({
+    id: 4n,
+    label: 'live ASA split',
+    mode: SPLIT,
+    waveCap: 0n,
+    pot: 0n,
+    tickets: 1n,
+    prizeAsset: 770_131_837n,
+    drip: 1_000n,
+  }),
+];
+
+const PRIZE_ASA = 770_131_837;
+
+function assetBody(id: number): unknown | null {
+  if (id !== PRIZE_ASA) return null;
+  return {
+    index: id,
+    params: {
+      creator: algosdk.encodeAddress(creator(9)),
+      decimals: 0,
+      name: 'Rain Drops',
+      unitName: 'DROP',
+      'unit-name': 'DROP',
+      total: 1_000_000,
+      url: '',
+      reserve: algosdk.encodeAddress(creator(9)),
+    },
+  };
+}
+
+function applicationBody(appId: number, nextRainId: number): unknown {
   if (appId === RAIN_APP_ID) {
     return {
       id: appId,
@@ -285,8 +352,8 @@ function applicationBody(appId: number): unknown {
         'approval-program': base64(new Uint8Array([0x0a, 0x81, 0x01])),
         'clear-state-program': base64(new Uint8Array([0x0a, 0x81, 0x01])),
         creator: algosdk.encodeAddress(creator(9)),
-        'global-state': rainState(),
-        'global-state-schema': { 'num-byte-slice': 3, 'num-uint': 10 },
+        'global-state': rainState(nextRainId),
+        'global-state-schema': { 'num-byte-slice': 0, 'num-uint': 3 },
         'local-state-schema': { 'num-byte-slice': 0, 'num-uint': 0 },
       },
     };
@@ -348,7 +415,24 @@ function json(body: unknown): { status: number; contentType: string; body: strin
  * would render a blank registry and the suite would audit an empty page while
  * reporting success. Anything unrecognised comes back 501 with the path in it.
  */
-export async function stubAlgod(page: Page): Promise<void> {
+export interface AlgodStubOptions {
+  /** Hub with no rain boxes, so the empty state and its "Open one" link render. */
+  readonly emptyRains?: boolean;
+}
+
+const PIXEL = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
+  'base64',
+);
+
+export async function stubAlgod(page: Page, options: AlgodStubOptions = {}): Promise<void> {
+  const rainBoxes = options.emptyRains === true ? [] : RAIN_BOXES;
+  const nextRainId = rainBoxes.length === 0 ? 1 : rainBoxes.length + 1;
+
+  await page.route(/https:\/\/(ipfs\.io|dweb\.link|nftstorage\.link)\/ipfs\/.*/, (route) =>
+    route.fulfill({ status: 200, contentType: 'image/png', body: PIXEL }),
+  );
+
   await page.route(`**://${ALGOD_HOST}/**`, async (route) => {
     const url = new URL(route.request().url());
     const path = url.pathname;
@@ -366,13 +450,15 @@ export async function stubAlgod(page: Page): Promise<void> {
           body: JSON.stringify({ message: 'application does not exist' }),
         });
       }
-      return route.fulfill(json(applicationBody(appId)));
+      return route.fulfill(json(applicationBody(appId, nextRainId)));
     }
 
     const boxes = /^\/v2\/applications\/(\d+)\/boxes$/.exec(path);
     if (boxes) {
       const appId = Number(boxes[1]);
-      if (appId === RAIN_APP_ID) return route.fulfill(json({ boxes: [] }));
+      if (appId === RAIN_APP_ID) {
+        return route.fulfill(json({ boxes: rainBoxes.map((box) => ({ name: box.name })) }));
+      }
       return route.fulfill(json({ boxes: BOXES.map((box) => ({ name: box.name })) }));
     }
 
@@ -382,7 +468,9 @@ export async function stubAlgod(page: Page): Promise<void> {
       // names, so the query is read off the raw URL instead.
       const raw = /[?&]name=([^&]*)/.exec(url.search);
       const name = raw === null ? '' : decodeURIComponent(raw[1]).replace(/^b64:/, '');
-      const found = BOXES.find((candidate) => candidate.name === name);
+      const found =
+        BOXES.find((candidate) => candidate.name === name) ??
+        rainBoxes.find((candidate) => candidate.name === name);
       if (found === undefined) {
         return route.fulfill({
           status: 404,
@@ -391,6 +479,19 @@ export async function stubAlgod(page: Page): Promise<void> {
         });
       }
       return route.fulfill(json({ name: found.name, round: Number(ROUND), value: found.value }));
+    }
+
+    const asset = /^\/v2\/assets\/(\d+)$/.exec(path);
+    if (asset) {
+      const body = assetBody(Number(asset[1]));
+      if (body === null) {
+        return route.fulfill({
+          status: 404,
+          contentType: 'application/json',
+          body: JSON.stringify({ message: 'asset does not exist' }),
+        });
+      }
+      return route.fulfill(json(body));
     }
 
     const account = /^\/v2\/accounts\/([A-Z2-7]+)$/.exec(path);
