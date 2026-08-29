@@ -292,22 +292,41 @@ def test_the_old_name_still_works() -> None:
 
 # --- the beacon ids, recorded once -------------------------------------
 
-def test_the_foundation_beacon_ids_match_what_the_specs_record() -> None:
-    """One number, four prose copies, and now one importable source.
+def test_the_foundation_beacon_ids_match_what_the_docs_record() -> None:
+    """One number, several prose copies, and one importable source.
 
-    The beacon decides every rain draw and cannot be changed after
-    `configure`, so a copy of it that drifts is a copy that would tell a
-    participant a rigged draw looks fine.
+    A beacon decides a draw and cannot be swapped afterwards, so a copy of its
+    id that drifts is a copy that would tell a participant a rigged draw looks
+    fine.
+
+    This used to read one sentence out of `specs/rain/rain.spec.md`. Rain
+    stopped using the beacon on 2026-08-29 — `resolve` reads a block seed now —
+    which deleted that sentence and left this failing. The sentence was never
+    the point: what is worth guarding is that no file names a *different*
+    beacon, and that outlives any one contract using it. `docs/arcron.md`
+    still carries the table of ids, checked against deployed approval programs
+    rather than against documentation, so that is what this reads instead.
+
+    Still fails closed. If the table goes, so does the guarantee, and the
+    assertion says so rather than passing on an empty match.
     """
     import pathlib
     import re
 
     from scripts import network as net
 
-    spec = pathlib.Path("specs/rain/rain.spec.md").read_text()
-    testnet, mainnet = re.search(r"TestNet `(\d+)` and MainNet `(\d+)`", spec).groups()
-    assert int(testnet) == net.FOUNDATION_BEACON[net.TESTNET]
-    assert int(mainnet) == net.FOUNDATION_BEACON[net.MAINNET]
+    doc = pathlib.Path("docs/arcron.md").read_text()
+    rows = re.findall(r"^\|\s*(MainNet|TestNet)\s*\|\s*`(\d+)`", doc, re.MULTILINE)
+    assert rows, "docs/arcron.md no longer carries the beacon app id table"
+
+    # Superseded beacons are listed under the current one, so the first row for
+    # each network is the one in use.
+    current: dict[str, int] = {}
+    for network, app_id in rows:
+        current.setdefault(network, int(app_id))
+
+    assert current["TestNet"] == net.FOUNDATION_BEACON[net.TESTNET]
+    assert current["MainNet"] == net.FOUNDATION_BEACON[net.MAINNET]
 
 
 # --- what a holder is shown before signing a create --------------------
