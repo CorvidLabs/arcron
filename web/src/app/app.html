@@ -14,7 +14,9 @@
   <arcron-trust-banner />
 
   <arcron-signer-bar />
-  <arcron-stat-tiles />
+  @if (!rainSurface()) {
+    <arcron-stat-tiles />
+  }
 
   <!-- Focused after every navigation but the first, so the caret follows the
        URL. `tabindex="-1"` makes it a focus target without adding a tab stop. -->
@@ -27,9 +29,13 @@
 
 <footer class="chrome">
   <p>
-    Arcron, a permissionless keeper network.
-    @if (appAddress(); as address) {
-      <span>App account {{ address }}</span>
+    @if (rainSurface()) {
+      Rain, a scheduled draw for Corvid holders. Arcron is the clock.
+    } @else {
+      Arcron, a permissionless keeper network.
+      @if (appAddress(); as address) {
+        <span>App account {{ address }}</span>
+      }
     }
   </p>
   <p>

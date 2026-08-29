@@ -186,7 +186,7 @@ console consumes it as a package. Only the Angular half is here.
   board.ts           what a keeper is offered: classification, sorting, network stats
   format.ts          ALGO amounts and rounds-as-time
 src/app/
-  routes.ts          the three destinations, and the query-parameter policy
+  routes.ts          the destinations (registry, upkeep, register, rain), and the query-parameter policy
   pages/             one component per destination
 src/app/core/
   entry.ts           where the console opens: link, then memory, then default

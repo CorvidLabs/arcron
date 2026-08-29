@@ -8,7 +8,7 @@ import {
   signal,
 } from '@angular/core';
 
-import { Router, RouterLink } from '@angular/router';
+import { Router, RouterLink, RouterLinkActive } from '@angular/router';
 
 import { shortAddress } from '@corvidlabs/arcron/format';
 import { WalletService } from '../core/wallet.service';
@@ -20,7 +20,7 @@ import type { NetworkKey } from '@corvidlabs/arcron/networks';
 @Component({
   selector: 'arcron-network-bar',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink],
+  imports: [RouterLink, RouterLinkActive],
   // The house rule is host bindings in the decorator's host object rather than
   // @HostListener. Escape is bound on the document because the drawer's scrim
   // is not focusable, so a keypress will not be inside this component.
@@ -47,6 +47,11 @@ import type { NetworkKey } from '@corvidlabs/arcron/networks';
           <h1 class="wordmark">Arcron</h1>
         </a>
         <span class="tagline">keeper network console</span>
+        <nav class="places" aria-label="Arcron">
+          <a routerLink="/" routerLinkActive="here" [routerLinkActiveOptions]="{ exact: true }">Registry</a>
+          <a routerLink="/rain" routerLinkActive="here">Rain</a>
+          <a routerLink="/register" routerLinkActive="here">Register</a>
+        </nav>
       </div>
 
       <!-- Mobile only. Hidden at every other width by CSS rather than by a
@@ -115,6 +120,7 @@ import type { NetworkKey } from '@corvidlabs/arcron/networks';
 
         <nav class="drawer-nav" aria-label="Console">
           <a routerLink="/" (click)="closeMenu()">Registry</a>
+          <a routerLink="/rain" (click)="closeMenu()">Rain</a>
           <a routerLink="/register" (click)="closeMenu()">Register an upkeep</a>
           @if (wallet.connected()) {
             <a routerLink="/" [queryParams]="{ mine: 1 }" queryParamsHandling="merge" (click)="closeMenu()">
@@ -233,6 +239,15 @@ import type { NetworkKey } from '@corvidlabs/arcron/networks';
       padding-left: 0.6rem;
       border-left: 1px solid var(--hairline);
     }
+    .places {
+      display: flex;
+      gap: 0.85rem;
+      margin-left: 0.4rem;
+      font-size: 0.88rem;
+    }
+    .places a { color: var(--text-faint); text-decoration: none; }
+    .places a:hover { color: var(--ink); text-decoration: underline; }
+    .places a.here { color: var(--sheen); font-weight: 500; }
     .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.7rem; }
     /* Above the breakpoint there is no drawer: the controls are an inline row
        exactly as before, and everything the drawer adds is absent from the
@@ -334,6 +349,7 @@ import type { NetworkKey } from '@corvidlabs/arcron/networks';
       }
 
       .tagline { display: none; }
+      .places { display: none; }
 
       .wordmark { font-size: 1.1rem; }
 

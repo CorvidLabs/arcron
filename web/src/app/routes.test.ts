@@ -1,25 +1,21 @@
 /**
- * Three destinations, and no more.
+ * Four destinations: registry, one upkeep, register, and Rain.
  *
- * The count is the decision, not an implementation detail: an earlier plan
- * copied five destinations from NFDomains onto a registry of five rows, and
- * `docs/console-plan.md` deferred four of them until something needs a fourth
- * reading. A test that only checks the three exist would let a sidebar with
- * two more slip in beside them, so the shape of the whole table is asserted.
- *
- * Bound to the array the application boots with, not to a copy of it.
+ * Rain is a separate contract and a holder-facing surface, so it is a route
+ * rather than a tab. Bound to the array the application boots with.
  */
 
 import { describe, expect, test } from 'bun:test';
 
 import { routerOptions, routes } from './routes';
 
-describe('the console has three destinations', () => {
-    test('exactly the registry, one upkeep, and the register form', () => {
+describe('the console has four destinations', () => {
+    test('exactly the registry, one upkeep, the register form, and rain', () => {
         expect(routes.filter((route) => route.path !== '**').map((route) => route.path)).toEqual([
             '',
             'u/:id',
             'register',
+            'rain',
         ]);
     });
 

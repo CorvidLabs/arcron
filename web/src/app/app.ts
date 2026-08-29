@@ -117,4 +117,10 @@ export class App {
     }
     return this.arcron.error();
   });
+
+  /** Rain is a holder surface on a different app; keeper tiles would lie. */
+  protected readonly rainSurface = computed(() => {
+    const path = this.path();
+    return path === '/rain' || path.endsWith('/rain');
+  });
 }

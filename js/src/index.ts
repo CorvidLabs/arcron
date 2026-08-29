@@ -19,3 +19,6 @@ export * from './target-test';
 export * from './board';
 export * from './format';
 export * from './networks';
+export * from './rain';
+export * from './rain-abi';
+export * from './rain-txns';
