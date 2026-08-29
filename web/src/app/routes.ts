@@ -52,15 +52,6 @@ export const routes: Routes = [
     title: 'Register an upkeep · Arcron',
     loadComponent: () => import('./pages/register-page').then((module) => module.RegisterPage),
   },
-  {
-    // Not linked from anywhere. This answers one question about wallets and is
-    // reached by typing the path, which is the right amount of discoverability
-    // for a diagnostic that is not part of the product.
-    path: 'govern/probe',
-    title: 'Multisig signing probe · Arcron',
-    loadComponent: () =>
-      import('./pages/govern-probe-page').then((module) => module.GovernProbePage),
-  },
   // A mistyped path is not a reason to lose the network and app the visitor
   // arrived with, and Angular carries the query string through a redirect.
   { path: '**', redirectTo: '' },
