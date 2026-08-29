@@ -115,3 +115,53 @@ Nothing else in this repository should ever hold a key it does not need:
 - Env files are gitignored anywhere in the tree, not just at the root, and
   must stay that way. `deploy/keeper.env` is the one the deployment guide
   tells you to create, and it was briefly not covered.
+
+## Dismissed advisories
+
+Advisories dismissed against this repository, and why. A dismissal that is not
+written down is indistinguishable from one nobody looked at, and GitHub caps
+the dismissal comment at 280 characters, so the reasoning lives here.
+
+### GHSA-wj6h-64fc-37mp, Minerva timing attack on P-256 in python-ecdsa
+
+Dismissed 2026-08-29 as **vulnerable code is not actually used**.
+
+`ecdsa` is a transitive dependency of `algorand-python-testing`. It is marked
+`groups = ["dev"]` in `poetry.lock` and does not appear in
+`poetry install --only main`, which is what every production path uses:
+`deploy/vps/install.sh`, `deploy/Dockerfile`, and the keeper, rain and
+release-drift workflows all pass `--only main --no-root`. A keeper operator
+following [`docs/hosting.md`](docs/hosting.md) never installs it.
+
+CVE-2024-23342 is a timing side-channel on `SigningKey.sign_digest()`, key
+generation and ECDH. The advisory states that **signature verification is
+unaffected**, and verification is the only thing this tree does. The single
+import sits inside the installed dependency, in the `_algopy_testing`
+package's crypto op module, and takes `VerifyingKey`,
+`NIST256p`, `SECP256k1` and `BadSignatureError`, and uses them in one place:
+`VerifyingKey.verify_digest` inside a mocked AVM `ecdsa_verify` op. No
+`SigningKey` is constructed anywhere in this repository or its dependencies,
+and Algorand transaction signing goes through Ed25519 via `pynacl`. **There is
+no long-term P-256 secret key in this project for a Minerva attack to
+recover.**
+
+One detail worth stating precisely, because an earlier and looser version of
+this claim was wrong: `ecdsa` *is* imported when the test suite runs.
+`algorand-python-testing` shadows `algorand-python`'s `algopy` module, so
+`import algopy` loads that package and therefore `ecdsa`. It is not
+loaded by `scripts/keeper_bot.py`, even inside the full dev environment. So
+the honest statement is that it is loaded and never exercised on the
+vulnerable path, rather than that it is never imported.
+
+There is also no fix available. `first_patched_version` is null, the
+vulnerable range is `>= 0`, and the latest release on PyPI is the one
+installed. Upstream's own package metadata says the library "does not protect
+against side-channel attacks" and exists for interoperability testing, which
+is a stated design position rather than a pending patch. Pinning is
+meaningless when every version is in range, and removing the dependency breaks
+`import algopy` and three test files in order to protect a code path that is
+never taken.
+
+If it is ever to leave the tree, the lever is upstream: `algorand-python-testing`
+already depends on `pycryptodomex`, which supports P-256, and on `coincurve`
+for secp256k1, so `ecdsa` could be dropped without losing either curve.
