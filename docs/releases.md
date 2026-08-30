@@ -154,11 +154,12 @@ is rather than how it compares to another.
 
 ## The rain dogfood deployment
 
-Not a stage of the keeper contract; a separate app, deployed once, that
-makes the dogfood in `docs/design/1.0.md` real rather than aspirational. It
-has no alpha/beta/rc of its own: `rain` is frozen the moment it is created,
-in the sense that it has no `configure` do-over and no update path, so a
-release row here is simply "when it went up and what it is."
+Not a stage of the keeper contract; separate apps that make the dogfood in
+`docs/design/1.0.md` real rather than aspirational. They have no alpha/beta/rc
+of their own, so a release row here is simply "when it went up and what it
+is." The pre-hub app had a one-time `configure` and an owner `update`; the hub
+that replaced it on 2026-08-29 has neither, and each rain's own drip and
+interval are tunable by that rain's creator through `set_rain`.
 
 | Date | Commit | Contract sha256 | App id | Notes |
 |---|---|---|---|---|

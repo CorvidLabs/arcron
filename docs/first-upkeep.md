@@ -56,7 +56,7 @@ look.
 | Method signature | `tick()uint64` |
 | Selector it produces | `0x4d4d5f0b` |
 | Box MBR | 0.0621 ALGO, **refunded in full on cancel** |
-| Minimum fee per run | 0.004 ALGO (the floor; the console suggests 0.010) |
+| Minimum fee per run | 0.004 ALGO, `MIN_UPKEEP_FEE`. A registration below it is rejected outright, not adjusted up. The console suggests 0.010. |
 
 `pulse` is a heartbeat counter that exists to be called. It has no state worth
 protecting and cannot fail, which is what makes it the right first target.
@@ -91,7 +91,7 @@ once you have escrowed. That was measured, not assumed:
 | Field | Value | Why |
 |---|---|---|
 | INTERVAL (ROUNDS) | `215` | About 10 minutes. Or press the `every 5 min` quick-cadence button. |
-| FEE PER EXECUTION | `0.010` | What the console suggests. Keepers spend about 0.003 in group fees, so this leaves them 0.007. The minimum the contract accepts is 0.004, which leaves 0.001 and cannot fund a machine — see below. |
+| FEE PER EXECUTION | `0.010` | What the console suggests. Keepers spend about 0.003 in group fees, so this leaves them 0.007. The minimum the contract accepts is 0.004, which leaves 0.001 and cannot fund a machine. See below. |
 | FEE CEILING | `0` | Off. Only raise it if an upkeep is actually going unserviced. |
 | FUNDING | `0.03` | Three runs at the suggested fee. |
 | IF A RUN IS MISSED | **Skip ahead** | See below. |
@@ -118,7 +118,7 @@ Check the **UP-FRONT COST** tile. With the funding above it should read
 This page has now got its own arithmetic wrong twice. An early draft said
 0.0771, the total for 0.012 of funding rather than the 0.02 its table asked for.
 Then the suggested fee moved to 0.010 and the funding row to 0.03, and this
-total stayed at 0.0851, which is 0.02 of funding — so the page told a reader to
+total stayed at 0.0851, which is 0.02 of funding. So the page told a reader to
 expect 0.0851 while a correct console showed 0.0951, and two paragraphs later
 told them a mismatch is a bug worth more than the upkeep.
 
@@ -197,6 +197,13 @@ uptime clock.
   with this ABI and box layout, so a look-alike shows the same registry and
   accepts the same register form. Every money button stays disabled until you
   explicitly continue, and the id is not remembered.
+- **Register fails with `assert failed pc=404`.** The fee per execution is
+  below the contract's floor. `MIN_UPKEEP_FEE` is 4,000 µALGO (0.004 ALGO) and
+  `register` checks it before anything is charged, so the whole group is
+  rejected at validation: nothing is escrowed, no box is created, and the
+  wallet shows a failure rather than a partial registration. A real
+  registration was rejected this way. Raise the fee to 0.004 at the very least,
+  or take the suggested 0.010.
 - **An execution fails.** Losing a race to another keeper costs nothing, and the
   chain rejects a failing transaction at validation rather than including it.
   That is ordinary and not an error.

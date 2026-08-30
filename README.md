@@ -4,9 +4,9 @@
 [![Keeper bot](https://github.com/CorvidLabs/arcron/actions/workflows/keeper-bot.yml/badge.svg)](https://github.com/CorvidLabs/arcron/actions/workflows/keeper-bot.yml)
 [![Release drift](https://github.com/CorvidLabs/arcron/actions/workflows/release-drift.yml/badge.svg)](https://github.com/CorvidLabs/arcron/actions/workflows/release-drift.yml)
 
-> **New here?** [`START-HERE.md`](START-HERE.md) is the front door — for people
-> trying it, for agents attacking it, and for anyone deciding whether the idea is
-> any good.
+> **New here?** [`START-HERE.md`](START-HERE.md) is the front door. It is for
+> people trying it, for agents attacking it, and for anyone deciding whether the
+> idea is any good.
 
 **Arcron** is a permissionless keeper network for Algorand. Anyone registers
 a scheduled contract call, and any keeper executes it for the fee. By
@@ -161,7 +161,7 @@ did differently, and the draft ARC that was never submitted. Nothing here
 claims to be first.
 
 **All of it in one read.** [`docs/book/`](docs/book/) holds the Working Guide, a
-single ordered pass through everything above — concept, console, integration,
+single ordered pass through everything above: concept, console, integration,
 keepers, security, economics, reference. It is compiled *from* the documents it
 cites and defers to them: where the guide and a doc disagree, the doc is right,
 and [`tests/test_book.py`](tests/test_book.py) pins the load-bearing figures to

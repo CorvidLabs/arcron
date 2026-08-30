@@ -21,12 +21,12 @@ Here it is honestly, which is less flattering than the first draft of this page:
 
 | one hourly schedule, per month | cost | what you give up |
 |---|---|---|
-| **Arcron** at the 4,000 µALGO floor | ~2.93 ALGO ≈ **$0.27** | see below — it is not nothing |
+| **Arcron** at the 4,000 µALGO floor | ~2.93 ALGO ≈ **$0.27** | see below; it is not nothing |
 | **Arcron** at the suggested 10,000 | ~7.32 ALGO ≈ **$0.66** | as above |
 | fly.io shared-cpu-1x | ~$2.02 | you write, host, key and monitor the bot |
 | Hetzner CX22 | ~$4.10 | as above |
 | AWS Lambda + EventBridge | **$0.00** | as above, but genuinely free at this volume |
-| Oracle Always Free | $0.00 | free, but Oracle reclaims idle instances — see below |
+| Oracle Always Free | $0.00 | free, but Oracle reclaims idle instances (see below) |
 | GitHub Actions cron | $0.00 | **delivered 7% of a half-hourly schedule when measured** |
 
 **Every figure on this page uses one basis**, because two earlier drafts mixed
@@ -81,9 +81,9 @@ not a cheaper scheduler, it is a different product.
 ## Where this stops being true
 
 **Above about 10 hourly upkeeps, running your own bot on the cheapest paid host
-is cheaper.** The crossover depends entirely on which host you compare against,
-and an earlier draft quoted 26 — the figure for a $5 host — on a page whose own
-table quotes $2.02:
+is cheaper.** The crossover depends entirely on which host you compare against.
+An earlier draft quoted 26, which is the figure for a $5 host, on a page whose
+own table quotes $2.02:
 
 | against | crossover |
 |---|---|
@@ -111,9 +111,9 @@ a different and also true number: the ratio of total costs, not the point where
 one overtakes the other.
 
 One process services any number of targets from one key: `scripts/keeper_bot.py`
-in this repo is a single process servicing the entire registry, so "ten
-contracts means ten bots" — which an earlier draft asserted — is false, and
-false in a way this repository disproves.
+in this repo is a single process servicing the entire registry. So "ten
+contracts means ten bots", which an earlier draft asserted, is false, and false
+in a way this repository disproves.
 
 The real asymmetry is narrower and survives: **no hot key, and no operational
 attention.** Arcron needs neither. That is worth something and it is not a
@@ -163,9 +163,9 @@ Raising the fee closes it, because the ratio is `(fee − 1000)/(fee − 3000)`:
 
 **Around 10,000 the two converge at about 10 upkeeps and the network pays for
 itself**, which is roughly what the registry holds. It is still 2.9x cheaper
-than the cheapest paid host — not the 7.7x an earlier draft claimed here, which
-was the floor's ratio against a $5 host reused for a different fee against a
-different host. The contract half-admits the underlying point already: *"A
+than the cheapest paid host, not the 7.7x an earlier draft claimed here. That
+7.7x was the floor's ratio against a $5 host, reused for a different fee against
+a different host. The contract half-admits the underlying point already: *"A
 creator who wants keepers who do not care about their token should set a fee
 above this floor."*
 
@@ -219,8 +219,8 @@ not follow. An agent alive enough to hold funds and make decisions is alive
 enough to call its own contract, and doing so is cheaper.
 
 **The strong form is the interesting one.** Arcron wins when the schedule
-should *outlive the agent that created it* — when autonomy should not be only
-as durable as somebody's process. That is liveness that survives its author,
+should *outlive the agent that created it*, when autonomy should not be only as
+durable as somebody's process. That is liveness that survives its author,
 and no amount of agent tooling provides it, because every agent framework
 assumes the agent is running.
 
@@ -259,7 +259,7 @@ the cost arithmetic above should not be allowed to paper over it.
 **So, falsifiably:** if this is real infrastructure, somebody outside CorvidLabs
 registers an upkeep for something they actually wanted scheduled, within a few
 months of this being visible. If a year passes and every upkeep is still ours,
-the design was fine and the demand was not there — the same ending as
+the design was fine and the demand was not there: the same ending as
 BiatecCron, reached more carefully.
 
 That is the number that settles it. Not keeper count, not throughput, and

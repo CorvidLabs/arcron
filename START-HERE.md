@@ -32,7 +32,7 @@ page.
 This page branches by what you came to do and then hands you to a document. The
 [Working Guide](docs/book/arcron-working-guide.md) is the other shape: one
 ordered read through all of it. It is **compiled from `docs/`, and `docs/`
-wins** — if the two ever disagree, the guide has a bug and
+wins**. If the two ever disagree, the guide has a bug and
 [`tests/test_book.py`](tests/test_book.py) should have caught it.
 
 ---
@@ -49,8 +49,8 @@ So the ecosystem hand-rolls it. The Foundation's own staking contracts carry
 to recurring work is still "run your own watcher on a cron."
 
 Arcron is the shared version of that. One hourly schedule costs about **$0.28 a
-month**, against roughly $2 for the cheapest server you would host a bot on —
-and the bot still has to be written.
+month**, against roughly $2 for the cheapest server you would host a bot on.
+And the bot still has to be written.
 
 **We are not claiming to be first.** Somebody proposed the same economics on
 Algorand in January 2024 and was funded 50,000 ALGO for it; it never shipped. A
@@ -78,7 +78,7 @@ findings:
 
 - The contract is **upgradeable until frozen**, and `frozen` is 0 today. The
   creator can replace the programs. See
-  [`docs/security.md`](docs/security.md) — this is the biggest one and we would
+  [`docs/security.md`](docs/security.md). This is the biggest one and we would
   rather you attack something else.
 - **Every keeper running is ours.** "Permissionless" is true architecturally and
   currently false empirically.
@@ -96,14 +96,14 @@ findings:
 
 **Second, here is what would actually be new.** Ranked by how much we would care:
 
-1. **A path that loses money** — an upkeep that pays a keeper for work not done,
+1. **A path that loses money.** An upkeep that pays a keeper for work not done,
    a refund that returns more than was escrowed, a fee that exceeds its cap, a
    keeper that can be made to pay for someone else's execution.
 2. **A way to make an upkeep permanently unexecutable** after its creator has
    escrowed, without the creator's consent.
 3. **A griefing path that costs the attacker less than the victim.**
 4. **Anything in the console that makes a stranger sign a transaction they did
-   not intend** — a wrong cost, a wrong target, a look-alike deployment getting
+   not intend.** A wrong cost, a wrong target, a look-alike deployment getting
    through [`quarantine.ts`](web/src/app/core/quarantine.ts).
 5. **A claim in the docs that is false.** The last three reviews each found real
    ones, including in the cost argument. Numbers are checkable; check them.
@@ -111,8 +111,8 @@ findings:
 **Where to send it:** open an issue, or reply to
 [attacks and findings](https://github.com/CorvidLabs/arcron/discussions/162),
 which lists the same known-already set so nobody duplicates work. If it is a
-live-funds vulnerability, [`SECURITY.md`](SECURITY.md) has the private path —
-please use that rather than a public thread.
+live-funds vulnerability, [`SECURITY.md`](SECURITY.md) has the private path.
+Please use that rather than a public thread.
 
 ---
 
@@ -150,11 +150,11 @@ ready to paste. If somebody sent you here to review this, use it.
 
 Three tasks, each one a thing nobody has done:
 
-- [#92](https://github.com/CorvidLabs/arcron/issues/92) — register an upkeep
+- [#92](https://github.com/CorvidLabs/arcron/issues/92): register an upkeep
   using **only** the docs. Tell us every place you had to guess.
-- [#93](https://github.com/CorvidLabs/arcron/issues/93) — run a keeper for an
+- [#93](https://github.com/CorvidLabs/arcron/issues/93): run a keeper for an
   hour and say whether it was worth it.
-- [#94](https://github.com/CorvidLabs/arcron/issues/94) — point Arcron at a
+- [#94](https://github.com/CorvidLabs/arcron/issues/94): point Arcron at a
   contract you wrote yourself.
 
 The most valuable thing you can report is not a bug. It is **the moment you had
@@ -177,5 +177,5 @@ If you looked and decided *not* to use it, that is worth more still:
 | Review history | Every round, including the ones that said no, is in `docs/reviews/` |
 
 If that reads as underselling, it is deliberate. The failure mode this project
-is most likely to hit is not a bug — it is being a well-built thing that nobody
+is most likely to hit is not a bug. It is being a well-built thing that nobody
 needed. We would rather find that out from you than discover it in a year.

@@ -339,7 +339,7 @@ So alpha-2 has never been serviced by a keeper. The three executions on upkeep
 
 Three things follow. **The 1.0 scope's dogfood claim is not true today** and
 should not be cited as evidence. **The median-lateness figure measures our
-misconfiguration, not keeper responsiveness** — which is Grok's §3 objection,
+misconfiguration, not keeper responsiveness.** That is Grok's §3 objection,
 arriving by a shorter route than it expected: the number is not diluted by
 reverting targets, it is entirely an artefact. Any "keepers are running about N
 behind" sentence built on it would be a confident lie. And **upkeep 18 is
@@ -477,9 +477,13 @@ in a human's memory.
 
 **Three routes.** `/` keeps the two tabs, `/u/:id` is new and is where
 registering now ends, `/register` is the form, and an unknown path redirects to
-`/` carrying its query string. `web/src/app/routes.test.ts` asserts the count
-rather than the existence of each, because the count is the decision that was
-taken and a fourth destination should have to argue for itself.
+`/` carrying its query string. `web/src/app/routes.test.ts` asserts the routes
+rather than the existence of each, because the shape is the decision that was
+taken and a new destination should have to argue for itself.
+
+> **Superseded 2026-08-29.** Rain argued for itself and won three: `/rain`,
+> `/rain/new` and `/rain/:id` (#197 and #204). Six routes plus the wildcard,
+> and the test now pins the exact path list.
 
 **The query parameters survive by policy, not by discipline.**
 `withRouterConfig({ defaultQueryParamsHandling: 'preserve' })` means no link in

@@ -392,6 +392,16 @@ funded runs = balance / fee_per_execution        # with no fee ceiling
 funded runs = balance / fee_cap                  # with one, this is the number
 ```
 
+**The fee has a floor of 4,000 µALGO (0.004 ALGO) per execution.**
+`MIN_UPKEEP_FEE` is asserted in `register` before anything is charged
+(`smart_contracts/keeper/contract.py:32`), so a lower `fee_per_execution` does
+not register at a reduced rate, it does not register at all: the group is
+rejected at validation with `assert failed pc=404`, no escrow moves and no box
+is created. A real registration was turned away by exactly that. The floor is
+there because a keeper spends about 3,000 µALGO in group fees to serve one
+execution, so anything under 4,000 asks a keeper to pay to do your work. The
+console suggests 10,000, which leaves a keeper about 7,000.
+
 At the 4,000 µALGO minimum fee, 1 ALGO buys 250 executions, about 10 days of
 an hourly cadence or 8 months of a daily one. Registering also costs box MBR
 (`2,500 + 400 × (139 + len(encoded call_args))` µALGO, so 62,100 for a bare

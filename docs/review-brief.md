@@ -43,7 +43,7 @@ writes to a chain.** Your entire output is a written assessment.
 
 ## The project
 
-Arcron — a permissionless keeper network for Algorand.
+Arcron is a permissionless keeper network for Algorand.
 https://github.com/CorvidLabs/arcron
 
 A smart contract cannot wake itself up. Arcron lets anyone register a scheduled
@@ -55,14 +55,14 @@ map, and how to build and test locally.
 
 ## Your job
 
-**Find out whether it holds up — with permission to conclude that it does.**
+**Find out whether it holds up, with permission to conclude that it does.**
 
 That framing is deliberate. Do not go looking for confirmation that it is bad.
 A brief of the form "prove this is broken" produces confident nonsense; the
 reviews of this project that found real bugs were the ones free to say a thing
 was fine, and they said so about most of it.
 
-## What is already known — these are NOT findings
+## What is already known: these are NOT findings
 
 Spending your budget rediscovering these wastes it. All are disclosed and
 measured in the repo:
@@ -72,7 +72,7 @@ measured in the repo:
   architecturally and currently false empirically.
 - The console's text is small and its controls are under the WCAG touch target.
   53 specific measurements sit in `web/e2e/baseline.json` with reasons.
-- **CATCH_UP can burn an upkeep's whole escrow** after an outage — measured:
+- **CATCH_UP can burn an upkeep's whole escrow** after an outage. Measured:
   17 replays bought 41 rounds against a 23,478-round backlog.
 - **Rounds are not a clock.** A nominally hourly upkeep drifts ~36 hours against
   the calendar per month, and it accumulates.
@@ -80,18 +80,18 @@ measured in the repo:
 
 ## What would actually be new, ranked
 
-1. **A path that loses money** — an upkeep paying for work not done, a refund
+1. **A path that loses money.** An upkeep paying for work not done, a refund
    exceeding what was escrowed, a fee above its cap, a keeper made to pay for
    someone else's execution.
 2. **A way to make an upkeep permanently unexecutable** after its creator has
    escrowed, without their consent.
 3. **A griefing path costing the attacker less than the victim.**
 4. **Anything in the console that makes a stranger sign what they did not
-   intend** — wrong cost, wrong target, a look-alike deployment getting past
+   intend.** Wrong cost, wrong target, a look-alike deployment getting past
    `quarantine.ts`.
 5. **A false claim in the documentation.** Several numbers in these docs were
    wrong last week and were caught by review. **Recompute anything you intend to
-   rely on — including figures this project states about itself.**
+   rely on, including figures this project states about itself.**
 6. **Whether the core idea is even right.** docs/why.md argues Algorand is
    missing a "call this later" primitive, and docs/prior-art.md documents two
    prior attempts that failed. Is the reasoning sound? Is the comparison to
@@ -108,12 +108,12 @@ measured in the repo:
   `fledge run web-render` is the only check that asks a browser for
   measurements.
 
-## Output — two parts, both required
+## Output: two parts, both required
 
 **Part 1: your assessment.** For each finding: what it is, where (file and
 line), why it matters, and how confident you are. Separate what you verified
-from what you suspect. Say plainly which parts you checked and found sound —
-that is as useful as a defect, and rarer.
+from what you suspect. Say plainly which parts you checked and found sound.
+That is as useful as a defect, and rarer.
 
 **Part 2: a prompt for Claude Code.** End with a single copy-pasteable block
 instructing an agent with write access on exactly what to change and why.
@@ -139,6 +139,6 @@ path, not a public thread.**
 The known-already list above goes stale as things get fixed. A brief that still
 warns about a bug somebody repaired last month sends reviewers away from the
 part that changed, which is the part most likely to be broken. When a listed
-item stops being true, delete it — the same rule
+item stops being true, delete it. That is the same rule
 [`web/e2e/baseline.json`](../web/e2e/baseline.json) enforces on itself, where a
 licence nothing uses any more fails the run.

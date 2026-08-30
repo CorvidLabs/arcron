@@ -1,11 +1,11 @@
 # A cron-driven rain bot. A stopgap, not the end state, for the same reasons
 # keeper-bot.yml is: see that file's header before changing this one.
 #
-# The registered draw cadence is two hours (see docs/releases.md); a scan
-# every thirty minutes matches the Arcron keeper's own cadence and leaves a
-# wide margin against the beacon's roughly 46-minute answer window
-# (smart_contracts/rain/contract.py::BEACON_WINDOW), so a single missed run
-# never risks an unresolved draw.
+# The rain hub gave resolve, claim and deposit back to holders on 2026-08-29,
+# and scripts/rain_bot.py was reduced to a scan that changes nothing. This job
+# is therefore a no-op on a cron. It is kept only so the schedule and its
+# secret do not disappear silently; retire it or repoint it at the hub rather
+# than leaving it logging.
 #
 # The job skips itself cleanly when RAIN_MNEMONIC is not set, so turning it
 # on before the secret exists produces a green run with a notice rather than

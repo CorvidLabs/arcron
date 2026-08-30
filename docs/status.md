@@ -38,13 +38,14 @@ Three earlier deployments are superseded and must not be used: `769823086`,
 
 ## The dogfood
 
-**Live since 2026-08-26.** A `rain` draw pointed at the real Foundation
-randomness beacon. There are two deployments, and the current one is the
-gated one:
+**Live since 2026-08-26.** A `rain` draw serviced by Arcron. The contract
+became a hub on 2026-08-29 and was redeployed; there are three deployments,
+and the current one is the hub:
 
 | | |
 |---|---|
-| [`770029154`](https://testnet.explorer.perawallet.app/application/770029154) | **current.** Entry gated on an NFT collection: creator `WGSHC4TY…` **and** unit name beginning `corvid`, case sensitive. Serviced by upkeep **79**. No tickets and an empty pot as of round 66,734,963, so `draw()` is a no-op returning 0 until somebody enters. |
+| [`770130162`](https://testnet.explorer.perawallet.app/application/770130162) | **current.** The hub. Anyone opens a rain; the Corvid rains are gated on creator `WGSHC4TY…` alone. One upkeep calls `draw()`, which fires every due rain it opens and returns 0 when none is. |
+| [`770029154`](https://testnet.explorer.perawallet.app/application/770029154) | the pre-hub gated draw, superseded on 2026-08-29. Runs programs this tree no longer builds. |
 | [`769988156`](https://testnet.explorer.perawallet.app/application/769988156) | the earlier open-entry draw, one draw resolved. **No upkeep schedules it any more**, so it is a record of a completed cycle rather than a running one. |
 
 Upkeep **79** calls `draw()uint64` every 2,571 rounds (about two hours),
@@ -55,29 +56,31 @@ not have and so could never have executed: every attempt died on `err` in the
 target's own ABI router, and a selector is fixed in the box at registration.
 Cancelling refunded the escrow and box MBR in full and cost 0.005 ALGO. The
 console now refuses to register a call its own Test button has just said
-would fail, which is the hole that let it happen. `scripts/rain_bot.py`, a dedicated account separate
-from the deployer and the keeper, resolves each draw against the beacon,
-claims what it wins and deposits it straight back into the pot; the loop
-never opens a draw itself, since that is the upkeep's job. Full detail,
+would fail, which is the hole that let it happen. `scripts/rain_bot.py` no
+longer drives the loop: the hub has no single open draw and holders pull
+`claim` for themselves, so the bot was reduced to a scan on 2026-08-29 and is
+kept only so the existing cron unit does not start failing. Full detail,
 including the first draw's real output and what a live beacon call needed
 that the LocalNet stub could not show, is in
 [the rain release entry](releases.md#the-rain-dogfood-deployment).
 
 **Where to look when it breaks:**
 
-- `poetry run python -m scripts.verify_build --network testnet --contract rain --app-id 770029154`
-  proves the deployed programs are this source.
+- `poetry run python -m scripts.verify_build --network testnet --contract rain --app-id 770130162`
+  proves the deployed hub programs are this source. Running it against
+  `770029154` now fails by design: that app runs the pre-hub programs.
 - `poetry run python -m scripts.keeper_bot --check --network testnet --app-id 769891898`
   says whether upkeep 79 is stalled or starved, among everything else in the
   registry.
-- `poetry run python -m scripts.rain_bot --once --network testnet --app-id 770029154`
-  reports the draw's own state (open, awaiting resolution, or quiet) without
-  changing anything unless there is genuinely something to do.
-- The recurring pieces both run as a cron-driven GitHub Actions job in the
-  meantime, `.github/workflows/keeper-bot.yml` for execution and
-  `.github/workflows/rain-bot.yml` for resolve/claim/deposit; both are
-  stopgaps, and both name a long-running host as the real fix in their own
-  file headers.
+- `poetry run python -m scripts.rain_bot --once --network testnet --app-id 770130162`
+  is a scan that changes nothing. It no longer reports draw state: the hub
+  keeps that per rain box, and `scripts/rain_testnet_live_proof.py` is what
+  exercises a rain end to end.
+- `.github/workflows/keeper-bot.yml` still runs execution on a cron, a stopgap
+  that names a long-running host as the real fix in its own header.
+  `.github/workflows/rain-bot.yml` still runs on the same cadence but no
+  longer resolves, claims or deposits: the hub gave those back to holders, and
+  the job should be retired or repointed rather than left logging.
 
 This is the mechanism [`docs/design/1.0.md`](design/1.0.md) describes: a
 recurring draw whose absence would actually be noticed, replacing the
