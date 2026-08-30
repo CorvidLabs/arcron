@@ -48,7 +48,7 @@ So the ecosystem hand-rolls it. The Foundation's own staking contracts carry
 `// Note: ANYONE can call this` with no reward attached. The documented answer
 to recurring work is still "run your own watcher on a cron."
 
-Arcron is the shared version of that. One hourly schedule costs about **$0.28 a
+Arcron is the shared version of that. One hourly schedule costs about **$0.27 a
 month**, against roughly $2 for the cheapest server you would host a bot on.
 And the bot still has to be written.
 
@@ -88,7 +88,7 @@ findings:
 - **`CATCH_UP` can burn an upkeep's whole escrow** after an outage. Measured:
   upkeep 18 spent everything on 17 replays and advanced 41 rounds against a
   23,478 round backlog.
-- **Rounds are not a clock.** An "hourly" upkeep drifts about 36 hours against
+- **Rounds are not a clock.** An "hourly" upkeep drifts about 12 hours against
   the calendar over a month.
 - Every attack a previous review found is in
   [`scripts/attacks.py`](scripts/attacks.py), each asserted to be refused by its

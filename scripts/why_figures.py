@@ -37,6 +37,14 @@ SUGGESTED_MICROALGO = 10_000
 #: the cost ratio: running your own bot makes the fee smaller, not absent.
 OUTER_FEE_MICROALGO = 1_000
 
+#: What executing costs the keeper in group fees, so its net per execution is
+#: the fee minus this. At the 4,000 µALGO floor a keeper nets 1,000.
+KEEPER_COST_MICROALGO = 3_000
+
+#: The fees the page's fee table sweeps: the floor, the suggested fee, and one
+#: step past it to show where the curve goes.
+FEE_LADDER = (FLOOR_MICROALGO, SUGGESTED_MICROALGO, 20_000)
+
 #: Monthly cost of the hosts the page compares against.
 HOSTS: dict[str, float] = {"fly.io": 2.02, "Hetzner": 4.10, "a $5 host": 5.00}
 
@@ -49,6 +57,7 @@ class Figures:
     floor_usd: float
     suggested_algo: float
     suggested_usd: float
+    outer_usd: float
     saving_usd: float
 
     def multiple(self, host: str) -> float:
@@ -75,6 +84,51 @@ class Figures:
         """
         return HOSTS[host] / self.floor_algo
 
+    @property
+    def minutes_per_firing(self) -> float:
+        """How long a nominal-hour upkeep actually waits between firings."""
+        return HOURLY_ROUNDS * self.seconds_per_round / 60
+
+    @property
+    def monthly_drift_hours(self) -> float:
+        """How far a nominal-hour upkeep slides against the calendar per month.
+
+        Each firing lands early by the gap between a wall-clock hour and what
+        the rounds actually take, and the phase error accumulates without
+        bound. This is the figure that was quoted as 36 hours from the
+        abandoned 2.66 basis long after the table around it had moved on.
+        """
+        early_per_firing = 3_600 - HOURLY_ROUNDS * self.seconds_per_round
+        return early_per_firing * self.executions_per_month / 3_600
+
+    def monthly_usd(self, fee_microalgo: int) -> float:
+        """What a creator pays per month for one hourly upkeep at this fee."""
+        return self.executions_per_month * fee_microalgo / 1e6 * ALGO_USD
+
+    def saving_usd_at(self, fee_microalgo: int) -> float:
+        """What self-hosting saves at this fee: the fee less the outer fee."""
+        return self.executions_per_month * (fee_microalgo - OUTER_FEE_MICROALGO) / 1e6 * ALGO_USD
+
+    def crossover_at(self, host: str, fee_microalgo: int) -> float:
+        """`crossover`, generalised to any fee for the fee table."""
+        return HOSTS[host] / self.saving_usd_at(fee_microalgo)
+
+    def keeper_net_usd(self, fee_microalgo: int) -> float:
+        """What a keeper clears per upkeep per month at this fee.
+
+        The keeper fronts about 3,000 µALGO of group fees per execution, so
+        at the 4,000 µALGO floor it nets 1,000.
+        """
+        return self.executions_per_month * (fee_microalgo - KEEPER_COST_MICROALGO) / 1e6 * ALGO_USD
+
+    def keeper_break_even(self, host: str, fee_microalgo: int) -> float:
+        """Concurrent hourly upkeeps at this fee before a keeper funds a host.
+
+        Like `crossover`, the page quotes it to the nearest integer: these are
+        approximate crossings of continuous curves, not counts to bill by.
+        """
+        return HOSTS[host] / self.keeper_net_usd(fee_microalgo)
+
 
 def compute(network: str = MAINNET) -> Figures:
     """Every figure, from the block time of the network being priced.
@@ -95,6 +149,7 @@ def compute(network: str = MAINNET) -> Figures:
         floor_usd=floor_usd,
         suggested_algo=suggested_algo,
         suggested_usd=suggested_algo * ALGO_USD,
+        outer_usd=outer_usd,
         saving_usd=floor_usd - outer_usd,
     )
 
@@ -113,6 +168,17 @@ def main() -> None:
             f"{figures.multiple_suggested(host):.1f}x suggested, "
             f"crossover {figures.crossover(host):.0f}, "
             f"parity ${figures.parity_algo_price(host):.2f}"
+        )
+    print(
+        f"  drift: fires every {figures.minutes_per_firing:.1f} min, "
+        f"slides {figures.monthly_drift_hours:.0f} h/month"
+    )
+    print("  fee table (creator pays, crossover vs fly.io, keeper funds a $5 host at):")
+    for fee in FEE_LADDER:
+        print(
+            f"    {fee:>6,} µALGO  ${figures.monthly_usd(fee):.2f}  "
+            f"{figures.crossover_at('fly.io', fee):.0f}  "
+            f"{figures.keeper_break_even('a $5 host', fee):.0f}"
         )
 
 

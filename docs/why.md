@@ -157,12 +157,12 @@ Raising the fee closes it, because the ratio is `(fee − 1000)/(fee − 3000)`:
 
 | fee | creator pays/mo | creator crossover vs $2.02 | keeper funds a $5 host at |
 |---|---|---|---|
-| 4,000 µALGO (the floor) | $0.28 | 10 | **73** |
-| 10,000 µALGO | $0.69 | 3 | **10** |
-| 20,000 µALGO | $1.38 | 2 | 5 |
+| 4,000 µALGO (the floor) | $0.27 | 10 | **75** |
+| 10,000 µALGO | $0.66 | 3 | **11** |
+| 20,000 µALGO | $1.33 | 2 | 4 |
 
 **Around 10,000 the two converge at about 10 upkeeps and the network pays for
-itself**, which is roughly what the registry holds. It is still 2.9x cheaper
+itself**, which is roughly what the registry holds. It is still 3.0x cheaper
 than the cheapest paid host, not the 7.7x an earlier draft claimed here. That
 7.7x was the floor's ratio against a $5 host, reused for a different fee against
 a different host. The contract half-admits the underlying point already: *"A
@@ -175,10 +175,10 @@ The `plus: nothing` in an earlier draft was false. Concretely:
 
 - **Wall-clock drift, which accumulates.** Arcron schedules in rounds, and
   rounds are not a clock. At the measured 2.752 s/round an upkeep set to a
-  nominal hour fires every 57 minutes and slides **roughly 36 hours against the
-  calendar over a month**. A cron fires at :00 forever and never gains phase. On
-  the exact axis this page uses to dismiss GitHub Actions, Arcron is worse, and
-  worse without bound. [`arcron.md`](arcron.md) has the drift table.
+  nominal hour fires every 59.0 minutes and slides **roughly 12 hours against
+  the calendar over a month**. A cron fires at :00 forever and never gains
+  phase. On the exact axis this page uses to dismiss GitHub Actions, Arcron is
+  worse, and worse without bound. [`arcron.md`](arcron.md) has the drift table.
 - **Liveness now depends on someone else's server**, and today every keeper is
   one of ours.
 - **An upgradeable contract holds your escrow** until its creator freezes it.

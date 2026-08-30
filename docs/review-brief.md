@@ -74,7 +74,7 @@ measured in the repo:
   53 specific measurements sit in `web/e2e/baseline.json` with reasons.
 - **CATCH_UP can burn an upkeep's whole escrow** after an outage. Measured:
   17 replays bought 41 rounds against a 23,478-round backlog.
-- **Rounds are not a clock.** A nominally hourly upkeep drifts ~36 hours against
+- **Rounds are not a clock.** A nominally hourly upkeep drifts ~12 hours against
   the calendar per month, and it accumulates.
 - Every attack a prior review found is already asserted in `scripts/attacks.py`.
 
