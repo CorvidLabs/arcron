@@ -248,8 +248,21 @@ describe('prizeLabel', () => {
   });
 
   test('an unnamed ASA stays ASA, a named one uses its unit', () => {
-    expect(prizeLabel(1_000n, 770_131_837n)).toBe('1,000 ASA');
-    expect(prizeLabel(1_000n, 770_131_837n, 'DROP')).toBe('1,000 DROP');
+    expect(prizeLabel(1_000n, 770_131_837n, '', 0)).toBe('1,000 ASA');
+    expect(prizeLabel(1_000n, 770_131_837n, 'DROP', 0)).toBe('1,000 DROP');
+  });
+
+  test('an ASA scales by its own decimals, not by base units', () => {
+    // Unscaled, this pot would read as 1,000,000 DROP: a millionfold lure
+    // on a permissionless hub.
+    expect(prizeLabel(1_000_000n, 770_131_837n, 'DROP', 6)).toBe('1 DROP');
+    expect(prizeLabel(1_500_000n, 770_131_837n, 'DROP', 6)).toBe('1.5 DROP');
+    expect(prizeLabel(50_000n, 770_131_837n, 'DROP', 6)).toBe('0.05 DROP');
+  });
+
+  test('unknown decimals say base units rather than a wrong number', () => {
+    expect(prizeLabel(1_000n, 770_131_837n)).toBe('1,000 base units of ASA');
+    expect(prizeLabel(1_000n, 770_131_837n, 'DROP')).toBe('1,000 base units of DROP');
   });
 });
 

@@ -2,8 +2,10 @@
  * Display helpers.
  *
  * ALGO leads everywhere a person reads a value. µALGO is what the contract
- * counts in, but nobody thinks in millionths. Durations are derived from the
- * chain's observed round rate, so "every 1,286 rounds" also reads as "~1 hour".
+ * counts in, but nobody thinks in millionths. ASA amounts scale the same way:
+ * base units on the wire, whole tokens on the page, by the asset's own
+ * decimals. Durations are derived from the chain's observed round rate, so
+ * "every 1,286 rounds" also reads as "~1 hour".
  */
 
 const MICRO_ALGO_IN_ALGO = 1_000_000n;
@@ -21,6 +23,33 @@ export function algos(microAlgo: bigint, options: { sign?: boolean } = {}): stri
   const value = fraction.length > 0 ? `${whole}.${fraction}` : whole;
   const prefix = negative ? '−' : options.sign ? '+' : '';
   return `${prefix}${value} ALGO`;
+}
+
+/**
+ * Base units of an ASA as whole tokens: "1.5", "0.004", "1,000", with
+ * trailing zeros trimmed. The unit name is the caller's to append.
+ */
+export function tokens(baseUnits: bigint, decimals: number): string {
+  if (decimals <= 0) return baseUnits.toLocaleString('en-US');
+  const scale = 10n ** BigInt(decimals);
+  const negative = baseUnits < 0n;
+  const magnitude = negative ? -baseUnits : baseUnits;
+  const whole = (magnitude / scale).toLocaleString('en-US');
+  const fraction = (magnitude % scale)
+    .toString()
+    .padStart(decimals, '0')
+    .replace(/0+$/, '');
+  const value = fraction.length > 0 ? `${whole}.${fraction}` : whole;
+  return negative ? `−${value}` : value;
+}
+
+/**
+ * A typed whole-token amount as the ASA's base units: 1.5 of a 6-decimal
+ * asset is 1_500_000n. Rounds to the nearest base unit, the same way the
+ * ALGO forms round to the nearest µALGO.
+ */
+export function toBaseUnits(amount: number, decimals: number): bigint {
+  return BigInt(Math.round(amount * 10 ** decimals));
 }
 
 export function shortAddress(address: string): string {
