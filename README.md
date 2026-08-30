@@ -457,17 +457,20 @@ interval.
 
 ## Running a keeper
 
-The bot is meant to run continuously, and `deploy/` has three ways to do it:
+The bot is meant to run continuously, and there are three ways to do it:
 
 | | For |
 |---|---|
-| `com.corvidlabs.arcron-keeper.plist` | macOS: a launchd agent, since systemd is not an option on a Mac host |
-| `keeper-bot.service` | Linux: a systemd unit |
-| `Dockerfile` + `compose.yaml` | a container, anywhere |
+| `fledge run keeper-daemon-install` | macOS: generates and boots a launchd agent, since systemd is not an option on a Mac host |
+| `deploy/keeper-bot.service` | Linux: a systemd unit |
+| `deploy/Dockerfile` + `compose.yaml` | a container, anywhere |
 
 All three read the same environment: `KEEPER_MNEMONIC`, `KEEPER_APP_ID` and an
 algod endpoint. Keep the mnemonic in a `chmod 600` file the unit points at
-rather than inline. A launchd plist under `LaunchAgents` is world-readable.
+rather than inline. A launchd plist under `LaunchAgents` is world-readable,
+which is why the macOS path generates the plist rather than shipping one: it
+writes no secret into it, and it refuses to install until the earnings have
+somewhere to go. See [`docs/hosting.md`](docs/hosting.md).
 
 `KEEPER_MAX_OUTER_FEE` raises the ceiling on the outer fee the keeper will
 sign, which defaults to 10,000 microAlgos and exists to refuse a node quoting
