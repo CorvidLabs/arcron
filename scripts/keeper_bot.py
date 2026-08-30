@@ -797,11 +797,21 @@ def _maybe_sweep(algorand, address: str, args, *, spendable: int, last_sweep: fl
 
     reserve = keeper_sweep.reserve_for(args.sweep_reserve, args.min_balance)
     now = time.monotonic()
+    if last_sweep is None:
+        # First heartbeat of this process. "Every N seconds" has to be counted
+        # from something, and there is no earlier sweep to count from, so this
+        # used to pass None and `decide` skipped the period branch entirely:
+        # a keeper configured with only --sweep-every never swept at all, and
+        # one configured with both swept only on the threshold. Start the
+        # clock here, so a period means "N seconds after the keeper came up",
+        # which is what naming a period reads as. The threshold is still
+        # evaluated on this same heartbeat.
+        last_sweep = now
     decision = keeper_sweep.decide(
         spendable,
         reserve=reserve,
         threshold=args.sweep_above,
-        seconds_since_last=None if last_sweep is None else now - last_sweep,
+        seconds_since_last=now - last_sweep,
         every_seconds=args.sweep_every,
     )
     if not decision:

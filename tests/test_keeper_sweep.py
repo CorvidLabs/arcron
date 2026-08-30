@@ -321,3 +321,78 @@ def test_zero_cannot_be_used_to_turn_the_guard_off() -> None:
     # Zero would make every fee look too high and stop the bot dead, which is
     # a confusing way to express "no ceiling" and is not what anyone means.
     assert _ceiling("0") == 10_000
+
+
+# --- the period has to be able to fire at all ----------------------------
+
+
+class _Recorder:
+    """Stands in for keeper_sweep.send; records instead of broadcasting."""
+
+    def __init__(self) -> None:
+        self.sent: list[int] = []
+
+    def __call__(self, algorand, sender, destination, amount, *, dry_run=False):
+        self.sent.append(amount)
+
+
+def _sweep_args(**kw):
+    from types import SimpleNamespace
+
+    base = dict(
+        sweep_reserve=None,
+        min_balance=LOW_BALANCE_MICROALGO,
+        sweep_above=None,
+        sweep_every=86_400,
+        sweep_to="WGSHC4TYKYBS6EX5V5E377BQDLKWIIPBCFOLZQZIXCKHFIEKRPBFOMW25A",
+        sweep_dry_run=False,
+    )
+    base.update(kw)
+    return SimpleNamespace(**base)
+
+
+def test_a_fresh_process_starts_the_period_clock(monkeypatch) -> None:
+    # The bug this pins: `last_sweep` begins as None, and `decide` skips the
+    # period branch when it cannot measure an interval. A keeper configured
+    # with only --sweep-every therefore swept exactly never, silently, and
+    # `launchctl` and the log both showed a perfectly healthy keeper.
+    from scripts import keeper_bot
+
+    recorder = _Recorder()
+    monkeypatch.setattr(sweep, "send", recorder)
+    started = keeper_bot._maybe_sweep(
+        None, "SENDER", _sweep_args(), spendable=90_000_000, last_sweep=None
+    )
+    assert isinstance(started, float), "the clock must start, not stay None"
+    assert recorder.sent == [], "a period should not fire on its first heartbeat"
+
+
+def test_the_period_then_fires_once_it_has_elapsed(monkeypatch) -> None:
+    import time
+
+    from scripts import keeper_bot
+
+    recorder = _Recorder()
+    monkeypatch.setattr(sweep, "send", recorder)
+    long_ago = time.monotonic() - 86_401
+    keeper_bot._maybe_sweep(
+        None, "SENDER", _sweep_args(), spendable=90_000_000, last_sweep=long_ago
+    )
+    assert recorder.sent, "the period elapsed and there was a surplus"
+
+
+def test_the_threshold_still_fires_on_the_first_heartbeat(monkeypatch) -> None:
+    # Seeding the clock must not cost the other trigger a heartbeat.
+    from scripts import keeper_bot
+
+    recorder = _Recorder()
+    monkeypatch.setattr(sweep, "send", recorder)
+    keeper_bot._maybe_sweep(
+        None,
+        "SENDER",
+        _sweep_args(sweep_above=1_000_000),
+        spendable=90_000_000,
+        last_sweep=None,
+    )
+    expected = sweep.sweepable(90_000_000, sweep.reserve_for(None, LOW_BALANCE_MICROALGO))
+    assert recorder.sent == [expected]
