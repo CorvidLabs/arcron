@@ -26,17 +26,28 @@ see [`security.md`](security.md).
 
 ## The upkeeps
 
-Read from the chain at round 66,755,175.
+Read from the chain at round 66,820,047 on 2026-08-30.
 
 | id | target | every | escrow | runway | runs | policy |
 |---|---|---|---|---|---|---|
-| 19 | `769891902` pulse | 11.5 h | 0.3486 ALGO | ~42 days | 5 | catch up |
-| 20 | `769891902` pulse | 11.5 h | 0.3486 ALGO | ~42 days | 5 | skip ahead |
-| 21 | `769891902` pulse | 11.5 h | 0.3943 ALGO | ~47 days | 5 | skip ahead |
-| 22 | `769891902` pulse | 11.5 h | 0.3486 ALGO | ~42 days | 5 | skip ahead |
-| 79 | `770029154` rain (gated) | 1.9 h | 7.9300 ALGO | ~64 days | 7 | skip ahead |
-| 81 | `770041460` (our agent) | 58 min | 1.5300 ALGO | ~6 days | 15 | skip ahead |
-| 82 | `769891902` pulse | 58 min | 3.5000 ALGO | ~14 days | 0 | skip ahead |
+| 19 | `769891902` pulse | 12 h | 0.3326 ALGO | ~40 days | 9 | catch up |
+| 20 | `769891902` pulse | 12 h | 0.3326 ALGO | ~40 days | 9 | skip ahead |
+| 21 | `769891902` pulse | 12 h | 0.3783 ALGO | ~45 days | 9 | skip ahead |
+| 22 | `769891902` pulse | 12 h | 0.3326 ALGO | ~40 days | 9 | skip ahead |
+| 79 | `770029154` rain, **superseded** | 2 h | 7.7000 ALGO | ~62 days | 30 | skip ahead |
+| 81 | `770041460` (our agent) | 58 min | 4.1000 ALGO | ~16 days | 58 | skip ahead |
+| 82 | `769891902` pulse | 58 min | 3.0207 ALGO | ~12 days | 40 | skip ahead |
+| 87 | `770082145` (our agent) | 58 min | 5.7500 ALGO | ~23 days | 22 | skip ahead |
+| 91 | `770130162` rain hub | 58 min | 2.9480 ALGO | ~30 days | 18 | skip ahead |
+
+Seven of twenty-eight, chosen because each one shows something: the `pulse`
+set is both catch-up policies side by side, **91** is the dogfood, **79** is
+still paying keepers to call an app superseded on 2026-08-29, and **87** is
+overdue with 5.75 ALGO in it because its target reverts by its author's own
+configuration, which no amount of escrow fixes. The other twenty are agent
+registrations, twelve of them starved on a 20 round cadence. `fledge run
+health` is the live view and says which of the two kinds of overdue each one
+is.
 
 **Upkeep 82 replaced upkeep 73 on 2026-08-28**, and the reason is worth
 recording because nothing on chain shows it. 73 paid `MIN_UPKEEP_FEE` and also
@@ -73,10 +84,15 @@ matching two we had hardcoded, which is not the same question.
 **Runway** is escrow divided by burn rate at TestNet's measured 2.695 s/round. It is
 what the upkeep can pay for, not a promise about keeper availability.
 
-Nothing here is short-cadence any more. Five upkeeps were cancelled on
-2026-08-27 for running every 28 seconds to 9 minutes, which at the 4,000 µALGO
-floor costs 0.6 to 13 ALGO a day each. They were not underfunded, they were
-misconfigured, and cancelling recovered their box minimum balance.
+**Short cadences come back, and they starve the same way every time.** Five
+upkeeps were cancelled on 2026-08-27 for running every 28 seconds to 9 minutes,
+which at the 4,000 µALGO floor costs 0.6 to 13 ALGO a day each. They were not
+underfunded, they were misconfigured, and cancelling recovered their box
+minimum balance. Twelve more, upkeeps 98 to 109, were registered on a 20 round
+cadence and are starved today: carrying one to thirty days costs 192 ALGO, so
+`fledge run topup` refuses to fund them and says to cancel instead. The lesson
+did not stick, because nothing enforces it. A cadence is fixed in the box at
+registration, so the only remedy is a cancel.
 
 ## rain: who can win, and how often
 

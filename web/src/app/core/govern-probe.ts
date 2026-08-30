@@ -19,6 +19,17 @@
  * and "Pera was never tried" must not look the same in a report, and a wallet
  * that errors for an unrelated reason must not be recorded as refusing.
  */
+//
+// NOT REACHED BY ANY PAGE, ON PURPOSE. Nothing in `web/` imports this module;
+// only its tests do. It is groundwork from #201 for letting the three holders
+// authorise a governance transaction with a wallet instead of pasting a
+// mnemonic into a shell, which is the whole point of a Ledger.
+//
+// It stayed unreached because #202 made the MainNet creator one account rather
+// than a 2 of 3. `docs/deploying.md` records that the multisig machinery is
+// kept working so that decision can be reversed with one constant, and this is
+// the browser half of that machinery. A review pass read it as dead code, which
+// is fair: unreached crypto in a money front end should say why it is here.
 
 export type ProbeOutcome = 'signed' | 'refused' | 'errored' | 'not-asked' | 'not-tried';
 
