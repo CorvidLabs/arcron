@@ -386,12 +386,47 @@ ECONOMICS = [
         r"\| Box deposit \| ([\d.]+) \|",
         [r"\| Box deposit \| ([\d.]+) \|"],
     ),
-    # Drift: docs said 36 hours and the book said 35.
+    # Drift: docs said 36 hours and the book said 35, and both were derived
+    # from the abandoned 2.66 s/round basis; the measured basis gives 12.
     (
         "daily drift",
         ARCRON,
         r"slides about \*\*(\d+) hours\*\*",
         [r"slides about \*\*(\d+) hours\*\* against the calendar"],
+    ),
+    (
+        "daily hours at the measured rate",
+        ARCRON,
+        r"\| daily \| 30,857 \| 24\.0 h \| ([\d.]+) h \|",
+        [r"\| daily \| 30,857 \| 24\.0 h \| ([\d.]+) h \|"],
+    ),
+    # The crossover table's other rows, the parity against Hetzner, and the
+    # saving the crossover divides by. All four went stale in the guide on the
+    # abandoned block-time basis while the fly.io row, the only pinned one,
+    # stayed right.
+    (
+        "Hetzner crossover",
+        WHY,
+        r"\| Hetzner, \$4\.10 \| (\d+) \|",
+        [r"\| Hetzner, \$4\.10 \| (\d+) \|"],
+    ),
+    (
+        "$5-host crossover",
+        WHY,
+        r"\| a \$5 host \| (\d+) \|",
+        [r"\| a \$5 host \| (\d+) \|"],
+    ),
+    (
+        "Hetzner parity",
+        WHY,
+        r"\| \$4\.10/mo \| \$([\d.]+) \|",
+        [r"\| \$4\.10/mo \| \$([\d.]+) \|"],
+    ),
+    (
+        "self-hosting saving",
+        WHY,
+        r"what self-hosting actually saves\*\* \| \*\*\$([\d.]+)\*\*",
+        [r"about \$([\d.]+) a month per"],
     ),
 ]
 

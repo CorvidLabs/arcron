@@ -852,16 +852,17 @@ together.
 
 ### Rounds are not a clock
 
-A cadence is a round count, and a round is about 2.8 s nominally, 2.752 s measured
-on TestNet. So "daily" means "every ~30,857 rounds", and the gap compounds.
+A cadence is a round count, and a round is about 2.8 s nominally, 2.752 s
+measured on MainNet (TestNet: 2.695 s). So "daily" means "every ~30,857
+rounds", and the gap compounds.
 
 | Cadence | Rounds | At 2.8 s | At measured 2.752 s | Drift/cycle |
 |---|---|---|---|---|
-| hourly | 1,286 | 1.0 h | ~0.95 h (57 min) | ~3 min |
-| daily | 30,857 | 24.0 h | 22.8 h | ~1.2 h |
-| weekly | 216,000 | 168.0 h | 159.7 h | ~8.3 h |
+| hourly | 1,286 | 1.0 h | ~0.98 h (59 min) | ~1 min |
+| daily | 30,857 | 24.0 h | 23.6 h | ~25 min |
+| weekly | 216,000 | 168.0 h | 165.1 h | ~2.9 h |
 
-A "daily" upkeep slides about **36 hours** against the calendar over thirty
+A "daily" upkeep slides about **12 hours** against the calendar over thirty
 cycles, and which way it slides depends on how busy the network is. Even the
 hourly row drifts: at the measured rate it fires every 59.0 minutes, so a nominal
 month is **732 executions, not 720**. That's why every cost figure in this book
@@ -1482,7 +1483,7 @@ moves *against* Arcron precisely when Algorand succeeds:
 
 | against | parity at ALGO |
 |---|---|
-| $4.10/mo | $1.35 |
+| $4.10/mo | $1.40 |
 | $2.02/mo | **$0.69** |
 
 **ALGO hasn't traded near either price in years.** It last closed above $0.70 on
@@ -1511,14 +1512,14 @@ own table quotes $2.02.
 | against | crossover |
 |---|---|
 | fly.io, $2.02 | **10 upkeeps** |
-| Hetzner, $4.10 | 20 |
-| a $5 host | 24 |
+| Hetzner, $4.10 | 21 |
+| a $5 host | 25 |
 
 > **Where the crossover comes from**, so you can check it. Self-hosting doesn't
 > make the chain free: calling your own target still costs the 1,000 µALGO outer
 > fee. So the *incremental* cost of Arcron at the floor is 4,000 - 1,000 = 3,000
 > µALGO per execution, or 732 x 3,000 = 2.20 ALGO, about $0.199 a month per
-> schedule. A $2.02 host divided by that is 9.8, hence 10.
+> schedule. A $2.02 host divided by that is 10.1, hence 10.
 
 The asymmetry that survives is narrower and real: **no hot key, and no
 operational attention.** That's worth something, and it isn't a process count.
@@ -1556,7 +1557,7 @@ do not care about their token should set a fee above this floor."*
 ### Rounds drift, and that costs you too
 
 A cadence is a round count and rounds run slightly faster than nominal, so an
-"hourly" upkeep fires every 59.0 minutes and slides ~36 hours against the calendar
+"hourly" upkeep fires every 59.0 minutes and slides ~12 hours against the calendar
 over a month. That also means it fires **732 times, not 720**, so at the floor it
 costs 2.93 ALGO a month rather than the naive 2.88. Every figure in this chapter
 is computed at 732. Budget against your real cadence, not the nominal one.

@@ -20,7 +20,7 @@ import re
 
 import pytest
 
-from scripts.why_figures import HOSTS, compute
+from scripts.why_figures import FEE_LADDER, FLOOR_MICROALGO, HOSTS, compute
 
 WHY = pathlib.Path(__file__).resolve().parent.parent / "docs" / "why.md"
 
@@ -64,6 +64,39 @@ def test_the_saving_that_the_crossover_divides_by_matches(page: str, figures) ->
     # costs. Getting this wrong is what produced a crossover of 26 on a page
     # whose own table said 10.
     assert f"${figures.saving_usd:.3f}" in page
+    # And the two rows it is the difference of, in the same table.
+    assert f"| Arcron at the floor | ${figures.floor_usd:.3f} |" in page
+    assert f"still paying the outer fee | ${figures.outer_usd:.3f} |" in page
+
+
+def test_the_drift_it_admits_matches(page: str, figures) -> None:
+    # The bullet under "What you give up" quoted 57 minutes and 36 hours from
+    # an abandoned basis while the basis paragraph on the same page said 59.0.
+    # A page's admissions have to be as derived as its advertisements.
+    assert f"fires every {figures.minutes_per_firing:.1f} minutes" in page
+    assert f"slides **roughly {figures.monthly_drift_hours:.0f} hours" in page
+
+
+def test_the_fee_table_is_derived_not_quoted(page: str, figures) -> None:
+    # The fee table was the last hand-quoted block on the page: every cell was
+    # computed on the abandoned basis and contradicted the derived figures
+    # four sections up. Nearest integer throughout, like the crossovers: these
+    # are approximate crossings of continuous curves, not counts to bill by.
+    flat = page.replace("*", "")
+    for fee in FEE_LADDER:
+        monthly = f"${figures.monthly_usd(fee):.2f}"
+        crossover = f"{figures.crossover_at('fly.io', fee):.0f}"
+        funds = f"{figures.keeper_break_even('a $5 host', fee):.0f}"
+        row = rf"\| {fee:,} µALGO[^|]*\| {re.escape(monthly)} \| {crossover} \| {funds} \|"
+        assert re.search(row, flat), (
+            f"the fee table row for {fee:,} µALGO does not read "
+            f"{monthly} / {crossover} / {funds} as derived"
+        )
+
+
+def test_the_keeper_break_even_matches(page: str, figures) -> None:
+    threshold = figures.keeper_break_even("a $5 host", FLOOR_MICROALGO)
+    assert f"roughly {threshold:.0f} concurrent hourly upkeeps to fund a $5 host" in page
 
 
 @pytest.mark.parametrize("host", sorted(HOSTS))
