@@ -15,8 +15,18 @@ Three questions, which are the ones that actually go wrong:
   is any upkeep about to starve       escrow divided by burn rate
   does any upkeep pay a keeper nothing  fee less what an execution costs
   can the keepers still afford to run   spendable, not total, balance
+  why is an overdue upkeep overdue      simulate the execution and read the error
 
-Reads public state. Holds no account and signs nothing.
+The fourth was added after upkeep 87 sat overdue for 9,000 rounds with 5.75
+ALGO in it and its fee escalated to the ceiling, while twelve others were
+overdue because they had run out of money. This report printed all thirteen
+identically, as OVERDUE, and telling them apart took six commands and a
+disassembler. They are not the same problem: one is a funding problem and the
+other is a broken target, which no amount of funding fixes.
+
+Reads public state. Holds no account and signs nothing: the simulation sends
+unsigned transactions with `allow_empty_signatures`, from a keeper address
+already observed executing, so it asks what a real keeper would find.
 
 Run:  poetry run python -m scripts.registry_health [--network N] --app-id N
 """
@@ -27,8 +37,12 @@ import argparse
 import base64
 import hashlib
 import logging
+import re
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+
+from algosdk import transaction
+from algosdk.v2client.models import SimulateRequest, SimulateRequestTransactionGroup
 
 from scripts import network as net
 from scripts.keeper_bot import (
@@ -36,6 +50,7 @@ from scripts.keeper_bot import (
     BONUS_FEE_MICROALGO,
     EXECUTION_COST_MICROALGO,
     _decode_upkeep,
+    effective_fee,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -70,6 +85,14 @@ class UpkeepHealth:
     runway_days: float
     rounds_late: int
     interval_rounds: int
+    #: Whether the escrow covers what `execute` would pay right now, which is
+    #: the escalated fee rather than the base one. Decides the funding case,
+    #: because simulate does not return the assert message that would.
+    can_pay_fee: bool = True
+    #: Why an execution would fail right now, from `classify_failure`. Empty
+    #: when nothing was simulated, which is not the same as "would succeed":
+    #: only overdue upkeeps are worth the round trip.
+    blocked: str = ""
 
     @property
     def pays_nothing(self) -> bool:
@@ -98,6 +121,8 @@ class UpkeepHealth:
             found.append(f"{self.runway_days:.1f} DAYS OF RUNWAY")
         if self.overdue:
             found.append(f"OVERDUE BY {self.rounds_late:,} ROUNDS")
+        if self.blocked:
+            found.append(self.blocked)
         return found
 
 
@@ -121,9 +146,94 @@ def read_upkeeps(algod, app_id: int, seconds_per_round: float, current_round: in
                 runway_days=runs * upkeep.interval_rounds * seconds_per_round / 86_400,
                 rounds_late=max(0, current_round - upkeep.next_execution_round),
                 interval_rounds=upkeep.interval_rounds,
+                can_pay_fee=upkeep.balance >= effective_fee(upkeep, current_round),
             )
         )
     return sorted(found, key=lambda u: u.upkeep_id)
+
+
+def classify_failure(message: str, can_pay_fee: bool = True) -> str:
+    """A simulate failure, as the one thing an operator has to decide.
+
+    **The assert message is not in the response.** `assert x, "Insufficient
+    funding"` puts that string in the source map, not on chain, so simulate
+    returns `assert failed pc=1181 ... opcodes=dig 15; >=; assert` and nothing
+    more. Matching on the text would have quietly classified nothing, and
+    matching on the pc would break on the next build. So the funding case is
+    decided from the upkeep's own numbers, which are already known, and only
+    the shape of the failure is read from the message.
+
+    What an operator actually has to tell apart:
+
+      inner tx failed    the target's own code rejected the call. Upkeep 87:
+                         a target its author reconfigured to revert. No fee
+                         fixes this; the upkeep wants cancelling or the target
+                         wants fixing.
+      cannot pay         the escrow cannot cover the escalated fee. This is
+                         the funding case, and `keeper_topup` is the answer.
+
+    Anything else is quoted rather than guessed at: a classifier that invents
+    a category for an error it has not seen is worse than one that quotes it.
+    """
+    if not message:
+        return ""
+    if "inner tx" in message and "failed" in message:
+        return "TARGET REVERTS"
+    if not can_pay_fee:
+        return "ESCROW CANNOT PAY THE FEE"
+    # Drop the `transaction <52 chars>: ` prefix before truncating. Leaving it
+    # in spends the whole line on an id that identifies a simulated
+    # transaction which never existed.
+    quoted = re.sub(r"^transaction [A-Z2-7]{52}: ", "", message)
+    return f"WOULD FAIL: {quoted.split('. Details')[0][:80]}"
+
+
+def simulate_execute(algod, app_id: int, upkeep: UpkeepHealth, sender: str) -> str:
+    """What `execute` would do right now, without doing it.
+
+    Unsigned, with `allow_empty_signatures`, so this needs no key and cannot
+    send anything. The sender is a real keeper address so the contract's own
+    sender checks see what they would really see.
+    """
+    params = algod.suggested_params()
+    params.flat_fee = True
+    params.fee = EXECUTION_COST_MICROALGO
+    txn = transaction.ApplicationNoOpTxn(
+        sender=sender,
+        sp=params,
+        index=app_id,
+        app_args=[execute_selector(), upkeep.upkeep_id.to_bytes(8, "big")],
+        boxes=[(0, b"u" + upkeep.upkeep_id.to_bytes(8, "big"))],
+        foreign_apps=[upkeep.target_app],
+    )
+    request = SimulateRequest(
+        txn_groups=[SimulateRequestTransactionGroup(
+            txns=[transaction.SignedTransaction(txn, "")]
+        )],
+        allow_empty_signatures=True,
+        allow_unnamed_resources=True,
+    )
+    try:
+        response = algod.simulate_transactions(request)
+    except Exception as error:  # a simulate that cannot run is not a verdict
+        return f"WOULD FAIL: simulate unavailable ({type(error).__name__})"
+    return classify_failure(
+        response["txn-groups"][0].get("failure-message", "").replace("\n", " "),
+        can_pay_fee=upkeep.can_pay_fee,
+    )
+
+
+def diagnose_overdue(algod, app_id: int, upkeeps: list[UpkeepHealth], sender: str) -> list[UpkeepHealth]:
+    """Annotate the overdue upkeeps with why, leaving the rest untouched.
+
+    Only the overdue ones: an upkeep that is on schedule is being executed,
+    which is a stronger statement than any simulation could make.
+    """
+    return [
+        replace(upkeep, blocked=simulate_execute(algod, app_id, upkeep, sender))
+        if upkeep.overdue else upkeep
+        for upkeep in upkeeps
+    ]
 
 
 def read_keepers(algod, indexer, app_id: int, current_round: int) -> list[tuple[str, int, int, int]]:
@@ -154,6 +264,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     net.add_network_argument(parser)
     parser.add_argument("--app-id", type=int, required=True)
+    parser.add_argument("--no-simulate", action="store_true",
+                        help="skip asking the chain why an overdue upkeep is overdue")
     args = parser.parse_args(argv)
 
     net.load_network(args.network)
@@ -164,6 +276,13 @@ def main(argv: list[str] | None = None) -> int:
 
     upkeeps = read_upkeeps(algod, args.app_id, spr, current)
     keepers = read_keepers(algod, indexer, args.app_id, current)
+
+    # Ask from the busiest keeper's address: it is the account most likely to
+    # be executing, so its view is the one that matters. With no keeper to
+    # borrow, there is nobody to ask on behalf of, and the report says less
+    # rather than guessing.
+    if not args.no_simulate and keepers and any(u.overdue for u in upkeeps):
+        upkeeps = diagnose_overdue(algod, args.app_id, upkeeps, keepers[0][0])
 
     logger.info(f"app {args.app_id} on {args.network}, round {current:,}")
     logger.info(f"{len(upkeeps)} upkeep(s), {len(keepers)} keeper(s) executing in the last "
