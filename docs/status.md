@@ -1,6 +1,6 @@
 # Where Arcron stands
 
-Last updated 2026-08-27. This page is the one place to look if you want to
+Last updated 2026-08-30. This page is the one place to look if you want to
 know what exists, what state it is in, and what happens next. If it disagrees
 with anything else in this repo, this page is probably the stale one: check
 [the release table](releases.md), which is generated against live app ids.
@@ -27,7 +27,7 @@ already knew how it worked.
 | Demo target | Pulse [`769891902`](https://testnet.explorer.perawallet.app/application/769891902) |
 | Programs | 2,219 bytes across two pages, sha256 `c94c6e0c…` (alpha-3) |
 | Governance | **not frozen**: the creator can still replace the programs |
-| Registry | 6 upkeeps as of round 66,734,963 on 2026-08-27; 83 executions in the preceding 24 hours from 5 distinct keeper accounts |
+| Registry | 28 upkeeps as of round 66,819,095 on 2026-08-30; 358 executions in the preceding 24 hours from 4 distinct keeper accounts |
 | Console | [corvidlabs.xyz/arcron/console/](https://corvidlabs.xyz/arcron/console/), live and current with this tree |
 
 `poetry run python -m scripts.verify_build --network testnet --app-id 769891898`
@@ -48,15 +48,25 @@ and the current one is the hub:
 | [`770029154`](https://testnet.explorer.perawallet.app/application/770029154) | the pre-hub gated draw, superseded on 2026-08-29. Runs programs this tree no longer builds. |
 | [`769988156`](https://testnet.explorer.perawallet.app/application/769988156) | the earlier open-entry draw, one draw resolved. **No upkeep schedules it any more**, so it is a record of a completed cycle rather than a running one. |
 
-Upkeep **79** calls `draw()uint64` every 2,571 rounds (about two hours),
-SKIP_AHEAD.
+Upkeep **91** services the hub: it calls `draw()uint64` every 1,286 rounds
+(about an hour), SKIP_AHEAD, paying 4,000 µALGO an execution from an escrow
+the top-up tooling keeps near 30 days of runway.
 
-It replaced upkeep 77, which was registered against a selector `rain` does
-not have and so could never have executed: every attempt died on `err` in the
-target's own ABI router, and a selector is fixed in the box at registration.
-Cancelling refunded the escrow and box MBR in full and cost 0.005 ALGO. The
-console now refuses to register a call its own Test button has just said
-would fail, which is the hole that let it happen. `scripts/rain_bot.py` no
+A loose end, stated because it is true: upkeep **79**, which serviced the
+pre-hub draw, was not cancelled when the hub superseded its target. As of
+round 66,819,029 it still holds 7.7 ALGO, about 62 days of runway, and
+keepers are still paid to call `draw()` on `770029154` every 2,571 rounds;
+11 of those executions landed in the preceding 24 hours. Nothing is stuck
+(`cancel` refunds escrow and box MBR in full), but every one of those calls
+is escrow spent exercising an app this page says is superseded.
+
+Upkeep 79 had itself replaced upkeep 77, which was registered against a
+selector `rain` does not have and so could never have executed: every attempt
+died on `err` in the target's own ABI router, and a selector is fixed in the
+box at registration. Cancelling refunded the escrow and box MBR in full and
+cost 0.005 ALGO. The console now refuses to register a call its own Test
+button has just said would fail, which is the hole that let it happen.
+`scripts/rain_bot.py` no
 longer drives the loop: the hub has no single open draw and holders pull
 `claim` for themselves, so the bot was reduced to a scan on 2026-08-29 and is
 kept only so the existing cron unit does not start failing. Full detail,
@@ -70,7 +80,7 @@ that the LocalNet stub could not show, is in
   proves the deployed hub programs are this source. Running it against
   `770029154` now fails by design: that app runs the pre-hub programs.
 - `poetry run python -m scripts.keeper_bot --check --network testnet --app-id 769891898`
-  says whether upkeep 79 is stalled or starved, among everything else in the
+  says whether upkeep 91 is stalled or starved, among everything else in the
   registry.
 - `poetry run python -m scripts.rain_bot --once --network testnet --app-id 770130162`
   is a scan that changes nothing. It no longer reports draw state: the hub
