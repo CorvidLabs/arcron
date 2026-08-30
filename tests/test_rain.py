@@ -573,6 +573,56 @@ def test_abandon_returns_the_lock_after_the_window(
     assert rec.pot.native == 1_000_000
 
 
+def test_enter_is_refused_while_a_one_draw_is_open(
+    context: AlgopyTestContext, hub: Rain
+) -> None:
+    rain_id = _create(context, hub, mode=ONE, label="aim")
+    _enter(context, hub, rain_id, mode=ONE)
+    _deposit(context, hub, rain_id, 1_000_000)
+    _advance(context, INTERVAL)
+    assert hub.draw() == 1
+    # The committed round has passed, so its seed is public. A ticket taken
+    # now could be one of a batch sized to make `seed % tickets` land on it.
+    _advance(context, COMMIT_DELAY + 1)
+    late = context.any.account()
+    with pytest.raises(AssertionError, match="Draw open"):
+        _enter(context, hub, rain_id, sender=late, mode=ONE)
+    assert hub.rain_of(rain_id).tickets.native == 1
+
+
+def test_resolve_reopens_entry(context: AlgopyTestContext, hub: Rain) -> None:
+    rain_id = _create(context, hub, mode=ONE, label="reopen")
+    _enter(context, hub, rain_id, mode=ONE)
+    _deposit(context, hub, rain_id, 1_000_000)
+    _advance(context, INTERVAL)
+    hub.draw()
+    late = context.any.account()
+    with pytest.raises(AssertionError, match="Draw open"):
+        _enter(context, hub, rain_id, sender=late, mode=ONE)
+    commit = int(hub.rain_of(rain_id).commit_round.native)
+    context.ledger.set_block(index=commit, seed=1, timestamp=1)
+    context.ledger.patch_global_fields(round=UInt64(commit + 1))
+    hub.resolve(rain_id)
+    assert _enter(context, hub, rain_id, sender=late, mode=ONE) == 2
+
+
+def test_abandon_reopens_entry(context: AlgopyTestContext, hub: Rain) -> None:
+    rain_id = _create(context, hub, mode=ONE, label="stuck")
+    _enter(context, hub, rain_id, mode=ONE)
+    _deposit(context, hub, rain_id, 1_000_000)
+    _advance(context, INTERVAL)
+    hub.draw()
+    # Nobody resolves. Entry stays shut for the window, and the permissionless
+    # `abandon` is what reopens it, so a dead draw cannot wedge a rain.
+    late = context.any.account()
+    with pytest.raises(AssertionError, match="Draw open"):
+        _enter(context, hub, rain_id, sender=late, mode=ONE)
+    commit = int(hub.rain_of(rain_id).commit_round.native)
+    context.ledger.patch_global_fields(round=UInt64(commit + SEED_WINDOW + 1))
+    hub.abandon(rain_id)
+    assert _enter(context, hub, rain_id, sender=late, mode=ONE) == 2
+
+
 def test_two_rains_can_fire_in_one_draw(context: AlgopyTestContext, hub: Rain) -> None:
     first = _create(context, hub, label="a")
     second = _create(context, hub, label="b")

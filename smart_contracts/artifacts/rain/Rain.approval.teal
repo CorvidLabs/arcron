@@ -3,7 +3,7 @@
 
 // algopy.arc4.ARC4Contract.approval_program() -> uint64:
 main:
-    intcblock 0 1 8 2 160 128 192 152 136 176 144 184 216 100000 1000000000
+    intcblock 0 1 8 2 160 128 192 152 136 216 176 144 184 100000 1000000000
     bytecblock 0x151f7c75 0x72 "bootstrapped" 0x74 "next_rain_id" "cursor" 0x29cf3f40
     txn ApplicationID
     bnz main_after_if_else@2
@@ -630,7 +630,7 @@ enter:
     ==
     assert // invalid number of bytes for arc4.uint64
     btoi
-    // smart_contracts/rain/contract.py:245
+    // smart_contracts/rain/contract.py:247
     // box = Box(RainRec, key=op.concat(RAIN_PREFIX, op.itob(rain_id)))
     swap
     itob
@@ -641,26 +641,26 @@ enter:
     concat
     dup
     cover 4
-    // smart_contracts/rain/contract.py:246
+    // smart_contracts/rain/contract.py:248
     // assert box, "No such rain"
     dup
     box_len
     bury 1
     assert // No such rain
-    // smart_contracts/rain/contract.py:247
+    // smart_contracts/rain/contract.py:249
     // rec = box.value.copy()
     box_get
     pop
-    // smart_contracts/rain/contract.py:248
+    // smart_contracts/rain/contract.py:250
     // self._require_gate(rec, gate_asset)
     swap
     callsub _require_gate
     dup
-    // smart_contracts/rain/contract.py:250
+    // smart_contracts/rain/contract.py:252
     // needed = UInt64(TICKET_MBR)
     pushint 28500
     cover 5
-    // smart_contracts/rain/contract.py:251
+    // smart_contracts/rain/contract.py:253
     // if rec.mode.native == ONE:
     dup
     extract 160 8
@@ -673,24 +673,24 @@ enter:
     ==
     dup
     bz enter_after_if_else@3
-    // smart_contracts/rain/contract.py:252
+    // smart_contracts/rain/contract.py:254
     // needed = UInt64(TICKET_MBR + INDEX_MBR)
     pushint 50600
     bury 8
 
 enter_after_if_else@3:
-    // smart_contracts/rain/contract.py:253
+    // smart_contracts/rain/contract.py:255
     // self._require_mbr(mbr_payment, needed)
     uncover 4
     dig 7
     callsub _require_mbr
-    // smart_contracts/rain/contract.py:669
+    // smart_contracts/rain/contract.py:676
     // return op.concat(TICKET_PREFIX, op.concat(op.itob(rain_id), who.bytes))
     dig 3
-    // smart_contracts/rain/contract.py:255
+    // smart_contracts/rain/contract.py:257
     // ticket = Box(Ticket, key=self._ticket_key(rain_id, Txn.sender))
     txn Sender
-    // smart_contracts/rain/contract.py:669
+    // smart_contracts/rain/contract.py:676
     // return op.concat(TICKET_PREFIX, op.concat(op.itob(rain_id), who.bytes))
     concat
     bytec_3 // 0x74
@@ -698,13 +698,13 @@ enter_after_if_else@3:
     concat
     dup
     cover 2
-    // smart_contracts/rain/contract.py:256
+    // smart_contracts/rain/contract.py:258
     // assert not ticket, "Already entered"
     box_len
     bury 1
     !
     assert // Already entered
-    // smart_contracts/rain/contract.py:258
+    // smart_contracts/rain/contract.py:260
     // credit: UInt64 = rec.cumulative.native if rec.mode.native == SPLIT else UInt64(0)
     dig 3
     bnz enter_ternary_false@5
@@ -713,35 +713,46 @@ enter_after_if_else@3:
     extract_uint64
 
 enter_ternary_merge@6:
-    // smart_contracts/rain/contract.py:259
+    // smart_contracts/rain/contract.py:261
     // wave_id = UInt64(0)
     intc_0 // 0
     bury 10
-    // smart_contracts/rain/contract.py:260
+    // smart_contracts/rain/contract.py:262
     // tickets: UInt64 = rec.tickets.native + 1
     dig 3
     dup
     intc 8 // 136
     extract_uint64
     dup
-    cover 3
+    cover 7
     intc_1 // 1
     +
     cover 7
-    // smart_contracts/rain/contract.py:261
-    // wave_count: UInt64 = rec.wave_count.native
-    intc 9 // 176
-    extract_uint64
-    cover 6
     // smart_contracts/rain/contract.py:263
+    // wave_count: UInt64 = rec.wave_count.native
+    intc 10 // 176
+    extract_uint64
+    cover 5
+    // smart_contracts/rain/contract.py:265
     // if rec.mode.native == ONE:
-    uncover 2
-    bz enter_else_body@8
-    uncover 4
-    pop
-    // smart_contracts/rain/contract.py:266
-    // key=op.concat(INDEX_PREFIX, op.concat(op.itob(rain_id), op.itob(rec.tickets.native))),
     swap
+    bz enter_else_body@8
+    uncover 3
+    pop
+    // smart_contracts/rain/contract.py:266-270
+    // # `resolve` draws over the live count, and an open draw's seed is
+    // # public once `commit_round` passes. A ticket taken while the
+    // # prize is locked could be one of a batch sized to catch it, so
+    // # the count freezes at fire and reopens at resolve or abandon.
+    // assert rec.prize_locked.native == 0, "Draw open; enter after resolve or abandon"
+    dig 2
+    intc 9 // 216
+    extract_uint64
+    !
+    assert // Draw open; enter after resolve or abandon
+    // smart_contracts/rain/contract.py:273
+    // key=op.concat(INDEX_PREFIX, op.concat(op.itob(rain_id), op.itob(rec.tickets.native))),
+    uncover 4
     itob
     uncover 6
     swap
@@ -749,24 +760,24 @@ enter_ternary_merge@6:
     pushbytes 0x6e
     swap
     concat
-    // smart_contracts/rain/contract.py:268
+    // smart_contracts/rain/contract.py:275
     // index.value = arc4.Address(Txn.sender)
     txn Sender
     box_put
 
 enter_after_if_else@13:
-    // smart_contracts/rain/contract.py:275
+    // smart_contracts/rain/contract.py:282
     // credit=arc4.UInt64(credit),
     itob
-    // smart_contracts/rain/contract.py:276
+    // smart_contracts/rain/contract.py:283
     // wave_id=arc4.UInt64(wave_id),
     dig 8
     itob
-    // smart_contracts/rain/contract.py:277
+    // smart_contracts/rain/contract.py:284
     // settled_id=arc4.UInt64(0),
     intc_0 // 0
     itob
-    // smart_contracts/rain/contract.py:274-278
+    // smart_contracts/rain/contract.py:281-285
     // ticket.value = Ticket(
     //     credit=arc4.UInt64(credit),
     //     wave_id=arc4.UInt64(wave_id),
@@ -777,7 +788,7 @@ enter_after_if_else@13:
     swap
     concat
     box_put
-    // smart_contracts/rain/contract.py:279-283
+    // smart_contracts/rain/contract.py:286-290
     // box.value = rec._replace(
     //     tickets=arc4.UInt64(tickets),
     //     wave_count=arc4.UInt64(wave_count),
@@ -787,11 +798,11 @@ enter_after_if_else@13:
     extract 0 32
     dig 1
     extract 32 32
-    // smart_contracts/rain/contract.py:282
+    // smart_contracts/rain/contract.py:289
     // label=rec.label.copy(),
     dig 2
     extract 64 32
-    // smart_contracts/rain/contract.py:279-283
+    // smart_contracts/rain/contract.py:286-290
     // box.value = rec._replace(
     //     tickets=arc4.UInt64(tickets),
     //     wave_count=arc4.UInt64(wave_count),
@@ -807,11 +818,11 @@ enter_after_if_else@13:
     extract 120 8
     dig 7
     extract 128 8
-    // smart_contracts/rain/contract.py:280
+    // smart_contracts/rain/contract.py:287
     // tickets=arc4.UInt64(tickets),
     uncover 10
     itob
-    // smart_contracts/rain/contract.py:279-283
+    // smart_contracts/rain/contract.py:286-290
     // box.value = rec._replace(
     //     tickets=arc4.UInt64(tickets),
     //     wave_count=arc4.UInt64(wave_count),
@@ -823,11 +834,11 @@ enter_after_if_else@13:
     extract 152 8
     dig 11
     extract 168 8
-    // smart_contracts/rain/contract.py:281
+    // smart_contracts/rain/contract.py:288
     // wave_count=arc4.UInt64(wave_count),
     uncover 13
     itob
-    // smart_contracts/rain/contract.py:279-283
+    // smart_contracts/rain/contract.py:286-290
     // box.value = rec._replace(
     //     tickets=arc4.UInt64(tickets),
     //     wave_count=arc4.UInt64(wave_count),
@@ -893,16 +904,17 @@ enter_after_if_else@13:
     return
 
 enter_else_body@8:
-    bury 1
+    uncover 5
+    pop
     uncover 6
     pop
-    // smart_contracts/rain/contract.py:269
+    // smart_contracts/rain/contract.py:276
     // elif rec.mode.native == WAVE:
     uncover 3
     intc_3 // 2
     ==
     bz enter_after_if_else@13
-    // smart_contracts/rain/contract.py:270
+    // smart_contracts/rain/contract.py:277
     // if rec.wave_count.native < rec.wave_cap.native:
     dig 2
     pushint 168
@@ -910,7 +922,7 @@ enter_else_body@8:
     dig 4
     >
     bz enter_after_if_else@13
-    // smart_contracts/rain/contract.py:271
+    // smart_contracts/rain/contract.py:278
     // wave_id = rec.last_wave_id.native + 1
     dig 2
     intc 6 // 192
@@ -918,7 +930,7 @@ enter_else_body@8:
     intc_1 // 1
     +
     bury 9
-    // smart_contracts/rain/contract.py:272
+    // smart_contracts/rain/contract.py:279
     // wave_count = rec.wave_count.native + 1
     uncover 3
     intc_1 // 1
@@ -927,7 +939,7 @@ enter_else_body@8:
     b enter_after_if_else@13
 
 enter_ternary_false@5:
-    // smart_contracts/rain/contract.py:258
+    // smart_contracts/rain/contract.py:260
     // credit: UInt64 = rec.cumulative.native if rec.mode.native == SPLIT else UInt64(0)
     intc_0 // 0
     b enter_ternary_merge@6
@@ -935,7 +947,7 @@ enter_ternary_false@5:
 
 // smart_contracts.rain.contract.Rain.gm[routing]() -> void:
 gm:
-    // smart_contracts/rain/contract.py:286
+    // smart_contracts/rain/contract.py:293
     // @abimethod()
     txna ApplicationArgs 1
     dup
@@ -951,7 +963,7 @@ gm:
     ==
     assert // invalid number of bytes for arc4.uint64
     btoi
-    // smart_contracts/rain/contract.py:293
+    // smart_contracts/rain/contract.py:300
     // box = Box(RainRec, key=op.concat(RAIN_PREFIX, op.itob(rain_id)))
     swap
     itob
@@ -960,17 +972,17 @@ gm:
     concat
     dup
     cover 3
-    // smart_contracts/rain/contract.py:294
+    // smart_contracts/rain/contract.py:301
     // assert box, "No such rain"
     dup
     box_len
     bury 1
     assert // No such rain
-    // smart_contracts/rain/contract.py:295
+    // smart_contracts/rain/contract.py:302
     // rec = box.value.copy()
     box_get
     pop
-    // smart_contracts/rain/contract.py:296
+    // smart_contracts/rain/contract.py:303
     // assert rec.mode.native == WAVE, "Not a WAVE rain"
     dup
     intc 4 // 160
@@ -978,33 +990,33 @@ gm:
     intc_3 // 2
     ==
     assert // Not a WAVE rain
-    // smart_contracts/rain/contract.py:297
+    // smart_contracts/rain/contract.py:304
     // self._require_gate(rec, gate_asset)
     uncover 2
     callsub _require_gate
     swap
-    // smart_contracts/rain/contract.py:299
+    // smart_contracts/rain/contract.py:306
     // ticket_box = Box(Ticket, key=self._ticket_key(rain_id, Txn.sender))
     txn Sender
-    // smart_contracts/rain/contract.py:669
+    // smart_contracts/rain/contract.py:676
     // return op.concat(TICKET_PREFIX, op.concat(op.itob(rain_id), who.bytes))
     concat
     bytec_3 // 0x74
     swap
     concat
     dup
-    // smart_contracts/rain/contract.py:300
+    // smart_contracts/rain/contract.py:307
     // if not ticket_box:
     box_len
     bury 1
     bnz gm_after_if_else@3
     popn 3
-    // smart_contracts/rain/contract.py:301
+    // smart_contracts/rain/contract.py:308
     // return UInt64(0)
     intc_0 // 0
 
 gm_after_inlined_smart_contracts.rain.contract.Rain.gm@8:
-    // smart_contracts/rain/contract.py:286
+    // smart_contracts/rain/contract.py:293
     // @abimethod()
     itob
     bytec_0 // 0x151f7c75
@@ -1015,12 +1027,12 @@ gm_after_inlined_smart_contracts.rain.contract.Rain.gm@8:
     return
 
 gm_after_if_else@3:
-    // smart_contracts/rain/contract.py:302
+    // smart_contracts/rain/contract.py:309
     // ticket = ticket_box.value.copy()
     dup
     box_get
     assert // check Box exists
-    // smart_contracts/rain/contract.py:303
+    // smart_contracts/rain/contract.py:310
     // rec, ticket = self._settle_wave(rec, ticket)
     uncover 2
     swap
@@ -1031,7 +1043,7 @@ gm_after_if_else@3:
     cover 3
     dup
     cover 4
-    // smart_contracts/rain/contract.py:305
+    // smart_contracts/rain/contract.py:312
     // open_wave: UInt64 = rec.last_wave_id.native + 1
     dup
     extract 192 8
@@ -1042,18 +1054,18 @@ gm_after_if_else@3:
     +
     dup
     uncover 2
-    // smart_contracts/rain/contract.py:306
+    // smart_contracts/rain/contract.py:313
     // if ticket.wave_id.native == open_wave:
     intc_2 // 8
     extract_uint64
     ==
     bz gm_after_if_else@5
     pop
-    // smart_contracts/rain/contract.py:307
+    // smart_contracts/rain/contract.py:314
     // ticket_box.value = ticket.copy()
     swap
     box_put
-    // smart_contracts/rain/contract.py:308
+    // smart_contracts/rain/contract.py:315
     // box.value = rec._replace(label=rec.label.copy())
     dup
     extract 0 32
@@ -1129,22 +1141,22 @@ gm_after_if_else@3:
     swap
     concat
     box_put
-    // smart_contracts/rain/contract.py:309
+    // smart_contracts/rain/contract.py:316
     // return UInt64(0)
     intc_0 // 0
-    // smart_contracts/rain/contract.py:286
+    // smart_contracts/rain/contract.py:293
     // @abimethod()
     b gm_after_inlined_smart_contracts.rain.contract.Rain.gm@8
 
 gm_after_if_else@5:
-    // smart_contracts/rain/contract.py:310
+    // smart_contracts/rain/contract.py:317
     // if rec.wave_count.native >= rec.wave_cap.native:
     dig 3
     dup
     extract 176 8
     cover 5
     dup
-    intc 9 // 176
+    intc 10 // 176
     extract_uint64
     dup
     cover 2
@@ -1159,12 +1171,12 @@ gm_after_if_else@5:
     bury 1
     uncover 4
     pop
-    // smart_contracts/rain/contract.py:311
+    // smart_contracts/rain/contract.py:318
     // ticket_box.value = ticket.copy()
     swap
     uncover 2
     box_put
-    // smart_contracts/rain/contract.py:312
+    // smart_contracts/rain/contract.py:319
     // box.value = rec._replace(label=rec.label.copy())
     swap
     dup
@@ -1237,17 +1249,17 @@ gm_after_if_else@5:
     swap
     concat
     box_put
-    // smart_contracts/rain/contract.py:313
+    // smart_contracts/rain/contract.py:320
     // return UInt64(0)
     intc_0 // 0
-    // smart_contracts/rain/contract.py:286
+    // smart_contracts/rain/contract.py:293
     // @abimethod()
     b gm_after_inlined_smart_contracts.rain.contract.Rain.gm@8
 
 gm_after_if_else@7:
     uncover 6
     pop
-    // smart_contracts/rain/contract.py:315
+    // smart_contracts/rain/contract.py:322
     // ticket = ticket._replace(wave_id=arc4.UInt64(open_wave))
     uncover 3
     dup
@@ -1262,7 +1274,7 @@ gm_after_if_else@7:
     concat
     swap
     concat
-    // smart_contracts/rain/contract.py:316-319
+    // smart_contracts/rain/contract.py:323-326
     // rec = rec._replace(
     //     wave_count=arc4.UInt64(rec.wave_count.native + 1),
     //     label=rec.label.copy(),
@@ -1272,11 +1284,11 @@ gm_after_if_else@7:
     extract 0 32
     dig 1
     extract 32 32
-    // smart_contracts/rain/contract.py:318
+    // smart_contracts/rain/contract.py:325
     // label=rec.label.copy(),
     dig 2
     extract 64 32
-    // smart_contracts/rain/contract.py:316-319
+    // smart_contracts/rain/contract.py:323-326
     // rec = rec._replace(
     //     wave_count=arc4.UInt64(rec.wave_count.native + 1),
     //     label=rec.label.copy(),
@@ -1299,13 +1311,13 @@ gm_after_if_else@7:
     extract 152 8
     dig 11
     extract 160 8
-    // smart_contracts/rain/contract.py:317
+    // smart_contracts/rain/contract.py:324
     // wave_count=arc4.UInt64(rec.wave_count.native + 1),
     uncover 17
     intc_1 // 1
     +
     itob
-    // smart_contracts/rain/contract.py:316-319
+    // smart_contracts/rain/contract.py:323-326
     // rec = rec._replace(
     //     wave_count=arc4.UInt64(rec.wave_count.native + 1),
     //     label=rec.label.copy(),
@@ -1355,24 +1367,24 @@ gm_after_if_else@7:
     concat
     swap
     concat
-    // smart_contracts/rain/contract.py:320
+    // smart_contracts/rain/contract.py:327
     // ticket_box.value = ticket.copy()
     uncover 3
     uncover 2
     box_put
-    // smart_contracts/rain/contract.py:321
+    // smart_contracts/rain/contract.py:328
     // box.value = rec.copy()
     uncover 2
     swap
     box_put
-    // smart_contracts/rain/contract.py:286
+    // smart_contracts/rain/contract.py:293
     // @abimethod()
     b gm_after_inlined_smart_contracts.rain.contract.Rain.gm@8
 
 
 // smart_contracts.rain.contract.Rain.deposit[routing]() -> void:
 deposit:
-    // smart_contracts/rain/contract.py:324
+    // smart_contracts/rain/contract.py:331
     // @abimethod()
     txn GroupIndex
     intc_1 // 1
@@ -1389,24 +1401,24 @@ deposit:
     ==
     assert // invalid number of bytes for arc4.uint64
     btoi
-    // smart_contracts/rain/contract.py:327
+    // smart_contracts/rain/contract.py:334
     // box = Box(RainRec, key=op.concat(RAIN_PREFIX, op.itob(rain_id)))
     itob
     bytec_1 // 0x72
     swap
     concat
-    // smart_contracts/rain/contract.py:328
+    // smart_contracts/rain/contract.py:335
     // assert box, "No such rain"
     dup
     box_len
     bury 1
     assert // No such rain
-    // smart_contracts/rain/contract.py:329
+    // smart_contracts/rain/contract.py:336
     // rec = box.value.copy()
     dup
     box_get
     pop
-    // smart_contracts/rain/contract.py:330
+    // smart_contracts/rain/contract.py:337
     // assert rec.prize_asset.native == 0, "This rain pays an asset; use deposit_asset"
     dup
     extract 96 8
@@ -1415,48 +1427,48 @@ deposit:
     extract_uint64
     !
     assert // This rain pays an asset; use deposit_asset
-    // smart_contracts/rain/contract.py:332
+    // smart_contracts/rain/contract.py:339
     // payment.receiver == Global.current_application_address
     dig 3
     gtxns Receiver
     global CurrentApplicationAddress
     ==
-    // smart_contracts/rain/contract.py:331-333
+    // smart_contracts/rain/contract.py:338-340
     // assert (
     //     payment.receiver == Global.current_application_address
     // ), "Deposit must go to the app account"
     assert // Deposit must go to the app account
-    // smart_contracts/rain/contract.py:334
+    // smart_contracts/rain/contract.py:341
     // assert payment.rekey_to == Global.zero_address, "Deposit must not rekey"
     dig 3
     gtxns RekeyTo
     global ZeroAddress
     ==
     assert // Deposit must not rekey
-    // smart_contracts/rain/contract.py:336
+    // smart_contracts/rain/contract.py:343
     // payment.close_remainder_to == Global.zero_address
     dig 3
     gtxns CloseRemainderTo
     global ZeroAddress
     ==
-    // smart_contracts/rain/contract.py:335-337
+    // smart_contracts/rain/contract.py:342-344
     // assert (
     //     payment.close_remainder_to == Global.zero_address
     // ), "Deposit must not close"
     assert // Deposit must not close
-    // smart_contracts/rain/contract.py:338
+    // smart_contracts/rain/contract.py:345
     // assert payment.amount > 0, "Amount must be positive"
     uncover 3
     gtxns Amount
     dup
     assert // Amount must be positive
-    // smart_contracts/rain/contract.py:339
+    // smart_contracts/rain/contract.py:346
     // pot: UInt64 = rec.pot.native + payment.amount
     dig 2
     intc 5 // 128
     extract_uint64
     +
-    // smart_contracts/rain/contract.py:340
+    // smart_contracts/rain/contract.py:347
     // box.value = rec._replace(pot=arc4.UInt64(pot), label=rec.label.copy())
     dig 2
     extract 0 32
@@ -1534,7 +1546,7 @@ deposit:
     uncover 2
     swap
     box_put
-    // smart_contracts/rain/contract.py:324
+    // smart_contracts/rain/contract.py:331
     // @abimethod()
     bytec_0 // 0x151f7c75
     swap
@@ -1546,7 +1558,7 @@ deposit:
 
 // smart_contracts.rain.contract.Rain.deposit_asset[routing]() -> void:
 deposit_asset:
-    // smart_contracts/rain/contract.py:343
+    // smart_contracts/rain/contract.py:350
     // @abimethod()
     txn GroupIndex
     intc_1 // 1
@@ -1563,82 +1575,82 @@ deposit_asset:
     ==
     assert // invalid number of bytes for arc4.uint64
     btoi
-    // smart_contracts/rain/contract.py:346
+    // smart_contracts/rain/contract.py:353
     // box = Box(RainRec, key=op.concat(RAIN_PREFIX, op.itob(rain_id)))
     itob
     bytec_1 // 0x72
     swap
     concat
-    // smart_contracts/rain/contract.py:347
+    // smart_contracts/rain/contract.py:354
     // assert box, "No such rain"
     dup
     box_len
     bury 1
     assert // No such rain
-    // smart_contracts/rain/contract.py:348
+    // smart_contracts/rain/contract.py:355
     // rec = box.value.copy()
     dup
     box_get
     pop
-    // smart_contracts/rain/contract.py:349
+    // smart_contracts/rain/contract.py:356
     // asset = rec.prize_asset.native
     dup
     extract 96 8
     dig 1
     pushint 96
     extract_uint64
-    // smart_contracts/rain/contract.py:350
+    // smart_contracts/rain/contract.py:357
     // assert asset > 0, "This rain pays ALGO; use deposit"
     dup
     assert // This rain pays ALGO; use deposit
-    // smart_contracts/rain/contract.py:352
+    // smart_contracts/rain/contract.py:359
     // transfer.asset_receiver == Global.current_application_address
     dig 4
     gtxns AssetReceiver
     global CurrentApplicationAddress
     ==
-    // smart_contracts/rain/contract.py:351-353
+    // smart_contracts/rain/contract.py:358-360
     // assert (
     //     transfer.asset_receiver == Global.current_application_address
     // ), "Deposit must go to the app account"
     assert // Deposit must go to the app account
-    // smart_contracts/rain/contract.py:354
+    // smart_contracts/rain/contract.py:361
     // assert transfer.rekey_to == Global.zero_address, "Deposit must not rekey"
     dig 4
     gtxns RekeyTo
     global ZeroAddress
     ==
     assert // Deposit must not rekey
-    // smart_contracts/rain/contract.py:356
+    // smart_contracts/rain/contract.py:363
     // transfer.asset_close_to == Global.zero_address
     dig 4
     gtxns AssetCloseTo
     global ZeroAddress
     ==
-    // smart_contracts/rain/contract.py:355-357
+    // smart_contracts/rain/contract.py:362-364
     // assert (
     //     transfer.asset_close_to == Global.zero_address
     // ), "Deposit must not close the asset"
     assert // Deposit must not close the asset
-    // smart_contracts/rain/contract.py:358
+    // smart_contracts/rain/contract.py:365
     // assert transfer.xfer_asset.id == asset, "Wrong asset"
     dig 4
     gtxns XferAsset
     ==
     assert // Wrong asset
-    // smart_contracts/rain/contract.py:359
+    // smart_contracts/rain/contract.py:366
     // assert transfer.asset_amount > 0, "Amount must be positive"
     uncover 3
     gtxns AssetAmount
     dup
     assert // Amount must be positive
-    // smart_contracts/rain/contract.py:360
+    // smart_contracts/rain/contract.py:367
     // pot: UInt64 = rec.pot.native + transfer.asset_amount
     dig 2
     intc 5 // 128
     extract_uint64
     +
-    // smart_contracts/rain/contract.py:361
+    // smart_contracts/rain/contract.py:368
     // box.value = rec._replace(pot=arc4.UInt64(pot), label=rec.label.copy())
     dig 2
     extract 0 32
@@ -1716,7 +1728,7 @@ deposit_asset:
     uncover 2
     swap
     box_put
-    // smart_contracts/rain/contract.py:343
+    // smart_contracts/rain/contract.py:350
     // @abimethod()
     bytec_0 // 0x151f7c75
     swap
@@ -1732,7 +1744,7 @@ draw:
     dupn 4
     pushbytes ""
     dup
-    // smart_contracts/rain/contract.py:372
+    // smart_contracts/rain/contract.py:379
     // n = self.next_rain_id.value
     intc_0 // 0
     bytec 4 // "next_rain_id"
@@ -1741,16 +1753,16 @@ draw:
     dup
     uncover 2
     assert // check self.next_rain_id exists
-    // smart_contracts/rain/contract.py:373
+    // smart_contracts/rain/contract.py:380
     // if n == 0:
     bnz draw_after_if_else@3
     pop
-    // smart_contracts/rain/contract.py:374
+    // smart_contracts/rain/contract.py:381
     // return UInt64(0)
     intc_0 // 0
 
 draw_after_inlined_smart_contracts.rain.contract.Rain.draw@8:
-    // smart_contracts/rain/contract.py:364
+    // smart_contracts/rain/contract.py:371
     // @abimethod()
     itob
     bytec_0 // 0x151f7c75
@@ -1761,28 +1773,28 @@ draw_after_inlined_smart_contracts.rain.contract.Rain.draw@8:
     return
 
 draw_after_if_else@3:
-    // smart_contracts/rain/contract.py:375
+    // smart_contracts/rain/contract.py:382
     // start = self.cursor.value
     intc_0 // 0
     bytec 5 // "cursor"
     app_global_get_ex
     assert // check self.cursor exists
-    // smart_contracts/rain/contract.py:376
+    // smart_contracts/rain/contract.py:383
     // fired = UInt64(0)
     intc_0 // 0
     swap
-    // smart_contracts/rain/contract.py:377
+    // smart_contracts/rain/contract.py:384
     // for step in urange(DRAW_SCAN):
     intc_0 // 0
 
 draw_for_header@4:
-    // smart_contracts/rain/contract.py:377
+    // smart_contracts/rain/contract.py:384
     // for step in urange(DRAW_SCAN):
     dup
     pushint 4
     <
     bz draw_after_for@7
-    // smart_contracts/rain/contract.py:378
+    // smart_contracts/rain/contract.py:385
     // rid = (start + step) % n + 1
     dup2
     +
@@ -1790,7 +1802,7 @@ draw_for_header@4:
     %
     intc_1 // 1
     +
-    // smart_contracts/rain/contract.py:510
+    // smart_contracts/rain/contract.py:517
     // box = Box(RainRec, key=op.concat(RAIN_PREFIX, op.itob(rain_id)))
     itob
     dup
@@ -1800,31 +1812,31 @@ draw_for_header@4:
     concat
     dup
     bury 10
-    // smart_contracts/rain/contract.py:511
+    // smart_contracts/rain/contract.py:518
     // if not box:
     box_len
     bury 1
     bnz draw_after_if_else@11
     uncover 4
     pop
-    // smart_contracts/rain/contract.py:512
+    // smart_contracts/rain/contract.py:519
     // return UInt64(0)
     intc_0 // 0
 
 draw_after_inlined_smart_contracts.rain.contract.Rain._try_fire@42:
-    // smart_contracts/rain/contract.py:379
+    // smart_contracts/rain/contract.py:386
     // fired += self._try_fire(rid)
     uncover 3
     +
     cover 2
-    // smart_contracts/rain/contract.py:377
+    // smart_contracts/rain/contract.py:384
     // for step in urange(DRAW_SCAN):
     intc_1 // 1
     +
     b draw_for_header@4
 
 draw_after_if_else@11:
-    // smart_contracts/rain/contract.py:513
+    // smart_contracts/rain/contract.py:520
     // rec = box.value.copy()
     dig 8
     box_get
@@ -1833,7 +1845,7 @@ draw_after_if_else@11:
     cover 2
     bury 10
     assert // check Box exists
-    // smart_contracts/rain/contract.py:514
+    // smart_contracts/rain/contract.py:521
     // if rec.last_rain_round.native != 0:
     dup
     extract 120 8
@@ -1843,7 +1855,7 @@ draw_after_if_else@11:
     dup
     bury 7
     bz draw_after_if_else@14
-    // smart_contracts/rain/contract.py:515
+    // smart_contracts/rain/contract.py:522
     // if Global.round < rec.last_rain_round.native + rec.interval_rounds.native:
     global Round
     dig 8
@@ -1855,15 +1867,15 @@ draw_after_if_else@11:
     bz draw_after_if_else@14
     uncover 4
     pop
-    // smart_contracts/rain/contract.py:516
+    // smart_contracts/rain/contract.py:523
     // return UInt64(0)
     intc_0 // 0
-    // smart_contracts/rain/contract.py:379
+    // smart_contracts/rain/contract.py:386
     // fired += self._try_fire(rid)
     b draw_after_inlined_smart_contracts.rain.contract.Rain._try_fire@42
 
 draw_after_if_else@14:
-    // smart_contracts/rain/contract.py:518
+    // smart_contracts/rain/contract.py:525
     // mode = rec.mode.native
     dig 7
     dup
@@ -1872,11 +1884,11 @@ draw_after_if_else@14:
     intc 4 // 160
     extract_uint64
     dup
-    // smart_contracts/rain/contract.py:519
+    // smart_contracts/rain/contract.py:526
     // if mode == SPLIT:
     bnz draw_after_if_else@23
     pop
-    // smart_contracts/rain/contract.py:528
+    // smart_contracts/rain/contract.py:535
     // if rec.tickets.native == 0:
     dig 7
     dup
@@ -1891,15 +1903,15 @@ draw_after_if_else@14:
     pop
     uncover 4
     pop
-    // smart_contracts/rain/contract.py:529
+    // smart_contracts/rain/contract.py:536
     // return UInt64(0)
     intc_0 // 0
-    // smart_contracts/rain/contract.py:379
+    // smart_contracts/rain/contract.py:386
     // fired += self._try_fire(rid)
     b draw_after_inlined_smart_contracts.rain.contract.Rain._try_fire@42
 
 draw_after_if_else@17:
-    // smart_contracts/rain/contract.py:530
+    // smart_contracts/rain/contract.py:537
     // share = rec.drip.native // rec.tickets.native
     dig 8
     dup
@@ -1911,7 +1923,7 @@ draw_after_if_else@17:
     /
     dup
     cover 4
-    // smart_contracts/rain/contract.py:531
+    // smart_contracts/rain/contract.py:538
     // if share == 0:
     bnz draw_after_if_else@19
     uncover 3
@@ -1922,22 +1934,22 @@ draw_after_if_else@17:
     pop
     uncover 4
     pop
-    // smart_contracts/rain/contract.py:532
+    // smart_contracts/rain/contract.py:539
     // return UInt64(0)
     intc_0 // 0
-    // smart_contracts/rain/contract.py:379
+    // smart_contracts/rain/contract.py:386
     // fired += self._try_fire(rid)
     b draw_after_inlined_smart_contracts.rain.contract.Rain._try_fire@42
 
 draw_after_if_else@19:
-    // smart_contracts/rain/contract.py:533
+    // smart_contracts/rain/contract.py:540
     // paid = share * rec.tickets.native
     dig 3
     dig 9
     *
     dup
     cover 6
-    // smart_contracts/rain/contract.py:534
+    // smart_contracts/rain/contract.py:541
     // if rec.pot.native < paid:
     dig 12
     intc 5 // 128
@@ -1957,23 +1969,23 @@ draw_after_if_else@19:
     pop
     uncover 4
     pop
-    // smart_contracts/rain/contract.py:535
+    // smart_contracts/rain/contract.py:542
     // return UInt64(0)
     intc_0 // 0
-    // smart_contracts/rain/contract.py:379
+    // smart_contracts/rain/contract.py:386
     // fired += self._try_fire(rid)
     b draw_after_inlined_smart_contracts.rain.contract.Rain._try_fire@42
 
 draw_after_if_else@21:
-    // smart_contracts/rain/contract.py:536
+    // smart_contracts/rain/contract.py:543
     // draw_id = rec.draw_id.native + 1
     dig 12
     dup
-    intc 10 // 144
+    intc 11 // 144
     extract_uint64
     intc_1 // 1
     +
-    // smart_contracts/rain/contract.py:537-543
+    // smart_contracts/rain/contract.py:544-550
     // box.value = rec._replace(
     //     pot=arc4.UInt64(rec.pot.native - paid),
     //     cumulative=arc4.UInt64(rec.cumulative.native + share),
@@ -1985,11 +1997,11 @@ draw_after_if_else@21:
     extract 0 32
     dig 2
     extract 32 32
-    // smart_contracts/rain/contract.py:542
+    // smart_contracts/rain/contract.py:549
     // label=rec.label.copy(),
     dig 3
     extract 64 32
-    // smart_contracts/rain/contract.py:537-543
+    // smart_contracts/rain/contract.py:544-550
     // box.value = rec._replace(
     //     pot=arc4.UInt64(rec.pot.native - paid),
     //     cumulative=arc4.UInt64(rec.cumulative.native + share),
@@ -2001,11 +2013,11 @@ draw_after_if_else@21:
     extract 96 8
     dig 5
     extract 112 8
-    // smart_contracts/rain/contract.py:541
+    // smart_contracts/rain/contract.py:548
     // last_rain_round=arc4.UInt64(Global.round),
     global Round
     itob
-    // smart_contracts/rain/contract.py:538
+    // smart_contracts/rain/contract.py:545
     // pot=arc4.UInt64(rec.pot.native - paid),
     uncover 8
     uncover 14
@@ -2013,11 +2025,11 @@ draw_after_if_else@21:
     cover 10
     -
     itob
-    // smart_contracts/rain/contract.py:540
+    // smart_contracts/rain/contract.py:547
     // draw_id=arc4.UInt64(draw_id),
     uncover 7
     itob
-    // smart_contracts/rain/contract.py:539
+    // smart_contracts/rain/contract.py:546
     // cumulative=arc4.UInt64(rec.cumulative.native + share),
     dig 8
     intc 7 // 152
@@ -2027,7 +2039,7 @@ draw_after_if_else@21:
     cover 11
     +
     itob
-    // smart_contracts/rain/contract.py:537-543
+    // smart_contracts/rain/contract.py:544-550
     // box.value = rec._replace(
     //     pot=arc4.UInt64(rec.pot.native - paid),
     //     cumulative=arc4.UInt64(rec.cumulative.native + share),
@@ -2091,19 +2103,19 @@ draw_after_if_else@21:
     dig 13
     swap
     box_put
-    // smart_contracts/rain/contract.py:548
+    // smart_contracts/rain/contract.py:555
     // mode=arc4.UInt64(SPLIT),
     intc_0 // 0
     itob
-    // smart_contracts/rain/contract.py:549
+    // smart_contracts/rain/contract.py:556
     // paid=arc4.UInt64(paid),
     uncover 4
     itob
-    // smart_contracts/rain/contract.py:550
+    // smart_contracts/rain/contract.py:557
     // share=arc4.UInt64(share),
     uncover 4
     itob
-    // smart_contracts/rain/contract.py:545-552
+    // smart_contracts/rain/contract.py:552-559
     // Rained(
     //     rain_id=arc4.UInt64(rain_id),
     //     draw_id=arc4.UInt64(draw_id),
@@ -2123,7 +2135,7 @@ draw_after_if_else@21:
     concat
     swap
     concat
-    // smart_contracts/rain/contract.py:544-553
+    // smart_contracts/rain/contract.py:551-560
     // arc4.emit(
     //     Rained(
     //         rain_id=arc4.UInt64(rain_id),
@@ -2138,27 +2150,27 @@ draw_after_if_else@21:
     swap
     concat
     log
-    // smart_contracts/rain/contract.py:554
+    // smart_contracts/rain/contract.py:561
     // return UInt64(1)
     intc_1 // 1
-    // smart_contracts/rain/contract.py:379
+    // smart_contracts/rain/contract.py:386
     // fired += self._try_fire(rid)
     b draw_after_inlined_smart_contracts.rain.contract.Rain._try_fire@42
 
 draw_after_if_else@23:
-    // smart_contracts/rain/contract.py:521
+    // smart_contracts/rain/contract.py:528
     // if mode == WAVE:
     intc_3 // 2
     ==
     bz draw_after_if_else@34
-    // smart_contracts/rain/contract.py:559
+    // smart_contracts/rain/contract.py:566
     // pot = rec.pot.native + rec.last_share.native * rec.wave_unclaimed.native
     dig 7
     dup
     intc 5 // 128
     extract_uint64
     dig 1
-    intc 11 // 184
+    intc 12 // 184
     extract_uint64
     dig 2
     pushint 200
@@ -2168,12 +2180,12 @@ draw_after_if_else@23:
     *
     +
     bury 9
-    // smart_contracts/rain/contract.py:560
+    // smart_contracts/rain/contract.py:567
     // if rec.wave_count.native == 0:
     dup
     extract 176 8
     bury 12
-    intc 9 // 176
+    intc 10 // 176
     extract_uint64
     dup
     cover 4
@@ -2182,10 +2194,10 @@ draw_after_if_else@23:
     pop
     uncover 5
     pop
-    // smart_contracts/rain/contract.py:561
+    // smart_contracts/rain/contract.py:568
     // if rec.wave_unclaimed.native > 0:
     bz draw_after_if_else@27
-    // smart_contracts/rain/contract.py:562-567
+    // smart_contracts/rain/contract.py:569-574
     // box.value = rec._replace(
     //     pot=arc4.UInt64(pot),
     //     wave_unclaimed=arc4.UInt64(0),
@@ -2197,11 +2209,11 @@ draw_after_if_else@23:
     extract 0 32
     dig 1
     extract 32 32
-    // smart_contracts/rain/contract.py:566
+    // smart_contracts/rain/contract.py:573
     // label=rec.label.copy(),
     dig 2
     extract 64 32
-    // smart_contracts/rain/contract.py:562-567
+    // smart_contracts/rain/contract.py:569-574
     // box.value = rec._replace(
     //     pot=arc4.UInt64(pot),
     //     wave_unclaimed=arc4.UInt64(0),
@@ -2214,11 +2226,11 @@ draw_after_if_else@23:
     extract 104 8
     dig 5
     extract 112 8
-    // smart_contracts/rain/contract.py:563
+    // smart_contracts/rain/contract.py:570
     // pot=arc4.UInt64(pot),
     dig 12
     itob
-    // smart_contracts/rain/contract.py:562-567
+    // smart_contracts/rain/contract.py:569-574
     // box.value = rec._replace(
     //     pot=arc4.UInt64(pot),
     //     wave_unclaimed=arc4.UInt64(0),
@@ -2233,11 +2245,11 @@ draw_after_if_else@23:
     extract 152 8
     dig 10
     extract 168 8
-    // smart_contracts/rain/contract.py:565
+    // smart_contracts/rain/contract.py:572
     // last_share=arc4.UInt64(0),
     intc_0 // 0
     itob
-    // smart_contracts/rain/contract.py:562-567
+    // smart_contracts/rain/contract.py:569-574
     // box.value = rec._replace(
     //     pot=arc4.UInt64(pot),
     //     wave_unclaimed=arc4.UInt64(0),
@@ -2292,16 +2304,16 @@ draw_after_if_else@23:
     box_put
 
 draw_after_if_else@27:
-    // smart_contracts/rain/contract.py:568
+    // smart_contracts/rain/contract.py:575
     // return UInt64(0)
     intc_0 // 0
-    // smart_contracts/rain/contract.py:379
+    // smart_contracts/rain/contract.py:386
     // fired += self._try_fire(rid)
     b draw_after_inlined_smart_contracts.rain.contract.Rain._try_fire@42
 
 draw_after_if_else@28:
     pop
-    // smart_contracts/rain/contract.py:569
+    // smart_contracts/rain/contract.py:576
     // share = rec.drip.native // rec.wave_count.native
     dig 8
     dup
@@ -2313,7 +2325,7 @@ draw_after_if_else@28:
     /
     dup
     cover 5
-    // smart_contracts/rain/contract.py:570
+    // smart_contracts/rain/contract.py:577
     // if share == 0:
     bnz draw_after_if_else@30
     uncover 2
@@ -2324,22 +2336,22 @@ draw_after_if_else@28:
     pop
     uncover 4
     pop
-    // smart_contracts/rain/contract.py:571
+    // smart_contracts/rain/contract.py:578
     // return UInt64(0)
     intc_0 // 0
-    // smart_contracts/rain/contract.py:379
+    // smart_contracts/rain/contract.py:386
     // fired += self._try_fire(rid)
     b draw_after_inlined_smart_contracts.rain.contract.Rain._try_fire@42
 
 draw_after_if_else@30:
-    // smart_contracts/rain/contract.py:572
+    // smart_contracts/rain/contract.py:579
     // paid = share * rec.wave_count.native
     dig 4
     uncover 3
     *
     dup
     cover 6
-    // smart_contracts/rain/contract.py:573
+    // smart_contracts/rain/contract.py:580
     // if pot < paid:
     dig 10
     >
@@ -2352,30 +2364,30 @@ draw_after_if_else@30:
     pop
     uncover 4
     pop
-    // smart_contracts/rain/contract.py:574
+    // smart_contracts/rain/contract.py:581
     // return UInt64(0)
     intc_0 // 0
-    // smart_contracts/rain/contract.py:379
+    // smart_contracts/rain/contract.py:386
     // fired += self._try_fire(rid)
     b draw_after_inlined_smart_contracts.rain.contract.Rain._try_fire@42
 
 draw_after_if_else@32:
-    // smart_contracts/rain/contract.py:575
+    // smart_contracts/rain/contract.py:582
     // draw_id = rec.draw_id.native + 1
     dig 10
     dup
-    intc 10 // 144
+    intc 11 // 144
     extract_uint64
     intc_1 // 1
     +
-    // smart_contracts/rain/contract.py:576
+    // smart_contracts/rain/contract.py:583
     // wave_id = rec.last_wave_id.native + 1
     dig 1
     intc 6 // 192
     extract_uint64
     intc_1 // 1
     +
-    // smart_contracts/rain/contract.py:577-586
+    // smart_contracts/rain/contract.py:584-593
     // box.value = rec._replace(
     //     pot=arc4.UInt64(pot - paid),
     //     draw_id=arc4.UInt64(draw_id),
@@ -2390,11 +2402,11 @@ draw_after_if_else@32:
     extract 0 32
     dig 3
     extract 32 32
-    // smart_contracts/rain/contract.py:585
+    // smart_contracts/rain/contract.py:592
     // label=rec.label.copy(),
     dig 4
     extract 64 32
-    // smart_contracts/rain/contract.py:577-586
+    // smart_contracts/rain/contract.py:584-593
     // box.value = rec._replace(
     //     pot=arc4.UInt64(pot - paid),
     //     draw_id=arc4.UInt64(draw_id),
@@ -2409,11 +2421,11 @@ draw_after_if_else@32:
     extract 96 8
     dig 6
     extract 112 8
-    // smart_contracts/rain/contract.py:580
+    // smart_contracts/rain/contract.py:587
     // last_rain_round=arc4.UInt64(Global.round),
     global Round
     itob
-    // smart_contracts/rain/contract.py:578
+    // smart_contracts/rain/contract.py:585
     // pot=arc4.UInt64(pot - paid),
     dig 18
     uncover 15
@@ -2421,7 +2433,7 @@ draw_after_if_else@32:
     cover 11
     -
     itob
-    // smart_contracts/rain/contract.py:577-586
+    // smart_contracts/rain/contract.py:584-593
     // box.value = rec._replace(
     //     pot=arc4.UInt64(pot - paid),
     //     draw_id=arc4.UInt64(draw_id),
@@ -2434,11 +2446,11 @@ draw_after_if_else@32:
     // )
     dig 9
     extract 136 8
-    // smart_contracts/rain/contract.py:579
+    // smart_contracts/rain/contract.py:586
     // draw_id=arc4.UInt64(draw_id),
     uncover 9
     itob
-    // smart_contracts/rain/contract.py:577-586
+    // smart_contracts/rain/contract.py:584-593
     // box.value = rec._replace(
     //     pot=arc4.UInt64(pot - paid),
     //     draw_id=arc4.UInt64(draw_id),
@@ -2453,19 +2465,19 @@ draw_after_if_else@32:
     extract 152 8
     dig 11
     extract 168 8
-    // smart_contracts/rain/contract.py:584
+    // smart_contracts/rain/contract.py:591
     // wave_count=arc4.UInt64(0),
     intc_0 // 0
     itob
-    // smart_contracts/rain/contract.py:581
+    // smart_contracts/rain/contract.py:588
     // last_share=arc4.UInt64(share),
     uncover 18
     itob
-    // smart_contracts/rain/contract.py:582
+    // smart_contracts/rain/contract.py:589
     // last_wave_id=arc4.UInt64(wave_id),
     uncover 13
     itob
-    // smart_contracts/rain/contract.py:577-586
+    // smart_contracts/rain/contract.py:584-593
     // box.value = rec._replace(
     //     pot=arc4.UInt64(pot - paid),
     //     draw_id=arc4.UInt64(draw_id),
@@ -2522,15 +2534,15 @@ draw_after_if_else@32:
     dig 13
     swap
     box_put
-    // smart_contracts/rain/contract.py:591
+    // smart_contracts/rain/contract.py:598
     // mode=arc4.UInt64(WAVE),
     intc_3 // 2
     itob
-    // smart_contracts/rain/contract.py:592
+    // smart_contracts/rain/contract.py:599
     // paid=arc4.UInt64(paid),
     uncover 4
     itob
-    // smart_contracts/rain/contract.py:588-595
+    // smart_contracts/rain/contract.py:595-602
     // Rained(
     //     rain_id=arc4.UInt64(rain_id),
     //     draw_id=arc4.UInt64(draw_id),
@@ -2550,7 +2562,7 @@ draw_after_if_else@32:
     concat
     swap
     concat
-    // smart_contracts/rain/contract.py:587-596
+    // smart_contracts/rain/contract.py:594-603
     // arc4.emit(
     //     Rained(
     //         rain_id=arc4.UInt64(rain_id),
@@ -2565,31 +2577,31 @@ draw_after_if_else@32:
     swap
     concat
     log
-    // smart_contracts/rain/contract.py:597
+    // smart_contracts/rain/contract.py:604
     // return UInt64(1)
     intc_1 // 1
-    // smart_contracts/rain/contract.py:379
+    // smart_contracts/rain/contract.py:386
     // fired += self._try_fire(rid)
     b draw_after_inlined_smart_contracts.rain.contract.Rain._try_fire@42
 
 draw_after_if_else@34:
-    // smart_contracts/rain/contract.py:602
+    // smart_contracts/rain/contract.py:609
     // if rec.prize_locked.native > 0:
     dig 7
-    intc 12 // 216
+    intc 9 // 216
     extract_uint64
     bz draw_after_if_else@36
     uncover 4
     pop
-    // smart_contracts/rain/contract.py:603
+    // smart_contracts/rain/contract.py:610
     // return UInt64(0)
     intc_0 // 0
-    // smart_contracts/rain/contract.py:379
+    // smart_contracts/rain/contract.py:386
     // fired += self._try_fire(rid)
     b draw_after_inlined_smart_contracts.rain.contract.Rain._try_fire@42
 
 draw_after_if_else@36:
-    // smart_contracts/rain/contract.py:604
+    // smart_contracts/rain/contract.py:611
     // if rec.tickets.native == 0:
     dig 7
     dup
@@ -2602,15 +2614,15 @@ draw_after_if_else@36:
     pop
     uncover 4
     pop
-    // smart_contracts/rain/contract.py:605
+    // smart_contracts/rain/contract.py:612
     // return UInt64(0)
     intc_0 // 0
-    // smart_contracts/rain/contract.py:379
+    // smart_contracts/rain/contract.py:386
     // fired += self._try_fire(rid)
     b draw_after_inlined_smart_contracts.rain.contract.Rain._try_fire@42
 
 draw_after_if_else@38:
-    // smart_contracts/rain/contract.py:606
+    // smart_contracts/rain/contract.py:613
     // if rec.pot.native < rec.drip.native:
     dig 8
     dup
@@ -2638,23 +2650,23 @@ draw_after_if_else@38:
     pop
     uncover 4
     pop
-    // smart_contracts/rain/contract.py:607
+    // smart_contracts/rain/contract.py:614
     // return UInt64(0)
     intc_0 // 0
-    // smart_contracts/rain/contract.py:379
+    // smart_contracts/rain/contract.py:386
     // fired += self._try_fire(rid)
     b draw_after_inlined_smart_contracts.rain.contract.Rain._try_fire@42
 
 draw_after_if_else@40:
-    // smart_contracts/rain/contract.py:608
+    // smart_contracts/rain/contract.py:615
     // draw_id = rec.draw_id.native + 1
     dig 11
     dup
-    intc 10 // 144
+    intc 11 // 144
     extract_uint64
     intc_1 // 1
     +
-    // smart_contracts/rain/contract.py:609-616
+    // smart_contracts/rain/contract.py:616-623
     // box.value = rec._replace(
     //     pot=arc4.UInt64(rec.pot.native - rec.drip.native),
     //     prize_locked=arc4.UInt64(rec.drip.native),
@@ -2667,11 +2679,11 @@ draw_after_if_else@40:
     extract 0 32
     dig 2
     extract 32 32
-    // smart_contracts/rain/contract.py:615
+    // smart_contracts/rain/contract.py:622
     // label=rec.label.copy(),
     dig 3
     extract 64 32
-    // smart_contracts/rain/contract.py:609-616
+    // smart_contracts/rain/contract.py:616-623
     // box.value = rec._replace(
     //     pot=arc4.UInt64(rec.pot.native - rec.drip.native),
     //     prize_locked=arc4.UInt64(rec.drip.native),
@@ -2684,21 +2696,21 @@ draw_after_if_else@40:
     extract 96 8
     dig 5
     extract 112 8
-    // smart_contracts/rain/contract.py:614
+    // smart_contracts/rain/contract.py:621
     // last_rain_round=arc4.UInt64(Global.round),
     global Round
     itob
-    // smart_contracts/rain/contract.py:610
+    // smart_contracts/rain/contract.py:617
     // pot=arc4.UInt64(rec.pot.native - rec.drip.native),
     uncover 13
     uncover 11
     -
     itob
-    // smart_contracts/rain/contract.py:613
+    // smart_contracts/rain/contract.py:620
     // draw_id=arc4.UInt64(draw_id),
     uncover 7
     itob
-    // smart_contracts/rain/contract.py:609-616
+    // smart_contracts/rain/contract.py:616-623
     // box.value = rec._replace(
     //     pot=arc4.UInt64(rec.pot.native - rec.drip.native),
     //     prize_locked=arc4.UInt64(rec.drip.native),
@@ -2719,13 +2731,13 @@ draw_after_if_else@40:
     extract 192 8
     uncover 13
     extract 200 8
-    // smart_contracts/rain/contract.py:612
+    // smart_contracts/rain/contract.py:619
     // commit_round=arc4.UInt64(Global.round + COMMIT_DELAY),
     global Round
     intc_2 // 8
     +
     itob
-    // smart_contracts/rain/contract.py:609-616
+    // smart_contracts/rain/contract.py:616-623
     // box.value = rec._replace(
     //     pot=arc4.UInt64(rec.pot.native - rec.drip.native),
     //     prize_locked=arc4.UInt64(rec.drip.native),
@@ -2778,11 +2790,11 @@ draw_after_if_else@40:
     dig 12
     swap
     box_put
-    // smart_contracts/rain/contract.py:621
+    // smart_contracts/rain/contract.py:628
     // mode=arc4.UInt64(ONE),
     intc_1 // 1
     itob
-    // smart_contracts/rain/contract.py:618-625
+    // smart_contracts/rain/contract.py:625-632
     // Rained(
     //     rain_id=arc4.UInt64(rain_id),
     //     draw_id=arc4.UInt64(draw_id),
@@ -2802,7 +2814,7 @@ draw_after_if_else@40:
     concat
     swap
     concat
-    // smart_contracts/rain/contract.py:617-626
+    // smart_contracts/rain/contract.py:624-633
     // arc4.emit(
     //     Rained(
     //         rain_id=arc4.UInt64(rain_id),
@@ -2817,16 +2829,16 @@ draw_after_if_else@40:
     swap
     concat
     log
-    // smart_contracts/rain/contract.py:627
+    // smart_contracts/rain/contract.py:634
     // return UInt64(1)
     intc_1 // 1
-    // smart_contracts/rain/contract.py:379
+    // smart_contracts/rain/contract.py:386
     // fired += self._try_fire(rid)
     b draw_after_inlined_smart_contracts.rain.contract.Rain._try_fire@42
 
 draw_after_for@7:
     pop
-    // smart_contracts/rain/contract.py:380
+    // smart_contracts/rain/contract.py:387
     // self.cursor.value = (start + DRAW_SCAN) % n
     pushint 4
     +
@@ -2835,14 +2847,14 @@ draw_after_for@7:
     bytec 5 // "cursor"
     swap
     app_global_put
-    // smart_contracts/rain/contract.py:364
+    // smart_contracts/rain/contract.py:371
     // @abimethod()
     b draw_after_inlined_smart_contracts.rain.contract.Rain.draw@8
 
 
 // smart_contracts.rain.contract.Rain.resolve[routing]() -> void:
 resolve:
-    // smart_contracts/rain/contract.py:383
+    // smart_contracts/rain/contract.py:390
     // @abimethod()
     txna ApplicationArgs 1
     dup
@@ -2851,24 +2863,24 @@ resolve:
     ==
     assert // invalid number of bytes for arc4.uint64
     btoi
-    // smart_contracts/rain/contract.py:390
+    // smart_contracts/rain/contract.py:397
     // box = Box(RainRec, key=op.concat(RAIN_PREFIX, op.itob(rain_id)))
     itob
     bytec_1 // 0x72
     dig 1
     concat
-    // smart_contracts/rain/contract.py:391
+    // smart_contracts/rain/contract.py:398
     // assert box, "No such rain"
     dup
     box_len
     bury 1
     assert // No such rain
-    // smart_contracts/rain/contract.py:392
+    // smart_contracts/rain/contract.py:399
     // rec = box.value.copy()
     dup
     box_get
     pop
-    // smart_contracts/rain/contract.py:393
+    // smart_contracts/rain/contract.py:400
     // assert rec.mode.native == ONE, "Not a ONE rain"
     dup
     extract 160 8
@@ -2878,14 +2890,14 @@ resolve:
     intc_1 // 1
     ==
     assert // Not a ONE rain
-    // smart_contracts/rain/contract.py:394
+    // smart_contracts/rain/contract.py:401
     // assert rec.prize_locked.native > 0, "No draw is open"
     dig 1
-    intc 12 // 216
+    intc 9 // 216
     extract_uint64
     dup
     assert // No draw is open
-    // smart_contracts/rain/contract.py:395
+    // smart_contracts/rain/contract.py:402
     // assert Global.round > rec.commit_round.native, "Too early"
     global Round
     dig 3
@@ -2895,7 +2907,7 @@ resolve:
     dig 1
     >
     assert // Too early
-    // smart_contracts/rain/contract.py:396
+    // smart_contracts/rain/contract.py:403
     // assert Global.round <= rec.commit_round.native + SEED_WINDOW, "Window closed; abandon"
     global Round
     dig 1
@@ -2903,10 +2915,10 @@ resolve:
     +
     <=
     assert // Window closed; abandon
-    // smart_contracts/rain/contract.py:398
+    // smart_contracts/rain/contract.py:405
     // seed = op.Block.blk_seed(rec.commit_round.native)
     block BlkSeed
-    // smart_contracts/rain/contract.py:399
+    // smart_contracts/rain/contract.py:406
     // index: UInt64 = op.extract_uint64(seed, 0) % rec.tickets.native
     intc_0 // 0
     extract_uint64
@@ -2918,7 +2930,7 @@ resolve:
     uncover 2
     swap
     %
-    // smart_contracts/rain/contract.py:402
+    // smart_contracts/rain/contract.py:409
     // key=op.concat(INDEX_PREFIX, op.concat(op.itob(rain_id), op.itob(index))),
     itob
     dig 6
@@ -2927,17 +2939,17 @@ resolve:
     pushbytes 0x6e
     swap
     concat
-    // smart_contracts/rain/contract.py:404
+    // smart_contracts/rain/contract.py:411
     // assert winner_box, "Missing ticket index"
     dup
     box_len
     bury 1
     assert // Missing ticket index
-    // smart_contracts/rain/contract.py:405
+    // smart_contracts/rain/contract.py:412
     // winner = winner_box.value.copy()
     box_get
     pop
-    // smart_contracts/rain/contract.py:669
+    // smart_contracts/rain/contract.py:676
     // return op.concat(TICKET_PREFIX, op.concat(op.itob(rain_id), who.bytes))
     uncover 7
     swap
@@ -2945,18 +2957,18 @@ resolve:
     bytec_3 // 0x74
     swap
     concat
-    // smart_contracts/rain/contract.py:407
+    // smart_contracts/rain/contract.py:414
     // assert ticket_box, "Missing ticket"
     dup
     box_len
     bury 1
     assert // Missing ticket
-    // smart_contracts/rain/contract.py:408
+    // smart_contracts/rain/contract.py:415
     // ticket = ticket_box.value.copy()
     dup
     box_get
     pop
-    // smart_contracts/rain/contract.py:410
+    // smart_contracts/rain/contract.py:417
     // credit=arc4.UInt64(ticket.credit.native + rec.prize_locked.native),
     dup
     intc_0 // 0
@@ -2964,7 +2976,7 @@ resolve:
     uncover 5
     +
     itob
-    // smart_contracts/rain/contract.py:409-411
+    // smart_contracts/rain/contract.py:416-418
     // ticket_box.value = ticket._replace(
     //     credit=arc4.UInt64(ticket.credit.native + rec.prize_locked.native),
     // )
@@ -2977,7 +2989,7 @@ resolve:
     swap
     concat
     box_put
-    // smart_contracts/rain/contract.py:412-416
+    // smart_contracts/rain/contract.py:419-423
     // box.value = rec._replace(
     //     prize_locked=arc4.UInt64(0),
     //     commit_round=arc4.UInt64(0),
@@ -2987,11 +2999,11 @@ resolve:
     extract 0 32
     dig 4
     extract 32 32
-    // smart_contracts/rain/contract.py:415
+    // smart_contracts/rain/contract.py:422
     // label=rec.label.copy(),
     dig 5
     extract 64 32
-    // smart_contracts/rain/contract.py:412-416
+    // smart_contracts/rain/contract.py:419-423
     // box.value = rec._replace(
     //     prize_locked=arc4.UInt64(0),
     //     commit_round=arc4.UInt64(0),
@@ -3021,11 +3033,11 @@ resolve:
     extract 192 8
     uncover 17
     extract 200 8
-    // smart_contracts/rain/contract.py:414
+    // smart_contracts/rain/contract.py:421
     // commit_round=arc4.UInt64(0),
     intc_0 // 0
     itob
-    // smart_contracts/rain/contract.py:412-416
+    // smart_contracts/rain/contract.py:419-423
     // box.value = rec._replace(
     //     prize_locked=arc4.UInt64(0),
     //     commit_round=arc4.UInt64(0),
@@ -3071,7 +3083,7 @@ resolve:
     uncover 2
     swap
     box_put
-    // smart_contracts/rain/contract.py:383
+    // smart_contracts/rain/contract.py:390
     // @abimethod()
     bytec_0 // 0x151f7c75
     swap
@@ -3083,7 +3095,7 @@ resolve:
 
 // smart_contracts.rain.contract.Rain.abandon[routing]() -> void:
 abandon:
-    // smart_contracts/rain/contract.py:419
+    // smart_contracts/rain/contract.py:426
     // @abimethod()
     txna ApplicationArgs 1
     dup
@@ -3092,24 +3104,24 @@ abandon:
     ==
     assert // invalid number of bytes for arc4.uint64
     btoi
-    // smart_contracts/rain/contract.py:422
+    // smart_contracts/rain/contract.py:429
     // box = Box(RainRec, key=op.concat(RAIN_PREFIX, op.itob(rain_id)))
     itob
     bytec_1 // 0x72
     swap
     concat
-    // smart_contracts/rain/contract.py:423
+    // smart_contracts/rain/contract.py:430
     // assert box, "No such rain"
     dup
     box_len
     bury 1
     assert // No such rain
-    // smart_contracts/rain/contract.py:424
+    // smart_contracts/rain/contract.py:431
     // rec = box.value.copy()
     dup
     box_get
     pop
-    // smart_contracts/rain/contract.py:425
+    // smart_contracts/rain/contract.py:432
     // assert rec.mode.native == ONE, "Not a ONE rain"
     dup
     extract 160 8
@@ -3119,14 +3131,14 @@ abandon:
     intc_1 // 1
     ==
     assert // Not a ONE rain
-    // smart_contracts/rain/contract.py:426
+    // smart_contracts/rain/contract.py:433
     // assert rec.prize_locked.native > 0, "No draw is open"
     dig 1
-    intc 12 // 216
+    intc 9 // 216
     extract_uint64
     dup
     assert // No draw is open
-    // smart_contracts/rain/contract.py:427
+    // smart_contracts/rain/contract.py:434
     // assert Global.round > rec.commit_round.native + SEED_WINDOW, "Window still open"
     global Round
     dig 3
@@ -3136,13 +3148,13 @@ abandon:
     +
     >
     assert // Window still open
-    // smart_contracts/rain/contract.py:428
+    // smart_contracts/rain/contract.py:435
     // pot: UInt64 = rec.pot.native + rec.prize_locked.native
     dig 2
     intc 5 // 128
     extract_uint64
     +
-    // smart_contracts/rain/contract.py:429-434
+    // smart_contracts/rain/contract.py:436-441
     // box.value = rec._replace(
     //     pot=arc4.UInt64(pot),
     //     prize_locked=arc4.UInt64(0),
@@ -3153,11 +3165,11 @@ abandon:
     extract 0 32
     dig 3
     extract 32 32
-    // smart_contracts/rain/contract.py:433
+    // smart_contracts/rain/contract.py:440
     // label=rec.label.copy(),
     dig 4
     extract 64 32
-    // smart_contracts/rain/contract.py:429-434
+    // smart_contracts/rain/contract.py:436-441
     // box.value = rec._replace(
     //     pot=arc4.UInt64(pot),
     //     prize_locked=arc4.UInt64(0),
@@ -3172,11 +3184,11 @@ abandon:
     extract 112 8
     dig 8
     extract 120 8
-    // smart_contracts/rain/contract.py:430
+    // smart_contracts/rain/contract.py:437
     // pot=arc4.UInt64(pot),
     uncover 7
     itob
-    // smart_contracts/rain/contract.py:429-434
+    // smart_contracts/rain/contract.py:436-441
     // box.value = rec._replace(
     //     pot=arc4.UInt64(pot),
     //     prize_locked=arc4.UInt64(0),
@@ -3199,11 +3211,11 @@ abandon:
     extract 192 8
     uncover 16
     extract 200 8
-    // smart_contracts/rain/contract.py:432
+    // smart_contracts/rain/contract.py:439
     // commit_round=arc4.UInt64(0),
     intc_0 // 0
     itob
-    // smart_contracts/rain/contract.py:429-434
+    // smart_contracts/rain/contract.py:436-441
     // box.value = rec._replace(
     //     pot=arc4.UInt64(pot),
     //     prize_locked=arc4.UInt64(0),
@@ -3250,7 +3262,7 @@ abandon:
     uncover 2
     swap
     box_put
-    // smart_contracts/rain/contract.py:419
+    // smart_contracts/rain/contract.py:426
     // @abimethod()
     bytec_0 // 0x151f7c75
     swap
@@ -3263,7 +3275,7 @@ abandon:
 // smart_contracts.rain.contract.Rain.claim[routing]() -> void:
 claim:
     intc_0 // 0
-    // smart_contracts/rain/contract.py:437
+    // smart_contracts/rain/contract.py:444
     // @abimethod()
     txna ApplicationArgs 1
     dup
@@ -3280,7 +3292,7 @@ claim:
     assert // invalid number of bytes for arc4.uint64
     btoi
     swap
-    // smart_contracts/rain/contract.py:445
+    // smart_contracts/rain/contract.py:452
     // box = Box(RainRec, key=op.concat(RAIN_PREFIX, op.itob(rain_id)))
     itob
     dup
@@ -3289,18 +3301,18 @@ claim:
     concat
     dup
     cover 3
-    // smart_contracts/rain/contract.py:446
+    // smart_contracts/rain/contract.py:453
     // if not box:
     box_len
     bury 1
     bnz claim_after_if_else@3
     popn 3
-    // smart_contracts/rain/contract.py:447
+    // smart_contracts/rain/contract.py:454
     // return UInt64(0)
     intc_0 // 0
 
 claim_after_inlined_smart_contracts.rain.contract.Rain.claim@17:
-    // smart_contracts/rain/contract.py:437
+    // smart_contracts/rain/contract.py:444
     // @abimethod()
     itob
     bytec_0 // 0x151f7c75
@@ -3311,15 +3323,15 @@ claim_after_inlined_smart_contracts.rain.contract.Rain.claim@17:
     return
 
 claim_after_if_else@3:
-    // smart_contracts/rain/contract.py:448
+    // smart_contracts/rain/contract.py:455
     // rec = box.value.copy()
     dig 2
     box_get
     assert // check Box exists
-    // smart_contracts/rain/contract.py:449
+    // smart_contracts/rain/contract.py:456
     // ticket_box = Box(Ticket, key=self._ticket_key(rain_id, Txn.sender))
     txn Sender
-    // smart_contracts/rain/contract.py:669
+    // smart_contracts/rain/contract.py:676
     // return op.concat(TICKET_PREFIX, op.concat(op.itob(rain_id), who.bytes))
     uncover 2
     swap
@@ -3329,28 +3341,28 @@ claim_after_if_else@3:
     concat
     dup
     cover 2
-    // smart_contracts/rain/contract.py:450
+    // smart_contracts/rain/contract.py:457
     // if not ticket_box:
     box_len
     bury 1
     bnz claim_after_if_else@5
     popn 4
-    // smart_contracts/rain/contract.py:451
+    // smart_contracts/rain/contract.py:458
     // return UInt64(0)
     intc_0 // 0
-    // smart_contracts/rain/contract.py:437
+    // smart_contracts/rain/contract.py:444
     // @abimethod()
     b claim_after_inlined_smart_contracts.rain.contract.Rain.claim@17
 
 claim_after_if_else@5:
-    // smart_contracts/rain/contract.py:452
+    // smart_contracts/rain/contract.py:459
     // ticket = ticket_box.value.copy()
     dig 1
     box_get
     swap
     cover 3
     assert // check Box exists
-    // smart_contracts/rain/contract.py:454
+    // smart_contracts/rain/contract.py:461
     // if rec.mode.native == WAVE:
     dup
     intc 4 // 160
@@ -3358,7 +3370,7 @@ claim_after_if_else@5:
     intc_3 // 2
     ==
     bz claim_after_if_else@7
-    // smart_contracts/rain/contract.py:455
+    // smart_contracts/rain/contract.py:462
     // rec, ticket = self._settle_wave(rec, ticket)
     uncover 2
     callsub _settle_wave
@@ -3366,7 +3378,7 @@ claim_after_if_else@5:
     cover 2
 
 claim_after_if_else@7:
-    // smart_contracts/rain/contract.py:458
+    // smart_contracts/rain/contract.py:465
     // if rec.mode.native == SPLIT:
     dupn 2
     extract 160 8
@@ -3374,7 +3386,7 @@ claim_after_if_else@7:
     intc 4 // 160
     extract_uint64
     bnz claim_else_body@11
-    // smart_contracts/rain/contract.py:459
+    // smart_contracts/rain/contract.py:466
     // owed = rec.cumulative.native - ticket.credit.native
     dupn 2
     extract 152 8
@@ -3386,10 +3398,10 @@ claim_after_if_else@7:
     extract_uint64
     -
     dup
-    // smart_contracts/rain/contract.py:460
+    // smart_contracts/rain/contract.py:467
     // if owed > 0:
     bz claim_after_if_else@14
-    // smart_contracts/rain/contract.py:461
+    // smart_contracts/rain/contract.py:468
     // ticket = ticket._replace(credit=arc4.UInt64(rec.cumulative.native))
     uncover 3
     dup
@@ -3404,19 +3416,19 @@ claim_after_if_else@7:
     cover 3
 
 claim_after_if_else@14:
-    // smart_contracts/rain/contract.py:467
+    // smart_contracts/rain/contract.py:474
     // if owed == 0:
     dup
     bnz claim_after_if_else@16
     pop
     uncover 4
     pop
-    // smart_contracts/rain/contract.py:468
+    // smart_contracts/rain/contract.py:475
     // ticket_box.value = ticket.copy()
     swap
     uncover 2
     box_put
-    // smart_contracts/rain/contract.py:469
+    // smart_contracts/rain/contract.py:476
     // box.value = rec._replace(label=rec.label.copy())
     dup
     extract 0 32
@@ -3492,27 +3504,27 @@ claim_after_if_else@14:
     swap
     concat
     box_put
-    // smart_contracts/rain/contract.py:470
+    // smart_contracts/rain/contract.py:477
     // return UInt64(0)
     intc_0 // 0
-    // smart_contracts/rain/contract.py:437
+    // smart_contracts/rain/contract.py:444
     // @abimethod()
     b claim_after_inlined_smart_contracts.rain.contract.Rain.claim@17
 
 claim_after_if_else@16:
     uncover 4
     pop
-    // smart_contracts/rain/contract.py:472
+    // smart_contracts/rain/contract.py:479
     // self._require_gate(rec, gate_asset)
     swap
     uncover 4
     callsub _require_gate
-    // smart_contracts/rain/contract.py:473
+    // smart_contracts/rain/contract.py:480
     // ticket_box.value = ticket.copy()
     uncover 2
     uncover 3
     box_put
-    // smart_contracts/rain/contract.py:474
+    // smart_contracts/rain/contract.py:481
     // box.value = rec._replace(label=rec.label.copy())
     dup
     extract 0 32
@@ -3593,15 +3605,15 @@ claim_after_if_else@16:
     swap
     box_put
     pushint 96
-    // smart_contracts/rain/contract.py:475
+    // smart_contracts/rain/contract.py:482
     // self._pay(rec.prize_asset.native, owed)
     extract_uint64
     dup
-    // smart_contracts/rain/contract.py:673
+    // smart_contracts/rain/contract.py:680
     // if asset == 0:
     bnz claim_else_body@20
     pop
-    // smart_contracts/rain/contract.py:674
+    // smart_contracts/rain/contract.py:681
     // itxn.Payment(receiver=Txn.sender, amount=amount, fee=0).submit()
     itxn_begin
     txn Sender
@@ -3613,19 +3625,19 @@ claim_after_if_else@16:
     intc_0 // 0
     itxn_field Fee
     itxn_submit
-    // smart_contracts/rain/contract.py:437
+    // smart_contracts/rain/contract.py:444
     // @abimethod()
     b claim_after_inlined_smart_contracts.rain.contract.Rain.claim@17
 
 claim_else_body@20:
-    // smart_contracts/rain/contract.py:676
+    // smart_contracts/rain/contract.py:683
     // assert Txn.sender.is_opted_in(Asset(asset)), "Opt in to the prize asset first"
     txn Sender
     dig 1
     asset_holding_get AssetBalance
     bury 1
     assert // Opt in to the prize asset first
-    // smart_contracts/rain/contract.py:677-682
+    // smart_contracts/rain/contract.py:684-689
     // itxn.AssetTransfer(
     //     xfer_asset=Asset(asset),
     //     asset_receiver=Txn.sender,
@@ -3633,22 +3645,22 @@ claim_else_body@20:
     //     fee=0,
     // ).submit()
     itxn_begin
-    // smart_contracts/rain/contract.py:679
+    // smart_contracts/rain/contract.py:686
     // asset_receiver=Txn.sender,
     txn Sender
     dig 2
     itxn_field AssetAmount
     itxn_field AssetReceiver
     itxn_field XferAsset
-    // smart_contracts/rain/contract.py:677
+    // smart_contracts/rain/contract.py:684
     // itxn.AssetTransfer(
     pushint 4 // axfer
     itxn_field TypeEnum
-    // smart_contracts/rain/contract.py:681
+    // smart_contracts/rain/contract.py:688
     // fee=0,
     intc_0 // 0
     itxn_field Fee
-    // smart_contracts/rain/contract.py:677-682
+    // smart_contracts/rain/contract.py:684-689
     // itxn.AssetTransfer(
     //     xfer_asset=Asset(asset),
     //     asset_receiver=Txn.sender,
@@ -3656,21 +3668,21 @@ claim_else_body@20:
     //     fee=0,
     // ).submit()
     itxn_submit
-    // smart_contracts/rain/contract.py:437
+    // smart_contracts/rain/contract.py:444
     // @abimethod()
     b claim_after_inlined_smart_contracts.rain.contract.Rain.claim@17
 
 claim_else_body@11:
-    // smart_contracts/rain/contract.py:463
+    // smart_contracts/rain/contract.py:470
     // owed = ticket.credit.native
     dig 2
     intc_0 // 0
     extract_uint64
     dup
-    // smart_contracts/rain/contract.py:464
+    // smart_contracts/rain/contract.py:471
     // if owed > 0:
     bz claim_after_if_else@14
-    // smart_contracts/rain/contract.py:465
+    // smart_contracts/rain/contract.py:472
     // ticket = ticket._replace(credit=arc4.UInt64(0))
     intc_0 // 0
     itob
@@ -3693,7 +3705,7 @@ allocation_of:
     dup
     pushbytes ""
     dup
-    // smart_contracts/rain/contract.py:478
+    // smart_contracts/rain/contract.py:485
     // @abimethod(readonly=True)
     txna ApplicationArgs 1
     dup
@@ -3709,7 +3721,7 @@ allocation_of:
     pushint 32
     ==
     assert // invalid number of bytes for arc4.static_array<arc4.uint8, 32>
-    // smart_contracts/rain/contract.py:481
+    // smart_contracts/rain/contract.py:488
     // box = Box(RainRec, key=op.concat(RAIN_PREFIX, op.itob(rain_id)))
     itob
     dup
@@ -3717,19 +3729,19 @@ allocation_of:
     swap
     concat
     dup
-    // smart_contracts/rain/contract.py:482
+    // smart_contracts/rain/contract.py:489
     // if not box:
     box_len
     bury 1
     bnz allocation_of_after_if_else@3
     popn 3
-    // smart_contracts/rain/contract.py:483
+    // smart_contracts/rain/contract.py:490
     // return UInt64(0)
     intc_0 // 0
     bury 1
 
 allocation_of_after_inlined_smart_contracts.rain.contract.Rain.allocation_of@13:
-    // smart_contracts/rain/contract.py:478
+    // smart_contracts/rain/contract.py:485
     // @abimethod(readonly=True)
     dup
     itob
@@ -3741,13 +3753,13 @@ allocation_of_after_inlined_smart_contracts.rain.contract.Rain.allocation_of@13:
     return
 
 allocation_of_after_if_else@3:
-    // smart_contracts/rain/contract.py:484
+    // smart_contracts/rain/contract.py:491
     // rec = box.value.copy()
     box_get
     swap
     bury 7
     assert // check Box exists
-    // smart_contracts/rain/contract.py:669
+    // smart_contracts/rain/contract.py:676
     // return op.concat(TICKET_PREFIX, op.concat(op.itob(rain_id), who.bytes))
     swap
     concat
@@ -3755,28 +3767,28 @@ allocation_of_after_if_else@3:
     swap
     concat
     dup
-    // smart_contracts/rain/contract.py:486
+    // smart_contracts/rain/contract.py:493
     // if not ticket_box:
     box_len
     bury 1
     bnz allocation_of_after_if_else@5
     pop
-    // smart_contracts/rain/contract.py:487
+    // smart_contracts/rain/contract.py:494
     // return UInt64(0)
     intc_0 // 0
     bury 1
-    // smart_contracts/rain/contract.py:478
+    // smart_contracts/rain/contract.py:485
     // @abimethod(readonly=True)
     b allocation_of_after_inlined_smart_contracts.rain.contract.Rain.allocation_of@13
 
 allocation_of_after_if_else@5:
-    // smart_contracts/rain/contract.py:488
+    // smart_contracts/rain/contract.py:495
     // ticket = ticket_box.value.copy()
     box_get
     swap
     bury 4
     assert // check Box exists
-    // smart_contracts/rain/contract.py:489
+    // smart_contracts/rain/contract.py:496
     // if rec.mode.native == SPLIT:
     dig 3
     intc 4 // 160
@@ -3784,7 +3796,7 @@ allocation_of_after_if_else@5:
     dup
     bury 2
     bnz allocation_of_after_if_else@7
-    // smart_contracts/rain/contract.py:490
+    // smart_contracts/rain/contract.py:497
     // owed_split: UInt64 = rec.cumulative.native - ticket.credit.native
     dig 3
     intc 7 // 152
@@ -3794,23 +3806,23 @@ allocation_of_after_if_else@5:
     extract_uint64
     -
     bury 1
-    // smart_contracts/rain/contract.py:478
+    // smart_contracts/rain/contract.py:485
     // @abimethod(readonly=True)
     b allocation_of_after_inlined_smart_contracts.rain.contract.Rain.allocation_of@13
 
 allocation_of_after_if_else@7:
-    // smart_contracts/rain/contract.py:492
+    // smart_contracts/rain/contract.py:499
     // owed: UInt64 = ticket.credit.native
     dig 2
     intc_0 // 0
     extract_uint64
-    // smart_contracts/rain/contract.py:493
+    // smart_contracts/rain/contract.py:500
     // if rec.mode.native == WAVE:
     dig 1
     intc_3 // 2
     ==
     bz allocation_of_after_if_else@12
-    // smart_contracts/rain/contract.py:495
+    // smart_contracts/rain/contract.py:502
     // ticket.wave_id.native == rec.last_wave_id.native
     dig 3
     intc_2 // 8
@@ -3821,38 +3833,38 @@ allocation_of_after_if_else@7:
     dup
     bury 5
     ==
-    // smart_contracts/rain/contract.py:495-496
+    // smart_contracts/rain/contract.py:502-503
     // ticket.wave_id.native == rec.last_wave_id.native
     // and ticket.settled_id.native != rec.last_wave_id.native
     bz allocation_of_after_if_else@12
-    // smart_contracts/rain/contract.py:496
+    // smart_contracts/rain/contract.py:503
     // and ticket.settled_id.native != rec.last_wave_id.native
     dig 3
     pushint 16
     extract_uint64
     dig 3
     !=
-    // smart_contracts/rain/contract.py:495-496
+    // smart_contracts/rain/contract.py:502-503
     // ticket.wave_id.native == rec.last_wave_id.native
     // and ticket.settled_id.native != rec.last_wave_id.native
     bz allocation_of_after_if_else@12
-    // smart_contracts/rain/contract.py:498
+    // smart_contracts/rain/contract.py:505
     // owed += rec.last_share.native
     dig 4
-    intc 11 // 184
+    intc 12 // 184
     extract_uint64
     +
 
 allocation_of_after_if_else@12:
     bury 1
-    // smart_contracts/rain/contract.py:478
+    // smart_contracts/rain/contract.py:485
     // @abimethod(readonly=True)
     b allocation_of_after_inlined_smart_contracts.rain.contract.Rain.allocation_of@13
 
 
 // smart_contracts.rain.contract.Rain.rain_of[routing]() -> void:
 rain_of:
-    // smart_contracts/rain/contract.py:501
+    // smart_contracts/rain/contract.py:508
     // @abimethod(readonly=True)
     txna ApplicationArgs 1
     dup
@@ -3861,23 +3873,23 @@ rain_of:
     ==
     assert // invalid number of bytes for arc4.uint64
     btoi
-    // smart_contracts/rain/contract.py:504
+    // smart_contracts/rain/contract.py:511
     // box = Box(RainRec, key=op.concat(RAIN_PREFIX, op.itob(rain_id)))
     itob
     bytec_1 // 0x72
     swap
     concat
-    // smart_contracts/rain/contract.py:505
+    // smart_contracts/rain/contract.py:512
     // assert box, "No such rain"
     dup
     box_len
     bury 1
     assert // No such rain
-    // smart_contracts/rain/contract.py:506
+    // smart_contracts/rain/contract.py:513
     // return box.value.copy()
     box_get
     pop
-    // smart_contracts/rain/contract.py:501
+    // smart_contracts/rain/contract.py:508
     // @abimethod(readonly=True)
     bytec_0 // 0x151f7c75
     swap
@@ -3889,11 +3901,11 @@ rain_of:
 
 // smart_contracts.rain.contract.Rain._settle_wave(rec: bytes, ticket: bytes) -> bytes, bytes, bytes, bytes:
 _settle_wave:
-    // smart_contracts/rain/contract.py:629-630
+    // smart_contracts/rain/contract.py:636-637
     // @subroutine
     // def _settle_wave(self, rec: RainRec, ticket: Ticket) -> tuple[RainRec, Ticket]:
     proto 2 4
-    // smart_contracts/rain/contract.py:631
+    // smart_contracts/rain/contract.py:638
     // if ticket.wave_id.native != rec.last_wave_id.native:
     frame_dig -1
     extract 8 8
@@ -3910,7 +3922,7 @@ _settle_wave:
     cover 2
     !=
     bz _settle_wave_after_if_else@2
-    // smart_contracts/rain/contract.py:632
+    // smart_contracts/rain/contract.py:639
     // return rec.copy(), ticket.copy()
     frame_dig -2
     frame_dig -1
@@ -3921,14 +3933,14 @@ _settle_wave:
     retsub
 
 _settle_wave_after_if_else@2:
-    // smart_contracts/rain/contract.py:633
+    // smart_contracts/rain/contract.py:640
     // if ticket.settled_id.native == rec.last_wave_id.native:
     frame_dig -1
     pushint 16
     extract_uint64
     ==
     bz _settle_wave_after_if_else@4
-    // smart_contracts/rain/contract.py:634
+    // smart_contracts/rain/contract.py:641
     // return rec.copy(), ticket.copy()
     frame_dig -2
     frame_dig -1
@@ -3938,22 +3950,22 @@ _settle_wave_after_if_else@2:
     retsub
 
 _settle_wave_after_if_else@4:
-    // smart_contracts/rain/contract.py:635
+    // smart_contracts/rain/contract.py:642
     // unclaimed = rec.wave_unclaimed.native
     frame_dig -2
     pushint 200
     extract_uint64
     dup
-    // smart_contracts/rain/contract.py:636
+    // smart_contracts/rain/contract.py:643
     // if unclaimed > 0:
     bz _settle_wave_after_if_else@6
-    // smart_contracts/rain/contract.py:637
+    // smart_contracts/rain/contract.py:644
     // unclaimed -= 1
     intc_1 // 1
     -
 
 _settle_wave_after_if_else@6:
-    // smart_contracts/rain/contract.py:638-641
+    // smart_contracts/rain/contract.py:645-648
     // return rec._replace(
     //     wave_unclaimed=arc4.UInt64(unclaimed),
     //     label=rec.label.copy(),
@@ -3962,11 +3974,11 @@ _settle_wave_after_if_else@6:
     extract 0 32
     frame_dig -2
     extract 32 32
-    // smart_contracts/rain/contract.py:640
+    // smart_contracts/rain/contract.py:647
     // label=rec.label.copy(),
     frame_dig -2
     extract 64 32
-    // smart_contracts/rain/contract.py:638-641
+    // smart_contracts/rain/contract.py:645-648
     // return rec._replace(
     //     wave_unclaimed=arc4.UInt64(unclaimed),
     //     label=rec.label.copy(),
@@ -3995,11 +4007,11 @@ _settle_wave_after_if_else@6:
     extract 176 8
     frame_dig -2
     extract 184 8
-    // smart_contracts/rain/contract.py:639
+    // smart_contracts/rain/contract.py:646
     // wave_unclaimed=arc4.UInt64(unclaimed),
     uncover 15
     itob
-    // smart_contracts/rain/contract.py:638-641
+    // smart_contracts/rain/contract.py:645-648
     // return rec._replace(
     //     wave_unclaimed=arc4.UInt64(unclaimed),
     //     label=rec.label.copy(),
@@ -4047,24 +4059,24 @@ _settle_wave_after_if_else@6:
     concat
     uncover 2
     concat
-    // smart_contracts/rain/contract.py:642
+    // smart_contracts/rain/contract.py:649
     // credit=arc4.UInt64(ticket.credit.native + rec.last_share.native),
     frame_dig -1
     intc_0 // 0
     extract_uint64
     frame_dig -2
-    // smart_contracts/rain/contract.py:638-641
+    // smart_contracts/rain/contract.py:645-648
     // return rec._replace(
     //     wave_unclaimed=arc4.UInt64(unclaimed),
     //     label=rec.label.copy(),
     // ), ticket._replace(
-    intc 11 // 184
-    // smart_contracts/rain/contract.py:642
+    intc 12 // 184
+    // smart_contracts/rain/contract.py:649
     // credit=arc4.UInt64(ticket.credit.native + rec.last_share.native),
     extract_uint64
     +
     itob
-    // smart_contracts/rain/contract.py:641-644
+    // smart_contracts/rain/contract.py:648-651
     // ), ticket._replace(
     //     credit=arc4.UInt64(ticket.credit.native + rec.last_share.native),
     //     settled_id=rec.last_wave_id,
@@ -4073,7 +4085,7 @@ _settle_wave_after_if_else@6:
     concat
     uncover 2
     concat
-    // smart_contracts/rain/contract.py:638-644
+    // smart_contracts/rain/contract.py:645-651
     // return rec._replace(
     //     wave_unclaimed=arc4.UInt64(unclaimed),
     //     label=rec.label.copy(),
@@ -4090,35 +4102,35 @@ _settle_wave_after_if_else@6:
 
 // smart_contracts.rain.contract.Rain._require_gate(rec: bytes, gate_asset: uint64) -> bytes:
 _require_gate:
-    // smart_contracts/rain/contract.py:646-647
+    // smart_contracts/rain/contract.py:653-654
     // @subroutine
     // def _require_gate(self, rec: RainRec, gate_asset: Asset) -> None:
     proto 2 1
-    // smart_contracts/rain/contract.py:648
+    // smart_contracts/rain/contract.py:655
     // gate = rec.gate_creator.native
     frame_dig -2
     extract 32 32
     dup
-    // smart_contracts/rain/contract.py:649
+    // smart_contracts/rain/contract.py:656
     // if gate != Global.zero_address:
     global ZeroAddress
     !=
     bz _require_gate_after_if_else@2
-    // smart_contracts/rain/contract.py:650
+    // smart_contracts/rain/contract.py:657
     // assert Txn.sender.is_opted_in(gate_asset), "Hold a token from the collection"
     txn Sender
     frame_dig -1
     asset_holding_get AssetBalance
     bury 1
     assert // Hold a token from the collection
-    // smart_contracts/rain/contract.py:651
+    // smart_contracts/rain/contract.py:658
     // assert gate_asset.balance(Txn.sender) > 0, "Hold a token from the collection"
     txn Sender
     frame_dig -1
     asset_holding_get AssetBalance
     assert // account opted into asset
     assert // Hold a token from the collection
-    // smart_contracts/rain/contract.py:652
+    // smart_contracts/rain/contract.py:659
     // assert gate_asset.creator == gate, "That asset is not from the collection"
     frame_dig -1
     asset_params_get AssetCreator
@@ -4126,7 +4138,7 @@ _require_gate:
     frame_dig 0
     ==
     assert // That asset is not from the collection
-    // smart_contracts/rain/contract.py:653
+    // smart_contracts/rain/contract.py:660
     // assert gate_asset.id != rec.prize_asset.native, "The prize is not a ticket"
     frame_dig -2
     pushint 96
@@ -4143,47 +4155,47 @@ _require_gate_after_if_else@2:
 
 // smart_contracts.rain.contract.Rain._require_mbr(payment: uint64, minimum: uint64) -> void:
 _require_mbr:
-    // smart_contracts/rain/contract.py:655-656
+    // smart_contracts/rain/contract.py:662-663
     // @subroutine
     // def _require_mbr(self, payment: gtxn.PaymentTransaction, minimum: UInt64) -> None:
     proto 2 0
-    // smart_contracts/rain/contract.py:658
+    // smart_contracts/rain/contract.py:665
     // payment.receiver == Global.current_application_address
     frame_dig -2
     gtxns Receiver
     global CurrentApplicationAddress
     ==
-    // smart_contracts/rain/contract.py:657-659
+    // smart_contracts/rain/contract.py:664-666
     // assert (
     //     payment.receiver == Global.current_application_address
     // ), "MBR payment must fund the app account"
     assert // MBR payment must fund the app account
-    // smart_contracts/rain/contract.py:660
+    // smart_contracts/rain/contract.py:667
     // assert payment.sender == Txn.sender, "MBR payment must come from the caller"
     frame_dig -2
     gtxns Sender
     txn Sender
     ==
     assert // MBR payment must come from the caller
-    // smart_contracts/rain/contract.py:661
+    // smart_contracts/rain/contract.py:668
     // assert payment.rekey_to == Global.zero_address, "MBR payment must not rekey"
     frame_dig -2
     gtxns RekeyTo
     global ZeroAddress
     ==
     assert // MBR payment must not rekey
-    // smart_contracts/rain/contract.py:663
+    // smart_contracts/rain/contract.py:670
     // payment.close_remainder_to == Global.zero_address
     frame_dig -2
     gtxns CloseRemainderTo
     global ZeroAddress
     ==
-    // smart_contracts/rain/contract.py:662-664
+    // smart_contracts/rain/contract.py:669-671
     // assert (
     //     payment.close_remainder_to == Global.zero_address
     // ), "MBR payment must not close"
     assert // MBR payment must not close
-    // smart_contracts/rain/contract.py:665
+    // smart_contracts/rain/contract.py:672
     // assert payment.amount >= minimum, "MBR payment too small"
     frame_dig -2
     gtxns Amount
