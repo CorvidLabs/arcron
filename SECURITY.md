@@ -83,7 +83,9 @@ Out of scope:
 - the demo contracts in `smart_contracts/` other than `keeper/` are
   illustrations, not products; report anything you find but expect a lower
   priority
-- `smart_contracts/beacon_stub/` is deliberately not random and is LocalNet
+- `smart_contracts/beacon_stub/` is unreferenced since rain stopped using a
+  beacon on 2026-08-29, and is kept for the documented path back to one. It is
+  deliberately not random and is LocalNet
   scaffolding
 - keeper liveness. Nobody is obliged to execute your upkeep, and that is the
   design rather than a defect

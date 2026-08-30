@@ -712,7 +712,7 @@ programs for the ARC-21 selector rather than trusting documentation:
 | TestNet | `600011887` | same program size; the current beacon |
 | MainNet | `947957720` | an older, smaller program; also `must_get` |
 | TestNet | `110096026` | older |
-| LocalNet | n/a | **no beacon exists**; `smart_contracts/beacon_stub/` stood in until rain stopped using a beacon on 2026-08-29, and is now unreferenced |
+| LocalNet | n/a | **no beacon exists**; `smart_contracts/beacon_stub/` stood in until rain stopped using a beacon on 2026-08-29. Kept, not deleted: it is 31 lines, and the row above says a large enough pot should move back to the beacon. Deleting the only way to test that path on LocalNet would make the return harder than the decision. |
 
 None of them implement `get(uint64,byte[])(bool,byte[])`, so there is no
 non-throwing variant to fall back on.

@@ -1,11 +1,10 @@
-# A cron-driven rain bot. A stopgap, not the end state, for the same reasons
-# keeper-bot.yml is: see that file's header before changing this one.
+# A manual rain scan. It was cron-driven until 2026-08-30; see the note by
+# `on:` below for why the schedule went away.
 #
 # The rain hub gave resolve, claim and deposit back to holders on 2026-08-29,
 # and scripts/rain_bot.py was reduced to a scan that changes nothing. This job
-# is therefore a no-op on a cron. It is kept only so the schedule and its
-# secret do not disappear silently; retire it or repoint it at the hub rather
-# than leaving it logging.
+# is therefore a no-op. The schedule is gone and the app id now points at the
+# hub; what remains is a button, which is the right shape for a scan.
 #
 # The job skips itself cleanly when RAIN_MNEMONIC is not set, so turning it
 # on before the secret exists produces a green run with a notice rather than
@@ -45,9 +44,12 @@ on:
         description: Rain app id to watch
         required: false
         default: "769988156"
-  schedule:
-    # Every half hour. See the note above before changing this.
-    - cron: "*/30 * * * *"
+  # The schedule was removed on 2026-08-30. `scripts/rain_bot.py` was reduced
+  # to a scan that changes nothing when the hub gave resolve, claim and deposit
+  # back to holders, so a cron firing every thirty minutes was writing log
+  # entries and nothing else. `workflow_dispatch` above still runs it by hand,
+  # which is what a scan is for. Restore a schedule here if the hub ever needs
+  # an automated resolver again.
 
 concurrency:
   group: rain-bot
@@ -87,6 +89,6 @@ jobs:
         if: steps.configured.outputs.ready == 'true'
         env:
           RAIN_MNEMONIC: ${{ secrets.RAIN_MNEMONIC }}
-          RAIN_APP_ID: ${{ inputs.app_id || '769988156' }}
+          RAIN_APP_ID: ${{ inputs.app_id || '770130162' }}
           ALGOD_SERVER: https://testnet-api.algonode.cloud
         run: poetry run python -m scripts.rain_bot --once --network testnet --log-format json
