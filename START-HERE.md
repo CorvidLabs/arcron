@@ -153,7 +153,9 @@ Three tasks, each one a thing nobody has done:
 - [#92](https://github.com/CorvidLabs/arcron/issues/92): register an upkeep
   using **only** the docs. Tell us every place you had to guess.
 - [#93](https://github.com/CorvidLabs/arcron/issues/93): run a keeper for an
-  hour and say whether it was worth it.
+  hour and say whether it was worth it. `fledge run keeper-preview` reads what
+  the registry has actually been paying, and what your share of it would be,
+  before you spend the hour.
 - [#94](https://github.com/CorvidLabs/arcron/issues/94): point Arcron at a
   contract you wrote yourself.
 

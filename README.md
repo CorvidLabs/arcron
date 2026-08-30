@@ -203,19 +203,30 @@ poetry run python -m scripts.keeper_e2e --network localnet   # full e2e
 
 ### Looking at the live deployment
 
-Three read-only commands, none of which signs anything:
+Four read-only commands, none of which signs anything:
 
 ```bash
-fledge run health      # what is wrong with the registry right now
-fledge run clock       # how long the deployment has been the deployment
-fledge run keeper-ui   # a local dashboard, on localhost:4300
+fledge run health          # what is wrong with the registry right now
+fledge run clock           # how long the deployment has been the deployment
+fledge run keeper-preview  # what running a keeper here would actually earn
+fledge run keeper-ui       # a local dashboard, on localhost:4300
 ```
 
 `health` reports upkeeps about to starve, upkeeps that pay a keeper nothing,
-and whether the keepers can still afford to run. `clock` measures the MainNet
-hold from the application's creation round, and refuses to count once the local
-build stops matching what is deployed, because time served by code that is
-about to be replaced is not evidence about the code replacing it.
+and whether the keepers can still afford to run. It also simulates the overdue
+ones and says *why* they are overdue, because an upkeep out of escrow and an
+upkeep whose target reverts read identically otherwise and only one of them is
+a funding problem. `clock` measures the MainNet hold from the application's
+creation round, and refuses to count once the local build stops matching what
+is deployed, because time served by code that is about to be replaced is not
+evidence about the code replacing it.
+
+`keeper-preview` answers the question a prospective keeper actually has. It
+reads what the registry paid over the last day, net of what those executions
+cost to send, and divides it by the keepers already there rather than quoting
+the total: an arriving keeper divides the work rather than creating it. It
+simulates what is due, so an upkeep whose fee has escalated to the ceiling is
+not counted as money on the table when its target reverts.
 
 One more, which plans read-only and signs only when told to:
 
