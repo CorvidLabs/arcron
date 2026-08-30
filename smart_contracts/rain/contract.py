@@ -240,7 +240,9 @@ class Rain(ARC4Contract):
         """Take a ticket on one rain. One per account per rain.
 
         SPLIT/ONE: you are in every future drop. WAVE: you also check in for
-        the open drop if there is still a seat.
+        the open drop if there is still a seat. A ONE rain with a draw open
+        refuses entry until `resolve` or `abandon`: the committed round's
+        seed is public, and a ticket taken against it could aim the winner.
         """
         box = Box(RainRec, key=op.concat(RAIN_PREFIX, op.itob(rain_id)))
         assert box, "No such rain"
@@ -261,6 +263,11 @@ class Rain(ARC4Contract):
         wave_count: UInt64 = rec.wave_count.native
 
         if rec.mode.native == ONE:
+            # `resolve` draws over the live count, and an open draw's seed is
+            # public once `commit_round` passes. A ticket taken while the
+            # prize is locked could be one of a batch sized to catch it, so
+            # the count freezes at fire and reopens at resolve or abandon.
+            assert rec.prize_locked.native == 0, "Draw open; enter after resolve or abandon"
             index = Box(
                 arc4.Address,
                 key=op.concat(INDEX_PREFIX, op.concat(op.itob(rain_id), op.itob(rec.tickets.native))),

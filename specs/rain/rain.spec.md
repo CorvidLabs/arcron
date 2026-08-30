@@ -1,6 +1,6 @@
 ---
 module: rain
-version: 3
+version: 4
 status: active
 files:
   - smart_contracts/rain/contract.py
@@ -73,7 +73,7 @@ drain a pot. Arcron still fires the hook; the interval is also in the rain.
 | `opt_in_prize_asset` | `prize: asset, mbr_payment: pay` | `uint64` | Opts the hub into an asset so rains can pay in it. Anyone, once per asset. Refuses clawback, freeze, manager, or default-frozen. |
 | `create_rain` | `mbr_payment: pay, label: byte[32], gate_creator: address, prize_asset: uint64, drip: uint64, interval_rounds: uint64, mode: uint64, wave_cap: uint64` | `uint64` | Anyone, after bootstrap. Returns the new rain id. Zero `gate_creator` is open entry; zero `prize_asset` is ALGO (the hub must already be opted in otherwise). WAVE needs `wave_cap` > 0; the others need it 0. First fire waits one interval from create. |
 | `set_rain` | `rain_id: uint64, drip: uint64, interval_rounds: uint64` | `void` | That rain's creator only. Tune the slice and the interval. |
-| `enter` | `mbr_payment: pay, rain_id: uint64, gate_asset: uint64` | `uint64` | One ticket per account per rain. WAVE also checks in for the open drop if a seat remains. |
+| `enter` | `mbr_payment: pay, rain_id: uint64, gate_asset: uint64` | `uint64` | One ticket per account per rain. WAVE also checks in for the open drop if a seat remains. ONE refuses entry while a draw is open. |
 | `gm` | `rain_id: uint64, gate_asset: uint64` | `uint64` | WAVE check-in. First `wave_cap` this interval. Settles an unclaimed last drop. Returns 0 if already in or full. |
 | `deposit` | `payment: pay, rain_id: uint64` | `uint64` | Adds ALGO to that rain's pot. Anyone. |
 | `deposit_asset` | `transfer: axfer, rain_id: uint64` | `uint64` | Adds the prize asset to that rain's pot. Anyone. |
@@ -101,6 +101,7 @@ drain a pot. Arcron still fires the hook; the interval is also in the rain.
 13. `bootstrap` requires a payment covering `APP_BASE_MBR`.
 14. A rain will not run again until `last_rain_round + interval_rounds`, even if `draw` is called permissionlessly.
 15. Creating a rain sets `last_rain_round` to now, so the first fire waits one interval.
+16. ONE: no ticket can be taken while a draw is open (`prize_locked` > 0). The set the winner is drawn over is fixed at fire, `COMMIT_DELAY` rounds before the committed seed exists; a ticket taken later, against a seed already public, could be sized to catch the draw. `resolve` and the permissionless `abandon` both clear the lock, so entry always reopens.
 
 ## Behavioral Examples
 
@@ -122,6 +123,12 @@ drain a pot. Arcron still fires the hook; the interval is also in the rain.
 - **When** `draw` runs, then `resolve` after the committed round
 - **Then** one ticket is credited the drip, from that round's block seed
 
+### Scenario: A late ticket cannot aim an open draw
+
+- **Given** a ONE rain whose draw has locked, its committed round passed and that round's seed public
+- **When** anyone tries to `enter`
+- **Then** entry fails until `resolve` or `abandon` closes the draw, so the count the seed is reduced against is the one that existed before the seed did
+
 ### Scenario: Interval holds even if someone calls `draw` early
 
 - **Given** a fire just ran
@@ -141,6 +148,7 @@ drain a pot. Arcron still fires the hook; the interval is also in the rain.
 | `deposit` of zero | Fails with "Amount must be positive" |
 | `claim` on a gated rain without a collection token | Fails with "Hold a token from the collection". The credit stays. |
 | `claim` with nothing owed, or no ticket | Returns 0 |
+| `enter` on a ONE rain while a draw is open | Fails with "Draw open; enter after resolve or abandon" |
 | `resolve` before the committed round | Fails with "Too early" |
 | `abandon` while the seed window is open | Fails with "Window still open" |
 
@@ -163,6 +171,7 @@ drain a pot. Arcron still fires the hook; the interval is also in the rain.
 
 | Date | Author | Change |
 |------|--------|--------|
+| 2026-08-30 | CorvidLabs | ONE: `enter` is refused while a draw is open. `resolve` draws over the live count and the committed seed is public for the whole `SEED_WINDOW`, so a late batch of tickets could be sized to catch it; the count now freezes at fire, `COMMIT_DELAY` rounds before the seed exists. |
 | 2026-08-29 | CorvidLabs | Document `Label` (`byte[32]`), which specsync treats as an export. |
 | 2026-08-29 | CorvidLabs | Rain is a hub. Anyone `create_rain`s; modes SPLIT / ONE / WAVE; one Arcron `draw` walks a cursor of rain boxes. Block seed replaces the Foundation beacon for ONE. |
 | 2026-08-29 | CorvidLabs | Rain is a drip, not a jackpot. `draw` credits every ticket an equal share of `drip`; `claim` pulls. Superseded by the hub. |
