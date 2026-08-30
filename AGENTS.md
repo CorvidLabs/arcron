@@ -28,6 +28,12 @@ TestNet (app 769891898; 769802474 and 769772891 are superseded and predate the
   that upkeep wants cancelling rather than funding: 98-109 run every 20 rounds
   and would need 192 ALGO each. `top_up` is permissionless, so this needs no
   creator key, only a funded account of its own.
+- Would running a keeper here be worth it: `fledge run keeper-preview`
+  measures what the registry actually paid (the inner payment `execute`
+  sends, less the group fee the keeper paid to send it), reports the split
+  rather than only the total, and simulates the due upkeeps so a target
+  that reverts is never counted as money on the table. Read-only. It exists
+  so alpha task #93 can be decided before it is started.
 - Console as a rendered page: `fledge run web-render`. Builds it, serves it, and audits computed style and layout at four viewports in both themes against a stubbed chain. Needs `fledge run web-render-install` once, for a Chromium build. In the `local` lane, not `ci`.
 - Console for hosting: `fledge run web-build-hosted` (base href `/arcron/console/`), then `fledge run web-verify-hosted` (serves it at that subpath and fetches every file). Stage it into a `CorvidLabs/site` checkout with `fledge run site-console -- --site ../../site`; neither script commits or pushes.
 - Build: `poetry run python -m smart_contracts build` (rebuilds artifacts and typed clients; always rebuild after contract changes)

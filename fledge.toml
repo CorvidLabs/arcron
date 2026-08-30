@@ -72,6 +72,9 @@ clock = "poetry run python -m scripts.mainnet_clock --network testnet --app-id 7
 # What `health` found starving, priced in days and turned into top-ups. Prints
 # a plan and signs nothing; `fledge run topup -- --send` is the one that pays.
 topup = "poetry run python -m scripts.keeper_topup --network testnet --app-id 769891898"
+# Would running a keeper here be worth it? Measured from the chain rather than
+# argued from the docs, so alpha task #93 can be decided before it is started.
+keeper-preview = "poetry run python -m scripts.keeper_preview --network testnet --app-id 769891898"
 # Governance, for the creator account. Local only, never published: it is the
 # one page that can reach MainNet, and it authorizes permanent changes.
 govern-ui = "cd web-govern && bun run ng serve"
