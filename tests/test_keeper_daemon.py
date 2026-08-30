@@ -205,8 +205,36 @@ def test_find_python_rejects_a_tree_with_no_virtualenv(tmp_path: Path) -> None:
 
 def test_build_plan_threads_the_refusal_through(tmp_path: Path) -> None:
     args = argparse.Namespace(
-        network="testnet", app_id=None, sweep_to=None, no_sweep=False,
+        network="testnet", app_id=769891898, sweep_to=None, no_sweep=False,
         sweep_above=None, sweep_every=None,
     )
     with pytest.raises(ValueError, match="--sweep-to"):
         keeper_daemon.build_plan(args, keeper_address=None)
+
+
+# --- the app id -----------------------------------------------------------
+
+
+def test_a_missing_app_id_is_refused_at_install_time(monkeypatch) -> None:
+    # This shipped once without the check. keeper_bot enforces it with
+    # parser.error, so the agent installed cleanly, exited 2, and relaunched
+    # every 60 seconds; `launchctl print` said "last exit code = 2" and the
+    # log said "--app-id is required". Nothing else said anything.
+    monkeypatch.delenv("KEEPER_APP_ID", raising=False)
+    with pytest.raises(ValueError, match="--app-id"):
+        keeper_daemon.resolve_app_id(None, "testnet")
+
+
+def test_the_app_id_falls_back_to_the_environment(monkeypatch) -> None:
+    monkeypatch.setenv("KEEPER_APP_ID", "769891898")
+    assert keeper_daemon.resolve_app_id(None, "testnet") == 769891898
+
+
+def test_an_explicit_app_id_wins(monkeypatch) -> None:
+    monkeypatch.setenv("KEEPER_APP_ID", "1")
+    assert keeper_daemon.resolve_app_id(769891898, "testnet") == 769891898
+
+
+def test_the_app_id_reaches_the_command() -> None:
+    argv = _plan().arguments()
+    assert argv[argv.index("--app-id") + 1] == "769891898"

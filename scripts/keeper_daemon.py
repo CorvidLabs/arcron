@@ -16,11 +16,13 @@ reason to hold it, so `--install` will not write a plist until you have either
 named a wallet or said `--no-sweep` out loud.
 
 **Whatever the bot would refuse at startup is refused here instead.** A bad
-address, the keeper's own address, a destination with no trigger: the bot
-already rejects all three before its first scan, and under launchd that
-rejection is a job restarting once a minute in a log nobody is tailing. The
-same check runs at install time, in your terminal, by calling the bot's own
-validator rather than keeping a second copy of the rules.
+sweep address, the keeper's own address, a destination with no trigger, a
+missing app id: the bot rejects all of these before its first scan, and under
+launchd a rejection is not an error message, it is a job exiting 2 and
+relaunching once a minute in a log nobody is tailing. The first attempt at
+this module shipped without the app-id check and did exactly that. The sweep
+rules are enforced by calling `keeper_bot._validate_sweep` rather than keeping
+a second copy of them.
 
 The mnemonic is never written to the plist. launchd agents live unencrypted in
 ~/Library/LaunchAgents, so the job runs from the repository root and the bot
@@ -164,8 +166,29 @@ def find_python(repo: Path) -> Path:
     )
 
 
+def resolve_app_id(app_id: int | None, network: str) -> int:
+    """The app the agent will service.
+
+    `keeper_bot.resolve_app_id` deliberately has no default -- an older app's
+    boxes are a different shape, so a keeper pointed at a stale deployment
+    decodes nothing it can trust -- and it enforces that with `parser.error`,
+    which under launchd means the agent exits 2 and relaunches once a minute
+    forever. Resolved here so the same omission is a sentence in a terminal.
+    """
+    if app_id is not None:
+        return app_id
+    from_env = os.environ.get("KEEPER_APP_ID")
+    if from_env:
+        return int(from_env)
+    raise ValueError(
+        f"--app-id (or KEEPER_APP_ID) is required on {network}: there is no "
+        f"canonical Arcron deployment to default to. The live one is 769891898."
+    )
+
+
 def build_plan(args: argparse.Namespace, *, keeper_address: str | None) -> DaemonPlan:
     repo = Path(__file__).resolve().parent.parent
+    app_id = resolve_app_id(args.app_id, args.network)
     sweep_to, sweep_above, sweep_every, notes = resolve_sweep(
         args.sweep_to,
         no_sweep=args.no_sweep,
@@ -179,7 +202,7 @@ def build_plan(args: argparse.Namespace, *, keeper_address: str | None) -> Daemo
         repo=repo,
         log_path=Path.home() / "Library" / "Logs" / "arcron" / f"keeper-{args.network}.log",
         network=args.network,
-        app_id=args.app_id,
+        app_id=app_id,
         sweep_to=sweep_to,
         sweep_above=sweep_above,
         sweep_every=sweep_every,
@@ -226,7 +249,7 @@ def describe(plan: DaemonPlan) -> None:
     logger.info("")
     logger.info(f"  label       {plan.label}")
     logger.info(f"  network     {plan.network}")
-    logger.info(f"  app id      {plan.app_id if plan.app_id is not None else '(default)'}")
+    logger.info(f"  app id      {plan.app_id}")
     logger.info(f"  interpreter {plan.python}")
     logger.info(f"  working dir {plan.repo}")
     logger.info(f"  log         {plan.log_path}")

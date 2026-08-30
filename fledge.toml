@@ -88,8 +88,8 @@ keeper-preview = "poetry run python -m scripts.keeper_preview --network testnet 
 # said --no-sweep: the bot signs from the account it earns into, and this is
 # the first thing here that runs unattended for weeks. No mnemonic is written
 # to the plist; the job reads .env.<network> like everything else.
-keeper-daemon = "poetry run python -m scripts.keeper_bot --network testnet"
-keeper-daemon-install = "poetry run python -m scripts.keeper_daemon --network testnet --install"
+keeper-daemon = "poetry run python -m scripts.keeper_bot --network testnet --app-id 769891898"
+keeper-daemon-install = "poetry run python -m scripts.keeper_daemon --network testnet --app-id 769891898 --install"
 keeper-daemon-status = "poetry run python -m scripts.keeper_daemon --network testnet --status"
 keeper-daemon-uninstall = "poetry run python -m scripts.keeper_daemon --network testnet --uninstall"
 # Governance, for the creator account. Local only, never published: it is the
