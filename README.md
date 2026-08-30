@@ -217,6 +217,18 @@ hold from the application's creation round, and refuses to count once the local
 build stops matching what is deployed, because time served by code that is
 about to be replaced is not evidence about the code replacing it.
 
+One more, which plans read-only and signs only when told to:
+
+```bash
+fledge run topup            # what it would cost to carry every upkeep 30 days
+fledge run topup -- --send  # actually fund it
+```
+
+It prices escrow in **days of runway** rather than microalgo, because the two
+are not the same question: 0.15 ALGO is six weeks on a daily schedule and forty
+minutes on a per-minute one. An upkeep whose cadence puts 30 days out of reach
+is reported rather than funded, since the answer to those is to cancel them.
+
 ### The console
 
 The console's address is **https://corvidlabs.xyz/arcron/console/**. That is

@@ -21,6 +21,13 @@ TestNet (app 769891898; 769802474 and 769772891 are superseded and predate the
   been the deployment, and it refuses to count once the local build stops
   matching the chain), `fledge run keeper-ui` (a local dashboard on 4300, never
   published).
+- Fixing what `health` finds starving: `fledge run topup` prices every upkeep in
+  **days of runway** and prints the top-ups that reach 30 of them. Planning is
+  read-only; `fledge run topup -- --send` is the one that signs. It refuses to
+  fund an upkeep whose cadence makes 30 days cost more than 10 ALGO, because
+  that upkeep wants cancelling rather than funding: 98-109 run every 20 rounds
+  and would need 192 ALGO each. `top_up` is permissionless, so this needs no
+  creator key, only a funded account of its own.
 - Console as a rendered page: `fledge run web-render`. Builds it, serves it, and audits computed style and layout at four viewports in both themes against a stubbed chain. Needs `fledge run web-render-install` once, for a Chromium build. In the `local` lane, not `ci`.
 - Console for hosting: `fledge run web-build-hosted` (base href `/arcron/console/`), then `fledge run web-verify-hosted` (serves it at that subpath and fetches every file). Stage it into a `CorvidLabs/site` checkout with `fledge run site-console -- --site ../../site`; neither script commits or pushes.
 - Build: `poetry run python -m smart_contracts build` (rebuilds artifacts and typed clients; always rebuild after contract changes)

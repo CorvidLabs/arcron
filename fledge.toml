@@ -69,6 +69,9 @@ web-serve = "cd web && bun run ng serve"
 health = "poetry run python -m scripts.registry_health --network testnet --app-id 769891898"
 # How long the deployment has been the deployment, and what would reset it.
 clock = "poetry run python -m scripts.mainnet_clock --network testnet --app-id 769891898"
+# What `health` found starving, priced in days and turned into top-ups. Prints
+# a plan and signs nothing; `fledge run topup -- --send` is the one that pays.
+topup = "poetry run python -m scripts.keeper_topup --network testnet --app-id 769891898"
 # Governance, for the creator account. Local only, never published: it is the
 # one page that can reach MainNet, and it authorizes permanent changes.
 govern-ui = "cd web-govern && bun run ng serve"
