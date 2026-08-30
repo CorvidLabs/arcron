@@ -105,3 +105,68 @@ def test_the_decoder_twin_is_named_where_it_lives() -> None:
     # The specific failure that produced this file, pinned by name.
     assert (ROOT / "js/src/upkeep.ts").exists()
     assert not (ROOT / "web/src/app/core/upkeep.ts").exists()
+
+
+# ---------------------------------------------------------------------------
+# Anchors, which are paths that keep going.
+#
+# `docs/deploying.md` linked to `security.md#key-handling` twice. The file
+# existed, so the check above passed; the heading was `## Deployer key
+# handling`, so the anchor resolved to nothing. It reached the published site
+# and was caught there by CorvidLabs/site's own audit, which is two repositories
+# too late for a link this repository wrote.
+
+
+def _slug(heading: str) -> str:
+    """A markdown heading as its anchor, the way GitHub and Astro derive it."""
+    text = heading.lstrip("#").strip().lower()
+    text = re.sub(r"[`*_\[\]()]", "", text)
+    return re.sub(r"[^a-z0-9]+", "-", text).strip("-")
+
+
+def _anchors_in(document: Path) -> set[str]:
+    return {
+        _slug(line)
+        for line in document.read_text().splitlines()
+        if line.startswith("#")
+    }
+
+
+def _cross_document_anchor_links(document: Path) -> list[tuple[str, str]]:
+    """(target file, anchor) for every `](other.md#anchor)` link."""
+    return re.findall(r"\]\(([^)#\s]+\.md)#([^)\s]+)\)", document.read_text())
+
+
+def test_every_anchor_a_document_links_to_exists() -> None:
+    broken: list[str] = []
+    for name in CHECKED:
+        document = ROOT / name
+        if not document.is_file():
+            continue
+        for target, anchor in _cross_document_anchor_links(document):
+            resolved = (document.parent / target).resolve()
+            if not resolved.is_file():
+                continue  # the path check above owns this failure
+            if anchor not in _anchors_in(resolved):
+                broken.append(f"{name} -> {target}#{anchor}")
+    assert not broken, "links to headings that do not exist: " + ", ".join(broken)
+
+
+def test_the_anchor_check_is_actually_looking_at_something() -> None:
+    """A check that finds nothing to check passes for the wrong reason."""
+    found = sum(
+        len(_cross_document_anchor_links(ROOT / name))
+        for name in CHECKED
+        if (ROOT / name).is_file()
+    )
+    assert found > 5, f"only {found} cross-document anchor links found"
+
+
+def test_the_slug_matches_how_the_heading_was_actually_written() -> None:
+    # The one that broke: `## Deployer key handling`, linked to as
+    # `#key-handling`, which is a prefix of the truth and so easy to miss.
+    assert _slug("## Deployer key handling") == "deployer-key-handling"
+    assert _slug("### An adversarial keeper") == "an-adversarial-keeper"
+    assert _slug("## Immutability: upgradeable until frozen") == (
+        "immutability-upgradeable-until-frozen"
+    )
