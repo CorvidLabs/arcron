@@ -173,8 +173,8 @@ If you looked and decided *not* to use it, that is worth more still:
 |---|---|
 | Contract | Live on TestNet, unaudited, upgradeable, 1.0 surface complete |
 | Deployment age | Days, not months |
-| Upkeeps registered by strangers | **Zero** |
-| Keepers not run by us | **Zero** |
+| Upkeeps registered by strangers | **Still zero, and the raw number will mislead you.** 21 of the 28 live upkeeps come from six addresses that are not our deployer. All six were funded by one account, and the largest block of twelve registered its own target apps on the day we published the agent repos. That is one operator of ours wearing six addresses, not six people who found this. |
+| Keepers not run by us | **Still zero.** A third keeper address has executed 14 times; it is from the same fleet. |
 | MainNet | Not deployed. Gated on sustained TestNet time; the creator will be `corvid.algo` |
 | Review history | Every round, including the ones that said no, is in `docs/reviews/` |
 
