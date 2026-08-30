@@ -22,6 +22,12 @@ TestNet (app 769891898; 769802474 and 769772891 are superseded, predating the
   been the deployment, and it refuses to count once the local build stops
   matching the chain), `fledge run keeper-ui` (a local dashboard on 4300, never
   published).
+- Fixing what `health` finds starving: `fledge run topup` prices every upkeep
+  in **days of runway** and prints the top-ups that reach 30 of them. It signs
+  nothing until `fledge run topup -- --send`. It deliberately refuses to fund
+  an upkeep whose cadence makes 30 days cost more than 10 ALGO: upkeeps 98-109
+  run every 20 rounds and would need 192 ALGO each, and the answer to those is
+  `cancel`, not a top-up.
 - Console as a rendered page: `fledge run web-render` (needs `fledge run web-render-install` once)
 - Console for hosting: `fledge run web-build-hosted` then `fledge run web-verify-hosted`; stage with `fledge run site-console -- --site <site checkout>`
 - Build: `poetry run python -m smart_contracts build` (always rebuild after contract changes)
