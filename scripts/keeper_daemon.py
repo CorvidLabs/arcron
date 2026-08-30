@@ -42,6 +42,7 @@ import os
 import plistlib
 import subprocess
 import sys
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -275,6 +276,23 @@ def _launchctl(*argv: str) -> subprocess.CompletedProcess[str]:
     )
 
 
+def _wait_until_gone(label: str, *, timeout: float = 45.0) -> bool:
+    """Block until launchd has finished tearing a label down.
+
+    `bootout` returns before the job is gone: the plist sets `ExitTimeOut` to
+    30, so launchd SIGTERMs, waits for the scan in flight, and only then
+    releases the label. Bootstrapping into that window fails with the useless
+    `Bootstrap failed: 5: Input/output error`, which is how a reinstall
+    silently leaves you with no keeper at all.
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if _launchctl("print", f"gui/{os.getuid()}/{label}").returncode != 0:
+            return True
+        time.sleep(0.5)
+    return False
+
+
 def install(plan: DaemonPlan) -> None:
     plan.plist_path.parent.mkdir(parents=True, exist_ok=True)
     plan.log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -282,6 +300,11 @@ def install(plan: DaemonPlan) -> None:
     # already has, and a stale job pointing at an old path would otherwise
     # keep running while this one silently failed to start.
     _launchctl("bootout", f"gui/{os.getuid()}/{plan.label}")
+    if not _wait_until_gone(plan.label):
+        raise RuntimeError(
+            f"{plan.label} is still loaded after waiting for it to stop. "
+            f"Run `launchctl bootout gui/{os.getuid()}/{plan.label}` and retry."
+        )
     plan.plist_path.write_bytes(plist_bytes(plan))
     result = _launchctl("bootstrap", f"gui/{os.getuid()}", str(plan.plist_path))
     if result.returncode != 0:
