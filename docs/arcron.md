@@ -334,6 +334,14 @@ poetry run python -m scripts.keeper_bot --app-id N # other keeper instance
   is a liveness question, not a throughput one, and the escalating fee exists to
   recruit the second keeper when the first stops rather than to run an auction.
   The arithmetic and the evidence are in [prior art](prior-art.md).
+- **That is a CPU's capacity, not this bot's.** `scripts/keeper_bot.py` sends
+  `execute` inside its loop over due upkeeps and waits for confirmation before
+  the next, so it serves about one upkeep per round. Measured on TestNet on
+  2026-08-29: upkeeps 93 and 94 came due three rounds apart and executed at
+  rounds 66795899 and 66795901, three serves across three distinct rounds,
+  collisions 0. Algorand takes 16 transactions in a group and the bot batches
+  none of them. The 7.8 figure holds; this implementation does not collect it,
+  and batching is the lever.
 - Multiple competing bots are safe: the contract re-checks due-ness
   atomically, so exactly one keeper is paid per due round. **The loser pays
   nothing.** Algorand rejects a failing transaction at validation rather than
@@ -667,11 +675,33 @@ belongs in a transaction the interested party sends for themselves. The
 scheduled call does accounting only, and someone with skin in the game
 provides the references.
 
-`smart_contracts/rain/` is the worked example. A scheduled `draw()` locks a
-prize and fixes a future randomness-beacon round, with no inner calls and
-nothing unreachable. A participant then calls `resolve()`, attaching the beacon
-reference a keeper could not, and the winner calls `claim()`. The beacon is
-never in the path of a scheduled execution, so a beacon outage cannot stall
+`smart_contracts/rain/` is the worked example. A scheduled `draw()` takes no
+arguments and walks a cursor over up to four rain boxes, firing each one that
+is due and returning 0 when none is. It moves no money by inner call and has
+nothing unreachable, so a quiet week is uneventful rather than a backoff. The
+paying-out half is somebody else's transaction: `claim()` is a pull, and in
+ONE mode `resolve()` is a separate permissionless call that picks the winner
+once the committed round has passed.
+
+**Where ONE's randomness comes from, and what that costs.** Until 2026-08-29
+this paragraph described a participant calling `resolve()` while attaching a
+reference to the Foundation's randomness beacon. A keeper could not supply that
+reference, which is what made rain the illustration for pulling a *resource*.
+It no longer works that way. `resolve()` reads `Block.blk_seed` for the round
+committed to eight rounds earlier, so it needs no foreign reference at all.
+
+That is simpler, and it is a weaker guarantee, which is the honest way to
+record it. A block seed is derived from the proposer's VRF, so the proposer of
+the committed round knows the seed they would produce and can decline to
+propose, forcing a different one: a one-of-two grind that becomes rational
+once a pot is worth more than a block reward. The Foundation beacon exists to
+close exactly that gap. Current rains pay 0.05 to 1 ALGO, comfortably under a
+block reward, so the exposure is presently theoretical. But it scales with
+the pot, and a rain large enough to be worth grinding is a rain that should
+move back to the beacon. The ids are recorded below for when that happens.
+
+The principle the section is about still holds: nothing a keeper cannot supply
+sits in the path of a scheduled execution, so no outside dependency can stall
 the schedule for everyone.
 
 **Randomness beacon app ids**, verified by searching the deployed approval
@@ -683,7 +713,7 @@ programs for the ARC-21 selector rather than trusting documentation:
 | TestNet | `600011887` | same program size; the current beacon |
 | MainNet | `947957720` | an older, smaller program; also `must_get` |
 | TestNet | `110096026` | older |
-| LocalNet | n/a | **no beacon exists**; `smart_contracts/beacon_stub/` stands in |
+| LocalNet | n/a | **no beacon exists**; `smart_contracts/beacon_stub/` stood in until rain stopped using a beacon on 2026-08-29, and is now unreferenced |
 
 None of them implement `get(uint64,byte[])(bool,byte[])`, so there is no
 non-throwing variant to fall back on.

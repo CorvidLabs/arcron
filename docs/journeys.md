@@ -248,8 +248,11 @@ page per upkeep.
 
 ## What these are not
 
-They do not cover rain. Rain pays out to wallets and that is how people know
-it works; it needs no console screen of its own.
+They did not cover rain, on the reasoning that rain pays out to wallets and
+needs no console screen of its own. **That was reversed on 2026-08-29**: the
+rain hub is permissionless, so opening and funding one needed a surface, and
+the console now carries `/rain`, `/rain/new` and `/rain/:id`. No journey was
+written for them; that gap is real and unclosed.
 
 They do not cover the SDK or the scripts, which stay the path for anybody
 doing something the console does not do.

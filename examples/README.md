@@ -13,8 +13,8 @@ and a write-up of the design decision it exists to make.
 | Demo | The question it answers |
 |------|-------------------------|
 | [Recurring subscriptions](subscription.md) | How do you bill many subscribers when the scheduled call cannot open their boxes? |
-| [Daily rain](rain.md) | How do you draw a winner fairly when the keeper picks the moment? |
-| [A draw for your holders](community-rain.md) | How do you run that draw for one project, gated on its NFTs and paid in its token? |
+| [A hub of scheduled drops](rain.md) | How do you pay a whole collection on a cadence when the keeper picks the moment and can move no money? |
+| [A rain for your holders](community-rain.md) | How do you run one of those for your project, gated on its NFTs and paid in its token? |
 
 `fledge lanes run local` runs all three.
 

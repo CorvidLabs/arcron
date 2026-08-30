@@ -694,7 +694,7 @@ The second is **failure isolation**. A push payout to a closed or hostile accoun
 fails the *whole* execution, which wedges the schedule for everyone your contract
 serves. Pull confines that risk to the one claimant.
 
-`smart_contracts/rain/` (a scheduled prize draw) and
+`smart_contracts/rain/` (a hub of scheduled drops) and
 `smart_contracts/subscription/` (a metered service) are both shaped by this.
 
 ### Lesson 6. Reaching resources your hook can't name
@@ -1026,6 +1026,16 @@ and it doesn't shard. Ten thousand upkeeps on an hourly cadence average 7.8 due
 per round, which is one machine's work. Keeper count is a liveness question, as
 in "is anyone watching", not a throughput one. The escalating fee exists to
 recruit the second keeper when the first one stops, not to run an auction.
+
+That is what a machine can compute, and `scripts/keeper_bot.py` does not
+collect it. It sends `execute` inside its loop over due upkeeps and waits for
+confirmation before the next one, so it serves about one upkeep per round.
+Measured on TestNet on 2026-08-29: upkeeps 93 and 94 came due three rounds
+apart and executed at rounds 66795899 and 66795901, three serves across three
+distinct rounds, collisions 0. Algorand takes 16 transactions in a group and
+the bot batches none of them. Anyone who needs the 7.8 has to write that
+batching; the arithmetic says the work fits on one box, not that this loop
+already does it.
 
 That's a direct lesson from prior art. Keep3r on Ethereum, at peak, had six
 distinct active keepers across the entire network. Designing for a large

@@ -82,7 +82,7 @@ nearest neighbour is
 [ARC-58](https://github.com/algorandfoundation/ARCs/pull/269), plugin-based
 account abstraction, which has the permission half of this primitive and none of
 the economic half: a plugin can be callable by anyone, at most once every N
-rounds, until round X. It *does* have escrow — an Escrow Factory, and Flat,
+rounds, until round X. It *does* have escrow: an Escrow Factory, and Flat,
 Window and Drip allowances, added since this page first described it as having
 none. But that escrow funds what the plugin spends on the user's behalf.
 **Nothing pays the account that calls it.** Every value-moving path in the
@@ -97,7 +97,7 @@ is the counterexample.
 
 [xGov-116, "Subscription Payments"](https://github.com/algorandfoundation/xGov/blob/main/Proposals/xgov-116.md),
 by Kyle Beeding of Akita, was **approved and funded for 50,000 ALGO** in Period
-3, January 2024 — months before BiatecCron reached MainNet. Its own description:
+3, January 2024, months before BiatecCron reached MainNet. Its own description:
 
 > The subscription acts as an escrow... The contract charges a 4% fee with 0.5%
 > going to the account that triggers the payment during a valid payment window.
@@ -110,7 +110,7 @@ its milestones was literally "Automatic Contract Calls".
 **It appears never to have shipped.** There is no public repository under the
 author's account. What did survive is its design: the author went on to
 co-write ARC-58, whose escrow and allowance system reads as this proposal's
-descendant — carrying the escrow across and dropping the payment to the
+descendant. It carries the escrow across and drops the payment to the
 triggerer, which is the half that makes it permissionless infrastructure rather
 than a wallet feature.
 
@@ -173,6 +173,15 @@ every 2.5 seconds services roughly 1,286 executions an hour at one due upkeep
 per round. Ten thousand upkeeps on a one hour cadence average **7.8 due per
 round**, which is still one machine's work. Keeper count is not a throughput
 constraint and never becomes one.
+
+**The reference bot does not yet realise that.** `scripts/keeper_bot.py` sends
+`execute` inside its loop over due upkeeps and waits for confirmation before
+the next, so it serves roughly one upkeep per round rather than 7.8. Measured
+on TestNet on 2026-08-29: upkeeps 93 and 94 came due three rounds apart and
+executed at rounds 66795899 and 66795901, three serves across three distinct
+rounds, collisions 0. Algorand takes 16 transactions in a group and the bot
+batches none of them. The arithmetic is about what a CPU can do; batching is
+what would let an implementation collect it.
 
 **It is a liveness constraint.** One keeper and the network works until that
 machine dies. Two or three independent operators covers what actually goes
