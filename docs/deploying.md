@@ -217,7 +217,7 @@ threshold is refused locally, and would be refused by the network anyway.
 **The MainNet creator is one account**, `corvid.algo`,
 `WGSHC4TYKYBS6EX5V5E377BQDLKWIIPBCFOLZQZIXCKHFIEKRPBFOMW25A`. It was a 2-of-3
 multisig until 2026-08-29, and the whole reasoning for the change, including
-what it costs, is in [`security.md`](security.md#key-handling). The short
+what it costs, is in [`security.md`](security.md#deployer-key-handling). The short
 version: no wallet will sign for a multisig sender, so a 2-of-3 meant three
 people exporting mnemonics into a shell for every governance action, and
 `freeze` is what makes a single key defensible because it retires that key
@@ -272,7 +272,7 @@ which is worse than not checking.
 **Which holders, and how many.** Three keys with a threshold of two is the
 usual shape: any one can be lost without losing control, and any one can be
 compromised without losing the contract. Keep them on different devices held by
-different people; keys in one drawer are one key. The LocalNet smoke test uses three with a threshold of two because it only has to prove the mechanism. Member order is part of the address, so the same keys in a different order are a different account holding nothing. **MainNet no longer uses a multisig**, for the reasons in [`security.md`](security.md#key-handling); this machinery is kept working so that decision can be reversed with one constant if a wallet ever ships multisig signing.
+different people; keys in one drawer are one key. The LocalNet smoke test uses three with a threshold of two because it only has to prove the mechanism. Member order is part of the address, so the same keys in a different order are a different account holding nothing. **MainNet no longer uses a multisig**, for the reasons in [`security.md`](security.md#deployer-key-handling); this machinery is kept working so that decision can be reversed with one constant if a wallet ever ships multisig signing.
 
 ## Checking a deployment you did not make
 

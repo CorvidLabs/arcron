@@ -67,3 +67,51 @@ def test_a_dirty_tree_is_declared(tmp_path: Path) -> None:
         assert "WARNING" in written, "a dirty tree produced provenance with no warning"
     else:
         assert "WARNING" not in written, "a clean tree produced a spurious dirty warning"
+
+
+def test_the_routes_note_is_read_not_remembered(tmp_path: Path) -> None:
+    """The bug this replaced.
+
+    The note said "the console has no client-side routes yet" and kept saying
+    it for three releases after six of them landed. A note that states a fact
+    goes stale; one that reads a fact cannot.
+    """
+    from scripts.publish_console import declared_routes
+
+    web = tmp_path / "web" / "src" / "app"
+    web.mkdir(parents=True)
+    (web / "routes.ts").write_text(
+        "export const routes: Routes = [\n"
+        "  { path: '', component: Registry },\n"
+        "  { path: 'u/:id', component: Upkeep },\n"
+        "  { path: 'rain/new', component: NewRain },\n"
+        "  { path: '**', redirectTo: '' },\n"
+        "];\n"
+    )
+    assert declared_routes(tmp_path) == ["u/:id", "rain/new"]
+
+
+def test_the_empty_path_and_catch_all_need_no_fallback(tmp_path: Path) -> None:
+    # `/arcron/console/` is a real file and `**` never reaches the server.
+    from scripts.publish_console import declared_routes
+
+    web = tmp_path / "web" / "src" / "app"
+    web.mkdir(parents=True)
+    (web / "routes.ts").write_text("[{ path: '' }, { path: '**', redirectTo: '' }]")
+    assert declared_routes(tmp_path) == []
+
+
+def test_a_missing_route_table_reports_nothing_rather_than_failing(tmp_path: Path) -> None:
+    from scripts.publish_console import declared_routes
+
+    assert declared_routes(tmp_path) == []
+
+
+def test_the_real_console_declares_the_routes_the_fallback_is_for() -> None:
+    """Pinned against the live table, so removing the fallback shows up here."""
+    from scripts.publish_console import declared_routes
+
+    routes = declared_routes()
+    assert "u/:id" in routes
+    assert "rain/:id" in routes
+    assert "" not in routes and "**" not in routes

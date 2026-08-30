@@ -226,16 +226,66 @@ def _crawl(base_url: str, bundle: pathlib.Path) -> list[str]:
     return failures
 
 
-def _report_spa_fallback() -> None:
-    """State the one thing serving the bundle cannot prove on its own."""
+def declared_routes(repo: pathlib.Path | None = None) -> list[str]:
+    """The console's client-side routes, read from its own route table.
+
+    Whether a fallback is needed is a fact about the application, not
+    something to remember. This note used to say "no client-side routes yet"
+    and went on saying it for the three releases after six of them landed,
+    which is the failure mode of any note that states a fact instead of
+    reading one.
+
+    The catch-all and the empty path are left out: neither needs a fallback,
+    because `/arcron/console/` is a real file.
+    """
+    source = (repo or REPO) / "web" / "src" / "app" / "routes.ts"
+    if not source.is_file():
+        return []
+    return [
+        path
+        for path in re.findall(r"path:\s*'([^']*)'", source.read_text())
+        if path and path != "**"
+    ]
+
+
+def _report_spa_fallback(bundle: pathlib.Path | None = None) -> None:
+    """State the one thing serving the bundle cannot prove on its own.
+
+    Verifying the bundle proves every file is reachable at its own URL. It
+    cannot prove that `/arcron/console/rain/5`, which is not a file, reaches
+    the application: only the web server's fallback does that, and that lives
+    in another repository.
+    """
+    routes = declared_routes()
     logger.info("")
-    logger.info("Note: the console has no client-side routes yet, so a plain static")
-    logger.info("server is enough. The moment routing lands, nginx needs a fallback or")
-    logger.info("every deep link 404s on reload. In CorvidLabs/site deploy/vps/nginx.conf:")
+    if not routes:
+        logger.info("Note: the console declares no client-side routes, so a plain static")
+        logger.info("server is enough. The moment routing lands, nginx needs a fallback or")
+        logger.info("every deep link 404s on reload. In CorvidLabs/site deploy/vps/nginx.conf:")
+    else:
+        shown = ", ".join(f"{BASE_HREF}{route}" for route in routes[:3])
+        logger.info(f"Note: the console declares {len(routes)} client-side route(s) "
+                    f"({shown}{', ...' if len(routes) > 3 else ''}).")
+        logger.info("None of those is a file, so nginx must fall back to the application or")
+        logger.info("every deep link 404s on reload. In CorvidLabs/site deploy/vps/nginx.conf:")
     logger.info("")
     logger.info(f"    location ^~ {BASE_HREF} {{")
-    logger.info(f"        try_files $uri $uri/index.html {BASE_HREF}index.html;")
+    logger.info(f"        try_files $uri $uri/index.html $uri/ =404;")
+    logger.info(f"        error_page 404 = {BASE_HREF}404.html;")
     logger.info("    }")
+
+    # The half of that the build does control, and can therefore prove.
+    if bundle is not None:
+        index, missing = bundle / "index.html", bundle / "404.html"
+        if index.is_file() and missing.is_file() and index.read_bytes() == missing.read_bytes():
+            logger.info("")
+            logger.info("This bundle ships 404.html byte for byte identical to index.html, so")
+            logger.info("the fallback above lands on the application. The nginx half is not")
+            logger.info("checked here; it is in another repository.")
+        else:
+            logger.warning("")
+            logger.warning("This bundle's 404.html is missing or differs from index.html, so the")
+            logger.warning("fallback above would serve something other than the application.")
 
 
 def _publish(bundle: pathlib.Path, site: pathlib.Path, check: bool) -> int:
@@ -277,7 +327,7 @@ def _publish(bundle: pathlib.Path, site: pathlib.Path, check: bool) -> int:
     shutil.copytree(bundle, target)
     _write_provenance(target)
     logger.info(f"  {bundle.relative_to(REPO)} -> {target.relative_to(site)} ({len(shipped)} files)")
-    _report_spa_fallback()
+    _report_spa_fallback(bundle)
     logger.info("")
     logger.info("Nothing is published yet. Review the staged bundle, then in the site checkout:")
     logger.info(f"    git -C {site} add public/{SITE_PATH}")
@@ -349,7 +399,7 @@ def main(argv: list[str] | None = None) -> int:
     if failed:
         return failed
     if args.verify:
-        _report_spa_fallback()
+        _report_spa_fallback(BUNDLE)
         return 0
     return _publish(BUNDLE, args.site, args.check)
 
