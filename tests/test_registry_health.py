@@ -18,7 +18,12 @@ import hashlib
 import pytest
 
 from scripts.keeper_bot import BONUS_FEE_MICROALGO, EXECUTION_COST_MICROALGO
-from scripts.registry_health import LOW_RUNWAY_DAYS, UpkeepHealth, execute_selector
+from scripts.registry_health import (
+    LOW_RUNWAY_DAYS,
+    UpkeepHealth,
+    classify_failure,
+    execute_selector,
+)
 
 
 def health(**over) -> UpkeepHealth:
@@ -104,3 +109,80 @@ def test_execution_count_never_affects_the_flags(runs: int) -> None:
     # A busy upkeep and an idle one are judged on the same terms. Runs are
     # reported because they are interesting, not because they are healthy.
     assert health(times_executed=runs).flags() == []
+
+
+# The real simulate output from TestNet on 2026-08-30. Kept verbatim because
+# the point of these tests is what is *absent* from it.
+UPKEEP_98_CANNOT_PAY = (
+    "transaction M4FZTCFZZQ2FIQOI3HDXAR7IKGPKI5NUX27ZHBJWNXZUBZT2U5GA: logic eval error: "
+    "assert failed pc=1181. Details: app=769891898, pc=1181, opcodes=dig 15; >=; assert"
+)
+UPKEEP_87_TARGET_REVERTS = (
+    "transaction TPHZC6Y6Q7AKZMUWL3M26WK22FYSWXKDQ3PQAIPHT23M2QV7JYPA: logic eval error: "
+    "inner tx 0 failed: logic eval error: assert failed pc=249. Details: app=770082145, "
+    "pc=249, opcodes===; !; assert. Details: app=769891898, pc=1483, opcodes=intc_1 // 0; "
+    "itxn_field Fee; itxn_submit; label36:"
+)
+
+
+class TestClassifyFailure:
+    """Two upkeeps, both OVERDUE, and only one of them is about money."""
+
+    def test_the_assert_message_is_not_in_the_response(self) -> None:
+        """The reason this classifier cannot be a string match.
+
+        `assert upkeep.balance >= fee, "Insufficient funding"` puts that text
+        in the source map, not on chain. Matching it would have silently
+        classified nothing at all, which is worse than not trying.
+        """
+        assert "Insufficient funding" not in UPKEEP_98_CANNOT_PAY
+        assert "Not due" not in UPKEEP_98_CANNOT_PAY
+
+    def test_an_inner_transaction_failure_is_the_target_reverting(self) -> None:
+        assert classify_failure(UPKEEP_87_TARGET_REVERTS) == "TARGET REVERTS"
+
+    def test_a_funded_upkeep_that_reverts_is_not_a_funding_problem(self) -> None:
+        # Upkeep 87 exactly: 5.75 ALGO in escrow, fee escalated to its ceiling,
+        # and still nothing a top-up can do about it.
+        assert classify_failure(UPKEEP_87_TARGET_REVERTS, can_pay_fee=True) == "TARGET REVERTS"
+
+    def test_a_broken_target_that_is_also_broke_is_still_a_broken_target(self) -> None:
+        # Order matters: funding one of these buys nothing.
+        assert classify_failure(UPKEEP_87_TARGET_REVERTS, can_pay_fee=False) == "TARGET REVERTS"
+
+    def test_the_funding_case_is_decided_by_the_numbers_not_the_text(self) -> None:
+        assert classify_failure(UPKEEP_98_CANNOT_PAY, can_pay_fee=False) == (
+            "ESCROW CANNOT PAY THE FEE"
+        )
+
+    def test_the_same_error_from_a_solvent_upkeep_is_quoted_not_guessed(self) -> None:
+        """An unrecognised failure gets repeated back, not filed under a label.
+
+        Same message, solvent upkeep: something else is wrong and the report
+        has no business naming it.
+        """
+        verdict = classify_failure(UPKEEP_98_CANNOT_PAY, can_pay_fee=True)
+        assert verdict.startswith("WOULD FAIL: ")
+        assert "pc=1181" in verdict
+
+    def test_a_passing_simulation_says_nothing(self) -> None:
+        assert classify_failure("") == ""
+        assert classify_failure("", can_pay_fee=False) == ""
+
+    def test_the_quoted_form_stops_at_the_details(self) -> None:
+        # The Details section is pc noise; the first clause is the sentence.
+        assert "Details" not in classify_failure(UPKEEP_98_CANNOT_PAY, can_pay_fee=True)
+
+
+class TestBlockedFlag:
+    def test_a_reason_reaches_the_flags(self) -> None:
+        flags = health(rounds_late=10_000, blocked="TARGET REVERTS").flags()
+        assert "OVERDUE BY 10,000 ROUNDS" in flags
+        assert "TARGET REVERTS" in flags
+
+    def test_no_simulation_adds_no_flag(self) -> None:
+        # Empty means "not asked", which must not read as "would succeed".
+        assert health(rounds_late=10_000).flags() == ["OVERDUE BY 10,000 ROUNDS"]
+
+    def test_an_on_schedule_upkeep_is_never_flagged_by_this(self) -> None:
+        assert health(rounds_late=0, blocked="").flags() == []
