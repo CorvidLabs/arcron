@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, test } from 'bun:test';
-import { algos, dueLabel, duration, intervalLabel, roundsAsTime, runwayLabel } from '../src/format';
+import { algos, dueLabel, duration, intervalLabel, roundsAsTime, runwayLabel, toBaseUnits, tokens } from '../src/format';
 
 const ROUND_SECONDS = 2.8; // Algorand's nominal block time
 
@@ -25,6 +25,41 @@ describe('algos', () => {
   test('signs deltas when asked', () => {
     expect(algos(4_000n, { sign: true })).toBe('+0.004 ALGO');
     expect(algos(-4_000n)).toBe('−0.004 ALGO');
+  });
+});
+
+describe('tokens', () => {
+  test.each([
+    [0n, 6, '0'],
+    [1_000_000n, 6, '1'],
+    [1_500_000n, 6, '1.5'],
+    [50_000n, 6, '0.05'],
+    [1n, 6, '0.000001'],
+    [1_234_567_000_000n, 6, '1,234,567'],
+    [1_000n, 0, '1,000'],
+    [7n, 2, '0.07'],
+  ])('%s base units at %i decimals reads as %s', (baseUnits, decimals, expected) => {
+    expect(tokens(baseUnits, decimals)).toBe(expected);
+  });
+});
+
+describe('toBaseUnits', () => {
+  test('a typed deposit scales by the asset decimals', () => {
+    expect(toBaseUnits(10_000, 6)).toBe(10_000_000_000n);
+    expect(toBaseUnits(1.5, 6)).toBe(1_500_000n);
+  });
+
+  test('0 decimals passes the count through', () => {
+    expect(toBaseUnits(250, 0)).toBe(250n);
+  });
+
+  test('float artifacts round to the nearest base unit', () => {
+    // 0.1 has no exact double; the wire amount must still be exactly 100,000.
+    expect(toBaseUnits(0.1, 6)).toBe(100_000n);
+  });
+
+  test('less than one base unit rounds to nothing, so callers can refuse it', () => {
+    expect(toBaseUnits(0.0000001, 6)).toBe(0n);
   });
 });
 

@@ -316,16 +316,16 @@ export async function depositAsset(
   signing: Signing,
   rainId: bigint,
   assetId: number,
-  amount: number,
+  baseUnits: bigint,
 ): Promise<CallResult> {
-  if (amount <= 0) throw new Error('Deposit something');
+  if (baseUnits <= 0n) throw new Error('Deposit something');
   const suggestedParams = await algod.getTransactionParams().do();
   const transfer = {
     txn: algosdk.makeAssetTransferTxnWithSuggestedParamsFromObject({
       sender: signing.sender,
       receiver: algosdk.getApplicationAddress(appId),
       assetIndex: assetId,
-      amount,
+      amount: baseUnits,
       suggestedParams,
     }),
     signer: signing.signer,

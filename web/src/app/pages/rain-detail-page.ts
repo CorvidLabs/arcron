@@ -355,10 +355,10 @@ import {
                 <input
                   name="amount"
                   type="number"
-                  min="1"
-                  step="1"
-                  value="10000"
-                  inputmode="numeric"
+                  [min]="prizeStep(state)"
+                  [step]="prizeStep(state)"
+                  value="1"
+                  inputmode="decimal"
                   [disabled]="!wallet.connected() || rain.busy() !== null"
                 />
               </label>
@@ -479,6 +479,12 @@ export class RainDetailPage {
 
   protected prizeKind(rain: RainRec): string {
     return rain.prizeAsset.toString() === '0' ? 'ALGO' : this.prizeUnit(rain);
+  }
+
+  /** One base unit in whole tokens: "1" for a 0-decimal asset, "0.000001" for six. */
+  protected prizeStep(rain: RainRec): string {
+    const decimals = this.rain.prizeOf(rain)?.decimals ?? 0;
+    return decimals <= 0 ? '1' : `0.${'0'.repeat(decimals - 1)}1`;
   }
 
   protected asAssetId(rain: RainRec): number {

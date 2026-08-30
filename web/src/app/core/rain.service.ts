@@ -11,7 +11,7 @@ import algosdk from 'algosdk';
 
 import { ArcronService, describe } from './arcron.service';
 import { WalletService } from './wallet.service';
-import { algos } from '@corvidlabs/arcron/format';
+import { algos, toBaseUnits } from '@corvidlabs/arcron/format';
 import {
   CADENCES,
   CORVID_TESTNET_MINTER,
@@ -317,7 +317,7 @@ export class RainService {
 
   prizeText(amount: bigint, rain: RainRec): string {
     const info = this.prizeOf(rain);
-    return prizeLabel(amount, rain.prizeAsset, info?.unitName ?? '');
+    return prizeLabel(amount, rain.prizeAsset, info?.unitName ?? '', info?.decimals ?? null);
   }
 
   prizeName(rain: RainRec): string | null {
@@ -383,6 +383,7 @@ export class RainService {
     );
   }
 
+  /** `amount` is whole tokens as typed; the asset's decimals scale it to base units here. */
   async depositAsset(amount: number): Promise<void> {
     const rain = this.current();
     if (rain === null) return;
@@ -390,13 +391,23 @@ export class RainService {
       this.writeError.set('This rain pays ALGO.');
       return;
     }
+    const info = this.prizeOf(rain);
+    if (info === null) {
+      this.writeError.set('Still reading the prize asset. Try again in a moment.');
+      return;
+    }
     if (!Number.isFinite(amount) || amount <= 0) {
       this.writeError.set('Deposit a positive amount.');
       return;
     }
+    const baseUnits = toBaseUnits(amount, info.decimals);
+    if (baseUnits <= 0n) {
+      this.writeError.set('Deposit a positive amount.');
+      return;
+    }
     await this.send('deposit', (algod, appId, signing) =>
-      txns.depositAsset(algod, appId, signing, rain.id, Number(rain.prizeAsset), amount),
-      `Deposited ${amount.toLocaleString()} into the pot.`,
+      txns.depositAsset(algod, appId, signing, rain.id, Number(rain.prizeAsset), baseUnits),
+      `Deposited ${prizeLabel(baseUnits, rain.prizeAsset, info.unitName, info.decimals)} into the pot.`,
     );
   }
 

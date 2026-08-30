@@ -9,7 +9,7 @@
 
 import algosdk from 'algosdk';
 
-import { algos } from './format';
+import { algos, tokens } from './format';
 import type { NetworkKey } from './networks';
 
 export const RAIN_PREFIX = 0x72;
@@ -404,10 +404,23 @@ export function modeLabel(mode: bigint): string {
   return 'Everyone';
 }
 
-export function prizeLabel(amount: bigint, prizeAsset: bigint, unitName = ''): string {
+/**
+ * A pot amount a person can read. ALGO scales by its fixed six decimals; an
+ * ASA scales by its own. Until the asset lookup has said how many that is,
+ * the raw number is labelled "base units" rather than shown as whole tokens:
+ * a 6-decimal pot printed unscaled overstates itself a millionfold, and the
+ * hub is permissionless, so that inflated number would be a lure.
+ */
+export function prizeLabel(
+  amount: bigint,
+  prizeAsset: bigint,
+  unitName = '',
+  decimals: number | null = null,
+): string {
   if (prizeAsset === 0n) return algos(amount);
   const unit = unitName.trim() || 'ASA';
-  return `${amount.toLocaleString('en-US')} ${unit}`;
+  if (decimals === null) return `${amount.toLocaleString('en-US')} base units of ${unit}`;
+  return `${tokens(amount, decimals)} ${unit}`;
 }
 
 /** The prize ASA id from the rain box, even before algod has named it. */
