@@ -28,6 +28,12 @@ TestNet (app 769891898; 769802474 and 769772891 are superseded, predating the
   an upkeep whose cadence makes 30 days cost more than 10 ALGO: upkeeps 98-109
   run every 20 rounds and would need 192 ALGO each, and the answer to those is
   `cancel`, not a top-up.
+- Would running a keeper here be worth it: `fledge run keeper-preview`
+  measures what the registry actually paid (the inner payment `execute`
+  sends, less the group fee the keeper paid to send it), reports the split
+  rather than only the total, and simulates the due upkeeps so a target
+  that reverts is never counted as money on the table. Read-only. It exists
+  so alpha task #93 can be decided before it is started.
 - Console as a rendered page: `fledge run web-render` (needs `fledge run web-render-install` once)
 - Console for hosting: `fledge run web-build-hosted` then `fledge run web-verify-hosted`; stage with `fledge run site-console -- --site <site checkout>`
 - Build: `poetry run python -m smart_contracts build` (always rebuild after contract changes)
