@@ -27,12 +27,23 @@ project:
 npm install @corvidlabs/arcron@alpha   # or: bun add @corvidlabs/arcron@alpha
 ```
 
-The token is not optional and not a mistake in these instructions: GitHub
-Packages requires authentication to *read* an npm package even when the package
-and its repository are public. In GitHub Actions the built-in `GITHUB_TOKEN`
-with `permissions: { packages: read }` is enough and needs no secret. Outside
-Actions it is a classic personal access token with `read:packages`; fine-grained
-tokens are not supported by this registry.
+The token is not optional and not a mistake in these instructions. This package
+*is* public — GitHub reports "This package is currently public" in its settings
+— and GitHub Packages still refuses to serve it without an authenticated,
+correctly scoped token. Package visibility and read access are separate things
+here, which is the single most confusing thing about this registry. Measured
+against the live package:
+
+| request | response |
+|---|---|
+| no token | `401 {"error":"authentication token not provided"}` |
+| token without `read:packages` | `403 {"error":"Permission permission_denied: The token provided does not match expected scopes."}` |
+
+Those two are worth telling apart: a 403 means your token works and is
+under-scoped, not that you lack access to the package. In GitHub Actions the
+built-in `GITHUB_TOKEN` with `permissions: { packages: read }` is enough and
+needs no secret. Outside Actions it is a classic personal access token with
+`read:packages`; fine-grained tokens are not supported by this registry.
 
 **There is no tokenless install path, and depending on the repository directly
 is not one.** The obvious workaround does not work, because this package lives
