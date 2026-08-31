@@ -37,6 +37,11 @@ export const GM_FEE = 2_000;
 export const DEPOSIT_FEE = 2_000;
 export const CREATE_FEE = 2_000;
 export const RESOLVE_FEE = 2_000;
+/**
+ * `abandon` sends no inner transaction -- it moves the lock back into the pot
+ * and returns -- so this is the flat minimum with headroom, same as the rest.
+ */
+export const ABANDON_FEE = 2_000;
 export const OPT_IN_FEE = 2_000;
 
 export const ZERO_ADDRESS = algosdk.ALGORAND_ZERO_ADDRESS_STRING;

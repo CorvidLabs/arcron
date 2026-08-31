@@ -300,3 +300,49 @@ describe('decodeHubState', () => {
     expect(state.bootstrapped).toBe(false);
   });
 });
+
+/**
+ * Every method the contract exposes either has a way to call it, or an
+ * explicit reason it does not.
+ *
+ * `abandon` was declared in the contract on day one and in
+ * `RAIN_METHOD_SIGNATURES` beside it, and had no builder anywhere until
+ * 2026-08-31. The ABI conformance tests above all passed the whole time,
+ * because a signature matching the artifact says nothing about whether
+ * anything can send it. On an immutable hub that gap is not cosmetic: a ONE
+ * draw left unresolved past `SEED_WINDOW` can only be freed by `abandon`, so
+ * for as long as no builder existed, a stalled rain was stalled for good.
+ *
+ * The exemptions are the point. A method may be absent from the UI, but
+ * somebody has to say so here and why.
+ */
+describe('every ABI method is reachable', () => {
+  const NOT_SENT_FROM_A_UI: Record<string, string> = {
+    bootstrap: 'deploy-time, once, from scripts/rain_testnet_deploy.py',
+    draw: 'the Arcron hook. A keeper sends it on a schedule; a person never does.',
+    allocationOf: 'readonly. The console reads the ticket box directly instead.',
+    rainOf: 'readonly. The console reads the rain box directly instead.',
+    setRain:
+      'creator-only retune of drip and interval, and the one real gap this ' +
+      'test found. Every rain with a creator who would use it is ours and is ' +
+      'retuned from a script, so nothing has needed it yet. That stops being ' +
+      'true the moment somebody else creates a rain.',
+  };
+
+  const BUILDER_FOR: Record<string, string> = {};
+
+  test.each(Object.keys(RAIN_METHOD_SIGNATURES))('%s can be sent, or says why not', async (name) => {
+    if (name in NOT_SENT_FROM_A_UI) {
+      expect(NOT_SENT_FROM_A_UI[name]!.length).toBeGreaterThan(20);
+      return;
+    }
+    const txns = await import('../src/rain-txns');
+    const expected = BUILDER_FOR[name] ?? name;
+    expect(typeof (txns as Record<string, unknown>)[expected]).toBe('function');
+  });
+
+  test('the exemption list names only methods that exist', () => {
+    const known = new Set(Object.keys(RAIN_METHOD_SIGNATURES));
+    for (const name of Object.keys(NOT_SENT_FROM_A_UI)) expect(known).toContain(name);
+  });
+});
