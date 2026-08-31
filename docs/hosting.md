@@ -216,10 +216,14 @@ this on a server that does something else.
 ### D. A laptop, under launchd
 
 ```bash
-fledge run keeper-daemon-install -- --sweep-to <your wallet> --sweep-every 86400
+fledge run keeper-daemon-install -- --sweep-to <your wallet> \
+    --sweep-above 2000000 --sweep-every 86400
 fledge run keeper-daemon-status
 tail -f ~/Library/Logs/arcron/keeper-testnet.log
 ```
+
+Both triggers, deliberately: the threshold moves a large balance out of a hot
+key promptly, and the period catches slow accumulation. Either alone is valid.
 
 `scripts/keeper_daemon.py` generates the plist, writes it to
 `~/Library/LaunchAgents`, and boots it. There is no template to hand-edit:
@@ -250,6 +254,15 @@ hand-written one it replaces:
 | `ProcessType: Standard` | Not `Background`. App Nap throttles Background jobs, and a throttled keeper loses races it would otherwise win. |
 | `KeepAlive: {SuccessfulExit: false}` | The bot returns zero only when signalled, so a clean exit is a deliberate stop and stays stopped. A crash comes back after `ThrottleInterval`, which is 60s so a permanent misconfiguration fails slowly enough to read. |
 | `ExitTimeOut: 30` | launchd SIGTERMs and waits, so the scan in flight finishes instead of dying between signing a group and submitting it. |
+
+Installing also boots out `com.corvidlabs.arcron-keeper`, the label the
+hand-written plist used, if it is still loaded. Two agents signing from one
+key race each other and both pay group fees, and nothing else would say so.
+
+After bootstrapping, the installer waits a few seconds and asks launchd
+whether the job is actually running. `bootstrap` returning zero only means the
+plist was accepted; it says nothing about whether the bot survived argument
+parsing.
 
 **It still sleeps and it still travels.** A laptop is the cheapest way to stop
 depending on GitHub's scheduler and it is not an uptime record; option A or C
@@ -346,6 +359,17 @@ Either trigger fires on its own: `--sweep-above` when the surplus reaches an
 amount, `--sweep-every` when a period has elapsed and there is anything worth
 sending. Naming a destination with neither is refused, because it would mean
 a sweep that never happens.
+
+**The period is wall time and it survives a restart.** That is worth stating
+because it was twice not true. It first measured from the last sweep and
+passed "unmeasurable" until one had happened, so `--sweep-every` alone could
+never fire at all. The fix for that measured from process start using
+`time.monotonic`, which is the wrong clock on exactly the machine option D
+recommends: launchd restarts the keeper on every crash and every login, and
+monotonic time does not advance while a Mac sleeps, so a daily period needed
+a full day of awake, uninterrupted uptime. It now comes off the same state
+file the bot keeps its backoff in, so sleeping and restarting cost nothing.
+With `--no-state` there is no file and the period restarts with the process.
 
 **The reserve is the part worth understanding.** `--sweep-reserve` is what
 stays behind, and it is floored at `--min-balance` whatever you ask for. A

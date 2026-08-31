@@ -351,48 +351,122 @@ def _sweep_args(**kw):
     return SimpleNamespace(**base)
 
 
-def test_a_fresh_process_starts_the_period_clock(monkeypatch) -> None:
-    # The bug this pins: `last_sweep` begins as None, and `decide` skips the
-    # period branch when it cannot measure an interval. A keeper configured
-    # with only --sweep-every therefore swept exactly never, silently, and
-    # `launchctl` and the log both showed a perfectly healthy keeper.
+def _backoff(tmp_path, last_sweep=None):
+    from scripts.keeper_backoff import Backoff
+
+    state = Backoff(path=tmp_path / "state.json")
+    if last_sweep is not None:
+        state.record_sweep(last_sweep)
+    return state
+
+
+def test_a_fresh_keeper_starts_the_period_clock(monkeypatch, tmp_path) -> None:
+    # The first bug: `last_sweep` began as None and `decide` skips the period
+    # branch when it cannot measure an interval, so a keeper configured with
+    # only --sweep-every swept exactly never, while `launchctl` and the log
+    # both showed a perfectly healthy keeper.
     from scripts import keeper_bot
 
     recorder = _Recorder()
     monkeypatch.setattr(sweep, "send", recorder)
-    started = keeper_bot._maybe_sweep(
-        None, "SENDER", _sweep_args(), spendable=90_000_000, last_sweep=None
-    )
-    assert isinstance(started, float), "the clock must start, not stay None"
+    state = _backoff(tmp_path)
+    keeper_bot._maybe_sweep(None, "SENDER", _sweep_args(), spendable=90_000_000, backoff=state)
+    assert state.last_sweep is not None, "the clock must start, not stay None"
     assert recorder.sent == [], "a period should not fire on its first heartbeat"
 
 
-def test_the_period_then_fires_once_it_has_elapsed(monkeypatch) -> None:
+def test_the_period_fires_once_it_has_elapsed(monkeypatch, tmp_path) -> None:
     import time
 
     from scripts import keeper_bot
 
     recorder = _Recorder()
     monkeypatch.setattr(sweep, "send", recorder)
-    long_ago = time.monotonic() - 86_401
-    keeper_bot._maybe_sweep(
-        None, "SENDER", _sweep_args(), spendable=90_000_000, last_sweep=long_ago
-    )
+    state = _backoff(tmp_path, last_sweep=time.time() - 86_401)
+    keeper_bot._maybe_sweep(None, "SENDER", _sweep_args(), spendable=90_000_000, backoff=state)
     assert recorder.sent, "the period elapsed and there was a surplus"
 
 
-def test_the_threshold_still_fires_on_the_first_heartbeat(monkeypatch) -> None:
+def test_the_clock_survives_a_restart(monkeypatch, tmp_path) -> None:
+    # The second bug: the fix used `time.monotonic` from process start.
+    # launchd restarts the keeper on every crash and every login, and
+    # monotonic time does not advance while a laptop sleeps -- so on the
+    # machine hosting.md recommends, a daily period needed a full day of
+    # awake, uninterrupted uptime and a laptop that slept never swept.
+    import time
+
+    from scripts import keeper_bot
+    from scripts.keeper_backoff import Backoff
+
+    recorder = _Recorder()
+    monkeypatch.setattr(sweep, "send", recorder)
+    path = tmp_path / "state.json"
+    Backoff(path=path).record_sweep(time.time() - 86_401)
+
+    reopened = Backoff(path=path)  # a brand new process
+    keeper_bot._maybe_sweep(None, "SENDER", _sweep_args(), spendable=90_000_000, backoff=reopened)
+    assert recorder.sent, "a restart must not reset the period"
+
+
+def test_a_backwards_clock_does_not_disable_the_period(monkeypatch, tmp_path) -> None:
+    # An NTP correction or a restored machine can put the recorded sweep in
+    # the future. That must read as "no time has passed", not as a negative
+    # interval that quietly stops sweeping.
+    import time
+
+    from scripts import keeper_bot
+
+    recorder = _Recorder()
+    monkeypatch.setattr(sweep, "send", recorder)
+    state = _backoff(tmp_path, last_sweep=time.time() + 3_600)
+    keeper_bot._maybe_sweep(None, "SENDER", _sweep_args(), spendable=90_000_000, backoff=state)
+    assert recorder.sent == [], "not yet, but not broken either"
+    state.record_sweep(time.time() - 86_401)
+    keeper_bot._maybe_sweep(None, "SENDER", _sweep_args(), spendable=90_000_000, backoff=state)
+    assert recorder.sent, "and it recovers once the interval is real again"
+
+
+def test_a_successful_sweep_is_written_down(monkeypatch, tmp_path) -> None:
+    import time
+
+    from scripts import keeper_bot
+    from scripts.keeper_backoff import Backoff
+
+    monkeypatch.setattr(sweep, "send", _Recorder())
+    path = tmp_path / "state.json"
+    state = Backoff(path=path)
+    state.record_sweep(time.time() - 86_401)
+    keeper_bot._maybe_sweep(None, "SENDER", _sweep_args(), spendable=90_000_000, backoff=state)
+    assert Backoff(path=path).last_sweep == pytest.approx(state.last_sweep)
+    assert time.time() - state.last_sweep < 5, "the new timestamp is now, not the old one"
+
+
+def test_a_failed_sweep_does_not_move_the_clock(monkeypatch, tmp_path) -> None:
+    # Otherwise a destination that always rejects would push the next attempt
+    # a full period away every time, turning a retry into a daily one.
+    import time
+
+    from scripts import keeper_bot
+
+    def explode(*a, **kw):
+        raise RuntimeError("receiver has not opted in")
+
+    monkeypatch.setattr(sweep, "send", explode)
+    was = time.time() - 86_401
+    state = _backoff(tmp_path, last_sweep=was)
+    keeper_bot._maybe_sweep(None, "SENDER", _sweep_args(), spendable=90_000_000, backoff=state)
+    assert state.last_sweep == pytest.approx(was)
+
+
+def test_the_threshold_still_fires_on_the_first_heartbeat(monkeypatch, tmp_path) -> None:
     # Seeding the clock must not cost the other trigger a heartbeat.
     from scripts import keeper_bot
 
     recorder = _Recorder()
     monkeypatch.setattr(sweep, "send", recorder)
     keeper_bot._maybe_sweep(
-        None,
-        "SENDER",
-        _sweep_args(sweep_above=1_000_000),
-        spendable=90_000_000,
-        last_sweep=None,
+        None, "SENDER", _sweep_args(sweep_above=1_000_000),
+        spendable=90_000_000, backoff=_backoff(tmp_path),
     )
     expected = sweep.sweepable(90_000_000, sweep.reserve_for(None, LOW_BALANCE_MICROALGO))
     assert recorder.sent == [expected]

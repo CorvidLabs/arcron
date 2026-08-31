@@ -782,12 +782,24 @@ def _validate_sweep(args, keeper_address: str) -> None:
             raise UnrecoverableError(f"{name} must be positive, not {value}.")
 
 
-def _maybe_sweep(algorand, address: str, args, *, spendable: int, last_sweep: float | None) -> float | None:
-    """Forward the surplus if a trigger says to. Returns when it last swept.
+def _maybe_sweep(algorand, address: str, args, *, spendable: int, backoff) -> None:
+    """Forward the surplus if a trigger says to.
 
     Deliberately on the heartbeat rather than after each execution: a sweep is
     a transaction, and one per execution would spend a meaningful part of what
     it is forwarding on its own fees.
+
+    The period is measured in **wall time, persisted**, and both halves of
+    that were bugs. It first passed `seconds_since_last=None` until a sweep
+    had happened, and `decide` skips the period branch when it cannot measure
+    an interval, so `--sweep-every` on its own could never fire at all. The
+    fix for that used `time.monotonic` from process start, which is no clock
+    for this: launchd restarts the keeper on every crash and every login, and
+    monotonic time does not advance while a laptop sleeps, so on exactly the
+    machine `docs/hosting.md` recommends it, "every 86400s" meant "every
+    86400 seconds of awake, uninterrupted uptime" and a laptop that never
+    stayed up a full day never swept. So it comes off the state file the bot
+    already keeps, and survives both.
 
     Never raises into the loop. A keeper that stopped executing because a
     sweep failed would have traded the thing that earns for the thing that
@@ -796,27 +808,25 @@ def _maybe_sweep(algorand, address: str, args, *, spendable: int, last_sweep: fl
     from scripts import keeper_sweep
 
     reserve = keeper_sweep.reserve_for(args.sweep_reserve, args.min_balance)
-    now = time.monotonic()
-    if last_sweep is None:
-        # First heartbeat of this process. "Every N seconds" has to be counted
-        # from something, and there is no earlier sweep to count from, so this
-        # used to pass None and `decide` skipped the period branch entirely:
-        # a keeper configured with only --sweep-every never swept at all, and
-        # one configured with both swept only on the threshold. Start the
-        # clock here, so a period means "N seconds after the keeper came up",
-        # which is what naming a period reads as. The threshold is still
-        # evaluated on this same heartbeat.
-        last_sweep = now
+    now = time.time()
+    if backoff.last_sweep is None:
+        # Nothing has ever swept, so start the clock rather than leaving the
+        # period unmeasurable. The threshold is still evaluated below on this
+        # same heartbeat, so seeding costs the other trigger nothing.
+        backoff.record_sweep(now)
     decision = keeper_sweep.decide(
         spendable,
         reserve=reserve,
         threshold=args.sweep_above,
-        seconds_since_last=now - last_sweep,
+        # A clock that has gone backwards -- an NTP correction, a restored
+        # machine -- must read as "no time has passed", never as a negative
+        # interval that silently disables the period.
+        seconds_since_last=max(0.0, now - backoff.last_sweep),
         every_seconds=args.sweep_every,
     )
     if not decision:
         logger.debug("No sweep: %s", decision.reason)
-        return last_sweep
+        return
     try:
         keeper_sweep.send(
             algorand, address, args.sweep_to, decision.amount, dry_run=args.sweep_dry_run
@@ -830,8 +840,8 @@ def _maybe_sweep(algorand, address: str, args, *, spendable: int, last_sweep: fl
             amount=decision.amount,
             destination=args.sweep_to,
         )
-        return last_sweep
-    return now
+        return
+    backoff.record_sweep(now)
 
 
 def guard_balance(algod, address: str, warn_below: int) -> int:
@@ -1097,7 +1107,6 @@ def main(argv: list[str] | None = None) -> None:
     # None rather than "now": the duration trigger measures from the last
     # sweep, and on a fresh start there has not been one. Seeding it with the
     # clock would make the first sweep wait a whole period for no reason.
-    last_sweep: float | None = None
     while True:
         if shutdown.requested:
             emit("stopped", "Shutting down cleanly")
@@ -1277,12 +1286,12 @@ def main(argv: list[str] | None = None) -> None:
                 # Proof of life, and the number that kills bots silently.
                 spendable = guard_balance(algod, keeper.address, args.min_balance)
                 if args.sweep_to:
-                    last_sweep = _maybe_sweep(
+                    _maybe_sweep(
                         algorand,
                         keeper.address,
                         args,
                         spendable=spendable,
-                        last_sweep=last_sweep,
+                        backoff=backoff,
                     )
                 emit(
                     "heartbeat",

@@ -57,6 +57,12 @@ logger = logging.getLogger(__name__)
 #: stopping the safe one stop the dangerous one instead.
 LABEL_PREFIX = "xyz.corvidlabs.arcron.keeper"
 
+#: The label the hand-written plist this replaces used. It is booted out on
+#: install, because otherwise a machine that ran the old one ends up with two
+#: bots signing from the same key: they race each other, both pay group fees,
+#: and only one can win. Nothing else would notice.
+LEGACY_LABEL = "com.corvidlabs.arcron-keeper"
+
 #: Seconds launchd waits before restarting a job that exited non-zero. The
 #: default is 10, which turns a permanent misconfiguration -- a bad mnemonic,
 #: a wrong genesis id -- into six restarts a minute. A keeper that cannot
@@ -293,12 +299,49 @@ def _wait_until_gone(label: str, *, timeout: float = 45.0) -> bool:
     return False
 
 
+def _confirm_alive(plan: DaemonPlan, *, settle: float = 4.0) -> None:
+    """Say whether the job is actually running, not merely accepted.
+
+    `bootstrap` returning zero means launchd took the plist, not that the bot
+    survived argument parsing. The first version of this printed "Installed
+    and started" over a job that was exiting 2 and relaunching every sixty
+    seconds, which is invisible unless you go and read the log.
+    """
+    time.sleep(settle)
+    result = _launchctl("print", f"gui/{os.getuid()}/{plan.label}")
+    if result.returncode != 0:
+        logger.error(f"{plan.label} is not loaded moments after bootstrap. Check {plan.log_path}.")
+        return
+    fields = {}
+    for line in result.stdout.splitlines():
+        stripped = line.strip()
+        for key in ("state = ", "pid = ", "last exit code = "):
+            if stripped.startswith(key):
+                fields.setdefault(key.strip(" =").strip(), stripped.split("=", 1)[1].strip())
+    exited = fields.get("last exit code")
+    if fields.get("pid"):
+        logger.info(f"Installed and running: pid {fields['pid']}.")
+        return
+    if exited and exited not in ("(never exited)", "0"):
+        logger.error(
+            f"{plan.label} started and exited {exited} within {settle:.0f}s. "
+            f"It will relaunch every {THROTTLE_SECONDS}s until fixed. "
+            f"The reason is the last lines of {plan.log_path}."
+        )
+        return
+    logger.info(f"Installed; launchd reports state {fields.get('state', 'unknown')}.")
+
+
 def install(plan: DaemonPlan) -> None:
     plan.plist_path.parent.mkdir(parents=True, exist_ok=True)
     plan.log_path.parent.mkdir(parents=True, exist_ok=True)
     # Boot out any previous copy first: launchd refuses to load a label it
     # already has, and a stale job pointing at an old path would otherwise
     # keep running while this one silently failed to start.
+    if _launchctl("print", f"gui/{os.getuid()}/{LEGACY_LABEL}").returncode == 0:
+        logger.warning(f"Booting out the superseded {LEGACY_LABEL}; it signs from the same key.")
+        _launchctl("bootout", f"gui/{os.getuid()}/{LEGACY_LABEL}")
+        _wait_until_gone(LEGACY_LABEL)
     _launchctl("bootout", f"gui/{os.getuid()}/{plan.label}")
     if not _wait_until_gone(plan.label):
         raise RuntimeError(
@@ -312,7 +355,7 @@ def install(plan: DaemonPlan) -> None:
             f"launchctl bootstrap failed ({result.returncode}): "
             f"{result.stderr.strip() or result.stdout.strip()}"
         )
-    logger.info(f"Installed and started {plan.label}.")
+    _confirm_alive(plan)
     logger.info(f"Follow it with:  tail -f {plan.log_path}")
 
 
@@ -384,6 +427,15 @@ def main(argv: list[str] | None = None) -> None:
         return
 
     keeper_address = _keeper_address(args.network)
+    if keeper_address is None and not args.no_sweep:
+        # Without it, `_validate_sweep` compares the destination against "" and
+        # the "you cannot sweep to yourself" refusal silently does not run.
+        logger.warning(
+            "Could not derive the keeper's address (no KEEPER_MNEMONIC in "
+            f".env.{args.network}), so --sweep-to is not being checked against "
+            "it. The bot will still refuse at startup, which under launchd is "
+            "a relaunch every minute rather than a message."
+        )
     if args.sweep_to is None:
         # argparse read the environment before `.env.<network>` was loaded, so
         # a KEEPER_SWEEP_TO set there would otherwise be silently ignored and
