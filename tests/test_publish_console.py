@@ -113,5 +113,11 @@ def test_the_real_console_declares_the_routes_the_fallback_is_for() -> None:
 
     routes = declared_routes()
     assert "u/:id" in routes
+    # `rain/:id` is a redirect stub since 2026-08-31, not a page: rain moved to
+    # CorvidLabs/arcron-rain and the route now forwards to its address with the
+    # id intact, so a shared link keeps working (docs/design/split.md D11). It
+    # still needs the nginx fallback for exactly the same reason a real route
+    # does — it is not a file — which is why this assertion is unchanged rather
+    # than deleted. It goes when the stubs are retired.
     assert "rain/:id" in routes
     assert "" not in routes and "**" not in routes

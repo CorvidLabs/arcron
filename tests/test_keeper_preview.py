@@ -154,7 +154,7 @@ class TestReadExecutions:
         assert len(found) == 1 and found[0].paid == 10_000
 
     def test_only_the_payment_to_the_caller_counts_as_the_fee(self) -> None:
-        """A rain-style target moves money too; that is not keeper income."""
+        """A prize-paying target moves money too; that is not keeper income."""
         execute = hashlib.new("sha512_256", b"execute(uint64)uint64").digest()[:4]
         indexer = FakeIndexer([
             app_txn("K", execute, [pay("SOMEBODY-ELSE", 1_000_000), pay("K", 10_000)])

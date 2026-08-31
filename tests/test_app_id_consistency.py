@@ -37,9 +37,14 @@ CHECKED_SUFFIXES = {".py", ".ts", ".md", ".yml", ".yaml", ".example", ".sh", ".s
 # oldest dead app while the header comment above it claimed otherwise, and
 # deploy/rain.env.example told a new operator the same thing. Both were found
 # by reading, not by this test, because this set only knew about keepers.
+# Both of those files left this repository with rain on 2026-08-31
+# (docs/design/split.md), so the two rain ids now guard nothing but prose. They
+# stay anyway: docs/testnet.md, docs/status.md and the split plan still name
+# them as dead deployments, and the day one of those ids reappears in a file
+# that is not history is the day this set earns its keep a second time.
 SUPERSEDED = {
     "769823086", "769802474", "769772891", "769772906",  # keeper
-    "769988156", "770029154",  # rain hub
+    "769988156", "770029154",  # rain hub, moved to CorvidLabs/arcron-rain
 }
 
 # Files that record history and are *expected* to name superseded apps: a

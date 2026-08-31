@@ -3,12 +3,16 @@
 # Generated ARC-56 app specs and typed clients store every state key as base64
 # under a JSON field literally named "key", which trips the generic-api-key
 # rule on every single one. They are not secrets: the base64 decodes to the
-# state variable's own name — "cG90" is "pot".
+# state variable's own name — "cHJvdmlkZXI=" is "provider".
 #
 # Verified before allowlisting, and worth re-verifying rather than trusting
-# this comment: decode a few and see.
+# this comment: decode a few and see. (This recipe read the rain artifact until
+# 2026-08-31, when rain left for CorvidLabs/arcron-rain and took its artifact
+# with it. Nothing checks a path in a root TOML, so it sat dead and unrunnable
+# — which is exactly why the comment says to run it rather than believe it.)
 #
-#   python -c "import base64,json; s=json.load(open('smart_contracts/artifacts/rain/Rain.arc56.json')); \
+#   poetry run python -c "import base64,json; \
+#     s=json.load(open('smart_contracts/artifacts/subscription/Subscription.arc56.json')); \
 #     print({k: base64.b64decode(v['key']) for k,v in s['state']['keys']['global'].items()})"
 
 [extend]

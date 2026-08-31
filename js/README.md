@@ -77,10 +77,12 @@ running ahead of it: the TestNet contract is at `alpha-3` and its creator can
 still replace the programs, so the box layout this decoder is pinned to is not
 yet frozen. `1.0.0` is reserved for the point at which it is.
 
-`./rain`, `./rain-abi` and `./rain-txns` are slated to move to
-`CorvidLabs/arcron-rain` — see
-[`../docs/design/split.md`](../docs/design/split.md). Depend on them knowing
-they will leave this package.
+`./rain`, `./rain-abi` and `./rain-txns` were removed here: Rain moved to
+`CorvidLabs/arcron-rain` and its client went with it, so this package is
+honestly keeper-only. Their removal is not a major bump because every version
+that ever shipped them was a prerelease on the `alpha` dist-tag, which is the
+reason a prerelease number was chosen over `1.0.0` — see
+[`../docs/design/split.md`](../docs/design/split.md).
 
 ## Why this lives in the contract's repository
 

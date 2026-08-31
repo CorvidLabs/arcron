@@ -243,6 +243,8 @@ The registry is the dogfood now. One rain we run ourselves was always the weaker
 **D11 — Do the arcron rain routes become redirects or deletions?**
 *Recommendation:* redirects for 30 days, then deleted. It keeps live links working, keeps `test_publish_console.py:114` green, and costs three tiny components.
 
+*Amended 2026-08-31, after the fact:* the stubs stay, but `/rain/:id` no longer carries the id. The recommendation above and step 10 both said "preserving the id", and that was right on the assumption these steps made throughout — that one hub, `770130162`, would sit behind both addresses for the overlap window. It does not. `arcron-rain` found the old hub immutable and missing the fix that stops a ONE draw being aimed by tickets bought after the seed is public, and deployed `770746178` instead rather than adopting it (upkeep 113, not 91). A rain's id is a box id on one hub: `770130162` holds r1-r5, `770746178` holds r1-r2, and they are unrelated draws. Forwarding the id would answer `/rain/3` with a plausible wrong rain, which is a worse version of the failure the stubs exist to prevent. `/rain/:id` forwards to the rain list and shows the old id in the copy.
+
 ---
 
 ## 7. Cost, honestly

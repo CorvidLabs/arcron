@@ -484,6 +484,27 @@ taken and a new destination should have to argue for itself.
 > **Superseded 2026-08-29.** Rain argued for itself and won three: `/rain`,
 > `/rain/new` and `/rain/:id` (#197 and #204). Six routes plus the wildcard,
 > and the test now pins the exact path list.
+>
+> **And settled 2026-08-31.** Rain lost those three again, for a reason the
+> route argument could not see: it has a different reader. This console is a
+> developer and agent surface (selectors, reference grades, catch-up policy,
+> escrow runway, an app-id quarantine panel); a rain's reader holds an NFT and
+> wants to know whether they are in and what they are owed. So the rule is
+> **one canonical address per product, and the audience is the reason**. Rain
+> moved to <https://github.com/CorvidLabs/arcron-rain>, served at
+> <https://corvidlabs.xyz/rain/>. The three routes here stay for 30 days as
+> redirect stubs, because shareable links are the growth mechanic and a link
+> that 404s is worse than no link (see the nginx fallback above, which is the
+> same argument); after that they go and the list returns to three plus the
+> wildcard.
+>
+> They preserved the id at first, which is the obvious way to keep a shared
+> link pointing at the thing it named. That stopped being safe the same week:
+> rain redeployed off the immutable `770130162` onto a new hub, a rain's id is
+> its box id on one hub, and forwarding the number would land the visitor on a
+> different draw or none. `/rain/:id` now forwards to the rain list and prints
+> the old id, on the grounds that a plausible wrong page is worse than an
+> honest handoff — which is the same argument as the 404 one, run to its end.
 
 **The query parameters survive by policy, not by discipline.**
 `withRouterConfig({ defaultQueryParamsHandling: 'preserve' })` means no link in

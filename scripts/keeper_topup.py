@@ -1,8 +1,11 @@
 """Bring upkeeps back up to a target number of days of runway.
 
-Written after upkeep 91 came within 1.5 days of starving. It is the `rain`
-hub draw, which is the dogfood the MainNet clock is measured against, and a
-30 day hold cannot be served by an upkeep with 1.5 days of escrow in it. The
+Written after upkeep 91 came within 1.5 days of starving. Upkeep 91 was the
+rain hub draw, which at the time was the dogfood the MainNet clock was
+measured against; rain has since moved to CorvidLabs/arcron-rain and the
+registry itself is the dogfood now, but the arithmetic is the same for every
+upkeep in it. A 30 day hold cannot be served by an upkeep with 1.5 days of
+escrow in it, whoever owns the target. The
 top-up itself is one call; what was missing was the arithmetic that says
 which upkeeps need one and how much, and a record of it that does not live in
 somebody's shell history.

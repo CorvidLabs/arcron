@@ -15,39 +15,69 @@ poetry run python -m scripts.keeper_bot --once --network testnet --app-id 769891
 |---|---|---|---|
 | **keeper** | [`769891898`](https://testnet.explorer.perawallet.app/application/769891898) | live, **not frozen** | Arcron itself. Upkeeps are boxes; anyone may execute a due one for its fee. |
 | **pulse** | [`769891902`](https://testnet.explorer.perawallet.app/application/769891902) | live | A heartbeat counter that exists to be called. No state worth protecting, cannot fail, which is what makes it the right first target. |
-| **rain (hub)** | [`770130162`](https://testnet.explorer.perawallet.app/application/770130162) | live, **immutable** | The rain hub: anyone opens a rain, one Arcron `draw` fires the due ones. No `update` and no `freeze` method exists, so the programs cannot be replaced. Deployed 2026-08-29. |
-| ~~rain~~ | [`770029154`](https://testnet.explorer.perawallet.app/application/770029154) | superseded | The pre-hub single draw, gated on creator **and** a `corvid` unit-name prefix. Runs programs this tree no longer builds. Deployed 2026-08-27. |
-| ~~rain (gate test)~~ | [`770030875`](https://testnet.explorer.perawallet.app/application/770030875) | superseded | The pre-hub gate test, on a collection we hold keys for. |
-| ~~rain~~ | [`769988156`](https://testnet.explorer.perawallet.app/application/769988156) | superseded | The ungated version. Its last draw aged out and was abandoned, the prize returning to the pot, and the upkeep that drove it was cancelled and re-registered against the gated app. |
 
 `not frozen` means the creator can still replace the programs. That is
 deliberate while these iterate and it is a real power over anything escrowed;
 see [`security.md`](security.md).
 
+**The rain hub used to have four rows here.** It moved out of this repository
+on 2026-08-31, to <https://github.com/CorvidLabs/arcron-rain>, and is served
+from <https://corvidlabs.xyz/rain/>. The contract, its spec, its scripts, its
+client and its page went; the write-ups on its deployments, its immutability
+and what a draw proves on chain did not, and were dropped here rather than
+rehomed, so there is nowhere to send a reader who wants them.
+
+What stays here is two registry entries pointed at rain hubs, and they are not
+the same kind of thing. Upkeep **113** drives the hub that is live, which is
+the ordinary case for a permissionless registry: a target that happens to be
+built somewhere else. Upkeep **91** drives `770130162`, the hub rain abandoned,
+and that is a loose end.
+
 ## The upkeeps
 
-Read from the chain at round 66,820,047 on 2026-08-30.
+Read from the chain at round 66,852,815 on 2026-08-31.
 
 | id | target | every | escrow | runway | runs | policy |
 |---|---|---|---|---|---|---|
-| 19 | `769891902` pulse | 12 h | 0.3326 ALGO | ~40 days | 9 | catch up |
-| 20 | `769891902` pulse | 12 h | 0.3326 ALGO | ~40 days | 9 | skip ahead |
-| 21 | `769891902` pulse | 12 h | 0.3783 ALGO | ~45 days | 9 | skip ahead |
-| 22 | `769891902` pulse | 12 h | 0.3326 ALGO | ~40 days | 9 | skip ahead |
-| 79 | `770029154` rain, **superseded** | 2 h | 7.7000 ALGO | ~62 days | 30 | skip ahead |
-| 81 | `770041460` (our agent) | 58 min | 4.1000 ALGO | ~16 days | 58 | skip ahead |
-| 82 | `769891902` pulse | 58 min | 3.0207 ALGO | ~12 days | 40 | skip ahead |
-| 87 | `770082145` (our agent) | 58 min | 5.7500 ALGO | ~23 days | 22 | skip ahead |
-| 91 | `770130162` rain hub | 58 min | 2.9480 ALGO | ~30 days | 18 | skip ahead |
+| 19 | `769891902` pulse | 12 h | 0.3246 ALGO | ~39 days | 11 | catch up |
+| 20 | `769891902` pulse | 12 h | 0.3246 ALGO | ~39 days | 11 | skip ahead |
+| 21 | `769891902` pulse | 12 h | 0.3701 ALGO | ~44 days | 11 | skip ahead |
+| 22 | `769891902` pulse | 12 h | 0.3246 ALGO | ~39 days | 11 | skip ahead |
+| 81 | `770041460` (our agent) | 58 min | 3.9000 ALGO | ~16 days | 78 | skip ahead |
+| 82 | `769891902` pulse | 58 min | 7.3253 ALGO | ~29 days | 61 | skip ahead |
+| 91 | `770130162`, a **superseded** rain hub | 58 min | 2.9280 ALGO | ~29 days | 39 | skip ahead |
+| 110 | `770734249`, a stranger's | 7 days | 0.5000 ALGO | ~873 days | 0 | skip ahead |
+| 113 | `770746178`, the live rain hub | 58 min | 0.0360 ALGO | **~0.4 days** | 11 | skip ahead |
 
-Seven of twenty-eight, chosen because each one shows something: the `pulse`
-set is both catch-up policies side by side, **91** is the dogfood, **79** is
-still paying keepers to call an app superseded on 2026-08-29, and **87** is
-overdue with 5.75 ALGO in it because its target reverts by its author's own
-configuration, which no amount of escrow fixes. The other twenty are agent
-registrations, twelve of them starved on a 20 round cadence. `fledge run
-health` is the live view and says which of the two kinds of overdue each one
-is.
+A selection out of thirty-three, each row here because it shows something: the
+`pulse` set is both catch-up policies side by side, **113** drives the rain hub
+that is actually live and is about to starve, **91** still pays keepers to call
+the hub rain abandoned, and **110** belongs to somebody who is not us, on the
+longest cadence in the registry and funded for more than two years of it. The
+rest are agent registrations, twelve of them starved on a 20 round cadence.
+`fledge run health` is the live view and says which of the two kinds of overdue
+each one is.
+
+**Upkeep 91 is a loose end, stated because it is true.** It was registered
+against `770130162` when that was the rain hub, and a target is fixed in the
+box at registration exactly as a selector and a cadence are. Rain redeployed on
+2026-08-31 as `770746178` — the old hub has no update path and predates the fix
+that stops a ONE draw being aimed by tickets bought after the seed is public,
+so nobody could repair it in place — and registered upkeep 113 against the new
+one. 91 still holds 2.928 ALGO and still pays a keeper 4,000 µALGO an hour to
+call `draw()` on a hub the repository that owns rain now refuses to adopt.
+Nothing is stuck (`cancel` refunds escrow and box MBR in full), but every one
+of those calls is escrow spent exercising an app this page says is superseded.
+It wants cancelling, or re-registering against `770746178`, and this paragraph
+stays until it is.
+
+**Two rows this table used to carry are gone, both cancelled.** Upkeep 79 was
+the same fault as 91 one hub earlier: it paid keepers to call a rain app
+superseded on 2026-08-29, and was cancelled before the split rather than
+exported into a new public repository. Upkeep 87 sat overdue with 5.75 ALGO in
+it because its target reverts by its author's own configuration, which no
+amount of escrow fixes. They are worth remembering together: escrow is not
+health, and a target nobody can fix is a `cancel` rather than a top-up.
 
 **Upkeep 82 replaced upkeep 73 on 2026-08-28**, and the reason is worth
 recording because nothing on chain shows it. 73 paid `MIN_UPKEEP_FEE` and also
@@ -57,7 +87,7 @@ serviced 39 times for free before `fledge run health` was written and said so.
 
 A fee cannot be edited: like the method selector, it is fixed in the box at
 registration, so correcting it meant cancelling and re-registering. 82 pays
-10,000, which is what the console suggests and what 79 and 81 already pay, and
+10,000, which is what the console suggests and what 81 already pays, and
 carries a **fee cap of 20,000**, which 73 did not. That second part matters
 beyond this upkeep: the contract escalates only when `cap > fee`, so with a cap
 of zero our own dogfood had never once exercised the escalating fee, which is
@@ -94,84 +124,20 @@ cadence and are starved today: carrying one to thirty days costs 192 ALGO, so
 did not stick, because nothing enforces it. A cadence is fixed in the box at
 registration, so the only remedy is a cancel.
 
-## rain: who can win, and how often
+## Where the rain analysis went
 
-**Who may enter.** Holders of any asset minted by
-`WGSHC4TYKYBS6EX5V5E377BQDLKWIIPBCFOLZQZIXCKHFIEKRPBFOMW25A` (`corvid.algo`).
-The hub gates on the minting account only; the unit-name prefix that the
-pre-hub apps also checked was removed on 2026-08-29 with the hub rewrite, so a
-rain that needs a narrower collection needs a dedicated minting account. The
-prize asset itself can never buy a ticket.
+This page used to carry three sections on the rain hub: who may enter and how
+often, what its gating was proved to do on chain on 2026-08-27, and why a block
+seed is readable the round after it is committed. They were cut with the
+contract on 2026-08-31 and **not** carried over. `arcron-rain` took the code,
+the spec, the deployment scripts and the console; it has no prose of its own
+for any of this, so there is no page to link to.
 
-**What the prefix bought.** Apps `770029154` and `770030875` also required the
-unit name to begin `corvid`, compared as bytes and so case-sensitive: `corvid1`
-entered and `Corvid` did not. That second half was doing work. The creator
-account holds 31 live assets on TestNet, of which 15 are the collection and the
-rest are working-wallet leftovers called things like `asdf` and `Test`, and
-gating on the creator alone sells a ticket to every one of them. The hub takes
-that cost in exchange for one gate check that every rain can share.
-
-**How a ONE draw runs.** Two phases, because the seed of a future round does
-not exist when the draw is scheduled:
-
-1. **`draw`** is the scheduled half. The upkeep calls it on cadence; it locks
-   the drip and fixes a future round to read the seed of. It moves no money.
-2. **`resolve`** is the other half, and **somebody has to send it**. It reads
-   the committed round's block seed and picks the winner.
-
-**The window is 800 rounds**, about 36 minutes. A block seed is only readable
-for roughly 1,000 past rounds, so `SEED_WINDOW` stops short of that: a ONE rain
-nobody resolves inside the window can never be resolved, and `abandon` returns
-the locked drip to the pot.
-
-That is not hypothetical. Draw 2 on the superseded app committed and then sat
-**23,012 rounds** before anyone looked. It was abandoned on 2026-08-27 and its
-1.98 ALGO went back to the pot. The scheduled half ran on time; the human half
-did not happen. **Anyone running this needs something that sends `resolve`.**
-
-**Odds, in ONE mode.** `draw` locks the drip against a future round's seed and
-`resolve` picks one ticket uniformly, so with *n* tickets each has a 1/*n*
-chance. SPLIT and WAVE have no odds: SPLIT credits every ticket an equal share
-of the drip on each fire, and WAVE splits the drip across up to `wave_cap`
-people who checked in that interval. A ticket is checked again at `claim` in
-every mode, so passing the token on after entering does not pay.
-
-## What is proved, and what is not
-
-Proved on chain on 2026-08-27 against app
-[`770030875`](https://testnet.explorer.perawallet.app/application/770030875),
-using three assets minted from one account for the purpose: `corvid1` and
-`corvid2` in the collection, and `asdf` as a decoy from the same creator.
-
-| | |
-|---|---|
-| A collection token buys a ticket | **proved**: `corvid1` admitted as ticket #0 |
-| A same-creator token with the wrong unit name does not | **proved**: `asdf` refused with "Wrong collection" |
-| A token the creator never minted does not | **proved**: refused with "That asset is not from the collection" |
-| A gated draw resolves and picks a winner | **proved**: draw 1, 2 tickets, 0.9811 ALGO prize, resolved at round 66729237 by beacon `600011887` |
-
-The decoy is the point. `asdf` and `corvid1` came from the same account minutes
-apart, and gating on the creator alone would have sold it a ticket.
-
-**What this does not prove.** Both tickets in that draw were ours, so it
-demonstrates the mechanism rather than a contested draw. And app
-[`770029154`](https://testnet.explorer.perawallet.app/application/770029154) was
-gated on the real `corvid.algo` collection, which nobody here holds a token
-from, so its admit path was exercised only by whoever does. Both proofs are
-against the pre-hub programs; the hub keeps the creator check and drops the
-prefix.
-
-## The seed is readable as soon as the round exists
-
-`COMMIT_DELAY` is 8, so `draw` sets `commit_round` eight rounds out. Unlike the
-beacon this replaced, `Block.blk_seed` answers the round after the commit
-round is written: `resolve` asserts only `Global.round > commit_round`, so there
-is no separate answer lag to wait out.
-
-A resolver still has to exist, and it still has to retry on ordinary failures,
-but it has 800 rounds rather than an unknown lag to work in. The draw before
-the one above aged out because nobody sent `resolve` at all, not because it was
-sent too early.
+Recorded as a loss rather than as a forward, because saying "it moved" of
+writing that did not move is the kind of pointer a reader can check. The
+decoy-asset proof and the 800-round resolve window are the sort of thing
+somebody comes back for, and until somebody ports them the only copy is this
+repository's own history.
 
 ## Keeping this honest
 

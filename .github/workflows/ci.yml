@@ -226,7 +226,12 @@ jobs:
             ( eval "$command" )
             echo "::endgroup::"
           }
-          for task in build smoke-keeper smoke-rain; do
+          # Hand-written, unlike the job above, which reads a whole lane out of
+          # fledge.toml. `smoke-rain` was the third entry until 2026-08-31,
+          # when rain moved to CorvidLabs/arcron-rain. Nothing replaces it
+          # here: the remaining non-pulse chain coverage is `smoke-subscription`
+          # in [lanes.local], which this job has never run.
+          for task in build smoke-keeper; do
             run_task "$task"
           done
 

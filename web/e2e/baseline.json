@@ -54,14 +54,6 @@
       "worst": 400.5,
       "why": "the registry cards at 768px: th.mono is a label/value line inside a card-shaped tr, 400.5px shorter by design. Cards now run to 1219px rather than 480px, because the table needs 1074px and the content box only reaches that at a 1240px viewport. See rules.table-cell."
     },
-    "table-cell:th@390": {
-      "worst": 284.23,
-      "why": "the rain cards at 390px: th is the rain's name and thumbnail as the first line inside a card-shaped tr, 284.23px shorter than it by design. The tr carries its own border, radius, background and state stripe, so the paint this rule protects is drawn by the row. Same case as the registry cards. See rules.table-cell."
-    },
-    "table-cell:th@768": {
-      "worst": 252.97,
-      "why": "the rain cards at 768px: th is a label/value line inside a card-shaped tr, 252.97px shorter by design. Cards run to 1219px, matching the registry. See rules.table-cell."
-    },
     "text-size:a": {
       "worst": 11.52,
       "why": "a renders at 11.52px, below the 14px floor. See rules.text-size."
@@ -198,29 +190,13 @@
       "worst": 10.56,
       "why": "span.chip.starved renders at 10.56px, below the 14px floor. See rules.text-size."
     },
-    "text-size:span.chip.waiting": {
-      "worst": 10.56,
-      "why": "span.chip.waiting renders at 10.56px, below the 14px floor. The same size as span.chip.due and span.chip.scheduled, already recorded; it is the third state of that one chip, not a new decision. See rules.text-size."
-    },
-    "text-size:span.connect.you": {
-      "worst": 12.16,
-      "why": "span.connect.you renders at 12.16px, below the 14px floor. See rules.text-size."
-    },
     "text-size:span.count": {
       "worst": 11.52,
       "why": "span.count renders at 11.52px, below the 14px floor. See rules.text-size."
     },
-    "text-size:span.dot": {
-      "worst": 12.16,
-      "why": "span.dot renders at 12.16px, below the 14px floor. It is the separator between a rain's id and its ticket count. Its colour was var(--hairline), a border token, drawing 1.28:1; that is fixed and it now uses var(--text-faint). The size is the type scale. See rules.text-size."
-    },
     "text-size:span.eyebrow": {
       "worst": 11.2,
       "why": "span.eyebrow renders at 11.2px, below the 14px floor. See rules.text-size."
-    },
-    "text-size:span.gate": {
-      "worst": 12.16,
-      "why": "span.gate renders at 12.16px, below the 14px floor. See rules.text-size."
     },
     "text-size:span.mono": {
       "worst": 12.48,
@@ -241,10 +217,6 @@
     "text-size:span.part": {
       "worst": 12.48,
       "why": "span.part renders at 12.96px. These are not new small text: the status line was always this size, and splitting it into named spans so a phone can hide the round rate is what made it selectable. See rules.text-size."
-    },
-    "text-size:span.prize.sub": {
-      "worst": 12.16,
-      "why": "span.prize.sub renders at 12.16px, below the 14px floor. The same size as span.sub, already recorded. See rules.text-size."
     },
     "text-size:span.sub": {
       "worst": 12.16,

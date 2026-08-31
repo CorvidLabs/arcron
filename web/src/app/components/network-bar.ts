@@ -49,7 +49,6 @@ import type { NetworkKey } from '@corvidlabs/arcron/networks';
         <span class="tagline">keeper network console</span>
         <nav class="places" aria-label="Arcron">
           <a routerLink="/" routerLinkActive="here" [routerLinkActiveOptions]="{ exact: true }">Registry</a>
-          <a routerLink="/rain" routerLinkActive="here">Rain</a>
           <a routerLink="/register" routerLinkActive="here">Register</a>
         </nav>
       </div>
@@ -120,7 +119,6 @@ import type { NetworkKey } from '@corvidlabs/arcron/networks';
 
         <nav class="drawer-nav" aria-label="Console">
           <a routerLink="/" (click)="closeMenu()">Registry</a>
-          <a routerLink="/rain" (click)="closeMenu()">Rain</a>
           <a routerLink="/register" (click)="closeMenu()">Register an upkeep</a>
           @if (wallet.connected()) {
             <a routerLink="/" [queryParams]="{ mine: 1 }" queryParamsHandling="merge" (click)="closeMenu()">

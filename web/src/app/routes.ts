@@ -1,14 +1,23 @@
 /**
- * Six destinations: the keeper registry, one upkeep, register, Rain, open a
- * rain, and one rain.
+ * Three destinations — the keeper registry, one upkeep, register — plus three
+ * temporary stubs where Rain used to be.
  *
  * Registry and Keeper board stay two tabs on `/` — they are two readings of
- * the same boxes. Rain is a different contract (the scheduled draw) with a
- * holder-facing surface, so it is its own route rather than a tab on the
- * registry. Opening a rain is a page, the way registering an upkeep is, not a
- * form pinned under the list. `rain/new` is declared before `rain/:id` so
- * "new" is not read as an id. Network and app id stay in the query string;
- * Rain reads its own app id from the network config and does not steal `?app=`.
+ * the same boxes. Rain was three routes here on the reasoning that a different
+ * contract with a holder-facing surface deserved routes rather than a tab; it
+ * turned out to deserve its own address, because its reader holds an NFT and
+ * this console's reader is a developer reading selectors and escrow runway.
+ * Rain now lives at https://corvidlabs.xyz/rain/.
+ *
+ * The three paths stay declared, and stay ordered `rain/new` before
+ * `rain/:id` so "new" is still not read as an id, because a console that
+ * spreads by shared links cannot let old links rot: with an index.html
+ * fallback a deleted `/rain/3` renders the registry rather than 404ing, which
+ * silently shows the wrong page. Each forwards to its counterpart at the new
+ * address instead — see `pages/rain-moved.ts` — and all three are retired
+ * together once the announced 30-day window closes.
+ *
+ * Network and app id stay in the query string.
  */
 
 import type { RouterConfigOptions, Routes } from '@angular/router';
@@ -46,18 +55,18 @@ export const routes: Routes = [
   },
   {
     path: 'rain',
-    title: 'Rain · Arcron',
-    loadComponent: () => import('./pages/rain-page').then((module) => module.RainPage),
+    title: 'Rain has moved',
+    loadComponent: () => import('./pages/rain-moved').then((module) => module.RainMoved),
   },
   {
     path: 'rain/new',
-    title: 'Open a rain · Arcron',
-    loadComponent: () => import('./pages/rain-create-page').then((module) => module.RainCreatePage),
+    title: 'Rain has moved',
+    loadComponent: () => import('./pages/rain-moved').then((module) => module.RainCreateMoved),
   },
   {
     path: 'rain/:id',
-    title: 'A rain · Arcron',
-    loadComponent: () => import('./pages/rain-detail-page').then((module) => module.RainDetailPage),
+    title: 'Rain has moved',
+    loadComponent: () => import('./pages/rain-moved').then((module) => module.RainDetailMoved),
   },
   // A mistyped path is not a reason to lose the network and app the visitor
   // arrived with, and Angular carries the query string through a redirect.

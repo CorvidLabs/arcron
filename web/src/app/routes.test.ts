@@ -1,17 +1,24 @@
 /**
- * Six destinations: registry, one upkeep, register, Rain, open a rain, one rain.
+ * Three destinations — registry, one upkeep, register — and three stubs where
+ * Rain used to be.
  *
- * Rain is a separate contract and a holder-facing surface, so it is a route
- * rather than a tab. Opening a rain is its own page, declared before
- * `rain/:id` so "new" is not an id. Bound to the array the application boots with.
+ * Rain moved to its own repository and its own address. The three paths are
+ * kept, in the same order, because shared links are how this console spreads
+ * and a deleted path renders the registry rather than 404ing under the
+ * index.html fallback. Bound to the array the application boots with.
  */
+
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 import { describe, expect, test } from 'bun:test';
 
 import { routerOptions, routes } from './routes';
 
-describe('the console has six destinations', () => {
-    test('exactly the registry, one upkeep, the register form, rain, open a rain, and one rain', () => {
+const STUBS = readFileSync(join(import.meta.dirname, 'pages', 'rain-moved.ts'), 'utf8');
+
+describe('the console has three destinations and three forwarding stubs', () => {
+    test('exactly the registry, one upkeep, the register form, and the three old rain paths', () => {
         expect(routes.filter((route) => route.path !== '**').map((route) => route.path)).toEqual([
             '',
             'u/:id',
@@ -22,9 +29,38 @@ describe('the console has six destinations', () => {
         ]);
     });
 
-    test('rain/new is declared before rain/:id, so opening one is not rain 0', () => {
+    test('rain/new is declared before rain/:id, so it still forwards as "new" and not as rain 0', () => {
         const paths = routes.map((route) => route.path);
         expect(paths.indexOf('rain/new')).toBeLessThan(paths.indexOf('rain/:id'));
+    });
+
+    test('the three rain paths forward rather than render, so an old link is never quietly wrong', () => {
+        // The whole point of keeping them. Deleting the paths would let the
+        // index.html fallback answer `/rain/3` with the registry, showing a
+        // developer console to somebody who was sent one rain.
+        for (const path of ['rain', 'rain/new', 'rain/:id']) {
+            const route = routes.find((candidate) => candidate.path === path);
+            expect(route?.title).toBe('Rain has moved');
+            expect(String(route?.loadComponent)).toContain('rain-moved');
+        }
+    });
+
+    test('the stubs leave for the new address, and none of them forwards an id', () => {
+        // Read as source rather than imported: importing an Angular component
+        // needs the compiler this runner does not carry, and the only thing
+        // worth pinning is the destination a shared link ends up at.
+        expect(STUBS).toContain("const RAIN = 'https://corvidlabs.xyz/rain/'");
+        expect(STUBS).toContain('window.location.replace(destination)');
+        expect(STUBS).toContain("RAIN + 'new'");
+        // `/rain/:id` deliberately lands on the rain list. It forwarded
+        // `RAIN + 'r/' + id` until 2026-08-31, which was right while one hub
+        // sat behind both addresses; rain then redeployed from 770130162 onto
+        // 770746178, and a rain's id is a box id on one hub, so the same
+        // number over there is a different draw or none. Pinned as an absence
+        // because the failure it guards is silent: a forwarded id renders a
+        // plausible wrong rain rather than an error anybody would notice.
+        expect(STUBS).not.toContain("RAIN + 'r/'");
+        expect(STUBS).toContain("protected readonly id = this.route.snapshot.paramMap.get('id') ?? ''");
     });
 
     test('every one of them loads a component', () => {
