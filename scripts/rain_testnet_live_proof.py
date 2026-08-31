@@ -58,7 +58,11 @@ CORVID_NFT = 749_830_809
 CORVID_MINTER = "WGSHC4TYKYBS6EX5V5E377BQDLKWIIPBCFOLZQZIXCKHFIEKRPBFOMW25A"
 ZERO_ADDRESS = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAY5HFKQ"
 EXPLORER = "https://testnet.explorer.perawallet.app"
-AGENT_ENV = Path.home() / ".grok/secrets/agents/grok-4.6.env"
+#: Where to find a funder when the deployer is short. This repository is
+#: public, so it names no path in anyone's home directory: an absolute path to
+#: a private key file is a map to it, and it also made the script unrunnable by
+#: anyone who is not its author. Set RAIN_FUNDER_ENV, or pass --funder-env.
+FUNDER_ENV_VAR = "RAIN_FUNDER_ENV"
 TOP_UP_MICRO = 4_000_000
 NEED_SPENDABLE = 1_500_000
 INNER = algokit_utils.AlgoAmount(micro_algo=2_000)
@@ -99,19 +103,38 @@ def _spendable(algod, address: str) -> int:
     return int(info["amount"]) - int(info["min-balance"])
 
 
+#: Set by --funder-env when given; otherwise read from the environment.
+_FUNDER_OVERRIDE: Path | None = None
+
+
+def funder_env_path() -> Path | None:
+    """The file holding a funder mnemonic, or None if none is configured."""
+    if _FUNDER_OVERRIDE is not None:
+        return _FUNDER_OVERRIDE
+    from os import environ
+
+    raw = environ.get(FUNDER_ENV_VAR)
+    return Path(raw).expanduser() if raw else None
+
+
 def _top_up_deployer(algod, deployer: str) -> None:
     have = _spendable(algod, deployer)
     if have >= NEED_SPENDABLE:
         logger.info(f"  deployer spendable {have / 1e6:.4f} ALGO, no top-up")
         return
-    if not AGENT_ENV.is_file():
+    funder_env = funder_env_path()
+    if funder_env is None:
         raise SystemExit(
-            f"Deployer spendable {have / 1e6:.4f} ALGO and {AGENT_ENV} is missing"
+            f"Deployer spendable {have / 1e6:.4f} ALGO and no funder configured. "
+            f"Set {FUNDER_ENV_VAR} to a file holding DEPLOYER_MNEMONIC, or pass "
+            f"--funder-env, or fund the deployer directly."
         )
-    vals = dotenv_values(AGENT_ENV)
+    if not funder_env.is_file():
+        raise SystemExit(f"Funder env {funder_env} does not exist")
+    vals = dotenv_values(funder_env)
     mnemonic = vals.get("DEPLOYER_MNEMONIC")
     if not mnemonic:
-        raise SystemExit("Agent env has no DEPLOYER_MNEMONIC")
+        raise SystemExit(f"{funder_env} has no DEPLOYER_MNEMONIC")
     secret = to_private_key(mnemonic)
     sender = address_from_private_key(secret)
     agent_spend = _spendable(algod, sender)
@@ -213,7 +236,19 @@ def _fire_and_claim_corvid(rain: RainClient, who: str, rain_id: int, proofs: lis
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     net.add_network_argument(parser)
+    parser.add_argument(
+        "--funder-env",
+        type=Path,
+        default=None,
+        help=(
+            f"file holding DEPLOYER_MNEMONIC for a funder, used only when the "
+            f"deployer is short (default: ${FUNDER_ENV_VAR})"
+        ),
+    )
     args = parser.parse_args(argv)
+    if args.funder_env is not None:
+        global _FUNDER_OVERRIDE
+        _FUNDER_OVERRIDE = args.funder_env.expanduser()
     if args.network != net.TESTNET:
         raise SystemExit("This proof is TestNet only.")
 

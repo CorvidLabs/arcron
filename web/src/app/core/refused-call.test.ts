@@ -24,6 +24,10 @@ import { describe, expect, test } from 'bun:test';
 import { subjectOf, type TargetTestReport } from './target-test.service';
 import type { TargetTestOutcome } from '@corvidlabs/arcron/target-test';
 
+// A synthetic target id. It used to be TARGET, a real superseded rain
+// deployment, which is how a fixture becomes a live pointer: the number is
+// plausible, so the next copy of it is not read as a placeholder.
+const TARGET = 100_000_001;
 const CALL = [new Uint8Array([0x62, 0xd7, 0xcc, 0x2c])];
 const OTHER = [new Uint8Array([0x50, 0x6e, 0x5d, 0xd0])];
 
@@ -40,7 +44,7 @@ function refusedFrom(report: TargetTestReport | null): TargetTestOutcome | null 
 describe('a verdict of no about this exact call', () => {
     test('blocks, which is upkeep 77', () => {
         const report: TargetTestReport = {
-            subject: subjectOf(769891898, 770029154, CALL),
+            subject: subjectOf(769891898, TARGET, CALL),
             outcome: outcome(false, 'err opcode executed'),
             unreachable: null,
         };
@@ -49,7 +53,7 @@ describe('a verdict of no about this exact call', () => {
 
     test('and carries the target words, so the reason is not guessed at', () => {
         const report: TargetTestReport = {
-            subject: subjectOf(769891898, 770029154, CALL),
+            subject: subjectOf(769891898, TARGET, CALL),
             outcome: outcome(false, 'err opcode executed'),
             unreachable: null,
         };
@@ -60,7 +64,7 @@ describe('a verdict of no about this exact call', () => {
 describe('what must not block', () => {
     test('a pass', () => {
         const report: TargetTestReport = {
-            subject: subjectOf(769891898, 770029154, OTHER),
+            subject: subjectOf(769891898, TARGET, OTHER),
             outcome: outcome(true),
             unreachable: null,
         };
@@ -76,7 +80,7 @@ describe('what must not block', () => {
 
     test('an unreachable node, which is not a verdict about the call', () => {
         const report: TargetTestReport = {
-            subject: subjectOf(769891898, 770029154, CALL),
+            subject: subjectOf(769891898, TARGET, CALL),
             outcome: null,
             unreachable: 'the node could not be reached',
         };
@@ -89,13 +93,13 @@ describe('editing the call clears the block', () => {
         // This is what `resultFor` compares, and it is why the block lifts as
         // soon as the signature field changes: the report stops being an
         // answer about what the form would now send.
-        const before = subjectOf(769891898, 770029154, CALL);
-        const after = subjectOf(769891898, 770029154, OTHER);
+        const before = subjectOf(769891898, TARGET, CALL);
+        const after = subjectOf(769891898, TARGET, OTHER);
         expect(before.call).not.toBe(after.call);
     });
 
     test('and so is the same call against a different target', () => {
-        expect(subjectOf(769891898, 770029154, CALL).targetApp).not.toBe(
+        expect(subjectOf(769891898, TARGET, CALL).targetApp).not.toBe(
             subjectOf(769891898, 769891902, CALL).targetApp,
         );
     });

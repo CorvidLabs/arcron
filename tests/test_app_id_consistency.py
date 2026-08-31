@@ -30,7 +30,17 @@ CHECKED_SUFFIXES = {".py", ".ts", ".md", ".yml", ".yaml", ".example", ".sh", ".s
 # for hours against it while the live deployment went unserviced. It is
 # immutable and pre-governance, so pointing anything at it is worse than
 # pointing at an empty registry.
-SUPERSEDED = {"769823086", "769802474", "769772891", "769772906"}
+# The rain hub's superseded deployments were missing from this set until
+# 2026-08-31, and cost the same thing again in a smaller way: the rain-bot
+# workflow's dispatch input offered 769988156 as its prefilled default long
+# after the hub moved twice, so accepting the default aimed a scan at the
+# oldest dead app while the header comment above it claimed otherwise, and
+# deploy/rain.env.example told a new operator the same thing. Both were found
+# by reading, not by this test, because this set only knew about keepers.
+SUPERSEDED = {
+    "769823086", "769802474", "769772891", "769772906",  # keeper
+    "769988156", "770029154",  # rain hub
+}
 
 # Files that record history and are *expected* to name superseded apps: a
 # completed task or an explicit "do not use this one" warning.
@@ -46,6 +56,14 @@ HISTORICAL = {
     # link can tell it is dead. That is the opposite of a pointer to follow,
     # but it is indistinguishable from one by grep.
     "docs/status.md",
+    # The superseded-deployments table, and the analysis of what the gated
+    # rain bought. It names dead apps in strikethrough with the word
+    # "superseded" beside them; that is the warning, not a pointer.
+    "docs/testnet.md",
+    # The split plan, which names the dead rain apps in order to point at the
+    # two places that still offer them as defaults. Caught by this test within
+    # a minute of being written, which is the test working.
+    "docs/design/split.md",
     "SECURITY.md",
     "tests/test_app_id_consistency.py",
     # Acceptance criteria and the console plan name the dead deployments as

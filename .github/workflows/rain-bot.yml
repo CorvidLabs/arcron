@@ -43,7 +43,7 @@ on:
       app_id:
         description: Rain app id to watch
         required: false
-        default: "769988156"
+        default: "770130162"
   # The schedule was removed on 2026-08-30. `scripts/rain_bot.py` was reduced
   # to a scan that changes nothing when the hub gave resolve, claim and deposit
   # back to holders, so a cron firing every thirty minutes was writing log
