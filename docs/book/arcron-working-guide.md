@@ -1100,22 +1100,23 @@ repo and a keeper runs constantly.
 
 ### The second keeper, and why it isn't just a backup
 
-`.github/workflows/keeper-bot-2.yml` is a second keeper on the *same* cron as the
-first. It exists to make Arcron's economic claim actually happen on a real chain:
-that competition holds the fee below the ceiling, and that losing a race costs
-nothing. Neither had ever been observed.
+There **was** a second keeper workflow beside `keeper-bot.yml`, on the *same*
+cron as the first, deleted on 2026-08-31. It existed to make Arcron's economic claim
+happen on a real chain: that competition holds the fee below the ceiling, and
+that losing a race costs nothing. Neither has been observed, and this did not
+change that — `KEEPER_2_MNEMONIC` was never set, so for four days the job ran
+on schedule, skipped itself in twenty seconds, and exited green. The Actions
+history looked like two keepers. One was running.
 
 > **An offset schedule doesn't race, it queues.** Two keepers thirty minutes
 > apart never contend. The first takes every due upkeep and the second arrives to
 > an empty registry. That looks like redundancy and is a queue.
 
-So both workflows pass `--align 120`, which holds the first scan until the next
-whole two-minute mark in UTC. Runner clocks are NTP-synced, so an absolute
-instant is the one thing two machines that have never met can agree on. They then
-scan in the same round window and reach for the same upkeep, which is what a race
-is. The second keeper has to sign from a **different account**
-(`KEEPER_2_MNEMONIC`), because one account can't race itself. Nothing about the
-barrier is specific to GitHub, and a VPS keeper joins it with the same flag.
+That is why both workflows passed `--align 120`, holding the first scan until
+the next whole two-minute mark in UTC. Runner clocks are NTP-synced, so an
+absolute instant is the one thing two machines that have never met can agree
+on. `--align` survives the deletion and `scripts/keeper_race.py` still proves
+the collision on demand, with two real bots on LocalNet.
 
 ### What the account needs
 

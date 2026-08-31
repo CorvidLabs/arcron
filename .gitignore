@@ -202,3 +202,11 @@ debug_traces/
 
 # The keeper dashboard's build output. Never published; see web-keeper/README.md.
 web-keeper/dist/
+
+# npm auth for GitHub Packages. `bun publish` does not walk up to the repo
+# root for an .npmrc, so the file has to sit in js/ next to the manifest --
+# which is exactly where `git add -A` would pick it up. Ignore both paths
+# before either one exists. The committed file would carry a registry line
+# only, but the rule has to be here first for that to stay true.
+.npmrc
+js/.npmrc

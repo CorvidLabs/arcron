@@ -133,79 +133,38 @@ The things that are not about money:
 
 Good as a backstop next to a real keeper.
 
-### B2. The second keeper, and why it is not just a backup
+### B2. There was a second keeper. It never ran.
 
-`.github/workflows/keeper-bot-2.yml` is a second keeper on the *same* cron as
-the first, signing from `KEEPER_2_MNEMONIC`. It exists to make the thing this
-project asserts actually happen.
+There was a second keeper workflow beside `keeper-bot.yml`, on the *same* cron as
+the first, signing from `KEEPER_2_MNEMONIC`, and the reasoning for it was
+sound: Arcron's economic argument is that competition between keepers holds
+the fee below the ceiling, and that competing is safe because losing a race
+costs nothing. Neither had ever happened on a real chain. One keeper serviced
+TestNet, won everything by default, and a keeper that never loses a race is no
+evidence at all about what losing costs.
 
-Arcron's economic argument is that competition between keepers holds the fee
-below the ceiling, and that competing is safe because losing a race costs
-nothing. Neither had ever occurred on a real chain. One keeper serviced
-TestNet, it won everything by default, and a keeper that never loses a race is
-no evidence at all about what losing costs.
+**The secret was never set, so the job skipped itself every single time.** It
+was added on 2026-08-27 and removed on 2026-08-31, and in that window it ran
+on schedule dozens of times, took about twenty seconds, printed a notice, and
+exited green. Every run is in the Actions history and not one of them signed
+anything. The workflow was written to fail politely when unconfigured, which
+it did, forever, while the docs described a race that was not occurring.
 
-**An offset schedule does not race.** This is the part that is easy to get
-wrong. Two keepers thirty minutes apart never contend for anything: the first
-takes every due upkeep, the second arrives to an empty registry. That looks
-like redundancy and is a queue. Even the same cron is not enough on its own,
-because two runners finish installing dependencies tens of seconds apart, and
-the slower one finds the work already done.
+It is deleted rather than left waiting for a credential. A workflow whose
+whole behaviour is "exit green without doing the thing" is worse than absent:
+it makes the Actions history look like two keepers are running.
 
-So both workflows pass `--align 120`, which holds the first scan until the
-next whole two-minute mark in UTC. Runner clocks are NTP-synced, so an
+The design note is worth keeping, because whatever races next has to get it
+right. **An offset schedule does not race.** Two keepers thirty minutes apart
+never contend for anything: the first takes every due upkeep and the second
+arrives to an empty registry. That looks like redundancy and is a queue. Even
+the same cron is not enough, because two runners finish installing
+dependencies tens of seconds apart and the slower one finds the work done.
+Both workflows therefore passed `--align 120`, holding the first scan until
+the next whole two-minute mark in UTC. Runner clocks are NTP-synced, so an
 absolute instant is the one thing two machines that have never met can agree
-on. Both then scan in the same round window and reach for the same upkeep,
-which is what a race is. Nothing about the barrier is specific to GitHub or to
-this repository: a keeper on a VPS can join it with the same flag.
-
-The two workflows keep **separate concurrency groups**. Sharing one would
-queue the second behind the first, which is exactly the arrangement being
-avoided.
-
-#### What the owner runs
-
-The secret is a credential, so it is the owner's to create. Three commands,
-none of which write the mnemonic anywhere:
-
-```bash
-# 1. A new account. Nothing is saved; copy the mnemonic straight into step 3.
-poetry run python - <<'PY'
-from algosdk import account, mnemonic
-private_key, address = account.generate_account()
-print(f"address:  {address}")
-print(f"mnemonic: {mnemonic.from_private_key(private_key)}")
-PY
-
-# 2. Fund it on TestNet. A couple of ALGO is plenty; fees top it up.
-#    Or paste the address into https://bank.testnet.algorand.network/
-algokit dispenser fund --receiver <address> --amount 2000000
-
-# 3. Hand the mnemonic to the workflow, and to nothing else.
-gh secret set KEEPER_2_MNEMONIC --repo CorvidLabs/arcron
-```
-
-It must be a **different** account from `KEEPER_MNEMONIC`. One account cannot
-race itself, and two jobs signing as the same address would collide on the
-transaction id rather than on the upkeep. Until the secret exists the second
-workflow skips itself with a notice, the same way the first one does, so
-turning the schedule on early produces a green run and an explanation rather
-than a failure every half hour that everyone learns to ignore.
-
-#### What it costs
-
-Two keepers is two runs, and `--align 120` adds about a minute of waiting to
-each. Against the table above:
-
-| | Runs/month | Minutes | Cost beyond the 3,000-minute allowance |
-|---|---|---|---|
-| one keeper, no barrier | 1,440 | ~2,900 | free |
-| two keepers, `--align 120` | 2,880 | ~8,600 | ~$45/month |
-
-That is the price of the demonstration, and it is worth checking against what
-the demonstration is for. Once a race has been observed and recorded, the
-second keeper can drop to a slower cron, or move to a host that is already
-running: the barrier works between a workflow and a VPS just as well.
+on. `--align` is still in `scripts/keeper_bot.py` and still the right tool;
+`scripts/keeper_race.py` still proves the collision on demand.
 
 ### C. A small always-on host
 

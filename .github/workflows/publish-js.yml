@@ -1,0 +1,82 @@
+# Publish `@corvidlabs/arcron` to GitHub Packages.
+#
+# Manual only. A tag trigger would publish whatever version happened to be in
+# `js/package.json` when somebody tagged a release of the *contracts*, and the
+# two version lines are unrelated: the contract ladder is `alpha-N` (see
+# `docs/releases.md`), the package is semver. So the human names the moment.
+#
+# The point of running this here rather than from a laptop is the token. A
+# local publish needs a classic personal access token with `write:packages`,
+# which authorises publishing to every repository the author can reach and
+# lives in a dotfile until somebody revokes it. `GITHUB_TOKEN` in this job is
+# scoped to this repository, expires when the job ends, and cannot be copied
+# out of it. The first publish still has to be done by hand, because the
+# package does not exist yet and has nothing to inherit permissions from.
+#
+# A version is permanent. GitHub Packages refuses a second PUT of a version
+# that already exists, and a deleted version cannot be reissued under the same
+# number, so `npm pack` is printed and the tarball listed before anything is
+# sent.
+name: Publish js package
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Pack and list the tarball, but do not publish"
+        type: boolean
+        default: true
+      # npm 11 refuses to publish a prerelease without an explicit dist-tag,
+      # which is the behaviour you want: `alpha` keeps a plain
+      # `npm install @corvidlabs/arcron` off it. Change to `latest` only for a
+      # stable version.
+      dist_tag:
+        description: "npm dist-tag (alpha for a prerelease, latest for a stable version)"
+        type: string
+        default: alpha
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: publish-js
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: npm publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://npm.pkg.github.com"
+          scope: "@corvidlabs"
+
+      # The gate. `js-test` is the only thing that has ever checked this
+      # package, and publishing an untested tarball is the one mistake that
+      # cannot be taken back.
+      - name: Test
+        run: bun install --frozen-lockfile && cd js && bun test
+
+      # Printed in full so the version, the file list and the licence are
+      # readable in the job log before the PUT, not inferred from it after.
+      - name: Show what would be published
+        run: |
+          cd js
+          npm pack --pack-destination /tmp/pack
+          tar tzf /tmp/pack/*.tgz | sort
+          test -n "$(tar tzf /tmp/pack/*.tgz | grep '^package/LICENSE$')"
+          test -n "$(tar tzf /tmp/pack/*.tgz | grep '^package/NOTICE$')"
+
+      - name: Publish
+        if: ${{ inputs.dry_run == false }}
+        run: cd js && npm publish --tag "${{ inputs.dist_tag }}"
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -34,6 +34,20 @@ WORKFLOWS = ROOT / ".github" / "workflows"
 #: What a workflow may grant without someone deciding to.
 ALLOWED = {"contents": {"read", "none"}}
 
+#: Deciding to. Keyed by file, so widening one workflow does not widen the rest.
+#:
+#: `publish-js.yml` pushes `@corvidlabs/arcron` to GitHub Packages, which is the
+#: first thing in this repository that writes anything anywhere. It is
+#: `workflow_dispatch` only, and the write is the entire point of running it in
+#: Actions rather than from a laptop: the alternative is a classic personal
+#: access token with `write:packages`, which authorises publishing to every
+#: repository its owner can reach and sits in a dotfile until somebody revokes
+#: it. The job's `GITHUB_TOKEN` is scoped to this repository and dies with the
+#: job. `contents: read` is still the floor for the checkout.
+EXCEPTIONS: dict[str, dict[str, set[str]]] = {
+    "publish-js.yml": {"packages": {"write"}},
+}
+
 #: Returned when a file has no top-level `permissions:` at all.
 MISSING = object()
 
@@ -99,8 +113,9 @@ def test_no_workflow_grants_more_than_a_checkout_needs() -> None:
         if not isinstance(perms, dict):
             over.append(f"{path.name}: {perms!r}")
             continue
+        allowed = {**ALLOWED, **EXCEPTIONS.get(path.name, {})}
         for scope, level in perms.items():
-            if level not in ALLOWED.get(scope, set()):
+            if level not in allowed.get(scope, set()):
                 over.append(f"{path.name}: {scope}: {level}")
     assert not over, (
         "these grant more than a checkout needs; if that is deliberate, widen "

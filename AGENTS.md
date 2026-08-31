@@ -41,7 +41,7 @@ TestNet (app 769891898; 769802474 and 769772891 are superseded and predate the
 - Specs: `specsync check --strict`
 - End-to-end: `poetry run python -m scripts.keeper_e2e --network localnet|testnet`
 - Keeper bot: `poetry run python -m scripts.keeper_bot [--once] [--network N] [--app-id N]` (signs as KEEPER_MNEMONIC, else DEPLOYER_MNEMONIC)
-- Keeper race: `poetry run python -m scripts.keeper_race --network localnet|testnet` (two real bots reaching for the same due upkeep in the same round; needs KEEPER_MNEMONIC and KEEPER_2_MNEMONIC off LocalNet)
+- Keeper race: `poetry run python -m scripts.keeper_race --network localnet|testnet` (two real bots reaching for the same due upkeep in the same round; off LocalNet it needs two funded mnemonics in the environment, since one account cannot race itself)
 - Python env: Poetry (`.venv` in project). Python 3.13. Do NOT use 3.14 (coincurve has no wheels).
 
 ## 1.0 scope (decided 2026-08-24)
