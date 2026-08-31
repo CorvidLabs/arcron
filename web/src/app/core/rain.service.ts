@@ -67,7 +67,8 @@ function httpMessage(cause: unknown): string {
   return describe(cause);
 }
 
-export type RainOp = 'enter' | 'gm' | 'deposit' | 'claim' | 'create' | 'resolve' | 'optin';
+export type RainOp =
+  | 'enter' | 'gm' | 'deposit' | 'claim' | 'create' | 'resolve' | 'abandon' | 'optin';
 
 export type YouStatus = 'connect' | 'open' | 'in' | 'yes' | 'no';
 
@@ -431,6 +432,23 @@ export class RainService {
     await this.send('resolve', (algod, appId, signing) =>
       txns.resolve(algod, appId, signing, rain.id),
       'Resolved the drop. The winner can claim.',
+    );
+  }
+
+  /**
+   * Return an unresolved prize to the pot after its seed window has closed.
+   *
+   * The only exit from the one state a rain cannot leave on its own.
+   * `_fire_one` will not fire while a prize is locked, and once the committed
+   * round's seed is too old to read, `resolve` refuses. Without this the rain
+   * is finished -- the hub is immutable, so nobody can patch around it.
+   */
+  async abandon(): Promise<void> {
+    const rain = this.current();
+    if (rain === null) return;
+    await this.send('abandon', (algod, appId, signing) =>
+      txns.abandon(algod, appId, signing, rain.id),
+      'Returned the locked prize to the pot. The rain can fire again.',
     );
   }
 

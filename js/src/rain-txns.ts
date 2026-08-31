@@ -3,7 +3,8 @@
  *
  * `draw` is the Arcron hook and is not sent from this UI. Create a rain,
  * enter once (SPLIT/ONE) or check in (WAVE), deposit, claim. ONE still
- * needs `resolve` after the committed round.
+ * needs `resolve` after the committed round, or `abandon` once that
+ * round's seed is too old to read.
  */
 
 import algosdk from 'algosdk';
@@ -19,6 +20,7 @@ import {
   OPT_IN_FEE,
   RAIN_BOX_MBR,
   RESOLVE_FEE,
+  ABANDON_FEE,
   enterMbr,
   indexBoxName,
   rainBoxName,
@@ -409,6 +411,52 @@ export async function resolve(
       sender: signing.sender,
       signer,
       suggestedParams: { ...suggestedParams, fee: BigInt(RESOLVE_FEE), flatFee: true },
+      methodArgs: [rainId],
+      appAccounts: [...refs.appAccounts],
+      appForeignApps: [...refs.appForeignApps],
+      appForeignAssets: [...refs.appForeignAssets],
+      boxes: [...refs.boxes],
+    });
+  };
+  const resources = await discoverCall(algod, appId, known, addCall);
+  const composer = new algosdk.AtomicTransactionComposer();
+  addCall(composer, signing.signer, resources);
+  return run(algod, composer);
+}
+
+/**
+ * Return an unresolved ONE prize to the pot, once its seed window has closed.
+ *
+ * The recovery path for the only way a rain can stop permanently. `_fire_one`
+ * refuses to fire while `prize_locked > 0`, and the lock clears two ways:
+ * `resolve` inside `SEED_WINDOW`, or this after it. Miss the window with no
+ * `abandon` available and that rain never fires again -- on an immutable hub,
+ * that is forever. This existed in the contract and in the ABI from the start
+ * and had no builder anywhere until 2026-08-31, so the recovery was reachable
+ * only by hand-rolling the call.
+ *
+ * Permissionless on purpose: anyone may unstick a rain they do not own.
+ * Cheaper than `resolve` in references -- no seed is read, so no index box and
+ * no winner's ticket box, just the rain itself.
+ */
+export async function abandon(
+  algod: algosdk.Algodv2,
+  appId: number,
+  signing: Signing,
+  rainId: bigint,
+): Promise<CallResult> {
+  const suggestedParams = await algod.getTransactionParams().do();
+  const known: ResourceRefs = {
+    ...emptyRefs(),
+    boxes: [{ appIndex: 0, name: rainBoxName(rainId) }],
+  };
+  const addCall: CallBuilder = (composer, signer, refs) => {
+    composer.addMethodCall({
+      appID: appId,
+      method: rainMethod('abandon'),
+      sender: signing.sender,
+      signer,
+      suggestedParams: { ...suggestedParams, fee: BigInt(ABANDON_FEE), flatFee: true },
       methodArgs: [rainId],
       appAccounts: [...refs.appAccounts],
       appForeignApps: [...refs.appForeignApps],

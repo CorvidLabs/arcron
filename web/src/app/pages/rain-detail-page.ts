@@ -16,6 +16,7 @@ import { WalletService } from '../core/wallet.service';
 import { dueLabel, intervalLabel, shortAddress } from '@corvidlabs/arcron/format';
 import { roundsUntilDue } from '@corvidlabs/arcron/upkeep';
 import {
+  SEED_WINDOW,
   ZERO_ADDRESS,
   modeHint,
   modeLabel,
@@ -233,18 +234,35 @@ import {
 
           @if (state.mode.toString() === '1' && state.prizeLocked.toString() !== '0') {
             <div class="row">
-              <button
-                type="button"
-                class="ghost"
-                [disabled]="rain.busy() !== null || !wallet.connected()"
-                (click)="rain.resolve()"
-              >
-                {{ rain.busy() === 'resolve' ? 'Resolving…' : 'Resolve this drop' }}
-              </button>
-              <p class="detail">
-                Locked until round {{ state.commitRound.toString() }}. Anyone can resolve
-                once that round has passed.
-              </p>
+              @if (windowClosed()) {
+                <button
+                  type="button"
+                  class="ghost"
+                  [disabled]="rain.busy() !== null || !wallet.connected()"
+                  (click)="rain.abandon()"
+                >
+                  {{ rain.busy() === 'abandon' ? 'Returning…' : 'Return the prize to the pot' }}
+                </button>
+                <p class="detail">
+                  The seed for round {{ state.commitRound.toString() }} is too old to read,
+                  so this drop can no longer be resolved. Until the prize goes back, this
+                  rain cannot fire again. Anyone can do it.
+                </p>
+              } @else {
+                <button
+                  type="button"
+                  class="ghost"
+                  [disabled]="rain.busy() !== null || !wallet.connected()"
+                  (click)="rain.resolve()"
+                >
+                  {{ rain.busy() === 'resolve' ? 'Resolving…' : 'Resolve this drop' }}
+                </button>
+                <p class="detail">
+                  Locked until round {{ state.commitRound.toString() }}. Anyone can resolve
+                  once that round has passed, and before round
+                  {{ (state.commitRound + seedWindow).toString() }}.
+                </p>
+              }
             </div>
           }
 
@@ -505,6 +523,25 @@ export class RainDetailPage {
     const held = this.rain.heldFor(state);
     if (held !== null) return held.name || held.unitName;
     return this.rain.gateName(state);
+  }
+
+  /** For the template's arithmetic; `SEED_WINDOW` is a plain number. */
+  protected readonly seedWindow = BigInt(SEED_WINDOW);
+
+  /**
+   * Whether this drop's committed seed has aged out of reach.
+   *
+   * The contract reads the seed with `Block.blk_seed(commit_round)` and
+   * refuses past `commit_round + SEED_WINDOW`, so the two buttons are
+   * mutually exclusive: before it only `resolve` works, after it only
+   * `abandon` does. Showing Resolve after the window would offer a button
+   * whose only outcome is `assert failed`, on the one screen where the rain
+   * is already stuck.
+   */
+  protected windowClosed(): boolean {
+    const state = this.rain.current();
+    if (state === null || state.prizeLocked === 0n) return false;
+    return this.arcron.round() > state.commitRound + this.seedWindow;
   }
 
   protected heldName(state: RainRec): string | null {
