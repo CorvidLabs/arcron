@@ -70,6 +70,10 @@ jobs:
       - name: Show what would be published
         run: |
           cd js
+          # npm does not create --pack-destination, and the error it gives when
+          # the directory is missing names the tarball rather than the
+          # directory, which reads like the pack failed.
+          mkdir -p /tmp/pack
           npm pack --pack-destination /tmp/pack
           tar tzf /tmp/pack/*.tgz | sort
           test -n "$(tar tzf /tmp/pack/*.tgz | grep '^package/LICENSE$')"
