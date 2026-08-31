@@ -173,8 +173,8 @@ If you looked and decided *not* to use it, that is worth more still:
 |---|---|
 | Contract | Live on TestNet, unaudited, upgradeable, 1.0 surface complete |
 | Deployment age | Days, not months |
-| Upkeeps registered by strangers | **Zero** |
-| Keepers not run by us | **Zero** |
+| Upkeeps registered by strangers | **Possibly one, as of 2026-08-30.** 22 of the 28 live upkeeps come from seven addresses that are not our deployer, and six of those seven trace to a single funding account: that is one operator of ours wearing six costumes, not six people who found this. The seventh, `CEPY52VZRWFL`, is different. It was funded only by the public TestNet dispenser, it deployed its own target app, and it registered upkeep 110 on a seven-day cadence at the fee floor. Nothing connects it to us. We are not claiming it until it is attributed, but it is the first entry that does not look like our own reflection. |
+| Keepers not run by us | **Still zero.** A third keeper address has executed 14 times; it is from the same fleet. |
 | MainNet | Not deployed. Gated on sustained TestNet time; the creator will be `corvid.algo` |
 | Review history | Every round, including the ones that said no, is in `docs/reviews/` |
 

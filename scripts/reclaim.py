@@ -11,8 +11,13 @@ upkeep on a superseded deployment is not harmless: a keeper watching that app
 will keep executing it, so it keeps spending escrow on calls to a target
 nobody is looking at any more.
 
+Reclaiming everything is right for a superseded app and wrong for a live one,
+where the same account usually owns upkeeps it wants to keep. `--upkeep` names
+the ones to cancel; without it the default is still every upkeep we created.
+
 Run:  poetry run python -m scripts.reclaim --network testnet --app-id N
-      poetry run python -m scripts.reclaim --network testnet --app-id N --commit
+      poetry run python -m scripts.reclaim --network testnet --app-id N --upkeep 79
+      poetry run python -m scripts.reclaim --network testnet --app-id N --upkeep 79 --commit
 """
 
 import argparse
@@ -33,10 +38,35 @@ BOX_BYTE_COST = 400
 BOX_FLAT_COST = 2_500
 
 
+def select(
+    decoded: list[tuple[int, keeper_bot.Upkeep, int]], requested: list[int] | None
+) -> tuple[list[tuple[int, keeper_bot.Upkeep, int]], list[int]]:
+    """Narrow the decoded boxes to the ids asked for, keeping box order.
+
+    Returns the selection and any requested id no box matched, so a typo is
+    reported rather than quietly cancelling nothing. No request means the
+    original behaviour: every upkeep on the app, and the cancel loop drops
+    the ones we did not create.
+    """
+    if not requested:
+        return decoded, []
+    wanted = set(requested)
+    kept = [row for row in decoded if row[0] in wanted]
+    missing = sorted(wanted - {row[0] for row in kept})
+    return kept, missing
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     net.add_network_argument(parser)
     parser.add_argument("--app-id", type=int, required=True, help="the keeper app to drain")
+    parser.add_argument(
+        "--upkeep",
+        type=int,
+        action="append",
+        metavar="ID",
+        help="cancel only this upkeep id; repeat for several. Default: every one we created.",
+    )
     parser.add_argument(
         "--commit", action="store_true", help="actually cancel; otherwise price it and stop"
     )
@@ -56,11 +86,7 @@ def main(argv: list[str] | None = None) -> None:
         logger.info(f"app {args.app_id} has no upkeeps. Nothing to reclaim.")
         return
 
-    logger.info("")
-    logger.info(f"{'upkeep':>24} {'target':>10} {'runs':>5} {'escrow':>10} {'box MBR':>10}")
-    found = []
-    escrow_total = 0
-    mbr_total = 0
+    decoded = []
     for box in boxes:
         name = base64.b64decode(box["name"])
         if name[:1] != b"u":
@@ -69,7 +95,22 @@ def main(argv: list[str] | None = None) -> None:
         raw = base64.b64decode(algod.application_box_by_name(args.app_id, name)["value"])
         upkeep = keeper_bot._decode_upkeep(upkeep_id, raw)
         mbr = BOX_FLAT_COST + BOX_BYTE_COST * (len(name) + len(raw))
-        found.append((upkeep_id, upkeep, mbr))
+        decoded.append((upkeep_id, upkeep, mbr))
+
+    found, missing = select(decoded, args.upkeep)
+    for upkeep_id in missing:
+        # A live app is shared, so an id we were asked for and cannot see is
+        # far more likely a typo than a race. Name it and cancel nothing.
+        logger.warning(f"upkeep {upkeep_id} is not a box on app {args.app_id}; skipping it.")
+    if not found:
+        logger.info("Nothing selected. Nothing to reclaim.")
+        return
+
+    logger.info("")
+    logger.info(f"{'upkeep':>24} {'target':>10} {'runs':>5} {'escrow':>10} {'box MBR':>10}")
+    escrow_total = 0
+    mbr_total = 0
+    for upkeep_id, upkeep, mbr in found:
         escrow_total += upkeep.balance
         mbr_total += mbr
         logger.info(

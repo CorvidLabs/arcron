@@ -25,18 +25,23 @@ look at rendered pixels.
 
 ## Before you start
 
-**Switch Pera to TestNet.** Settings, then Developer Settings, then Node
-Settings, then TestNet. Skip this and Pera hands the console a MainNet address,
-which has no TestNet balance, and the Register button stays disabled with no
-visible explanation.
+**Open the console.** The hosted one needs nothing installed and is the
+canonical address:
 
-**Have about 0.2 TestNet ALGO.** The breakdown is below and the bulk of it comes
-back when you cancel.
+<https://corvidlabs.xyz/arcron/console/register?network=testnet&app=769891898>
 
-**Start the console:**
+That address matters. The contract is permissionless, so anyone can deploy this
+ABI and box layout and serve a page that looks identical; the URL is the only
+thing separating our front end from a copy. Check it before you connect a
+wallet.
+
+Running it locally is the alternative, and the right choice if you want to see
+the code you are signing against. It needs a checkout and
+[Bun](https://bun.sh):
 
 ```bash
-cd web && bun run ng serve
+git clone https://github.com/CorvidLabs/arcron
+cd arcron/web && bun install && bun run ng serve
 ```
 
 Then open <http://localhost:4200/register?network=testnet&app=769891898>.
@@ -45,6 +50,17 @@ If the page loads a title and nothing else, the dev server is serving the
 workspace TypeScript untranspiled. That was fixed by `prebundle.exclude` on the
 dev-server target in `web/angular.json`; if it comes back, that is where to
 look.
+
+**Switch Pera to TestNet.** Settings, then Developer Settings, then Node
+Settings, then TestNet. Skip this and Pera hands the console a MainNet address,
+which has no TestNet balance, and the Register button stays disabled with no
+visible explanation.
+
+**Have about 0.2 TestNet ALGO**, from the
+[Algorand TestNet dispenser](https://testnet-dispenser.algorand.tech/) or
+[Lora](https://lora.algokit.io/testnet/fund). The walkthrough itself costs
+0.0951; the rest is the 0.1 ALGO minimum balance every Algorand account has to
+hold and can never spend. Most of the 0.0951 comes back when you cancel.
 
 ## The numbers you will need
 
@@ -80,17 +96,26 @@ Expect a graded result, never a flat pass. For `pulse.tick()` it should read
 name. It will also tell you what it *cannot* know, which is whether a keeper
 will turn up and whether the call's needs will grow later.
 
+There are exactly four grades, decided by how many references the call reached
+for (`gradeReferences` in `js/src/target-test.ts`):
+
+| Badge | Means |
+|---|---|
+| `resources: none` | It reached for no account, asset, app or box. Any keeper can service it. |
+| `resources: servable` | Inside the reference budget the keeper bot in this repo attaches. A keeper running that bot should service it. |
+| `resources: protocol only` | The protocol allows it, but it needs more than the reference bot attaches. Expect to run a keeper yourself. |
+| `resources: never runs` | More references than one transaction can carry. An upkeep here escrows money it can never spend. |
+
 **If it grades anything other than `NONE` or `servable`, stop and say so.** The
 grades exist because a naive version of this button would return a flat pass on
-a target needing more than six references, which is permanently unexecutable
-once you have escrowed. That was measured, not assumed:
+a target needing more than six references. That was measured, not assumed:
 `scripts/spike_simulate_test_button.py`.
 
 ### 2. Fill in the rest
 
 | Field | Value | Why |
 |---|---|---|
-| INTERVAL (ROUNDS) | `215` | About 10 minutes. Or press the `every 5 min` quick-cadence button. |
+| INTERVAL (ROUNDS) | `215` | About 10 minutes. (The quick-cadence buttons above the field set other values; this walkthrough assumes 215.) |
 | FEE PER EXECUTION | `0.010` | What the console suggests. Keepers spend about 0.003 in group fees, so this leaves them 0.007. The minimum the contract accepts is 0.004, which leaves 0.001 and cannot fund a machine. See below. |
 | FEE CEILING | `0` | Off. Only raise it if an upkeep is actually going unserviced. |
 | FUNDING | `0.03` | Three runs at the suggested fee. |
@@ -155,8 +180,21 @@ panel. Registering ending somewhere you can link to is the point of that route.
 That page should show what it calls, its cadence, its next run, its escrow, its
 runway, and a plain sentence about what happens when the escrow runs out.
 
-Within about ten minutes the half-hourly cron keeper should execute it and
-`RUNS` should become 1.
+Then you wait for a keeper, and this is the part the rest of this page cannot
+promise. Every keeper on this deployment is one of ours, and ours are GitHub
+Actions on a `*/30` cron. GitHub drops scheduled runs when it is busy, so the
+real interval between keeper passes has been observed at over ninety minutes.
+`RUNS` becoming 1 within the hour is normal; two hours is not alarming.
+
+If you would rather not wait on our infrastructure, run a keeper yourself
+against your own upkeep -- it is permissionless, and you get paid the fee:
+
+```bash
+poetry run python -m scripts.keeper_bot --once --network testnet
+```
+
+`fledge run health` prints the whole registry, including how far behind every
+upkeep currently is, which tells you whether it is your upkeep or the keepers.
 
 ## What to tell me afterwards
 
@@ -175,13 +213,9 @@ Whether it worked matters less than these:
 
 ## Cleaning up
 
-```
-Cancel
-```
-
-on the upkeep's page. It refunds the remaining escrow plus the full 0.0621 box
-MBR. Cancelling is creator-only, and the refund goes to the account that
-registered.
+On the upkeep's page at `/u/<id>`, press the **Cancel** button and approve in
+your wallet. It refunds the remaining escrow plus the full 0.0621 box MBR.
+Cancelling is creator-only, and the refund goes to the account that registered.
 
 Leaving it running is also fine and mildly useful: it is one more upkeep on the
 uptime clock.

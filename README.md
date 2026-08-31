@@ -169,7 +169,7 @@ the files that own them so CI notices before a reader does.
 
 ## Development
 
-Pre-requisites: Python 3.13, [AlgoKit](https://github.com/algorandfoundation/algokit-cli),
+Pre-requisites: Python 3.12 or 3.13, never 3.14, [AlgoKit](https://github.com/algorandfoundation/algokit-cli),
 Poetry, Docker (LocalNet only), and
 [fledge](https://github.com/CorvidLabs/fledge) for the lanes and the deploy
 tasks below. Installing exactly the first four leaves you unable to run any

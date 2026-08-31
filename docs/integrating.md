@@ -540,7 +540,17 @@ fledge lanes run local          # the whole suite, including the worked demos
 ```
 
 Then register against the live TestNet keeper app `769891898` with
-`examples/register_upkeep.py`.
+`examples/register_upkeep.py`. On a clean checkout that example imports names
+from `smart_contracts/artifacts/`, which is generated, so build first:
+
+```bash
+poetry run python -m smart_contracts build
+```
+
+The example is also not usable from outside this repository at all -- it
+imports `KeeperClient`, `BOX_MBR_FIXED`, `MIN_UPKEEP_FEE` and `SKIP_AHEAD` from
+`smart_contracts/`. If you are integrating from another language, skip it and
+read the last section of this page instead.
 
 ## Getting a keeper to test against
 
@@ -559,7 +569,64 @@ with whatever upkeeps are already in its registry. Do not be surprised when a
 keeper bot reports more upkeeps than you created, or executes somebody else's.
 `algokit localnet reset` gives you an empty chain.
 
-The exact ARC-4 signatures, the addresses the two `register` payments go to,
-and the box reference the `register` group must carry are in
-[`arcron.md`](arcron.md#public-api). You cannot build a `register` group
-without all three, and none of them is derivable from this page.
+## Building a `register` group without this repository
+
+Everything above assumes you can import `smart_contracts/`. If you cannot --
+you are writing Go, or TypeScript, or reading this over the GitHub API -- here
+are the facts, stated on this page rather than only in
+[`arcron.md`](arcron.md#public-api). They used to be a pointer, and #218 is
+what a reader who followed the pointer to the *example* instead ended up
+guessing.
+
+**The ARC-4 signature.** Take it verbatim. Do not retype it from the Python.
+
+```
+register(pay,pay,uint64,byte[][],uint64,uint64,uint64,uint64,uint64,uint64)uint64
+```
+
+The third argument is the target app id, and it is the trap:
+`smart_contracts/keeper/contract.py` declares it `target_app: Application`, but
+Puya emits `uint64` for that in the ARC-4 signature. A signature transcribed
+from the source therefore reads `application` and hashes to selector
+`0x7291d904`, while the method the contract actually exposes is `0x3636cfc6`.
+A wrong selector matches no method and the group fails without saying why.
+`smart_contracts/artifacts/keeper/Keeper.arc56.json` is the authority here, not
+the contract source.
+
+**Where the two payments go.** Both to the *application account* of the keeper
+app -- not to its creator. Derive it from the app id rather than pasting it if
+your SDK can; for TestNet `769891898` it is:
+
+```
+M4YFP33L5VIFRF53X53WUMQWBOWSLYQNBSSAJV2SORGF43L36XBY7OREUA
+```
+
+Order matters and is not symmetric: the **first** payment covers the box
+minimum balance, the **second** is the escrow the upkeep spends.
+
+**The box reference.** The group has to carry the box it is about to create,
+and `register` assigns the id, so you must predict it. Read the app's global
+`next_upkeep_id` and reference:
+
+```
+b"u" + itob(next_upkeep_id)     # itob is 8-byte big-endian; the name is 9 bytes
+```
+
+If somebody registers between your read and your submit, that reference is
+wrong and the group fails. Re-read and resubmit; it is a race, not a bug.
+
+**The box minimum balance** is `58,100 + 400 x len(encoded call_args)` µALGO.
+For the common case of a bare four-byte selector the encoding is ten bytes, so
+the payment is **62,100 µALGO**. `MIN_UPKEEP_FEE` is **4,000 µALGO**, and a
+registration below that floor is rejected outright rather than adjusted up.
+
+**The two policy constants**, which this page names throughout and never
+numbers:
+
+| | |
+|---|---|
+| `CATCH_UP` | `0` |
+| `SKIP_AHEAD` | `1` |
+
+`0` is what an uninitialised field gives you, and it is the more dangerous of
+the two. Pass `1` unless you have read the catch-up section above and mean it.
