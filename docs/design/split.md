@@ -183,6 +183,20 @@ Consequences:
 
 *Original recommendation, which reached the same place on narrower grounds:* one published, wallet-connecting hub per product. The evidence: `rain-stat-tiles.ts`'s own doc comment says "Keeper tiles would lie here: this hub is a different app"; `quarantine.ts:40-48` vouches for exactly one canonical app id per network (the keeper's), so the rain hub gets *no* look-alike protection at the shared address today. Two shells each get a working gate; one shell cannot cleanly guard two ids. `web-keeper/` and `web-govern/` are not hubs -- they are never published and `web-keeper` has no wallet dependency by design. Post-split: arcron owns 3 apps and publishes 1; rain owns 1 and publishes 1.
 
+**D3a — How much of Arcron does a rain user see? (decided 2026-08-31)**
+**None of it.** The owner: rain and arcron are "totally different, and 100% not connected, other than they work together. But from a user perspective, they only need to see and know about rain, not arcron." Rain's page may look nothing like the console.
+
+What that removes from `web/src/app/`, all of it today:
+- `rain-page.ts:81` and `rain-detail-page.ts:281` link to `/u/{upkeepId}`, a route into the developer console. Both go.
+- `rain-detail-page.ts:280` labels a row "Arcron upkeep". Goes.
+- `rain-page.ts:49`'s own comment explains that registering an upkeep is `/register`. Rain's reader is not registering an upkeep.
+
+**What must NOT be removed with it:** `rain.service.ts:526,575-578` reads the keeper's upkeep box, and `rain-detail-page.ts:559-560` combines the rain's own due-ness with `roundsUntilDue(upkeep, round)`. That pair is the only thing separating *"this rain is due"* from *"this rain is due and something is coming to fire it"*, and the difference is not cosmetic: `_try_fire` deliberately leaves `last_rain_round` untouched when a rain cannot pay, so a rain that has run dry is due **forever**. Four of the five rains on hub `770130162` are in that state right now. A page that reads only the rain box would tell all four of them "due now" indefinitely.
+
+So the rule is *hide Arcron from the reader, do not make rain blind to it*. Rain keeps reading the upkeep and says "next drop expected around round N" in its own words, naming no keeper, no upkeep id, and no Arcron. If it ever cannot read the keeper, it must say "waiting" rather than "due" -- the one thing it may not do is promise a drop it has no evidence is coming.
+
+This also settles the dependency edge in section 2: the new repo depends on the keeper registry at runtime, as data, and on Arcron in its documentation. It must not depend on it in its vocabulary.
+
 **D4 — Does `beacon_stub` stay?**
 *Recommendation:* yes, and this overrides the contracts analysis, which proposed moving it. Moving it drops arcron to 5 contracts (or 4 if subscription also went) and contradicts the standing rule. Rewrite `SECURITY.md:86-87` and `docs/arcron.md:715` to say plainly that it is a LocalNet stand-in kept for another repo's documented return path.
 
