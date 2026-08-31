@@ -14,33 +14,34 @@ a scheduled contract call, and any keeper executes it for the fee. By
 (Puya) and AlgoKit.
 
 *ARC and cron: Algorand's standards, and the scheduler everyone already knows.
-The job matters; whoever runs it does not, and nobody owns it.*
+The job matters, and whoever runs it does not.*
 
 **Why this exists:** every serious chain should have a way to say *"call this
 later"* without requiring a server, and Algorand does not have one. There is no
 ARC for scheduled execution and never has been. [`docs/why.md`](docs/why.md)
 makes the case at about a seventh the cost of the cheapest paid host, says
 where it stops being true (above ~10 upkeeps, run your own bot), and states
-plainly what would prove it wrong. [`docs/testnet.md`](docs/testnet.md)
-lists every contract and upkeep actually running.
-
-| Contract | What it is | Status |
-|----------|-----------|--------|
-| [`smart_contracts/keeper`](smart_contracts/keeper/contract.py) | The Arcron network: upkeep scheduling with ALGO escrow and keeper rewards | **Live on TestNet**, app [`769891898`](https://testnet.explorer.perawallet.app/application/769891898) |
-| [`smart_contracts/pulse`](smart_contracts/pulse/contract.py) | Demo upkeep target: a heartbeat counter, with and without arguments | Live on TestNet, app [`769891902`](https://testnet.explorer.perawallet.app/application/769891902) |
-| [`web`](web/) | The console: registry dashboard + keeper controls | Live at [`corvidlabs.xyz/arcron/console/`](https://corvidlabs.xyz/arcron/console/) |
+plainly what would prove it wrong. [`docs/testnet.md`](docs/testnet.md) is what
+is deployed and what the registry is doing, read from the chain rather than
+remembered.
 
 > [!WARNING]
-> **Unaudited, and TestNet only.** No third party has reviewed this contract.
-> A deployment also starts **upgradeable**: until its creator calls `freeze`,
-> they can replace the programs. That cuts both ways. A bug can be fixed in
-> place, and the rules can be changed after you have escrowed funds. Calling
-> `freeze` gives up both, permanently, and `frozen` is global state so anyone
-> can check which of the two a deployment is:
+> **Unaudited, unfrozen, and TestNet only.** No third party has reviewed this
+> contract. There have been five rounds of adversarial review, four of them by
+> language models rather than by people, which is a useful thing and is not an
+> audit; nobody has paid a firm to look at this. The
+> deployment is also still **upgradeable**: `frozen` is `0` today, so its
+> creator can replace the programs under escrow that is already there. That
+> cuts both ways. A bug can be fixed in place, and the rules can be changed
+> after you have committed funds. Calling `freeze` gives up both, permanently,
+> and `frozen` is global state, so anyone can check which of the two any
+> deployment is:
 > ```
 > poetry run python -m scripts.govern status --network testnet --app-id 769891898
 > ```
-> Read [`docs/security.md`](docs/security.md) before escrowing anything: the
+> **What that means if you are thinking of using it:** escrow only what you can
+> afford to lose, on TestNet, and re-read that status before you scale up.
+> Nothing here is a promise yet. [`docs/security.md`](docs/security.md) has the
 > threat model, the accepted risks, and what happens if a bug is found.
 >
 > Apps [`769823086`](https://testnet.explorer.perawallet.app/application/769823086),
@@ -57,6 +58,39 @@ lists every contract and upkeep actually running.
 > ```
 > poetry run python -m scripts.verify_build --network testnet --app-id 769891898
 > ```
+
+## What is in this repository
+
+One product: a keeper registry, the targets and instruments that prove things
+about it, and the tooling to run, verify, govern and document it.
+
+| Contract | What it is | Status |
+|----------|-----------|--------|
+| [`smart_contracts/keeper`](smart_contracts/keeper/contract.py) | The Arcron network: upkeep scheduling with ALGO escrow and keeper rewards | **Live on TestNet**, app [`769891898`](https://testnet.explorer.perawallet.app/application/769891898) |
+| [`smart_contracts/pulse`](smart_contracts/pulse/contract.py) | The demo target: a heartbeat counter that cannot fail, called with and without arguments | Live on TestNet, app [`769891902`](https://testnet.explorer.perawallet.app/application/769891902) |
+| [`smart_contracts/subscription`](smart_contracts/subscription/contract.py) | The teaching example: recurring billing done as pull payment, which is the shape [`docs/integrating.md`](docs/integrating.md) argues for | Never deployed on a public network. Exercised on LocalNet only |
+| [`smart_contracts/resource_probe`](smart_contracts/resource_probe/contract.py) | An instrument: a target that deliberately reaches for an account, an asset and an app nobody handed it, to establish what an argument-free inner call may touch | LocalNet only |
+| [`smart_contracts/sim_probe`](smart_contracts/sim_probe/contract.py) | An instrument: targets that pin where `simulate` stops predicting a real `execute`, which is what the console's Test button rests on | LocalNet only |
+
+Around them:
+
+| | What it is |
+|---|---|
+| [`web/`](web/) | The console: registry dashboard plus keeper controls. Published at [`corvidlabs.xyz/arcron/console/`](https://corvidlabs.xyz/arcron/console/) |
+| [`web-keeper/`](web-keeper/) | A local dashboard for somebody running a keeper. Never published; `tests/test_keeper_ui_stays_local.py` keeps it that way |
+| [`web-govern/`](web-govern/) | A local page for the creator account. Never published: it is the one surface that can reach MainNet |
+| [`js/`](js/) | `@corvidlabs/arcron`: box decoder, ABI, transaction builders, the keeper's view of the board |
+
+**Rain, the first thing built on this, is no longer here.** It moved to
+[CorvidLabs/arcron-rain](https://github.com/CorvidLabs/arcron-rain) on
+2026-08-31 with its contract, spec, tests, bot, client and page. It is still
+the best answer to "what is this for": a hub of scheduled prize draws, woken by
+upkeep 113 on this registry, whose whole schedule is somebody else's problem.
+We wrote it, so it is a dogfood rather than adoption, but it is the largest
+thing that has had to follow [`docs/integrating.md`](docs/integrating.md) all
+the way through. The reasoning for the split, and what it cost this repository,
+is in
+[`docs/design/split.md`](docs/design/split.md).
 
 **Building on it?** [`docs/integrating.md`](docs/integrating.md) is the whole
 integration story in one pass: the hook shape, authorization, the failure
@@ -83,16 +117,20 @@ is that missing piece.
 3. **Top up / cancel.** Anyone can add funding; only the creator can cancel,
    reclaiming the remaining escrow plus the box MBR the deletion releases.
 
-Ownerless, no protocol rake, no token required. Escrow is plain ALGO, so any
-group can use it. Upkeep records are `arc4.Struct`s in boxes, so reading the
-registry is a free algod query.
+Permissionless, no protocol rake, no token required. Escrow is plain ALGO, so
+any group can use it. Upkeep records are `arc4.Struct`s in boxes, so reading
+the registry is a free algod query. **Not ownerless yet**: the creator can
+`update` and `freeze`, and this deployment's `frozen` is `0`, so it becomes
+ownerless when `freeze` is called and not before. See the warning above.
 
 **Constraints (v1):** registered calls are NoOp app calls carrying up to three
 app args, counting the selector, which is enough for an ARC-4 method of arity
 two. The zero-argument "tick/settle/harvest" hook is still the common shape.
 An upkeep declares no foreign arrays, and does not need to: a keeper that
 simulates before executing discovers what the inner call touches and attaches
-the references. The Python bot does this by simulating the call and naming the references itself, because algokit-utils' default populator caps at four, and
+the references. The Python bot does this by simulating the call and naming the
+references itself, because algokit-utils' default populator caps at four
+*account* references per transaction and refuses a fifth, and
 the TypeScript client (`js/src/keeper-txns.ts`, which the console also
 imports) does it too, so an upkeep whose target reaches an account, asset or
 app beyond the target itself is servable from either.
@@ -118,13 +156,22 @@ Funding depth and keeper liveness are separate concerns. 100 ALGO at the
 4,000 µALGO minimum is ~25,000 executions, so escrow is rarely the binding
 constraint. A well-funded upkeep with nobody watching still does not run.
 
-Missed executions are not lost. Scheduling advances from the *scheduled* round,
-so an upkeep left unattended stays due and catches up one interval per
-execution rather than skipping its history.
+**What happens to missed executions is the upkeep's own choice, made at
+registration.** Under `CATCH_UP` (policy 0) scheduling advances from the
+*scheduled* round, so an upkeep left unattended stays due and replays one
+interval per execution rather than skipping its history — which also means an
+outage can spend the whole escrow on replays nobody wanted. Under `SKIP_AHEAD`
+(policy 1) the contract snaps to the first slot strictly in the future, keeping
+the schedule's phase and dropping the backlog. Most of the live registry is
+`SKIP_AHEAD`: 31 of the 33 upkeeps at round 66,860,306, with only 19 and 116 on
+`CATCH_UP`. Pick deliberately; it cannot be changed afterwards.
 
-Cadences are counted in rounds, not wall-clock time (~2.8 s per round, and it
-drifts), so "daily" means "every ~30,857 rounds" and slides slowly against the
-calendar.
+Cadences are counted in rounds, not wall-clock time, so "daily" means "every
+~30,857 rounds" and slides against the calendar. TestNet measured 2.695 s a
+round over 1,000,000 rounds on 2026-08-28, against the nominal 2.8, so an
+"hourly" upkeep there fires about 2.2 minutes early every hour — roughly
+**27 hours a month**. [`docs/arcron.md`](docs/arcron.md) has the table and the
+MainNet figure, which is smaller.
 
 ### What Arcron can and cannot do
 
@@ -147,11 +194,73 @@ and settlement reads the stored value. Arcron does not supply the data. It
 supplies the guarantee that settlement cannot be stalled, delayed or
 selectively timed by an interested party.
 
-**Proven end-to-end on TestNet**: upkeeps registered against `Pulse.tick`
-(both by the e2e script and the `examples/` flow) have been executed by
-permissionless callers at their due rounds, with `Pulse.beats` incremented by
-every execution (rounds 66610411, 66611741, 66625540+, all verifiable on the
-explorer). Full reference: [`docs/arcron.md`](docs/arcron.md).
+## What is proven, and what is not
+
+The registry has evidence. Some of the things around it do not, and the two
+are worth keeping apart.
+
+**The keeper registry has been used, and almost all of the use is still our
+own.** Read from the chain on 2026-08-31, at round 66,860,306:
+
+- **33 live upkeeps**, registered by **seven distinct addresses**. Our deployer
+  registered 7; the other 26 came from six addresses that are not it.
+- **That is not 26 outside upkeeps.** Five of those six addresses were funded
+  by a single account, and [`docs/testnet.md`](docs/testnet.md) records one of
+  the five (`A3OZPORJ…`) as an agent we dispatched. Treat the five as one
+  operator wearing five costumes: 20 of the 26. Only the sixth address is even
+  a candidate for outside registration.
+- **746 executions** are recorded across those 33 boxes. **Three addresses
+  executed** in the preceding 32,000 rounds (about a day): `NUGVPQGZ…` 215,
+  `GCQL3M7A…` 36, `CEPY52VZRWFL…` 10. **The first two are both ours** — the
+  long-running keeper and the GitHub Actions cron keeper in
+  [`.github/workflows/keeper-bot.yml`](.github/workflows/keeper-bot.yml). All
+  time, `GCQL3M7A…` is the largest keeper this registry has had: 592 of 1,011
+  executions ever sent, against `NUGVPQGZ…`'s 345.
+- That leaves `CEPY52VZRWFL…`, the one entry worth watching. It was funded once
+  by the public TestNet dispenser and by nothing else, it deployed its own
+  target apps, it registered upkeeps 110, 111, 112, 114, 115 and 116 at four
+  different cadences, and it runs its own keeper. **That fingerprint is not
+  proof of a stranger**: `docs/testnet.md` describes an agent we ran with the
+  same one — dispenser-funded, own target, registered against it. The part that
+  does distinguish it is that it took no top-up from the account that funded
+  the other five, and that it keeps as well as registers. We are not claiming
+  it until it is attributed.
+- Reproducing it: `poetry run python -m scripts.verify_build --network testnet --app-id 769891898`
+  proves the deployed programs are this source, byte for byte. `fledge run
+  health` prints the per-upkeep and per-keeper lines — runs, net-to-keeper,
+  runway, keeper solvency — but **not** the creator attribution above, which
+  has no column in it; that came from decoding all 33 boxes with
+  `scripts.keeper_bot._decode_upkeep` and querying the indexer. `health` also
+  reads those 33 boxes back to back, which the public TestNet endpoint will
+  rate-limit into an HTTP 403; re-run it, or point `ALGOD_SERVER` at a node you
+  control.
+
+**What that does not prove.** Nobody has escrowed anything but test ALGO. No
+third party has audited the contract, and the creator can still replace its
+programs. Usability is the least tested thing here: every interaction the
+system has had was with someone who already knew how it worked, which is why
+[`START-HERE.md`](START-HERE.md) asks for the moment you had to guess.
+
+**`subscription` has no such evidence, and the shape of its tests hides
+exactly that.** It is a teaching example, and it is honest about being one:
+
+- It has **never been deployed on TestNet or MainNet**. It has no
+  `deploy_config.py`, so nothing in this repository's build or deploy path can
+  put it on a public network at all.
+- Its unit tests run against `algorand-python-testing` mocks, which **record
+  inner transactions without executing them and do not enforce minimum
+  balances** — which is to say, they cannot see the two failures a
+  pull-payment contract is most likely to have: a payout that does not go out,
+  and an account that cannot afford to hold what it was sent.
+- What it does have is one real-chain run: `fledge run smoke-subscription`
+  deploys it on LocalNet, has a keeper advance its billing period, settles,
+  claims and withdraws with real inner payments and real MBR. That is in
+  `[lanes.local]`, so it runs when a person runs the local lane. **CI's
+  LocalNet job does not run it** — that job's task list is hand-written and
+  names only `build` and `smoke-keeper`.
+
+So: copy the pattern, read the docstring, and prove your own version on a
+chain. Do not treat it as code that has been shown to work where money is.
 
 **Prior art.** Somebody built a permissionless keeper network on Algorand
 before this one, on an Algorand Foundation grant, and it is dead:
@@ -184,15 +293,19 @@ you). This surprises everyone once.
 ```bash
 poetry install
 
-fledge lanes run ci         # contracts + console: build, tests, spec check
-fledge lanes run local      # ci + the LocalNet end-to-end test
-fledge lanes run endurance  # local + a soak: many consecutive executions, no drift
+fledge lanes run ci         # contracts + all three consoles: build, tests, spec check, rendered-page audit
+fledge lanes run local      # ci, plus everything that needs a real chain
+fledge lanes run endurance  # build, tests, spec, e2e, then a soak and a populated-registry scenario
 ```
 
 `fledge lanes run local` needs LocalNet up (`algokit localnet start`) and no
-secrets. LocalNet accounts come from KMD, funded by its dispenser.
+secrets. LocalNet accounts come from KMD, funded by its dispenser. It adds
+seven chain steps to `ci`: the keeper end-to-end, the subscription demo,
+governance, multisig, a real clawback, every recorded attack, and the reference
+boundary. `endurance` is not a superset of `local` — it is the short build-and-
+test set plus `soak` and `scenario`.
 
-Individual tasks (also in `fledge.toml`):
+Individual tasks (all of these are in `fledge.toml`):
 
 ```bash
 poetry run python -m smart_contracts build   # Puya compile + typed clients
@@ -216,7 +329,10 @@ fledge run keeper-ui       # a local dashboard, on localhost:4300
 and whether the keepers can still afford to run. It also simulates the overdue
 ones and says *why* they are overdue, because an upkeep out of escrow and an
 upkeep whose target reverts read identically otherwise and only one of them is
-a funding problem. `clock` measures the MainNet hold from the application's
+a funding problem. It reads one box per upkeep with no pacing, so against the
+public TestNet endpoint it can be rate-limited into an HTTP 403 part way
+through; re-run it, or point `ALGOD_SERVER` at a node you control.
+`clock` measures the MainNet hold from the application's
 creation round, and refuses to count once the local build stops matching what
 is deployed, because time served by code that is about to be replaced is not
 evidence about the code replacing it.
@@ -260,10 +376,17 @@ due upkeep, cancel your own. Signing goes through
 [use-wallet](https://github.com/TxnLab/use-wallet): Pera, Defly, Lute, Exodus
 and Kibisis, plus KMD on LocalNet so a browser can sign with nothing
 installed. Amounts read in ALGO and cadences read as time
-("every 1,286 rounds · ~1 h"). Built on the
-the CorvidLabs design system, which is a private repository and vendored
+("1,286 rounds · ~1 h"). Built on the
+CorvidLabs design system, which is a private repository and vendored
 here under `web/public/brand/`;
 see [`web/README.md`](web/README.md).
+
+A CSS change is not reviewed until `fledge run web-render` has run. It builds
+the console, serves it, and audits the *rendered* page at four widths in both
+themes: overflow, WCAG contrast on computed style in every control state, text
+size, touch targets, clipping, overlap. What is knowingly unfixed is recorded
+in [`web/e2e/baseline.json`](web/e2e/baseline.json) with the reason each entry
+stands. Run `fledge run web-render-install` once per machine first.
 
 ### Publishing the console
 
@@ -295,7 +418,8 @@ the domain root.
 The unit tests run against `algorand-python-testing` mocks, which record inner
 transactions without executing them and don't enforce minimum balances.
 `scripts/keeper_e2e.py` covers what only a real AVM can show, and it is the
-same script that runs against TestNet with `--network testnet`:
+same script that runs against TestNet with `--network testnet`. It is
+twenty numbered stages, plus a 14b; the ones worth naming:
 
 1. deploy Keeper and Pulse, register an upkeep against `Pulse.tick`
 2. reject an execution before the due round
@@ -312,8 +436,14 @@ same script that runs against TestNet with `--network testnet`:
 8. register at every cadence a real user would pick (30 seconds, 5 minutes,
    1 hour, 1 day) and check the schedule, the funded-runs maths and the
    not-due rejection at each
-9. leave an upkeep unattended for three whole intervals and confirm it catches
-   up one interval per execution instead of skipping its history
+9. leave an upkeep unattended for three whole intervals and confirm a
+   `CATCH_UP` one replays a single interval per execution instead of skipping
+   its history, and that a `SKIP_AHEAD` one drops the backlog and keeps its
+   phase
+10. measure what a *losing* keeper pays in a race, and confirm it can tell a
+    lost race from a broken target
+11. escalate a neglected upkeep's fee once, and confirm one escrow can never
+    pay for another
 
 Sustained operation is a separate test, because a single correct execution
 says nothing about the hundredth:
@@ -324,8 +454,10 @@ poetry run python -m scripts.keeper_soak --network localnet --minutes 3
 
 It executes the same upkeep over and over, asserting after every run that the
 schedule advanced by exactly one interval, the escrow fell by exactly one fee,
-and the app account can still pay out everything it holds. A 2-minute run
-does ~170 consecutive executions.
+and the app account can still pay out everything it holds. How many executions
+a 2-minute run manages depends on how fast the machine drives LocalNet — 141 on
+the one this was last measured on, 2026-08-31. The assertion is that none of
+them drifted, not the count.
 
 Every script picks its chain with `--network localnet|testnet` (or
 `ARCRON_NETWORK`), loads the matching `.env.<network>`, and then verifies the
@@ -337,23 +469,38 @@ run at TestNet.
 ```
 smart_contracts/
   keeper/            # the keeper network (contract.py, deploy_config.py)
-  pulse/             # demo target
+  pulse/             # the demo target: a heartbeat counter
+  subscription/      # the teaching example: pull-payment recurring billing
+  resource_probe/    # instrument: what an argument-free inner call may touch
+  sim_probe/         # instrument: where simulate stops predicting execute
   artifacts/         # compiled TEAL, ARC-56 specs, typed clients (generated)
 tests/               # unit tests (algorand-python-testing mocks + bot decoder vectors)
-specs/               # spec-sync specs (keeper, pulse), strict mode
-web/                 # the console (Angular + Bun + algosdk, CorvidLabs design system)
+specs/               # spec-sync specs, one per contract, strict mode
+js/                  # @corvidlabs/arcron: box decoder, ABI, transaction builders
+web/                 # the console, the one page that is published
+web-keeper/          # local keeper dashboard (localhost:4300, never published)
+web-govern/          # local governance page (never published; can reach MainNet)
 docs/
   arcron.md          # hand-off reference: API, box encoding, economics, operations
+  integrating.md     # how to point Arcron at a contract you wrote
+  security.md        # threat model, accepted risks, what happens if a bug is found
+  design/split.md    # why rain left, and what this repository lost with it
+  book/              # the Working Guide: all of docs/ in one ordered read
 examples/
   register_upkeep.py # minimal: register an upkeep on the TestNet keeper app
+  minimal_target.py  # the smallest contract Arcron can usefully call
+  subscription.md    # the pull-payment example, walked through
   README.md          # the two integration paths (automate your app / earn fees)
 scripts/
   keeper_e2e.py           # full e2e on LocalNet or TestNet: deploy, register, execute, verify
   keeper_soak.py          # sustained operation: many runs, no drift
   keeper_bot.py           # permissionless keeper bot: scans boxes, executes due upkeeps
+  attacks.py              # every attack any review found, each refused by its own guard
+  registry_health.py      # what is wrong with the live registry right now
+  govern.py               # status / update / freeze, for the creator account
+  verify_build.py         # does a deployment run this source, byte for byte
   network.py              # --network selection, genesis check, dev-mode round advance
-  keeper_testnet_demo.py  # alias for `keeper_e2e --network testnet`
-fledge.toml          # fledge lanes (ci, local)
+fledge.toml          # tasks, and the ci / local / endurance lanes
 .specsync/           # spec-sync config
 AGENTS.md / CLAUDE.md # agent guidance (keep in sync)
 ```
@@ -388,10 +535,53 @@ deployment is in, and anyone can check it.
 
 ## Running a keeper
 
-Anyone can. It is a plain process that watches rounds and calls `execute`,
-and it earns the fees it collects. [`docs/hosting.md`](docs/hosting.md)
-compares the options with real costs; the short version is that if you
-already run a server, put it there:
+Anyone can, and it is the most useful thing you can do here. The bot is a
+plain process that watches rounds and calls `execute`, and it earns the fees
+it collects. It signs as `KEEPER_MNEMONIC` if set, else `DEPLOYER_MNEMONIC`.
+That is the account fees are paid to, and it pays the ~1,000 µALGO outer txn
+fee per execution.
+
+```bash
+poetry run python -m scripts.keeper_bot --once   # single scan (cron-friendly)
+poetry run python -m scripts.keeper_bot          # loop block-by-block
+poetry run python -m scripts.keeper_bot --once --network localnet --app-id $APP
+```
+
+`--app-id` (or `KEEPER_APP_ID`) is required: there is no canonical Arcron
+deployment to default to. An upkeep that fails to execute backs off exponentially,
+and that state survives restarts, so a cron-driven `--once` bot does not
+re-attempt a doomed upkeep on every run. Failing costs nothing (Algorand
+rejects it before it reaches a block), so the schedule is gentle, capped at
+about an hour, and losing a race to another keeper never backs off at all.
+`--retry-now <id>` clears one upkeep's backoff once you have fixed its target.
+`--check` reports registry health and exits, signing nothing and executing
+nothing.
+
+Note what a long-missed upkeep does depends on its policy. A `CATCH_UP` upkeep
+schedules from the *scheduled* round, so it stays due until it has replayed one
+execution per missed interval — a keeper coming back after an outage will find
+a burst of them, and the escrow pays for every one. A `SKIP_AHEAD` upkeep is
+due exactly once, then jumps to the next future slot. 31 of the 33 live
+upkeeps are `SKIP_AHEAD`.
+
+### Keeping it up
+
+The bot is meant to run continuously, and there are three ways to do it:
+
+| | For |
+|---|---|
+| `fledge run keeper-daemon-install` | macOS: generates and boots a launchd agent, since systemd is not an option on a Mac host |
+| `deploy/keeper-bot.service` | Linux: a systemd unit |
+| `deploy/Dockerfile` + `deploy/compose.yaml` | a container, anywhere |
+
+All three read the same environment: `KEEPER_MNEMONIC`, `KEEPER_APP_ID` and an
+algod endpoint. Keep the mnemonic in a `chmod 600` file the unit points at
+rather than inline. A launchd plist under `LaunchAgents` is world-readable,
+which is why the macOS path generates the plist rather than shipping one: it
+writes no secret into it, and it refuses to install until the earnings have
+somewhere to go. [`docs/hosting.md`](docs/hosting.md) compares the options with
+real costs; the short version is that if you already run a server, put it
+there:
 
 ```bash
 ./deploy/vps/package.sh
@@ -400,6 +590,27 @@ ssh <user>@<host> 'sudo mkdir -p /tmp/arcron-install \
     && sudo tar -xzf /tmp/arcron-keeper.tar.gz -C /tmp/arcron-install \
     && sudo bash /tmp/arcron-install/deploy/vps/install.sh'
 ```
+
+`KEEPER_MAX_OUTER_FEE` raises the ceiling on the outer fee the keeper will
+sign, which defaults to 10,000 microAlgos and exists to refuse a node quoting
+an absurd one. A post-quantum keeper would need it if Algorand ever prices
+bytes; see [`docs/hosting.md`](docs/hosting.md). Anything that is not a
+positive integer falls back to the default, so neither a typo nor a zero can
+switch the guard off.
+
+A keeper is close to self-sustaining: it spends 0.003 ALGO of transaction fees
+per execution and collects at least 0.004, so it needs a starting balance
+rather than a budget. It refuses to start below 0.103 ALGO and warns below 0.4.
+
+### Hard-won TestNet notes (already handled in code)
+
+- **App account MBR**: the keeper app account escrows ALGO and holds box MBR,
+  so it must be funded the base 0.1 ALGO account MBR first. `deploy_config`
+  does this idempotently.
+- **Suggested-params cache**: public TestNet endpoints are slow enough that
+  algokit-utils' cached suggested params can expire before simulate/broadcast.
+  Deploy configs disable the cache (`set_suggested_params_cache_timeout(0)`)
+  and the e2e pins explicit validity rounds.
 
 ## Release stages
 
@@ -420,76 +631,13 @@ are deliberately specific: a struct change means a new app id whether or not
 the programs can still be replaced, so a stage whose clock can be argued down
 is not a gate.
 
-## Running a keeper bot
-
-The bot services the live keeper app: it scans the upkeep boxes every round
-and calls `execute` on anything due and funded, collecting the fees. It signs
-as `KEEPER_MNEMONIC` if set, else `DEPLOYER_MNEMONIC`. That is the account
-fees are paid to, and it pays the ~1,000 µALGO outer txn fee per execution.
-
-```bash
-poetry run python -m scripts.keeper_bot --once   # single scan (cron-friendly)
-poetry run python -m scripts.keeper_bot          # loop block-by-block
-poetry run python -m scripts.keeper_bot --once --network localnet --app-id $APP
-```
-
-`--app-id` (or `KEEPER_APP_ID`) is required: there is no canonical Arcron
-deployment to default to. An upkeep that fails to execute backs off exponentially,
-and that state survives restarts, so a cron-driven `--once` bot does not
-re-attempt a doomed upkeep on every run. Failing costs nothing (Algorand
-rejects it before it reaches a block), so the schedule is gentle, capped at
-about an hour, and losing a race to another keeper never backs off at all.
-`--retry-now <id>` clears one upkeep's backoff once you have fixed its target.
-
-Note the contract schedules from the *scheduled* round, so an upkeep that was
-missed for many intervals stays due until it has caught up one execution per
-interval.
-
-### Hard-won TestNet notes (already handled in code)
-
-- **App account MBR**: the keeper app account escrows ALGO and holds box MBR,
-  so it must be funded the base 0.1 ALGO account MBR first. `deploy_config`
-  does this idempotently.
-- **Suggested-params cache**: public TestNet endpoints are slow enough that
-  algokit-utils' cached suggested params can expire before simulate/broadcast.
-  Deploy configs disable the cache (`set_suggested_params_cache_timeout(0)`)
-  and the e2e pins explicit validity rounds.
-
-## Running a keeper
-
-The bot is meant to run continuously, and there are three ways to do it:
-
-| | For |
-|---|---|
-| `fledge run keeper-daemon-install` | macOS: generates and boots a launchd agent, since systemd is not an option on a Mac host |
-| `deploy/keeper-bot.service` | Linux: a systemd unit |
-| `deploy/Dockerfile` + `compose.yaml` | a container, anywhere |
-
-All three read the same environment: `KEEPER_MNEMONIC`, `KEEPER_APP_ID` and an
-algod endpoint. Keep the mnemonic in a `chmod 600` file the unit points at
-rather than inline. A launchd plist under `LaunchAgents` is world-readable,
-which is why the macOS path generates the plist rather than shipping one: it
-writes no secret into it, and it refuses to install until the earnings have
-somewhere to go. See [`docs/hosting.md`](docs/hosting.md).
-
-`KEEPER_MAX_OUTER_FEE` raises the ceiling on the outer fee the keeper will
-sign, which defaults to 10,000 microAlgos and exists to refuse a node quoting
-an absurd one. A post-quantum keeper would need it if Algorand ever prices
-bytes; see [`docs/hosting.md`](docs/hosting.md). Anything that is not a
-positive integer falls back to the default, so neither a typo nor a zero can
-switch the guard off.
-
-A keeper is close to self-sustaining: it spends 0.003 ALGO of transaction fees
-per execution and collects at least 0.004, so it needs a starting balance
-rather than a budget. It refuses to start below 0.103 ALGO and warns below 0.4.
-
 ## Spec-driven development
 
 This repo is managed with [spec-sync](https://github.com/CorvidLabs/spec-sync)
-(strict) and [fledge](https://github.com/CorvidLabs/fledge) lanes. Every
-contract has a spec under `specs/` covering requirements, module contract,
-invariants, error cases and testing. `specsync check --strict` runs in the
-`ci` lane and fails if code drifts from the documented public API.
+(strict) and [fledge](https://github.com/CorvidLabs/fledge) lanes. Each of the
+five contracts has a spec under `specs/` covering requirements, module
+contract, invariants, error cases and testing. `specsync check --strict` runs
+in the `ci` lane and fails if code drifts from the documented public API.
 
 ## Roadmap
 
@@ -497,11 +645,14 @@ invariants, error cases and testing. `specsync check --strict` runs in the
 - [x] ASA-denominated upkeep fees, a capability rather than a commitment: escrow and fees stay ALGO by default, and CORVID (mainnet ASA [`3225439167`](https://explorer.perawallet.app/asset/3225439167)) is not wired in
 - [x] End-to-end verification on LocalNet (`fledge lanes run local`), which found and fixed an 800 µALGO box-MBR undercharge
 - [x] Redeploy TestNet with the box-MBR fix: app [`769802474`](https://testnet.explorer.perawallet.app/application/769802474), e2e-verified on-chain
-- [x] Redeploy for the 1.0 contract, now **alpha-3** on app [`769891898`](https://testnet.explorer.perawallet.app/application/769891898), all 20 e2e stages green on-chain
+- [x] Redeploy for the 1.0 contract, now **alpha-3** on app [`769891898`](https://testnet.explorer.perawallet.app/application/769891898), all e2e stages green on-chain
 - [x] Web front end: registry dashboard + keeper console in `web/`
 - [x] Wallet signing (Pera, Defly, Lute, Exodus, Kibisis; KMD on LocalNet)
-- [x] Multi-arg call shapes, up to three ARC-4 arguments per upkeep
+- [x] Multi-arg call shapes: three app args counting the selector, so up to **two** ARC-4 arguments per upkeep (`MAX_CALL_ARGS = 3`), or any arity at all if the target takes a single struct
 - [x] Release stages, with the gate that ends each one ([`docs/releases.md`](docs/releases.md))
+- [x] Something real built on it, in its own repository: [CorvidLabs/arcron-rain](https://github.com/CorvidLabs/arcron-rain)
+- [ ] An upkeep registered by somebody who is not us, for something they actually wanted scheduled
+- [ ] A keeper we can attribute to somebody else
 
 ## Contributing
 
