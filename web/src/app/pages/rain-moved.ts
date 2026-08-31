@@ -112,8 +112,8 @@ export class RainCreateMoved {
       <p>
         Rain now lives at its own address, on a new hub. The rain this link
         named was number <strong>{{ id }}</strong> on the hub this console
-        served, and numbers do not carry across: pick the rain by name from the
-        list. If this page does not forward on its own, follow the link.
+        served. Numbers do not carry across, so pick the rain by name rather
+        than by number.
       </p>
       <p><a [href]="destination">{{ destination }}</a></p>
     </section>
@@ -140,10 +140,14 @@ export class RainDetailMoved {
    * number — the silently-wrong-page failure this file was written to stop,
    * one hop further along. The number stays in the copy above so they can find
    * the counterpart themselves.
+   *
+   * **And this is the one stub that does not leave on its own.** It carried a
+   * `leave()` for a day, which made the paragraph above dead code: any browser
+   * running JavaScript replaced the location before painting, so the id the
+   * component exists to show was shown to nobody, and a shared `/rain/3`
+   * dropped its visitor on a list with no hint which draw they had been sent.
+   * `/rain` and `/rain/new` still bounce, because neither names anything a
+   * redirect could lose. This one has something to say first.
    */
   protected readonly destination = RAIN;
-
-  constructor() {
-    leave(this.destination);
-  }
 }
