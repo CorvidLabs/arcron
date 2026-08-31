@@ -10,8 +10,11 @@
 # which authorises publishing to every repository the author can reach and
 # lives in a dotfile until somebody revokes it. `GITHUB_TOKEN` in this job is
 # scoped to this repository, expires when the job ends, and cannot be copied
-# out of it. The first publish still has to be done by hand, because the
-# package does not exist yet and has nothing to inherit permissions from.
+# out of it. This was drafted saying the first publish had to be done by hand,
+# because the package did not exist yet and had nothing to inherit permissions
+# from. That turned out to be false: run 33353379037 created
+# @corvidlabs/arcron@1.0.0-alpha.3 from scratch with GITHUB_TOKEN alone. No
+# personal access token was needed at any point, and none should be.
 #
 # A version is permanent. GitHub Packages refuses a second PUT of a version
 # that already exists, and a deleted version cannot be reissued under the same
