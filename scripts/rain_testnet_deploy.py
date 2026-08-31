@@ -5,11 +5,12 @@ rain gated to the TestNet Corvid minter, and registers one Arcron upkeep on
 `draw()uint64` at an hourly cadence (each rain still enforces its own
 interval). Idempotent: already-done steps are skipped.
 
-Run:  poetry run python -m scripts.rain_testnet_deploy --network testnet
+Run:  poetry run python -m scripts.rain_testnet_deploy --network testnet --keeper-app-id 769891898
 """
 
 import argparse
 import logging
+import os
 
 import algokit_utils
 
@@ -31,7 +32,6 @@ logger = logging.getLogger(__name__)
 
 CORVID_TESTNET_MINTER = "WGSHC4TYKYBS6EX5V5E377BQDLKWIIPBCFOLZQZIXCKHFIEKRPBFOMW25A"
 DRAW_SIGNATURE = "draw()uint64"
-KEEPER_APP_ID = 769891898
 DAILY_ROUNDS = 30_857
 HOURLY_ROUNDS = 1_286
 DRIP_MICROALGO = 50_000
@@ -55,16 +55,44 @@ def _payment(algorand, sender: str, receiver: str, amount: int):
     )
 
 
+def resolve_keeper_app_id(
+    parser: argparse.ArgumentParser, keeper_app_id: int | None, network: str
+) -> int:
+    """The keeper to register the draw upkeep on: --keeper-app-id, else ARCRON_KEEPER_APP_ID.
+
+    Deliberately no default, matching keeper_bot.resolve_app_id: a hardcoded
+    id silently breaks on LocalNet, and once this script lives in arcron-rain
+    the constant would sit in a second repository that cannot correctly
+    change it.
+    """
+    if keeper_app_id is not None:
+        return keeper_app_id
+    from_env = os.environ.get("ARCRON_KEEPER_APP_ID")
+    if from_env:
+        return int(from_env)
+    parser.error(
+        f"--keeper-app-id (or ARCRON_KEEPER_APP_ID) is required on {network}: "
+        "there is no canonical Arcron deployment to default to"
+    )
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     net.add_network_argument(parser)
     parser.add_argument("--app-id", type=int, default=None, help="wrap an existing hub")
+    parser.add_argument(
+        "--keeper-app-id",
+        type=int,
+        default=None,
+        help="Arcron keeper app id (default: ARCRON_KEEPER_APP_ID)",
+    )
     args = parser.parse_args(argv)
 
     algorand = net.connect(args.network)
     deployer = algorand.account.from_environment("DEPLOYER")
+    keeper_app_id = resolve_keeper_app_id(parser, args.keeper_app_id, args.network)
 
     logger.info("── Hub ──")
     rain: RainClient = deploy_rain(args.app_id)
@@ -122,7 +150,7 @@ def main(argv: list[str] | None = None) -> None:
     logger.info("── Upkeep ──")
     keeper = KeeperClient(
         algorand=algorand,
-        app_id=KEEPER_APP_ID,
+        app_id=keeper_app_id,
         default_sender=deployer.address,
         default_signer=deployer.signer,
     )
