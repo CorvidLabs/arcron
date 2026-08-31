@@ -101,8 +101,21 @@ class Backoff:
     def __init__(self, path: Path | None = None) -> None:
         self.path = path
         self.entries: dict[int, Entry] = {}
+        #: Unix time of the last successful sweep, or None if there has never
+        #: been one. It lives here because this is the bot's only durable
+        #: per-(network, app) state, and a sweep period measured from process
+        #: start is not a period: launchd restarts the keeper on every crash
+        #: and every login, and `time.monotonic` does not advance while a
+        #: laptop sleeps. Either resets the clock, so "every 86400s" quietly
+        #: becomes "every 86400 seconds of awake, uninterrupted uptime".
+        self.last_sweep: float | None = None
         if path is not None and path.exists():
             self._load()
+
+    def record_sweep(self, when: float) -> None:
+        """Remember a sweep across restarts."""
+        self.last_sweep = when
+        self.save()
 
     # -- queries ---------------------------------------------------------
     def blocked(self, upkeep_id: int, current_round: int) -> bool:
@@ -182,6 +195,7 @@ class Backoff:
         payload = {
             "version": 1,
             "entries": {str(k): asdict(v) for k, v in self.entries.items()},
+            "last_sweep": self.last_sweep,
         }
         # Write-then-rename so a killed bot cannot leave a half-written file.
         temporary = self.path.with_suffix(".tmp")
@@ -194,7 +208,10 @@ class Backoff:
             payload = json.loads(self.path.read_text())
             for key, value in payload.get("entries", {}).items():
                 self.entries[int(key)] = Entry(**value)
+            recorded = payload.get("last_sweep")
+            self.last_sweep = float(recorded) if recorded is not None else None
         except Exception as exc:
             # Corrupt state must never stop a keeper from working.
             logger.warning(f"Ignoring unreadable backoff state {self.path}: {exc}")
             self.entries.clear()
+            self.last_sweep = None

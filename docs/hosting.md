@@ -60,7 +60,11 @@ rather than a failure every half hour that everyone learns to ignore.
 
 **It does not run half-hourly.** That is not a caveat about load, it is the
 normal behaviour, and it was measured on 2026-08-29 across two independent
-workflows in this repository, both scheduled `*/30`:
+workflows in this repository, both scheduled `*/30`. Six more days have not
+improved it: scheduled runs delivered per day since then were 4, 16, 3, 2, 6
+and 5, against 48 asked for. Option D turns the same bot into a launchd agent
+that watches every block, and is the answer if this is the only thing keeping
+your upkeeps overdue.
 
 | Workflow | Runs | Window | Expected | Delivered | Mean gap |
 |---|---|---|---|---|---|
@@ -209,10 +213,73 @@ running: the barrier works between a workflow and a VPS just as well.
 Render or a $4 Hetzner box all work. Worth it only if you would rather not put
 this on a server that does something else.
 
-### D. A laptop
+### D. A laptop, under launchd
 
-`deploy/com.corvidlabs.arcron-keeper.plist` for launchd. Free, and fine for
-development. It sleeps, it travels, and a 30-day uptime record will notice.
+```bash
+fledge run keeper-daemon-install -- --sweep-to <your wallet> \
+    --sweep-above 2000000 --sweep-every 86400
+fledge run keeper-daemon-status
+tail -f ~/Library/Logs/arcron/keeper-testnet.log
+```
+
+Both triggers, deliberately: the threshold moves a large balance out of a hot
+key promptly, and the period catches slow accumulation. Either alone is valid.
+
+`scripts/keeper_daemon.py` generates the plist, writes it to
+`~/Library/LaunchAgents`, and boots it. There is no template to hand-edit:
+paths that were `CHANGEME` in a checked-in plist are the reason a keeper
+starts once, fails on the third path, and is discovered a week later.
+
+It will not install until you have either named a wallet for the earnings or
+passed `--no-sweep`. The bot signs from the account it earns into, and this is
+the first thing in the repository meant to run unattended for weeks; leaving
+the surplus in a hot key should be a decision, not a default. Everything else
+about the sweep -- a bad address, the keeper's own address, a destination with
+no trigger -- is checked by calling `keeper_bot._validate_sweep`, the same
+function the bot runs before its first scan, so the agent cannot be installed
+in a state the bot refuses to start in. That matters more here than in a
+terminal: under launchd a refusal is a job restarting once a minute in a log
+nobody is tailing.
+
+**No mnemonic is written to the plist.** `~/Library/LaunchAgents` is
+world-readable. The job runs with the repository as its working directory and
+the bot loads `.env.<network>` itself, so keep that file at `chmod 600` and
+the key never leaves it.
+
+Three choices in the generated plist are deliberate and were wrong in the
+hand-written one it replaces:
+
+| | |
+|---|---|
+| `ProcessType: Standard` | Not `Background`. App Nap throttles Background jobs, and a throttled keeper loses races it would otherwise win. |
+| `KeepAlive: {SuccessfulExit: false}` | The bot returns zero only when signalled, so a clean exit is a deliberate stop and stays stopped. A crash comes back after `ThrottleInterval`, which is 60s so a permanent misconfiguration fails slowly enough to read. |
+| `ExitTimeOut: 30` | launchd SIGTERMs and waits, so the scan in flight finishes instead of dying between signing a group and submitting it. |
+
+Installing also boots out `com.corvidlabs.arcron-keeper`, the label the
+hand-written plist used, if it is still loaded. Two agents signing from one
+key race each other and both pay group fees, and nothing else would say so.
+
+After bootstrapping, the installer waits a few seconds and asks launchd
+whether the job is actually running. `bootstrap` returning zero only means the
+plist was accepted; it says nothing about whether the bot survived argument
+parsing.
+
+**It still sleeps and it still travels.** A laptop is the cheapest way to stop
+depending on GitHub's scheduler and it is not an uptime record; option A or C
+is. What it is good for is exactly what the registry needs today, which is a
+keeper that is present most of the time rather than five times a day.
+
+The log is JSON, one object per line, and the bot emits a `scan` line every
+round -- **about 3 MB a day**. Nothing rotates it. Either point a shipper at
+it or truncate it periodically:
+
+```bash
+: > ~/Library/Logs/arcron/keeper-testnet.log
+```
+
+`fledge run keeper-daemon` runs the same loop in the foreground, for a
+terminal you are watching. `fledge run keeper-daemon-uninstall` stops the
+agent and removes the plist, leaving the log.
 
 ## What the account needs
 
@@ -292,6 +359,17 @@ Either trigger fires on its own: `--sweep-above` when the surplus reaches an
 amount, `--sweep-every` when a period has elapsed and there is anything worth
 sending. Naming a destination with neither is refused, because it would mean
 a sweep that never happens.
+
+**The period is wall time and it survives a restart.** That is worth stating
+because it was twice not true. It first measured from the last sweep and
+passed "unmeasurable" until one had happened, so `--sweep-every` alone could
+never fire at all. The fix for that measured from process start using
+`time.monotonic`, which is the wrong clock on exactly the machine option D
+recommends: launchd restarts the keeper on every crash and every login, and
+monotonic time does not advance while a Mac sleeps, so a daily period needed
+a full day of awake, uninterrupted uptime. It now comes off the same state
+file the bot keeps its backoff in, so sleeping and restarting cost nothing.
+With `--no-state` there is no file and the period restarts with the process.
 
 **The reserve is the part worth understanding.** `--sweep-reserve` is what
 stays behind, and it is floored at `--min-balance` whatever you ask for. A

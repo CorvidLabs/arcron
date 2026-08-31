@@ -75,6 +75,23 @@ topup = "poetry run python -m scripts.keeper_topup --network testnet --app-id 76
 # Would running a keeper here be worth it? Measured from the chain rather than
 # argued from the docs, so alpha task #93 can be decided before it is started.
 keeper-preview = "poetry run python -m scripts.keeper_preview --network testnet --app-id 769891898"
+
+# --- Running a keeper that is actually up ---------------------------------
+# `.github/workflows/keeper-bot.yml` asks for a run every thirty minutes and
+# GitHub delivers about five a day, so upkeeps on an hourly cadence are
+# overdue by arithmetic. These run the same bot under launchd instead, where
+# it watches every block.
+#
+# `keeper-daemon` is the foreground loop, for a terminal you are watching.
+# `keeper-daemon-install` writes ~/Library/LaunchAgents and starts it, and it
+# refuses to do so until you have either named a wallet for the earnings or
+# said --no-sweep: the bot signs from the account it earns into, and this is
+# the first thing here that runs unattended for weeks. No mnemonic is written
+# to the plist; the job reads .env.<network> like everything else.
+keeper-daemon = "poetry run python -m scripts.keeper_bot --network testnet --app-id 769891898"
+keeper-daemon-install = "poetry run python -m scripts.keeper_daemon --network testnet --app-id 769891898 --install"
+keeper-daemon-status = "poetry run python -m scripts.keeper_daemon --network testnet --status"
+keeper-daemon-uninstall = "poetry run python -m scripts.keeper_daemon --network testnet --uninstall"
 # Governance, for the creator account. Local only, never published: it is the
 # one page that can reach MainNet, and it authorizes permanent changes.
 govern-ui = "cd web-govern && bun run ng serve"
