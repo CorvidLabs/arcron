@@ -1,11 +1,11 @@
 {
   "name": "@corvidlabs/arcron",
-  "version": "1.0.0",
+  "version": "1.0.0-alpha.3",
   "description": "Read the Arcron upkeep registry and build its transactions.",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/CorvidLabs/arcron.git",
+    "url": "git+https://github.com/CorvidLabs/arcron.git",
     "directory": "js"
   },
   "type": "module",
@@ -24,10 +24,15 @@
     "./rain-txns": "./src/rain-txns.ts"
   },
   "files": [
-    "src"
+    "src",
+    "LICENSE",
+    "NOTICE"
   ],
   "scripts": {
     "test": "bun test"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
   },
   "peerDependencies": {
     "algosdk": "^3"
