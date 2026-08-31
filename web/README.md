@@ -28,7 +28,7 @@ bunx playwright test               # what the page actually renders
 It opens on **TestNet**, matching `scripts/network.py`. LocalNet is a switch
 in the network picker and needs `algokit localnet start` plus a deployed
 keeper app. Running `poetry run python -m scripts.keeper_e2e --network localnet`
-from the repo root deploys one and prints its id. Rain lives on TestNet only.
+from the repo root deploys one and prints its id.
 
 ## Building it for the site
 
@@ -70,21 +70,33 @@ script's. See [`scripts/publish_console.py`](../scripts/publish_console.py).
 - **On LocalNet**, KMD is offered as a wallet too, so a browser can sign with
   nothing installed. Keys never leave KMD.
 
-## Six destinations
+## Three destinations, and three stubs
 
 | Route | What it is |
 |---|---|
 | `/` | The registry and the keeper board, as two tabs. |
 | `/u/:id` | One upkeep: everything about it, and every action anyone can take on it. |
 | `/register` | The register form. Registering ends on `/u/:id` for the upkeep just created. |
-| `/rain` | The Rain hub. A different app than the keeper; `?app=` still names the keeper. |
-| `/rain/new` | Open a rain. Opening one ends on `/rain/:id`. |
-| `/rain/:id` | One rain: enter, check in, deposit, claim. |
+| `/rain`, `/rain/new`, `/rain/:id` | Where the Rain hub used to be. Each forwards to https://corvidlabs.xyz/rain/. |
 
-`routes.test.ts` asserts the count, because the count is the decision.
-`rain/new` is declared before `rain/:id` so "new" is not an id. A hash-only
-"Open a rain" resolved against `<base href="/">` as `/#create`, which is the
-registry.
+`routes.test.ts` asserts the list, because the list is the decision.
+
+Rain was three routes here until it moved to its own repository and its own
+address: its reader holds an NFT and wants to know whether they are in and what
+they are owed, which is the opposite of what this console shows a developer.
+The paths stay because a console that spreads by shared links cannot let old
+links rot — with the index.html fallback below, a deleted `/rain/3` would
+render the registry rather than 404, silently showing the wrong page. They are
+retired once the announced 30-day window closes, and `rain/new` stays declared
+before `rain/:id` until then so "new" is not read as an id.
+
+`/rain/:id` forwards to the rain list and shows the old id rather than
+forwarding to it. It did carry the id across, which was right while one hub
+sat behind both addresses; rain has since redeployed off the immutable
+`770130162` onto a new hub, and a rain's id is its box id on one particular
+hub, so the number names a different draw over there or none at all. Handing a
+visitor a plausible wrong rain is the same failure these stubs exist to
+prevent, one hop later.
 
 `?network=` and `?app=` describe which chain and which registry the page is
 showing, so they belong to every destination. The router preserves them on
@@ -190,7 +202,7 @@ console consumes it as a package. Only the Angular half is here.
   board.ts           what a keeper is offered: classification, sorting, network stats
   format.ts          ALGO amounts and rounds-as-time
 src/app/
-  routes.ts          the destinations (registry, upkeep, register, rain, open a rain), and the query-parameter policy
+  routes.ts          the destinations (registry, upkeep, register), the Rain forwarding stubs, and the query-parameter policy
   pages/             one component per destination
 src/app/core/
   entry.ts           where the console opens: link, then memory, then default

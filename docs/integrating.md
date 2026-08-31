@@ -246,10 +246,16 @@ claim()            the counterparty sends this themselves, and is therefore
                    always an available resource.
 ```
 
-Worked examples: `smart_contracts/rain/` pulls a *resource* this way. The
-scheduled draw fixes a beacon round and a participant supplies the beacon
-reference when resolving. `smart_contracts/subscription/` credits the
-provider on `settle`, who then `claim`s it themselves.
+Worked example: `smart_contracts/subscription/` credits the provider on
+`settle`, who then `claim`s it themselves. That is the one to copy, and
+[`../examples/subscription.md`](../examples/subscription.md) walks through it.
+
+The other worked example used to be here and is not: the rain hub pulls a
+*resource* this way rather than a payment, its scheduled draw fixing a future
+round and a participant supplying whatever the resolve needs. It moved to
+<https://github.com/CorvidLabs/arcron-rain> on 2026-08-31. Upkeep 113 on the
+live registry still drives it, which is the more useful thing to know: your
+target does not have to live anywhere near the keeper.
 
 ## Reaching resources your hook cannot name
 
@@ -521,9 +527,8 @@ app.send.claim(
 ## Testing it
 
 Prove it on LocalNet before TestNet, and prove it on TestNet before you rely
-on it. `scripts/keeper_e2e.py` is the reference for what that looks like; each
-demo script here (`rain_demo.py`, `community_rain_demo.py`,
-`subscription_demo.py`) is a smaller worked version.
+on it. `scripts/keeper_e2e.py` is the reference for what that looks like, and
+`scripts/subscription_demo.py` is a smaller worked version of the same shape.
 
 **Unit tests will not catch the things that break integrations.**
 `algorand-python-testing` mocks *record* inner app calls without executing

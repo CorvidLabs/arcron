@@ -76,6 +76,13 @@ def _expand_ranges(text: str) -> str:
 
 def test_there_are_contracts_to_check() -> None:
     # A checker that matches nothing passes for ever.
+    #
+    # Seven contracts until 2026-08-31, when `rain` and `beacon_stub` left for
+    # CorvidLabs/arcron-rain (docs/design/split.md D4). Five is the whole set
+    # now — keeper, pulse, subscription, resource_probe, sim_probe — so the
+    # floor is re-based onto it rather than left where a sixth deletion could
+    # pass unnoticed. The number happening to be unchanged is a coincidence of
+    # the old floor having had two of margin.
     assert len(_contract_dirs()) >= 5
 
 

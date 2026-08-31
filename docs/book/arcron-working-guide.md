@@ -694,8 +694,10 @@ The second is **failure isolation**. A push payout to a closed or hostile accoun
 fails the *whole* execution, which wedges the schedule for everyone your contract
 serves. Pull confines that risk to the one claimant.
 
-`smart_contracts/rain/` (a hub of scheduled drops) and
-`smart_contracts/subscription/` (a metered service) are both shaped by this.
+`smart_contracts/subscription/` (a metered service) is shaped by this, and so
+is the rain hub (a hub of scheduled drops), which moved to
+<https://github.com/CorvidLabs/arcron-rain> on 2026-08-31 and is still
+scheduled from the registry described here.
 
 ### Lesson 6. Reaching resources your hook can't name
 

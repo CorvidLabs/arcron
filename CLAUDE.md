@@ -63,11 +63,17 @@ because these are easy to get wrong from memory:
   *resources* a call may touch is safe because the creator still fixes what is
   called, while letting a keeper supply *data* is a different product. Do not
   reopen either without reading that first.
-- **Dogfood** is a recurring `rain` draw on TestNet, serviced by a keeper we
-  run and watched by the notifier, with `pulse` as the heartbeat target for
-  the uptime clock.
-- **MainNet gate** is self-review plus sustained TestNet time. No paid audit.
-  Any struct change restarts that clock.
+- **Dogfood** is the live TestNet registry itself, watched by the notifier,
+  with `pulse` as the heartbeat target for the uptime clock. It started as a
+  recurring `rain` draw we ran ourselves; rain moved to
+  https://github.com/CorvidLabs/arcron-rain on 2026-08-31 and still runs, as
+  upkeep 113 against the hub it redeployed there, but it is no longer the
+  evidence, because 26 of the 33 live upkeeps now belong to somebody else.
+  Upkeep 91 points at the hub rain abandoned and is a loose end, not the
+  dogfood.
+- **MainNet gate** is self-review plus sustained TestNet time across the live
+  registry. No paid audit. Any struct change restarts that clock, and no other
+  repository can stall it.
 - **Public release** waits until the deployment is one we are not about to
   replace; the licence and docs (#50) land before visibility does.
 

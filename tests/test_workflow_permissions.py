@@ -92,7 +92,12 @@ def _workflows() -> list[Path]:
 
 def test_there_are_workflows_to_check() -> None:
     # A checker that matches nothing passes for ever.
-    assert len(_workflows()) >= 3
+    #
+    # Five workflows until 2026-08-31, when rain-bot.yml left with rain for
+    # CorvidLabs/arcron-rain. Four remain — ci, keeper-bot, publish-js,
+    # release-drift — and the floor moves onto that number rather than staying
+    # at the old 3, where the next deletion would have gone unchallenged.
+    assert len(_workflows()) >= 4
 
 
 def test_every_workflow_declares_permissions() -> None:

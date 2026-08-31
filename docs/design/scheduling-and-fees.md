@@ -59,7 +59,7 @@ unchanged:
 
 | Demo | Missed a week. What should happen? |
 |------|-----------------------------------|
-| [`rain`](../../smart_contracts/rain/) (daily draw) | **Skip.** Replaying seven draws in one burst is absurd; only the latest matters. |
+| `rain` (daily draw; [moved to its own repository](https://github.com/CorvidLabs/arcron-rain) on 2026-08-31) | **Skip.** Replaying seven draws in one burst is absurd; only the latest matters. |
 | `treasury` (scheduled distribution, no longer in the repo) | **Catch up.** Every period's deposits must be distributed; skipping silently loses a week of allocations. |
 | `deadman` (dead man's switch, no longer in the repo) | **Skip.** It fires once and goes inert; replays are pure waste. |
 

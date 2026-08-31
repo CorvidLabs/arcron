@@ -83,10 +83,13 @@ Out of scope:
 - the demo contracts in `smart_contracts/` other than `keeper/` are
   illustrations, not products; report anything you find but expect a lower
   priority
-- `smart_contracts/beacon_stub/` is unreferenced since rain stopped using a
-  beacon on 2026-08-29, and is kept for the documented path back to one. It is
-  deliberately not random and is LocalNet
-  scaffolding
+- the rain hub, which used to be in this repository and left on 2026-08-31
+  for <https://github.com/CorvidLabs/arcron-rain>. It holds real value; report
+  anything you find in it there rather than here, though that repository has no
+  security policy of its own yet. Upkeep 113 on the keeper schedules the live
+  hub, and a bug in a target is not a bug in the registry, which is the whole
+  point of a keeper that can move no money of its own. The LocalNet beacon stub
+  went with it; nothing here reads a beacon any more
 - keeper liveness. Nobody is obliged to execute your upkeep, and that is the
   design rather than a defect
 - the throwaway TestNet deployer account being funded or drained
@@ -150,8 +153,9 @@ Dismissed 2026-08-29 as **vulnerable code is not actually used**.
 `ecdsa` is a transitive dependency of `algorand-python-testing`. It is marked
 `groups = ["dev"]` in `poetry.lock` and does not appear in
 `poetry install --only main`, which is what every production path uses:
-`deploy/vps/install.sh`, `deploy/Dockerfile`, and the keeper, rain and
-release-drift workflows all pass `--only main --no-root`. A keeper operator
+`deploy/vps/install.sh`, `deploy/Dockerfile`, and the keeper and
+release-drift workflows all pass `--only main --no-root` (so did the rain
+bot's workflow, which was still here when this was dismissed). A keeper operator
 following [`docs/hosting.md`](docs/hosting.md) never installs it.
 
 CVE-2024-23342 is a timing side-channel on `SigningKey.sign_digest()`, key

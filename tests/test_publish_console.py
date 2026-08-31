@@ -113,5 +113,21 @@ def test_the_real_console_declares_the_routes_the_fallback_is_for() -> None:
 
     routes = declared_routes()
     assert "u/:id" in routes
+    # `rain/:id` is a stub since 2026-08-31, not a page: rain moved to
+    # CorvidLabs/arcron-rain.
+    #
+    # **It does not forward the id, and must not be "fixed" to.** Ids are box
+    # ids on one hub. This console read 770130162; rain redeployed as
+    # 770746178 because the old hub is immutable and cannot take the ONE-draw
+    # seed fix. The same number on the new hub is a different draw or none at
+    # all, so forwarding it turns a dead link into a plausible wrong page,
+    # which is worse. `web/src/app/routes.test.ts` pins the absence of the
+    # `r/` segment for that reason. An earlier version of this comment cited
+    # split.md D11 as requiring the id to be carried across; D11 was amended
+    # the same day it was written, and the stale comment survived it.
+    #
+    # The route still needs the nginx fallback for exactly the same reason a
+    # real route does -- it is not a file -- which is why this assertion is
+    # unchanged rather than deleted. It goes when the stubs are retired.
     assert "rain/:id" in routes
     assert "" not in routes and "**" not in routes

@@ -38,64 +38,67 @@ Three earlier deployments are superseded and must not be used: `769823086`,
 
 ## The dogfood
 
-**Live since 2026-08-26.** A `rain` draw serviced by Arcron. The contract
-became a hub on 2026-08-29 and was redeployed; there are three deployments,
-and the current one is the hub:
+**Live since 2026-08-26.** It started as a `rain` draw serviced by Arcron, on a
+contract that lived in this repository. The rain contract, its scripts, its bot
+and its own page moved out on 2026-08-31, to
+<https://github.com/CorvidLabs/arcron-rain>, served from
+<https://corvidlabs.xyz/rain/>. What is recorded below is the half that was
+always about the keeper: an upkeep, its escrow, and what happened to the
+upkeeps before it.
 
-| | |
-|---|---|
-| [`770130162`](https://testnet.explorer.perawallet.app/application/770130162) | **current.** The hub. Anyone opens a rain; the Corvid rains are gated on creator `WGSHC4TY…` alone. One upkeep calls `draw()`, which fires every due rain it opens and returns 0 when none is. |
-| [`770029154`](https://testnet.explorer.perawallet.app/application/770029154) | the pre-hub gated draw, superseded on 2026-08-29. Runs programs this tree no longer builds. |
-| [`769988156`](https://testnet.explorer.perawallet.app/application/769988156) | the earlier open-entry draw, one draw resolved. **No upkeep schedules it any more**, so it is a record of a completed cycle rather than a running one. |
+Upkeep **113** services the live hub `770746178`: it calls `draw()uint64` every
+1,286 rounds (about an hour), SKIP_AHEAD, paying 4,000 µALGO an execution. Its
+target is maintained in another repository, and that is the ordinary case
+rather than a loose end: 26 of the 33 live upkeeps were registered by accounts
+other than the deployer, across seven addresses, against targets this
+repository has never built.
 
-Upkeep **91** services the hub: it calls `draw()uint64` every 1,286 rounds
-(about an hour), SKIP_AHEAD, paying 4,000 µALGO an execution from an escrow
-the top-up tooling keeps near 30 days of runway.
-
-A loose end, stated because it is true: upkeep **79**, which serviced the
-pre-hub draw, was not cancelled when the hub superseded its target. As of
-round 66,819,029 it still holds 7.7 ALGO, about 62 days of runway, and
-keepers are still paid to call `draw()` on `770029154` every 2,571 rounds;
-11 of those executions landed in the preceding 24 hours. Nothing is stuck
-(`cancel` refunds escrow and box MBR in full), but every one of those calls
-is escrow spent exercising an app this page says is superseded.
+A loose end that genuinely is one, stated because it is true: upkeep **91**
+still points at `770130162`, the hub rain ran on until 2026-08-31. That hub has
+no update path and predates the fix that stops a ONE draw being aimed by
+tickets bought after the seed is public, so it could not be repaired and rain
+redeployed rather than upgraded. `arcron-rain` does not adopt the old id at
+all. A target is fixed in the box at registration, so 91 cannot be pointed at
+the new hub; it holds 2.928 ALGO, about 29 days of runway, and keepers are
+still paid 4,000 µALGO an hour to call `draw()` on the abandoned one. Nothing
+is stuck (`cancel` refunds escrow and box MBR in full), but every one of those
+calls is escrow spent exercising an app this page says is superseded. This is
+the second time: upkeep **79** was the same fault one hub earlier and was
+cancelled on 2026-08-31, which is what 91 wants too.
 
 Upkeep 79 had itself replaced upkeep 77, which was registered against a
-selector `rain` does not have and so could never have executed: every attempt
-died on `err` in the target's own ABI router, and a selector is fixed in the
-box at registration. Cancelling refunded the escrow and box MBR in full and
-cost 0.005 ALGO. The console now refuses to register a call its own Test
-button has just said would fail, which is the hole that let it happen.
-`scripts/rain_bot.py` no
-longer drives the loop: the hub has no single open draw and holders pull
-`claim` for themselves, so the bot was reduced to a scan on 2026-08-29 and is
-kept only so the existing cron unit does not start failing. Full detail,
-including the first draw's real output and what a live beacon call needed
-that the LocalNet stub could not show, is in
-[the rain release entry](releases.md#the-rain-dogfood-deployment).
+selector its target does not have and so could never have executed: every
+attempt died on `err` in the target's own ABI router, and a selector is fixed
+in the box at registration. Cancelling refunded the escrow and box MBR in full
+and cost 0.005 ALGO. The console now refuses to register a call its own Test
+button has just said would fail, which is the hole that let it happen. That
+story is kept here rather than moved with rain, because what it is about is
+the registry: an upkeep can be registered against a method that does not
+exist, and nothing on chain will ever tell you.
 
 **Where to look when it breaks:**
 
-- `poetry run python -m scripts.verify_build --network testnet --contract rain --app-id 770130162`
-  proves the deployed hub programs are this source. Running it against
-  `770029154` now fails by design: that app runs the pre-hub programs.
 - `poetry run python -m scripts.keeper_bot --check --network testnet --app-id 769891898`
-  says whether upkeep 91 is stalled or starved, among everything else in the
-  registry.
-- `poetry run python -m scripts.rain_bot --once --network testnet --app-id 770130162`
-  is a scan that changes nothing. It no longer reports draw state: the hub
-  keeps that per rain box, and `scripts/rain_testnet_live_proof.py` is what
-  exercises a rain end to end.
+  says whether upkeep 113 is stalled or starved, among everything else in the
+  registry. Whether the target itself is healthy is a question for
+  <https://github.com/CorvidLabs/arcron-rain>, which carries the hub's source,
+  its spec, its own `verify_build` fork and the scan that reads its rain boxes.
+  What it deliberately does not carry is any verification of `770130162`: that
+  hub is the one it replaced, and it refuses to adopt it.
 - `.github/workflows/keeper-bot.yml` still runs execution on a cron, a stopgap
   that names a long-running host as the real fix in its own header.
-  `.github/workflows/rain-bot.yml` still runs on the same cadence but no
-  longer resolves, claims or deposits: the hub gave those back to holders, and
-  the job should be retired or repointed rather than left logging.
 
-This is the mechanism [`docs/design/1.0.md`](design/1.0.md) describes: a
-recurring draw whose absence would actually be noticed, replacing the
-one-shot settlement that proved nothing about sustained operation. Its
-uptime clock starts now, at the deployment date above, not before.
+**Pulse is the heartbeat**, and always was the instrument the uptime clock
+actually reads: [`769891902`](https://testnet.explorer.perawallet.app/application/769891902)
+is a counter that cannot fail, so a count that stops incrementing is
+unambiguous. Upkeeps 19 to 22 drive it under both catch-up policies.
+
+The mechanism [`docs/design/1.0.md`](design/1.0.md) describes is a schedule
+whose absence would actually be noticed, replacing a one-shot settlement that
+proved nothing about sustained operation. One draw we ran ourselves was the
+only evidence available when that was written. It is not the evidence any
+more: the live registry is, and 1.0.md was rewritten on 2026-08-31 to gate on
+that instead.
 
 ## The contracts
 
@@ -115,8 +118,14 @@ it is ready to hold value belonging to someone other than us.
 |---|---|---|---|
 | `keeper` | the network itself: escrow, scheduling, keeper payment, governance | **yes** | five adversarial review rounds, none of them a paid audit; no unresolved findings |
 | `subscription` | recurring payments, an example target | **yes** | reviewed clean; the integration example the docs recommend copying |
-| `rain` | community giveaway, winner drawn from a randomness beacon | **yes** | one blocker found and fixed: a prize asset created `default_frozen` could be received and never sent; becoming the first public use, and part of the dogfood |
 | `pulse` | trivial demo target | n/a | exists to be called; the heartbeat target for the dogfood's uptime clock |
+
+`rain` was reviewed in the same rounds and is not in the table any more: it
+left this repository on 2026-08-31 for
+<https://github.com/CorvidLabs/arcron-rain>, taking its one blocker (a prize
+asset created `default_frozen` could be received and never sent, found and
+fixed) and its review record with it. The reviews themselves are unedited in
+[`docs/reviews/`](reviews/), which is the point of keeping them.
 
 The reviews also refuted one reported blocker. An extra program page is charged
 to the creator account, not the app account; measured against both live
@@ -167,10 +176,11 @@ Genuinely unknown, and only answerable by other people:
 2. **Does it survive unattended time?** Still open. The earlier dogfood
    attempt was found dark on 2026-08-26 after roughly a day: the cron keeper
    was skipping for a missing secret and the local bot was pointed at a
-   superseded app. The `rain` draw described in [The dogfood](#the-dogfood)
-   above went live the same day and is what the clock now runs against;
-   nothing here claims it has survived 30 days yet, only that the mechanism
-   answering the question exists and is running.
+   superseded app. The schedule described in [The dogfood](#the-dogfood)
+   above went live the same day, and the clock now runs against the whole
+   registry rather than against that one upkeep; nothing here claims 30
+   unattended days yet, only that the mechanism answering the question exists
+   and is running.
 3. **Does keeping actually pay?** Nobody has run a keeper for a week and
    looked at whether it was worth the gas.
 
@@ -187,8 +197,9 @@ order:
    that, and it contradicted the line below, because one of the open findings
    is "the console has no MainNet entry" and closing that publishes the path
    to the app.
-2. Run the dogfood upkeep unattended, with the notifier watching. This is the
-   only evidence that accrues while nobody is looking.
+2. Run the registry unattended, with the notifier watching. This is the
+   only evidence that accrues while nobody is looking, and it no longer
+   depends on any one upkeep continuing to be interesting.
 3. Answer the three unknowns above through the alpha tasks.
 4. MainNet, deployed from `corvid.algo` and frozen promptly, with the app id unpublished
    until it is frozen.

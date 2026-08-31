@@ -77,13 +77,17 @@ precisely because the keeper still cannot alter a single byte of `call_args`.
 **What to do instead.** Almost every case that looks like it needs
 keeper-supplied data is a target that should pull the value itself:
 
-- **Randomness.** `smart_contracts/rain/` fixes a future round when a draw is
-  scheduled, and `resolve` reads that round's block seed afterwards. The
-  scheduled call decides *when*; the chain decides *what*. It used to pull the
-  Foundation beacon as a reference the resolver supplied, which was the tidier
-  illustration of pulling a resource; a block seed is weaker (its proposer can
-  decline to propose) and needs no foreign reference at all. Either way the
-  keeper supplies no data. See `docs/arcron.md` for what that trade costs.
+- **Randomness.** The rain hub (moved to
+  <https://github.com/CorvidLabs/arcron-rain> on 2026-08-31, still driven by
+  upkeep 113 here) fixes a future round when a draw is scheduled, and `resolve`
+  reads that round's block seed afterwards. The scheduled call decides *when*;
+  the chain decides *what*. It used to pull the Foundation beacon as a
+  reference the resolver supplied, which was the tidier illustration of pulling
+  a resource; a block seed is weaker (its proposer can decline to propose) and
+  needs no foreign reference at all. Either way the keeper supplies no data.
+  See `docs/arcron.md` for what that trade costs. The example moving out of the
+  repository does not weaken the argument: it is now a target we do not build,
+  scheduled by a registry that still cannot alter a byte of what it calls.
 - **Prices, balances, holdings.** A target reads them in its own inner
   transaction, with the keeper supplying availability.
 - **Anything genuinely off-chain.** That is an oracle, and it should be a

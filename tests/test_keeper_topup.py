@@ -31,7 +31,20 @@ SPR = 2.695
 
 
 def upkeep(**over) -> Upkeep:
-    """Upkeep 91, the rain hub draw, as it stood before it was topped up."""
+    """Upkeep 91, as it stood on TestNet before it was topped up.
+
+    Its target app 770130162 is not in this repository, and the id is kept
+    exactly as it was rather than neutralised, because the point of the fixture
+    is that these are real numbers off a real chain.
+
+    That app is not where rain lives now, and the difference matters more than
+    the fixture does: 770130162 has no update path and predates a fix rain
+    needed, so on 2026-08-31 rain redeployed as 770746178 under
+    CorvidLabs/arcron-rain rather than adopting it. An upkeep's target is fixed
+    in its box at registration, so 91 could not follow and still calls the
+    abandoned hub. See docs/testnet.md. None of that changes the arithmetic
+    under test, which is the same for every upkeep whoever owns the target.
+    """
     base = dict(
         upkeep_id=91,
         creator="E5M2OH5XNDMNABJ6VOFOUVR2IKRPCGQH43PVC5P3DWQQ2LV2VJV2FJZQ3E",

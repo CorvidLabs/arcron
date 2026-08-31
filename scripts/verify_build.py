@@ -37,7 +37,16 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
-CONTRACTS = ("keeper", "pulse", "rain")
+# Contracts this repo has ever deployed and can therefore re-verify. `"rain"`
+# was here until 2026-08-31; it moved to CorvidLabs/arcron-rain, which forked
+# this script for it. That fork is not optional there — a rain hub has no
+# update path at all, so re-deriving its bytecode from source is its whole
+# trust story, and the fork verifies 770746178, the hub that repository
+# deployed. It deliberately does not verify 770130162, the immutable hub this
+# repository deployed and upkeep 91 still calls: that one predates a security
+# fix, cannot take one, and was replaced rather than adopted. This tuple also
+# narrows `--contract` on scripts/mainnet_clock.py.
+CONTRACTS = ("keeper", "pulse")
 
 
 def _spec(name: str) -> dict:

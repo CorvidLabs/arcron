@@ -249,10 +249,16 @@ page per upkeep.
 ## What these are not
 
 They did not cover rain, on the reasoning that rain pays out to wallets and
-needs no console screen of its own. **That was reversed on 2026-08-29**: the
-rain hub is permissionless, so opening and funding one needed a surface, and
-the console now carries `/rain`, `/rain/new` and `/rain/:id`. No journey was
-written for them; that gap is real and unclosed.
+needs no console screen of its own. That was reversed on 2026-08-29, when the
+console grew `/rain`, `/rain/new` and `/rain/:id`, and settled a third way on
+2026-08-31: rain has a different reader from this console, so it moved to its
+own repository and its own address (<https://github.com/CorvidLabs/arcron-rain>,
+served at <https://corvidlabs.xyz/rain/>). The three routes here are redirect
+stubs for 30 days so a shared link reaches rain rather than rendering this
+console, and then go. `/rain/:id` forwards to rain's list rather than to a
+rain: rain redeployed onto a new hub after the split and ids do not carry
+across hubs. The journeys
+below are the console's, and the console is a developer and agent surface.
 
 They do not cover the SDK or the scripts, which stay the path for anybody
 doing something the console does not do.

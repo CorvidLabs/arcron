@@ -7,16 +7,22 @@ copying into your own project. The full integration guide is
 
 ## Worked demos
 
-Each is a contract, a script that drives it on LocalNet against a real keeper,
-and a write-up of the design decision it exists to make.
+A contract, a script that drives it on LocalNet against a real keeper, and a
+write-up of the design decision it exists to make.
 
 | Demo | The question it answers |
 |------|-------------------------|
 | [Recurring subscriptions](subscription.md) | How do you bill many subscribers when the scheduled call cannot open their boxes? |
-| [A hub of scheduled drops](rain.md) | How do you pay a whole collection on a cadence when the keeper picks the moment and can move no money? |
-| [A rain for your holders](community-rain.md) | How do you run one of those for your project, gated on its NFTs and paid in its token? |
 
-`fledge lanes run local` runs all three.
+`fledge lanes run local` runs it as `smoke-subscription`.
+
+**There used to be three.** Two of them were rain: a hub of scheduled drops,
+and running one for your own project's holders, gated on its NFTs. Rain moved
+to <https://github.com/CorvidLabs/arcron-rain> on 2026-08-31; the contract and
+its demo scripts went, the two write-ups did not, and they were deleted here
+rather than rehomed. Do not go looking for them there. Subscription is the one
+to copy if you are billing counterparties who can send their own transactions,
+and it is now the only worked demo this repository has.
 
 ## Automate your app (register an upkeep)
 

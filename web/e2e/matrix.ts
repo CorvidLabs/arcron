@@ -48,6 +48,11 @@ export interface Scenario {
  * Every destination, plus the two states that only exist inside one: the
  * Keeper board tab, and the quarantine a link naming another app puts the
  * whole page into.
+ *
+ * The three `rain` paths are still routed, but they only forward to Rain's own
+ * address now and render a short paragraph and a link on the way. There is
+ * nothing left in them for a rendering audit to measure, so they are not
+ * walked.
  */
 export const SCENARIOS: readonly Scenario[] = [
   { name: 'registry', path: `/?app=${CANONICAL_APP_ID}` },
@@ -61,8 +66,6 @@ export const SCENARIOS: readonly Scenario[] = [
   },
   { name: 'upkeep', path: `/u/7?app=${CANONICAL_APP_ID}` },
   { name: 'register', path: `/register?app=${CANONICAL_APP_ID}` },
-  { name: 'rain', path: `/rain?app=${CANONICAL_APP_ID}` },
-  { name: 'rain-detail', path: `/rain/1?app=${CANONICAL_APP_ID}` },
   { name: 'quarantined', path: `/?app=${FOREIGN_APP_ID}` },
 ];
 

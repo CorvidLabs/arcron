@@ -674,30 +674,42 @@ belongs in a transaction the interested party sends for themselves. The
 scheduled call does accounting only, and someone with skin in the game
 provides the references.
 
-`smart_contracts/rain/` is the worked example. A scheduled `draw()` takes no
-arguments and walks a cursor over up to four rain boxes, firing each one that
-is due and returning 0 when none is. It moves no money by inner call and has
-nothing unreachable, so a quiet week is uneventful rather than a backoff. The
-paying-out half is somebody else's transaction: `claim()` is a pull, and in
-ONE mode `resolve()` is a separate permissionless call that picks the winner
-once the committed round has passed.
+The rain hub is the worked example, and it lives at
+<https://github.com/CorvidLabs/arcron-rain> since 2026-08-31 rather than in
+this repository. Its shape is the part worth carrying here: a scheduled
+`draw()` takes no arguments and walks a cursor over up to four rain boxes,
+firing each one that is due and returning 0 when none is. It moves no money by
+inner call and has nothing unreachable, so a quiet week is uneventful rather
+than a backoff. The paying-out half is somebody else's transaction: `claim()`
+is a pull, and in ONE mode `resolve()` is a separate permissionless call that
+picks the winner once the committed round has passed. Upkeep **113** on the
+live registry is that schedule, against a hub built and deployed in a
+repository this one has no visibility into, which is the useful thing a
+permissionless registry demonstrates: an upkeep does not care who builds its
+target. (Upkeep **91** is the same schedule against the hub rain replaced. A
+target is fixed in the box at registration, so an upkeep cannot follow a
+redeployment: it is cancelled and registered again. That is the cost of the
+same property.)
 
-**Where ONE's randomness comes from, and what that costs.** Until 2026-08-29
-this paragraph described a participant calling `resolve()` while attaching a
-reference to the Foundation's randomness beacon. A keeper could not supply that
-reference, which is what made rain the illustration for pulling a *resource*.
-It no longer works that way. `resolve()` reads `Block.blk_seed` for the round
-committed to eight rounds earlier, so it needs no foreign reference at all.
+**Where that example's randomness comes from, and what that costs.** Until
+2026-08-29 this paragraph described a participant calling `resolve()` while
+attaching a reference to the Foundation's randomness beacon. A keeper could not
+supply that reference, which is what made rain the illustration for pulling a
+*resource*. It no longer works that way. `resolve()` reads `Block.blk_seed` for
+the round committed to eight rounds earlier, so it needs no foreign reference
+at all.
 
 That is simpler, and it is a weaker guarantee, which is the honest way to
 record it. A block seed is derived from the proposer's VRF, so the proposer of
 the committed round knows the seed they would produce and can decline to
 propose, forcing a different one: a one-of-two grind that becomes rational
 once a pot is worth more than a block reward. The Foundation beacon exists to
-close exactly that gap. Current rains pay 0.05 to 1 ALGO, comfortably under a
+close exactly that gap. Those draws pay 0.05 to 1 ALGO, comfortably under a
 block reward, so the exposure is presently theoretical. But it scales with
-the pot, and a rain large enough to be worth grinding is a rain that should
-move back to the beacon. The ids are recorded below for when that happens.
+the pot, and a pot large enough to be worth grinding is one that should
+move back to the beacon. The ids are recorded below for when that happens,
+here rather than there, because they are a property of Algorand and not of any
+one target.
 
 The principle the section is about still holds: nothing a keeper cannot supply
 sits in the path of a scheduled execution, so no outside dependency can stall
@@ -712,7 +724,7 @@ programs for the ARC-21 selector rather than trusting documentation:
 | TestNet | `600011887` | same program size; the current beacon |
 | MainNet | `947957720` | an older, smaller program; also `must_get` |
 | TestNet | `110096026` | older |
-| LocalNet | n/a | **no beacon exists**; `smart_contracts/beacon_stub/` stood in until rain stopped using a beacon on 2026-08-29. Kept, not deleted: it is 31 lines, and the row above says a large enough pot should move back to the beacon. Deleting the only way to test that path on LocalNet would make the return harder than the decision. |
+| LocalNet | n/a | **no beacon exists.** A 31-line stub contract stood in for one until rain stopped reading a beacon on 2026-08-29. It was kept for a while on the grounds that the row above says a large enough pot should move back to the beacon, and moved to <https://github.com/CorvidLabs/arcron-rain> on 2026-08-31, with the only contract that would ever have used it. Nothing in this repository reads a beacon, so nothing here needs to fake one. |
 
 None of them implement `get(uint64,byte[])(bool,byte[])`, so there is no
 non-throwing variant to fall back on.
