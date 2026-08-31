@@ -168,8 +168,24 @@ Each is an ordinary PR; ci green throughout.
 **D1 — How many new repos, and what are they called?**
 *Recommendation:* one, `CorvidLabs/arcron-rain`. The `arcron-` prefix, because rain hardcodes `keeperAppId 769891898` and a bare name hides that.
 
-**D2 — Does `subscription` move too?**
-*Recommendation:* no. It has never been deployed (no `deploy_config.py`), holds nobody's money, and is the worked example two arcron guides lean on. If it must go, write its replacement in `examples/` in the same commit — do not leave `docs/integrating.md` pointing at nothing.
+**D2 — Does `subscription` move too? (decided 2026-08-31: no)**
+Settled by measurement rather than taste. The owner's criterion was not tidiness, it was that PRs against these contracts "distract from the stability of the project" -- a change under `smart_contracts/` reads as *the keeper network changed*. Commits per contract directory, at the time of the split:
+
+| | commits | last touched |
+|---|---|---|
+| `keeper` | 14 | 2026-08-26 |
+| **`rain`** | **11** | **2026-08-30** |
+| `resource_probe` | 6 | 2026-08-24 |
+| `subscription` | 4 | 2026-08-26 |
+| `pulse` | 4 | 2026-08-25 |
+| `beacon_stub` | 1 | 2026-08-24 |
+| `sim_probe` | 1 | 2026-08-26 |
+
+Rain has almost as many commits as the keeper and is the only one still moving; the keeper has not been touched in five days. **Every "arcron is changing" signal is rain.** Moving it solves the stated problem on its own.
+
+Subscription does not meet the criterion: four commits, quiet, and it costs three citations in `docs/integrating.md` (`:217`, `:251`, `:526`) where it is the worked pull-payment example. Moving it would be tidiness bought with a broken reference. It stays.
+
+`examples/` stays too; the owner said so directly.
 
 **D3 — One console for everything, or one console per product? (This blocks every file under `web/`.)**
 **DECIDED 2026-08-31: one per product, and the reason is the audience, not the address.** The owner's words: rain "makes more sense that we serve the Rain as the user end UI and page, and not really mix it into the developer, agent, arcron work, as that might get confusing".
@@ -197,11 +213,17 @@ So the rule is *hide Arcron from the reader, do not make rain blind to it*. Rain
 
 This also settles the dependency edge in section 2: the new repo depends on the keeper registry at runtime, as data, and on Arcron in its documentation. It must not depend on it in its vocabulary.
 
-**D4 — Does `beacon_stub` stay?**
-*Recommendation:* yes, and this overrides the contracts analysis, which proposed moving it. Moving it drops arcron to 5 contracts (or 4 if subscription also went) and contradicts the standing rule. Rewrite `SECURITY.md:86-87` and `docs/arcron.md:715` to say plainly that it is a LocalNet stand-in kept for another repo's documented return path.
+**D4 — Does `beacon_stub` stay? (decided 2026-08-31: no, it goes with rain)**
+This reverses the recommendation below, and the reversal follows from the split itself. `beacon_stub` has **zero code consumers** -- nothing imports it; only its own spec, `SECURITY.md`, `docs/arcron.md` and this file mention it. Its entire documented reason to exist is that a large enough rain pot should move back to the real beacon someday (`docs/arcron.md:700`). Rain stopped reading a beacon on 2026-08-29 and is now leaving the repository, so keeping the stub here means arcron holds a LocalNet test fixture for another repository's product. It moves with rain, and `specs/beacon_stub/` goes with it.
 
-**D5 — Does arcron's MainNet gate keep depending on rain?**
-*Recommendation:* keep rain as the dogfood and record the gate as explicitly cross-repo. `docs/design/1.0.md:92-99` chose rain precisely because it needs `SKIP_AHEAD` and pulse "proves nothing about #7 on its own"; repointing at pulse is cheap but silently weakens the gate. Accept that a rain outage in another repository stalls arcron's clock, and say so in `1.0.md`.
+*Superseded recommendation:* keep it, on the grounds that moving it drops arcron to five contracts and contradicts the standing rule. The standing rule was written when rain lived here.
+
+**D5 — Does arcron's MainNet gate keep depending on rain? (decided 2026-08-31: no)**
+The owner: arcron "doesn't need rain as a mainnet gate, the only reason that was stated was cuz we needed a real test, but it is fine to be separate."
+
+The plan's counter-argument -- that `docs/design/1.0.md:92-99` chose rain because it exercises `SKIP_AHEAD` and pulse proves nothing about #7 alone -- is obsolete, and for a better reason than either side gave. **That gate was written when we were the only user.** Today 22 of the 28 live upkeeps belong to accounts other than the deployer, across seven addresses, spanning both policies and cadences from 1,286 to 224,000 rounds, and one of them (`CEPY52VZRWFL`) is a stranger running its own keeper against a contract it wrote.
+
+The registry is the dogfood now. One rain we run ourselves was always the weaker evidence; it was the only evidence available at the time. `1.0.md` should be rewritten to gate on sustained TestNet time across the live registry, naming rain as the thing that got us here rather than as a dependency -- and that removes a gate that would otherwise stall on an outage in a repository arcron does not control.
 
 **D6 — Who owns byte-for-byte verification of the immutable hub?**
 *Recommendation:* fork `verify_build.py` into `arcron-rain` (it imports only `scripts.network`) as a prerequisite of step 9, and drop `"rain"` from arcron's tuple in Commit C.
