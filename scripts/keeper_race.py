@@ -87,8 +87,10 @@ def _resolve_keepers(algorand, network: str) -> list:
 
     On LocalNet both are created and funded from KMD, so a race needs no
     configuration at all. Elsewhere they are KEEPER_MNEMONIC and
-    KEEPER_2_MNEMONIC, which are the same two secrets the two scheduled
-    workflows use, so a race here exercises the accounts that actually keep.
+    KEEPER_2_MNEMONIC. The second used to be a scheduled workflow's secret;
+    that workflow was deleted on 2026-08-31 having never once been given the
+    credential, so off LocalNet this is now the only place two Arcron keepers
+    have ever actually contended for the same upkeep.
     """
     keepers = []
     for name in ("KEEPER", "KEEPER_2"):

@@ -23,14 +23,11 @@
 #
 # A long-lived process avoids all four. deploy/vps/install.sh sets one up.
 #
-# This is the *first* of two keepers. `.github/workflows/keeper-bot-2.yml` is
-# the second, on the same cron and a different account, so that the two
-# actually compete rather than take turns. `--align 120` below is what makes
-# that work: both hold their first scan until the next whole two-minute mark
-# in UTC, so both reach for the same due upkeep in the same round window
-# instead of one arriving to an empty registry seconds after the other cleared
-# it. It costs a minute of wall time per run, on average, and it is the
-# difference between competition and a queue.
+# There was a second keeper here, `.github/workflows/keeper-bot-2.yml`, on the
+# same cron so the two would actually collide. Its secret was never set, so it
+# skipped itself on every run for four days and was deleted on 2026-08-31. See
+# docs/hosting.md B2: an offset schedule does not race, which is why `--align`
+# exists and why the replacement, whatever it is, must share this cron.
 
 name: Keeper bot
 
