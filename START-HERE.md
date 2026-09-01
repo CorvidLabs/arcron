@@ -92,12 +92,16 @@ operator wearing five costumes — 20 of the 26. **746 executions** are recorded
 across the boxes, and **three addresses executed in the preceding day**:
 `NUGVPQGZ…` 215, `GCQL3M7A…` 36, `CEPY52VZRWFL…` 10. The first two are both
 ours, the second being the GitHub Actions cron keeper; all time it is the
-largest keeper this registry has had, 592 executions of 1,011. What is left is
-`CEPY52VZRWFL…`: funded once by the public TestNet dispenser and by nothing
-else, it deployed its own targets, registered six upkeeps and runs its own
-keeper. That is not by itself a stranger's fingerprint — an agent we ran had
-the same one — but it took no top-up from the account behind the other five,
-and it keeps as well as registers. `scripts/verify_build.py` proves the
+largest keeper this registry has had, 592 executions of 1,011. `CEPY52VZRWFL…` is
+ours too, and it was the hardest to place: funded once by the public TestNet
+dispenser and by nothing else, it deployed its own targets, registered six
+upkeeps and runs its own keeper, taking no top-up from the account behind the
+other five. It looked like a stranger for exactly one day, and was recorded
+here as unattributed on that basis. It is an agent that funded itself the way
+any developer would.
+
+**So the count of upkeeps registered by somebody who is not us is zero**, and
+every keeper that has ever executed here is one we started. `scripts/verify_build.py` proves the
 deployed programs are this source, byte for byte. `fledge run health` prints
 the per-upkeep and per-keeper lines but has no creator column, so the
 attribution above came from decoding the boxes and querying the indexer.
@@ -258,8 +262,8 @@ endpoint its 33 back-to-back box reads can be rate-limited into an HTTP 403.
 | Contract | Live on TestNet, **unaudited**, **unfrozen** (the creator can replace the programs), 1.0 surface complete |
 | Deployment age | The app id since 2026-08-25; the programs it runs now since 2026-08-26. Days, not months |
 | Registry | **33 live upkeeps** from **7 distinct addresses**. Our deployer registered 7; 26 came from six addresses that are not the deployer. **746 executions** recorded across the live boxes |
-| Upkeeps registered by strangers | **Possibly six, all from one address, as of 2026-08-31.** Five of the six non-deployer addresses share a single funding account — the same one that topped up the agent [`docs/testnet.md`](docs/testnet.md) records as ours — so that is one operator wearing five costumes, not five people who found this. The sixth, `CEPY52VZRWFL`, is funded once by the public TestNet dispenser and by nothing else, deployed its own target apps and registered upkeeps 110, 111, 112, 114, 115 and 116 at four different cadences. That is the same fingerprint as the agent we dispatched, so it is not proof on its own; what is different is that it took no top-up from the account behind the other five and it runs a keeper. We are not claiming it until it is attributed |
-| Keepers | **Three addresses executed in the last day**: `NUGVPQGZ…` 215, `GCQL3M7A…` 36, `CEPY52VZRWFL` 10. **Two of the three are ours** — the long-running keeper and the GitHub Actions cron keeper. All time, `GCQL3M7A…` is the largest keeper here: 592 of 1,011 executions. Only `CEPY52VZRWFL` is unattributed, and we are not claiming it |
+| Upkeeps registered by strangers | **Zero.** 26 of the 33 live upkeeps come from six addresses that are not our deployer, and all six are ours: five share a funding account, and the sixth, `CEPY52VZRWFL`, funded itself from the public dispenser and looked like a stranger for a day before it was attributed |
+| Keepers | **Three addresses executed in the last day**, and all three are ours: `NUGVPQGZ…` 215, `GCQL3M7A…` 36, `CEPY52VZRWFL` 10. All time, `GCQL3M7A…` is the largest keeper here: 592 of 1,011 executions. Nobody outside has run one |
 | Built on it | One thing: [CorvidLabs/arcron-rain](https://github.com/CorvidLabs/arcron-rain), which we also wrote |
 | MainNet | Not deployed. Gated on sustained TestNet time; the creator will be `corvid.algo` |
 | Review history | Every round, including the ones that said no, is in `docs/reviews/`. None of them is a paid audit |
