@@ -16,6 +16,7 @@ Three questions, which are the ones that actually go wrong:
   does any upkeep pay a keeper nothing  fee less what an execution costs
   can the keepers still afford to run   spendable, not total, balance
   why is an overdue upkeep overdue      simulate the execution and read the error
+  can the app pay out what it escrows   spendable, against the sum of the boxes
 
 The fourth was added after upkeep 87 sat overdue for 9,000 rounds with 5.75
 ALGO in it and its fee escalated to the ceiling, while twelve others were
@@ -23,6 +24,15 @@ overdue because they had run out of money. This report printed all thirteen
 identically, as OVERDUE, and telling them apart took six commands and a
 disassembler. They are not the same problem: one is a funding problem and the
 other is a broken target, which no amount of funding fixes.
+
+The fifth came out of the 2026-09-01 audit. The contract charges every box
+its exact minimum balance and every asset opt-in its exact deposit, and
+charges nobody for the 0.1 ALGO the app account itself needs to exist.
+`deploy_config` sends that; the MainNet path, `govern create`, only says to.
+On a keeper where nobody did, a box read 120,000 with 57,900 spendable behind
+it, and the ledger refused the fifteenth execution and then the creator's
+`cancel` until a stranger paid the 0.1 ALGO in. Nothing in the contract can
+notice that, so this report has to.
 
 Reads public state. Holds no account and signs nothing: the simulation sends
 unsigned transactions with `allow_empty_signatures`, from a keeper address
@@ -42,6 +52,7 @@ from collections import Counter
 from dataclasses import dataclass, replace
 
 from algosdk import transaction
+from algosdk.logic import get_application_address
 from algosdk.v2client.models import SimulateRequest, SimulateRequestTransactionGroup
 
 from scripts import network as net
@@ -93,6 +104,8 @@ class UpkeepHealth:
     #: when nothing was simulated, which is not the same as "would succeed":
     #: only overdue upkeeps are worth the round trip.
     blocked: str = ""
+    #: What the box says it holds, which is what `cancel` would try to refund.
+    escrow: int = 0
 
     @property
     def pays_nothing(self) -> bool:
@@ -147,9 +160,50 @@ def read_upkeeps(algod, app_id: int, seconds_per_round: float, current_round: in
                 rounds_late=max(0, current_round - upkeep.next_execution_round),
                 interval_rounds=upkeep.interval_rounds,
                 can_pay_fee=upkeep.balance >= effective_fee(upkeep, current_round),
+                escrow=upkeep.balance,
             )
         )
     return sorted(found, key=lambda u: u.upkeep_id)
+
+
+@dataclass(frozen=True)
+class RegistrySolvency:
+    """Whether the app account can pay out every µALGO its boxes promise.
+
+    The boxes are the contract's book; the ledger keeps its own. They agree
+    only if the account holds its base minimum balance on top of what the
+    boxes and opt-ins reserve, and the contract never collects that base, so
+    the two can disagree by up to 0.1 ALGO for as long as nobody sends it.
+    While they disagree the last executions and the last `cancel` fail at the
+    ledger with the box still saying they are payable.
+    """
+
+    amount: int
+    min_balance: int
+    escrowed: int
+
+    @property
+    def spendable(self) -> int:
+        return self.amount - self.min_balance
+
+    @property
+    def shortfall(self) -> int:
+        """How much escrow the ledger would refuse to pay out. Zero is the norm."""
+        return max(0, self.escrowed - self.spendable)
+
+    def flags(self) -> list[str]:
+        if self.shortfall:
+            return [f"THE APP CANNOT PAY OUT {self.shortfall:,} uALGO IT HOLDS IN ESCROW"]
+        return []
+
+
+def read_solvency(algod, app_id: int, upkeeps: list[UpkeepHealth]) -> RegistrySolvency:
+    info = algod.account_info(get_application_address(app_id))
+    return RegistrySolvency(
+        amount=int(info["amount"]),
+        min_balance=int(info.get("min-balance", ACCOUNT_MBR_MICROALGO)),
+        escrowed=sum(u.escrow for u in upkeeps),
+    )
 
 
 def classify_failure(message: str, can_pay_fee: bool = True) -> str:
@@ -276,6 +330,7 @@ def main(argv: list[str] | None = None) -> int:
 
     upkeeps = read_upkeeps(algod, args.app_id, spr, current)
     keepers = read_keepers(algod, indexer, args.app_id, current)
+    solvency = read_solvency(algod, args.app_id, upkeeps)
 
     # Ask from the busiest keeper's address: it is the account most likely to
     # be executing, so its view is the one that matters. With no keeper to
@@ -300,6 +355,15 @@ def main(argv: list[str] | None = None) -> int:
             logger.warning(f"{line}   {' / '.join(flags)}")
         else:
             logger.info(line)
+
+    logger.info("")
+    line = (f"  app account  {solvency.spendable / 1e6:>9.3f} ALGO spendable  "
+            f"{solvency.escrowed / 1e6:>9.3f} ALGO escrowed")
+    if solvency.flags():
+        problems += 1
+        logger.warning(f"{line}   {' / '.join(solvency.flags())}")
+    else:
+        logger.info(line)
 
     logger.info("")
     if not keepers:

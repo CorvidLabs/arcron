@@ -18,11 +18,15 @@ import hashlib
 import pytest
 
 from scripts.keeper_bot import BONUS_FEE_MICROALGO, EXECUTION_COST_MICROALGO
+from algosdk.logic import get_application_address
+
 from scripts.registry_health import (
     LOW_RUNWAY_DAYS,
+    RegistrySolvency,
     UpkeepHealth,
     classify_failure,
     execute_selector,
+    read_solvency,
 )
 
 
@@ -186,3 +190,47 @@ class TestBlockedFlag:
 
     def test_an_on_schedule_upkeep_is_never_flagged_by_this(self) -> None:
         assert health(rounds_late=0, blocked="").flags() == []
+
+
+class TestRegistrySolvency:
+    """The app account must be able to pay out every µALGO its boxes promise.
+
+    Found by the 2026-09-01 audit, on LocalNet, against a keeper created
+    without its base minimum balance: `register` charges the box MBR exactly
+    and `opt_in_asset` charges the holding deposit exactly, but nothing ever
+    charges the 0.1 ALGO the account itself needs. A creator who overpaid the
+    box MBR to get past that got a box saying 120,000 with 57,900 spendable
+    behind it; the 15th execution and then `cancel` were refused by the ledger
+    ("balance 37900 below min 100000"), until a stranger donated 0.1 ALGO.
+    `deploy_config` funds it; `govern create`, the MainNet path, only says to.
+    This report is where an operator would look, and it did not look.
+    """
+
+    def test_a_registry_whose_base_mbr_was_never_funded_is_short(self) -> None:
+        # Exactly the LocalNet numbers: MBR overpaid to 100,000 against a
+        # required 62,100, 120,000 of funding, one box.
+        solvency = RegistrySolvency(amount=220_000, min_balance=162_100, escrowed=120_000)
+        assert solvency.spendable == 57_900
+        assert solvency.shortfall == 62_100
+        assert solvency.flags() == ["THE APP CANNOT PAY OUT 62,100 uALGO IT HOLDS IN ESCROW"]
+
+    def test_a_funded_registry_has_no_shortfall(self) -> None:
+        # The same registry after the 0.1 ALGO arrives from anyone at all.
+        solvency = RegistrySolvency(amount=320_000, min_balance=162_100, escrowed=120_000)
+        assert solvency.shortfall == 0
+        assert solvency.flags() == []
+
+    def test_surplus_is_not_a_problem(self) -> None:
+        # Overpaid MBR and opt-in deposits only ever accumulate. That is fine.
+        solvency = RegistrySolvency(amount=1_000_000, min_balance=162_100, escrowed=120_000)
+        assert solvency.shortfall == 0
+
+    def test_solvency_is_read_from_the_app_account_and_the_boxes(self) -> None:
+        class Algod:
+            def account_info(self, address: str) -> dict:
+                assert address == get_application_address(769891898)
+                return {"amount": 220_000, "min-balance": 162_100}
+
+        upkeeps = [health(upkeep_id=1, escrow=100_000), health(upkeep_id=2, escrow=20_000)]
+        solvency = read_solvency(Algod(), 769891898, upkeeps)
+        assert solvency == RegistrySolvency(amount=220_000, min_balance=162_100, escrowed=120_000)

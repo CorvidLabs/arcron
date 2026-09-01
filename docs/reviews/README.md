@@ -46,6 +46,11 @@ reviewer who found the thing it fixes, and knows what the fix was trying to do.
 - [`2026-08-26-fable-5-console.md`](2026-08-26-fable-5-console.md) ,  does the
   trust banner close M1? **Partial.** It closes the plain case; a hostile app
   can still switch it off for the price of one box.
+- [`2026-09-01-opus-5-keeper-audit.md`](2026-09-01-opus-5-keeper-audit.md) ,
+  the keeper contract alone, on a real AVM. One Low finding with a test (the
+  app account's own solvency was assumed by the contract and watched by
+  nothing; `health` watches it now), the sandwich and reentrancy claims
+  measured rather than argued, and a plain answer to the MainNet question.
 
 ---
 
