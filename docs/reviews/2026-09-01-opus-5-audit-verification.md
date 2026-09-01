@@ -352,7 +352,7 @@ worse. What they changed:
 - **Three documents carried premises the attribution fix had already
   retired.** `AGENTS.md`, `docs/design/split.md` and `docs/status.md` still
   grounded the dogfood and MainNet-gate arguments on outside adoption that
-  `61d9a5a` had just shown does not exist. Kimi found two; the third was found
+  [#236](https://github.com/CorvidLabs/arcron/pull/236) had just shown does not exist. Kimi found two; the third was found
   looking for its siblings. This is #105 again, and finding it by looking for
   siblings is the technique section 4 recommends.
 - **The advice landed.** `docs/integrating.md` now says what a blockable

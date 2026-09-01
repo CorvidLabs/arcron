@@ -76,7 +76,7 @@ because these are easy to get wrong from memory:
   and cadence, by one operator, which is a soak test rather than adoption.
   Say it that way round; an earlier version of this bullet said 26 of the 33
   live upkeeps belonged to somebody else, which was the reading corrected in
-  `61d9a5a`. Upkeep 91 points at the hub rain abandoned and is a loose end,
+  [#236](https://github.com/CorvidLabs/arcron/pull/236). Upkeep 91 points at the hub rain abandoned and is a loose end,
   not the dogfood.
 - **MainNet gate** is self-review plus sustained TestNet time across the live
   registry. No paid audit. Any struct change restarts that clock, and no other

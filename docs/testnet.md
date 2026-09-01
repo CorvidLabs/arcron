@@ -54,7 +54,7 @@ A selection out of thirty-three, each row here because it shows something: the
 that is actually live and is about to starve, **91** still pays keepers to call
 the hub rain abandoned, and **110** is on the longest cadence in the
 registry, funded for more than two years of it. It was listed here as a
-stranger's until `61d9a5a`: it belongs to `CEPY52VZRWFL`, an agent of ours
+stranger's until [#236](https://github.com/CorvidLabs/arcron/pull/236): it belongs to `CEPY52VZRWFL`, an agent of ours
 that funded itself from the public dispenser and so did not look like the
 others. Nothing in this registry was registered by somebody who is not us.
 The rest are agent registrations, twelve of them starved on a 20 round
