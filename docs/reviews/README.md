@@ -51,6 +51,11 @@ reviewer who found the thing it fixes, and knows what the fix was trying to do.
   app account's own solvency was assumed by the contract and watched by
   nothing; `health` watches it now), the sandwich and reentrancy claims
   measured rather than argued, and a plain answer to the MainNet question.
+- [`2026-09-01-opus-5-audit-verification.md`](2026-09-01-opus-5-audit-verification.md) ,
+  the same model trying to break its own audit a day later. Everything
+  reproduced, two of its sentences are wrong, and the thing it never looked
+  for is the biggest: an upkeep's lateness can be bought for one application
+  call, and whoever buys it collects the escalated fee. 22x return, measured.
 
 ---
 

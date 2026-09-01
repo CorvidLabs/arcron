@@ -197,12 +197,27 @@ class RegistrySolvency:
         return []
 
 
-def read_solvency(algod, app_id: int, upkeeps: list[UpkeepHealth]) -> RegistrySolvency:
+def read_escrowed(algod, app_id: int) -> int:
+    """Sum what the boxes say the app owes, without the rest of the report.
+
+    `govern status` needs the number and nothing else around it, and reading
+    the boxes twice to get it would be the more expensive way to be wrong
+    later.
+
+    The seconds-per-round and current-round arguments below are placeholders:
+    they only feed `runway_days` and `rounds_late`, which nothing here reads.
+    Passing the real ones would mean `govern` knowing the network's block time
+    to compute a number it throws away.
+    """
+    return sum(u.escrow for u in read_upkeeps(algod, app_id, 1.0, 0))
+
+
+def read_solvency(algod, app_id: int, escrowed: int) -> RegistrySolvency:
     info = algod.account_info(get_application_address(app_id))
     return RegistrySolvency(
         amount=int(info["amount"]),
         min_balance=int(info.get("min-balance", ACCOUNT_MBR_MICROALGO)),
-        escrowed=sum(u.escrow for u in upkeeps),
+        escrowed=escrowed,
     )
 
 
@@ -330,7 +345,7 @@ def main(argv: list[str] | None = None) -> int:
 
     upkeeps = read_upkeeps(algod, args.app_id, spr, current)
     keepers = read_keepers(algod, indexer, args.app_id, current)
-    solvency = read_solvency(algod, args.app_id, upkeeps)
+    solvency = read_solvency(algod, args.app_id, sum(u.escrow for u in upkeeps))
 
     # Ask from the busiest keeper's address: it is the account most likely to
     # be executing, so its view is the one that matters. With no keeper to

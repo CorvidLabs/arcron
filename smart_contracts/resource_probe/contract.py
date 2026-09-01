@@ -51,6 +51,10 @@ class ResourceProbe(ARC4Contract):
         # A keeper app and one of its upkeeps, for the re-entrancy probe.
         self.keeper_app = GlobalState(UInt64(0))
         self.keeper_upkeep = GlobalState(UInt64(0))
+        # `guarded` refuses a second call inside this many rounds, and records
+        # the round it will next accept one.
+        self.gap = GlobalState(UInt64(0))
+        self.next_allowed = GlobalState(UInt64(0))
 
     @abimethod()
     def configure(
@@ -178,6 +182,62 @@ class ResourceProbe(ARC4Contract):
             on_completion=OnCompleteAction.NoOp,
         ).submit()
         return self.probes_run.value
+
+    @abimethod()
+    def report_group(self) -> UInt64:
+        """Record the group this call arrived in, as the target sees it.
+
+        Arcron puts no constraint on the group its `execute` is submitted in,
+        so a keeper is free to bracket the call it is paid to make with
+        transactions of its own. Whether the target can *tell* is the whole
+        question: if it can see the outer group it can defend itself, and if
+        it cannot then the defence has to be in the target's own state.
+        Recorded rather than asserted, because both answers are possible
+        depending on how the call arrived, and the answer is the measurement.
+        """
+        self.last_reading.value = Global.group_size
+        self.probes_run.value += 1
+        return Global.group_size
+
+    @abimethod()
+    def exhaust_budget(self) -> UInt64:
+        """Spend more opcode budget than any keeper could have brought.
+
+        A target that costs more than it is worth is the cheapest way to
+        attack a keeper, if failing costs the keeper anything.
+        """
+        total = UInt64(0)
+        i = UInt64(0)
+        while i < 5_000:
+            total += op.sha256(op.itob(i)).length
+            i += 1
+        return total
+
+    @abimethod()
+    def refuse(self) -> None:
+        """Reject every call, the way a target with a bug or a grudge would."""
+        assert False, "this target refuses"
+
+    @abimethod()
+    def set_gap(self, gap: UInt64) -> None:
+        """Set how long `guarded` locks itself for after a call."""
+        self.gap.value = gap
+
+    @abimethod()
+    def guarded(self) -> UInt64:
+        """Refuse a second call inside `gap` rounds.
+
+        Not an exotic target: an oracle that rejects a stale update, a
+        rebalancer that runs once an epoch, a claim that pays once a period.
+        Anything whose call is conditional on state a third party can move.
+        This is the shape that lets somebody manufacture the lateness Arcron's
+        fee escalation pays for, which `scripts/spike_hostile_target.py`
+        measures.
+        """
+        assert Global.round >= self.next_allowed.value, "too soon"
+        self.next_allowed.value = Global.round + self.gap.value
+        self.probes_run.value += 1
+        return self.next_allowed.value
 
     @abimethod()
     def probe_app_call(self) -> UInt64:

@@ -65,6 +65,22 @@ below 100,000 µALGO cannot hold a box or escrow anything, and the failure
 reads as a minimum balance error somewhere unrelated. It is the most common
 way a fresh deployment looks broken.
 
+`deploy_config.py` sends it for you. `govern create` cannot: a create names an
+address that does not exist until it confirms, so the multisig path leaves it
+to whoever submits. **A keeper is not created until it is solvent.** The
+contract charges every box its exact minimum balance and charges nobody for
+this 0.1 ALGO, so a registry can hold boxes that promise more than the ledger
+will let it pay, and it fails late, on somebody's `cancel`, rather than at
+registration. Both `govern status` and `fledge run health` now print what the
+boxes owe against what the account can spend:
+
+```
+  escrow    54.201 ALGO owed, 54.201 ALGO spendable
+```
+
+If the second number is smaller, send the difference to the app account.
+Anyone can; it needs no key. Do it before you hand the app id to anyone.
+
 ## Updating, and giving it up
 
 A new deployment starts **unfrozen**: its creator can replace the programs.

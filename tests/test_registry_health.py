@@ -225,12 +225,24 @@ class TestRegistrySolvency:
         solvency = RegistrySolvency(amount=1_000_000, min_balance=162_100, escrowed=120_000)
         assert solvency.shortfall == 0
 
-    def test_solvency_is_read_from_the_app_account_and_the_boxes(self) -> None:
+    def test_solvency_is_read_from_the_app_account(self) -> None:
         class Algod:
             def account_info(self, address: str) -> dict:
                 assert address == get_application_address(769891898)
                 return {"amount": 220_000, "min-balance": 162_100}
 
-        upkeeps = [health(upkeep_id=1, escrow=100_000), health(upkeep_id=2, escrow=20_000)]
-        solvency = read_solvency(Algod(), 769891898, upkeeps)
+        solvency = read_solvency(Algod(), 769891898, 120_000)
         assert solvency == RegistrySolvency(amount=220_000, min_balance=162_100, escrowed=120_000)
+
+    def test_a_node_that_does_not_report_min_balance_is_assumed_to_be_at_the_floor(self) -> None:
+        """Same fallback the keeper report has used since it was written.
+
+        Guessing low is the safe direction: it can only make the report say
+        there is more spendable than there is, which is caught by the next
+        thing that actually tries to spend it.
+        """
+        class Algod:
+            def account_info(self, address: str) -> dict:
+                return {"amount": 500_000}
+
+        assert read_solvency(Algod(), 1, 0).min_balance == 100_000
