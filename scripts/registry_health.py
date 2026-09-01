@@ -56,6 +56,7 @@ from algosdk.logic import get_application_address
 from algosdk.v2client.models import SimulateRequest, SimulateRequestTransactionGroup
 
 from scripts import network as net
+from scripts.keeper_backoff import is_target_refusal
 from scripts.keeper_bot import (
     ACCOUNT_MBR_MICROALGO,
     BONUS_FEE_MICROALGO,
@@ -274,10 +275,17 @@ def classify_failure(message: str, can_pay_fee: bool = True) -> str:
 
     Anything else is quoted rather than guessed at: a classifier that invents
     a category for an error it has not seen is worse than one that quotes it.
+
+    "Did the target refuse?" is asked in three places — here, in
+    `keeper_backoff.is_lost_race`, and in the schedule `record_failure` picks —
+    and it used to be spelled three ways, one of which additionally required
+    the word "failed". They are one function now (`is_target_refusal`), because
+    a report that says TARGET REVERTS while the bot treats the same message as
+    a keeper-side problem is worse than either answer on its own.
     """
     if not message:
         return ""
-    if "inner tx" in message and "failed" in message:
+    if is_target_refusal(message):
         return "TARGET REVERTS"
     if not can_pay_fee:
         return "ESCROW CANNOT PAY THE FEE"
