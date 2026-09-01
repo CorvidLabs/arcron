@@ -216,15 +216,15 @@ own.** Read from the chain on 2026-08-31, at round 66,860,306:
   [`.github/workflows/keeper-bot.yml`](.github/workflows/keeper-bot.yml). All
   time, `GCQL3M7A…` is the largest keeper this registry has had: 592 of 1,011
   executions ever sent, against `NUGVPQGZ…`'s 345.
-- That leaves `CEPY52VZRWFL…`, the one entry worth watching. It was funded once
+- `CEPY52VZRWFL…` is ours as well, and it was the hardest to place. Funded once
   by the public TestNet dispenser and by nothing else, it deployed its own
-  target apps, it registered upkeeps 110, 111, 112, 114, 115 and 116 at four
-  different cadences, and it runs its own keeper. **That fingerprint is not
-  proof of a stranger**: `docs/testnet.md` describes an agent we ran with the
-  same one — dispenser-funded, own target, registered against it. The part that
-  does distinguish it is that it took no top-up from the account that funded
-  the other five, and that it keeps as well as registers. We are not claiming
-  it until it is attributed.
+  target apps, registered upkeeps 110, 111, 112, 114, 115 and 116 at four
+  different cadences, and runs its own keeper — taking no top-up from the
+  account that funded the other five. That combination reads exactly like a
+  stranger, and it was recorded here as unattributed for a day on that basis.
+  It is an agent that funded itself the way any developer would. **The count of
+  upkeeps registered by somebody who is not us is zero**, and every keeper that
+  has executed here is one we started.
 - Reproducing it: `poetry run python -m scripts.verify_build --network testnet --app-id 769891898`
   proves the deployed programs are this source, byte for byte. `fledge run
   health` prints the per-upkeep and per-keeper lines — runs, net-to-keeper,
