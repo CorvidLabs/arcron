@@ -13,6 +13,7 @@ report that flags everything is one nobody reads.
 
 from __future__ import annotations
 
+import base64
 import hashlib
 
 import pytest
@@ -26,8 +27,11 @@ from scripts.registry_health import (
     UpkeepHealth,
     classify_failure,
     execute_selector,
+    read_escrowed,
     read_solvency,
+    read_upkeeps,
 )
+from tests.test_keeper_bot import LIVE_BOX_HEX
 
 
 def health(**over) -> UpkeepHealth:
@@ -234,15 +238,122 @@ class TestRegistrySolvency:
         solvency = read_solvency(Algod(), 769891898, 120_000)
         assert solvency == RegistrySolvency(amount=220_000, min_balance=162_100, escrowed=120_000)
 
-    def test_a_node_that_does_not_report_min_balance_is_assumed_to_be_at_the_floor(self) -> None:
-        """Same fallback the keeper report has used since it was written.
+    def test_a_node_that_does_not_report_min_balance_is_refused_not_guessed(self) -> None:
+        """The floor is a lower bound, so assuming it answers the wrong way.
 
-        Guessing low is the safe direction: it can only make the report say
-        there is more spendable than there is, which is caught by the next
-        thing that actually tries to spend it.
+        `min-balance` is at least 100,000 and rises by the exact MBR of every
+        box the app holds; on the registry above it is 162,100. Substituting
+        the floor would have called that account 400,000 spendable instead of
+        237,900, and a registry 62,100 short would have printed as solvent —
+        the one failure this check was added to catch. An answer that can only
+        be wrong in that direction is worth less than no answer.
         """
         class Algod:
             def account_info(self, address: str) -> dict:
-                return {"amount": 500_000}
+                return {"amount": 220_000}
 
-        assert read_solvency(Algod(), 1, 0).min_balance == 100_000
+        with pytest.raises(ValueError) as raised:
+            read_solvency(Algod(), 769891898, 120_000)
+        assert "min-balance" in str(raised.value)
+
+    def test_the_refusal_says_what_it_will_not_assume(self) -> None:
+        # Whoever reads this is holding a node that answered short, and needs
+        # to know the report stopped rather than rounded.
+        class Algod:
+            def account_info(self, address: str) -> dict:
+                return {"amount": 220_000}
+
+        with pytest.raises(ValueError) as raised:
+            read_solvency(Algod(), 769891898, 120_000)
+        assert "100,000" in str(raised.value)
+        assert "769891898" in str(raised.value)
+
+
+class TestEveryBoxIsCounted:
+    """The escrow sum is only as good as the box list it is summed from.
+
+    `read_upkeeps` took a single `limit=1_000` page of boxes and called it the
+    registry. At the 33 upkeeps live on TestNet that is the registry, so the
+    solvency check shipped correct and would have stayed correct right up to
+    the point where it mattered. Past a thousand boxes the dropped tail comes
+    off the *liability* side of the comparison, so the app looks like it owes
+    less than it does and an insolvent registry prints as healthy: the same
+    direction of error as guessing the ledger's floor low.
+
+    `keeper_bot.scan_upkeeps` has paged with the `next-token` since it was
+    written. These assert that this module now uses that one rather than a
+    second copy that can drift away from it again.
+    """
+
+    @staticmethod
+    def _box(upkeep_id: int, balance: int) -> tuple[bytes, bytes]:
+        # The recorded LocalNet box, with only the escrow moved, so each box
+        # carries a number that says which page it came from.
+        raw = bytearray(bytes.fromhex(LIVE_BOX_HEX))
+        raw[66:74] = balance.to_bytes(8, "big")
+        return b"u" + upkeep_id.to_bytes(8, "big"), bytes(raw)
+
+    class PagedAlgod:
+        """An algod that hands back the box list a page at a time, as a node does.
+
+        The page token is opaque to the caller, so it is just the index of the
+        next page here; what matters is that the caller has to follow it.
+        """
+
+        def __init__(self, pages: list[list[tuple[bytes, bytes]]]) -> None:
+            self.pages = pages
+            self.asked_for: list[str | None] = []
+            self.values = {name: raw for page in pages for name, raw in page}
+
+        def application_boxes(self, app_id: int, **kwargs) -> dict:
+            token = kwargs.get("next")
+            self.asked_for.append(token)
+            index = 0 if token is None else int(token)
+            page: dict = {
+                "boxes": [
+                    {"name": base64.b64encode(name).decode()} for name, _ in self.pages[index]
+                ]
+            }
+            if index + 1 < len(self.pages):
+                page["next-token"] = str(index + 1)
+            return page
+
+        def application_box_by_name(self, app_id: int, name: bytes) -> dict:
+            return {"value": base64.b64encode(self.values[name]).decode()}
+
+    def test_a_registry_that_spans_two_pages_is_read_whole(self) -> None:
+        algod = self.PagedAlgod([
+            [self._box(1, 10_000), self._box(2, 20_000)],
+            [self._box(3, 30_000)],
+        ])
+
+        upkeeps = read_upkeeps(algod, 769891898, 2.8, 15_055)
+
+        assert [u.upkeep_id for u in upkeeps] == [1, 2, 3]
+        assert algod.asked_for == [None, "1"], "the second page was never asked for"
+
+    def test_the_escrow_sum_includes_the_boxes_on_later_pages(self) -> None:
+        # The assertion the old single-page read would have failed: 60,000 owed
+        # against 40,000 seen is a 20,000 hole in the wrong direction.
+        algod = self.PagedAlgod([
+            [self._box(1, 10_000), self._box(2, 30_000)],
+            [self._box(3, 20_000)],
+        ])
+        assert read_escrowed(algod, 769891898) == 60_000
+
+    def test_a_page_of_boxes_that_are_not_upkeeps_is_still_filtered(self) -> None:
+        # Paging must not smuggle past the name check: anyone can pay for a box
+        # under a name of their choosing, and only `u`-prefixed ones are ours.
+        algod = self.PagedAlgod([
+            [(b"config", bytes.fromhex(LIVE_BOX_HEX)), self._box(1, 10_000)],
+            [self._box(2, 20_000)],
+        ])
+        assert [u.upkeep_id for u in read_upkeeps(algod, 769891898, 2.8, 15_055)] == [1, 2]
+        assert read_escrowed(algod, 769891898) == 30_000
+
+    def test_a_registry_that_fits_on_one_page_costs_one_request(self) -> None:
+        # A missing token ends the walk. A pager that treats it as "start over"
+        # would page forever against the live registry, which serves one page.
+        algod = self.PagedAlgod([[self._box(1, 10_000)]])
+        assert len(read_upkeeps(algod, 769891898, 2.8, 15_055)) == 1
+        assert algod.asked_for == [None]

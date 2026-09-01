@@ -60,8 +60,8 @@ from scripts.keeper_bot import (
     ACCOUNT_MBR_MICROALGO,
     BONUS_FEE_MICROALGO,
     EXECUTION_COST_MICROALGO,
-    _decode_upkeep,
     effective_fee,
+    scan_upkeeps,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -140,19 +140,28 @@ class UpkeepHealth:
 
 
 def read_upkeeps(algod, app_id: int, seconds_per_round: float, current_round: int) -> list[UpkeepHealth]:
+    """Every upkeep in the registry, in the terms the questions above ask in.
+
+    The box list is paginated, and this used to take one `limit=1_000` page and
+    call it the registry. At the 33 upkeeps live on TestNet that is the whole
+    registry, so nothing was wrong yet; past a thousand boxes it would have
+    dropped the rest without saying so, and the sum below is what
+    `RegistrySolvency` weighs the app account against. A short read there can
+    only make the registry look like it owes *less* than it does, which is the
+    same unsafe direction as guessing the ledger's floor low: the check added
+    to catch a registry that cannot pay would have been the first thing to lie.
+
+    So the paging is `keeper_bot.scan_upkeeps`, which the bot itself runs on
+    every scan, rather than a second copy of the loop here. Two copies of it is
+    how one of them came to be missing the `next-token` in the first place.
+    """
     found: list[UpkeepHealth] = []
-    for box in algod.application_boxes(app_id, limit=1_000)["boxes"]:
-        name = base64.b64decode(box["name"])
-        if not name.startswith(b"u"):
-            continue
-        upkeep_id = int.from_bytes(name[1:], "big")
-        raw = base64.b64decode(algod.application_box_by_name(app_id, name)["value"])
-        upkeep = _decode_upkeep(upkeep_id, raw)
+    for upkeep in scan_upkeeps(algod, app_id):
         cost = EXECUTION_COST_MICROALGO + (BONUS_FEE_MICROALGO if upkeep.fee_asset else 0)
         runs = upkeep.balance // upkeep.fee_per_execution if upkeep.fee_per_execution else 0
         found.append(
             UpkeepHealth(
-                upkeep_id=upkeep_id,
+                upkeep_id=upkeep.upkeep_id,
                 target_app=upkeep.target_app,
                 times_executed=upkeep.times_executed,
                 net_to_keeper=upkeep.fee_per_execution - cost,
@@ -213,10 +222,32 @@ def read_escrowed(algod, app_id: int) -> int:
 
 
 def read_solvency(algod, app_id: int, escrowed: int) -> RegistrySolvency:
+    """The ledger's side of the book, read rather than assumed.
+
+    A node that does not report `min-balance` gets an error here instead of the
+    100,000 floor every other reader falls back to. The floor is a *lower*
+    bound: an app account's real minimum rises by the exact MBR of every box it
+    holds and every asset it has opted into, which on the registry is most of
+    it. `spendable` is `amount - min_balance`, so substituting the floor
+    inflates the spendable side, shrinks the shortfall, and reports an app that
+    cannot pay out its escrow as solvent. That is precisely the failure this
+    function exists to catch, so it must never be the failure it produces. A
+    solvency check that cannot see the ledger's floor has no answer to give,
+    and saying so is the only honest thing it can do.
+    """
     info = algod.account_info(get_application_address(app_id))
+    min_balance = info.get("min-balance")
+    if min_balance is None:
+        raise ValueError(
+            f"the node reported no min-balance for the account of app {app_id}, so how "
+            f"much of its balance is spendable cannot be known. Refusing to assume the "
+            f"{ACCOUNT_MBR_MICROALGO:,} uALGO floor: that is the smallest a minimum "
+            f"balance can be, and assuming it would report an app that cannot pay out "
+            f"its escrow as solvent."
+        )
     return RegistrySolvency(
         amount=int(info["amount"]),
-        min_balance=int(info.get("min-balance", ACCOUNT_MBR_MICROALGO)),
+        min_balance=int(min_balance),
         escrowed=escrowed,
     )
 
@@ -324,6 +355,15 @@ def read_keepers(algod, indexer, app_id: int, current_round: int) -> list[tuple[
     rows = []
     for address, count in counts.most_common():
         info = algod.account_info(address)
+        # The floor fallback stays here, unlike in `read_solvency`. This row is
+        # a courtesy about somebody else's wallet: the execution count beside
+        # it is measured, and the worst a floor guessed low can do is leave off
+        # the RUNNING OUT note next to a keeper we do not run and cannot fund.
+        # Solvency is a verdict on whether this registry can pay out what its
+        # boxes promise, and a wrong verdict there is the whole reason that
+        # check was written. Raising here would also lose every keeper row
+        # because one third-party account's response was short a field, which
+        # is a worse report than an optimistic estimate labelled with a `~`.
         spendable = int(info["amount"]) - int(info.get("min-balance", ACCOUNT_MBR_MICROALGO))
         rows.append((address, count, spendable, spendable // EXECUTION_COST_MICROALGO))
     return rows

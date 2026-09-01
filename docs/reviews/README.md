@@ -55,7 +55,19 @@ reviewer who found the thing it fixes, and knows what the fix was trying to do.
   the same model trying to break its own audit a day later. Everything
   reproduced, two of its sentences are wrong, and the thing it never looked
   for is the biggest: an upkeep's lateness can be bought for one application
-  call, and whoever buys it collects the escalated fee. 22x return, measured.
+  call, and whoever buys it collects the escalated fee.
+
+Then three independent passes over that branch, on the reasoning that two
+sessions of one model family grading each other is not independence. Same
+prompt, no shared answers, each asked to refute rather than confirm:
+[Grok 4.6](2026-09-01-grok-4.6-branch-review.md) **52/100**,
+[Fable 5.1](2026-09-01-fable-5.1-branch-review.md) **62/100**,
+[Kimi 3](2026-09-01-kimi-3-branch-review.md) **78/100**. None refuted the
+finding; all three made it worse, and between them they found a spike that
+passed without measuring anything, a test whose last assertion could not fail,
+a solvency check that guessed in the direction that hides a shortfall, and
+three documents still arguing from a premise the repository had already
+retired. The verification's section 6 lists what each changed.
 
 ---
 

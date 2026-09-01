@@ -89,14 +89,17 @@ never blocked.
 
 | | |
 |---|---|
-| honest keeper, on schedule | creator paid 7,600 |
+| honest keeper, one round late (LocalNet makes every run one round late; base is 4,000) | creator paid 7,600 |
 | attacker calls the target directly, once | costs the attacker 1,000 |
 | honest keeper, at the due round | **blocked**, and it cost them 0 |
 | attacker executes when the window reopens | creator paid **25,600** |
 | attacker's net over the episode | **+21,600 µALGO** |
 
 One cycle, one blocking call: the creator paid 21,600 more than base and the
-attacker kept it, a **22x return** on the 1,000 it cost to arrange.
+attacker kept it, **21.6x** the 1,000 it cost to arrange. That figure is one
+upkeep with nobody competing, and it is the smallest of the numbers in this
+section rather than the headline: the variants below reach 45,600 on a single
+target, and Grok measured 65,800 against two upkeeps sharing one.
 
 A six-cycle run of the same setup, attacking only the second, has the creator
 paying 49,200 against a nominal 24,000. Attribute that honestly: 21,600 of
@@ -107,39 +110,119 @@ because it shows how steep the ramp is: on a ten-round interval with a ten-fold
 cap, **one round late costs 90% of the base fee again.** Real cadences are
 thousands of rounds and do not have this problem; short ones do.
 
-**Honest limits, all of which matter.**
+**Three worse forms, all measured after the first draft of this section
+claimed limits that do not hold.** Grok 4.6, Kimi 3 and Fable 5.1 each found
+at least one of these independently; the numbers below are this machine's.
+
+*It does not self-heal.* The first draft said CATCH_UP re-phases the upkeep
+and honest keepers are back on base within two cycles. That is true only of
+the configuration the spike happened to use, a cooldown of 6 rounds against
+an interval of 10. Point the same upkeep at a target whose cooldown is
+*longer* than the interval and every successful execution re-arms the guard
+past the next due round, so the upkeep is permanently late by its own
+schedule and the fee never comes back down. Measured under SKIP_AHEAD with a
+15-round cooldown and **no attacker at any point**: fees of 7,600 then
+22,000, 22,000, 22,000. Under CATCH_UP the same setup pays base after two
+hits and the backlog grows without bound instead. Nobody has to buy anything;
+the upkeep blocks itself and whichever keeper is waiting collects. This is
+the likelier shape in the wild, not the exotic one, because "an oracle that
+rejects a stale update, a rebalancer that runs once an epoch" *is* a
+cooldown, and a creator who picks a cadence shorter than that epoch has built
+it by accident.
+
+*Blocking is cheaper than an application call, and Arcron pays for it.*
+Register a second upkeep against the same target at `fee_cap = 0`. Its
+execution trips the guard on a schedule, the attacker executes it themselves
+so the base fee comes straight back, and no blocking transaction is ever sent
+by hand. Measured over four cycles: honest keepers shut out of **4 of 4**,
+the creator spent 55,600 where four base fees are 16,000, and the attacker
+finished **45,600 µALGO up** after its own escrow float and every fee. This
+also walks through the defence `docs/integrating.md` recommends: a target
+told to `assert Txn.sender == keeper_app.address` refuses a raw call and
+accepts this one, because the inner sender is the keeper app either way, and
+a permissionless registry cannot stop anyone registering a second upkeep.
+
+*The bound is the escrow, not the cap.* Compose this with the fallback
+decline in section 2. On an upkeep whose escrow has fallen below the
+escalated fee, the fallback is what an ordinary keeper collects, and it may
+not cover the block. Top the escrow up to the cap in the same group instead
+and the cap is what you collect, of which only the shortfall was yours.
+Measured: an escrow holding 32,400 under a cap of 40,000, where the fallback
+would have paid 4,000, went to **zero** in one execution for a 7,600 top-up,
+clearing the attacker 27,400. Kimi 3 found this composition during the branch
+review. The per-episode ceiling is the whole remaining escrow, not
+`cap − base`.
+
+**Limits that do hold.**
 
 - It needs `fee_cap > fee_per_execution`. On the live registry today that is
   **7 of 33 upkeeps**, each with a gap of 8,000–10,000 µALGO per manufactured
-  cycle. The rest have escalation off and are immune.
+  cycle. The rest have escalation off and are immune. Read from TestNet with
+  `scripts/keeper_bot.scan_upkeeps`; none of the three reviewers could
+  confirm it, because none was allowed a TestNet read.
 - It needs a blockable target. A heartbeat that always succeeds — `pulse`,
   the dogfood — is immune, and so is any target with no third-party-movable
   precondition. Which of the seven are genuinely exposed was not established
   per target, and should be.
-- It self-heals. Once the attacker stops, CATCH_UP re-phases the upkeep and
-  honest keepers are back on base within two cycles. This is extraction, not
-  capture.
-- Every µALGO stays inside the cap the creator chose. The contract does
-  exactly what it says.
-- Four live targets already have more than one upkeep pointed at them, which
-  is the cheapest form of this: your own upkeep's execution trips the guard
-  on a schedule, and you never send a blocking transaction at all.
+- Every µALGO stays inside the `fee_cap` the creator stored, `cancel` still
+  works, and no other upkeep's escrow is reachable. This is an incentive bug
+  in a feature, not a theft path in the program.
 
-**What to do.** Not a contract change, at least not now.
+**And one assumption that was wrong in the other direction.** An earlier
+draft of this section reasoned that an attacker still has to win a race with
+polling keepers when the window reopens. Against the keeper this repository
+ships, there is no race to win. `scripts/keeper_backoff.py` reads an inner
+transaction failure as a broken target rather than a lost race
+(`INNER_FAILURE_MARKER = "inner tx"`), and `select_due` then omits that
+upkeep for `1 x interval` rounds, capped at `MAX_BACKOFF_ROUNDS = 1_286`,
+about an hour. One blocked attempt sends our own bot away. Every number above
+is therefore a lower bound against the reference client, not an overestimate.
 
-1. **Advice, immediately.** An upkeep whose target can be blocked by anyone
-   should set `fee_cap = 0`. Escalation is worth having when lateness is
-   exogenous and worth nothing when it is purchasable, and the creator is the
-   only one who knows which their target is. This belongs in the console next
-   to the fee-cap field and in `docs/integrating.md`.
-2. **A ramp that is not one interval, later.** Escalation currently runs from
-   base to cap across a single missed interval, so one blocked cycle buys the
-   whole ceiling. Spreading it over several intervals would make the attacker
-   pay to block repeatedly while an honest keeper needs to get through once.
-   Worth noting: **the ramp is in the program, not in the box**, so this is
-   reachable by `update` and does not restart the struct clock or the MainNet
-   gate. That is the one place this finding could still be acted on cheaply
-   after a freeze — and after a freeze, it could not.
+That has a second consequence worth more than the fee arithmetic: the same
+single failure silences the bot on an upkeep **whose escalation is off**. For
+a liquidation, an oracle or a keep-alive, the missed window can be worth far
+more than the fee, and nothing in the contract or the health report meters
+it. What the bot should do when a target refuses is now an open question, not
+a settled one.
+
+**What to do.**
+
+1. **Advice, immediately, and it is half-written already.** An upkeep whose
+   target can be blocked by anyone should set `fee_cap = 0`. The console
+   already defaults the field to 0 (`web/src/app/components/register-form.ts`)
+   and `docs/integrating.md` already tells creators to leave it there, for a
+   different reason — that a lone keeper will not bid. Neither says that a
+   blockable target turns the ceiling into a prize somebody can come and take.
+   That sentence is the change, and it now exists in `docs/integrating.md`.
+
+   **With a caveat the first draft missed: `fee_cap` is write-once.** It is
+   set in `register` and read in `execute`; there is no method that changes
+   it. The seven live escalating upkeeps cannot take this advice at all
+   without cancelling and re-registering, which returns their escrow and box
+   MBR and gives them a new id.
+
+2. **Not the ramp, on reflection.** The first draft proposed spreading the
+   ramp over several intervals so an attacker must block repeatedly while an
+   honest keeper needs one success. Two of the three reviewers rejected it and
+   they are right. It does nothing against a cooldown longer than the
+   interval, where nobody is blocking at all; it does nothing against a
+   sibling upkeep whose block is already scheduled; and against the reference
+   bot there is no "honest keeper gets through once", because one failure
+   backs it off for up to an hour. `(cap - base) * excess` also has to stay
+   inside uint64, which bounds the spread to roughly 18 intervals.
+
+   The remedy that removes the incentive is to stop paying automatically for
+   lateness the keeper set can be made to create: **a creator-signed
+   `raise_fee(upkeep_id, fee)` bounded by `fee_cap`**, so the bid comes from
+   the party who pays it and who can see whether their target is genuinely
+   unserviceable. Fable 5.1 proposed it; it adds a method and touches no box
+   field, so it is reachable by `update`.
+
+3. **Which makes the freeze ordering the real decision.** Escalation shipped
+   with #14. Everything above is reachable by `update` and closed forever by
+   `freeze`. Nothing here argues for delaying MainNet; it argues that the
+   freeze should not happen while the fee mechanism still pays for lateness
+   that a third party can manufacture.
 
 ## 4. F1 is not new, and that is the point
 
@@ -175,31 +258,124 @@ asks for the output rather than the memory:
   the indexer query for that was not written.
 - Anything about MainNet consensus parameters that differs from LocalNet.
 - The audit's I4 (`health` returning HTTP 403 from the public node) is
-  settled, and the audit's guess at the cause was wrong. It is not our
-  request rate. The endpoint answers with
-  `x-and-quota: block=1;reqs=230824` and a plain-text
-  `Daily free API quota exceeded`: Nodely's free tier allows 200,000 requests
-  a day *shared across everyone using that endpoint*, and it was 30,000 past
-  it before this repository sent anything. Once blocked, the edge sheds a
-  fraction rather than refusing everything — measured at 4 refusals in 45
-  requests, about 9%. A health run makes about 40 requests, and
+  settled, and **both earlier answers were wrong, this document's included.**
+  The audit guessed our request rate. The first draft of this section then
+  asserted the opposite — that the quota is "shared across everyone using that
+  endpoint" and "nothing here is fixable by sending less" — on the strength of
+  a counter reading `x-and-quota: block=1;reqs=230824` against a cited
+  200,000-a-day free tier. Fable 5.1 refused to take that as settled and was
+  right to.
+
+  Measured since. `launchctl list` shows `xyz.corvidlabs.arcron.keeper.testnet`
+  running on this machine, pointed at the same host as the refused `health`
+  runs. Its own logs give 11,541 scans across 62,689 rounds in 47 hours at 37
+  requests a scan: **429,957 requests in 1.958 days, 219,564 a day, from this
+  one bot** against a counter that stood at 230,824. The two agree to within
+  7%. Unthrottled it would be 477,403 a day, and the only thing holding it
+  down is the 1,964 refusals it has already absorbed. Two read-only
+  `GET /v2/status` calls 45 seconds apart moved `reqs` by 50, about one a
+  second, which is not how a bucket shared by every user of a public Algorand
+  endpoint would climb.
+
+  So it is our request rate, it is one bot, and sending less is exactly the
+  fix — which belongs in `keeper_bot.py`, not in a retry helper. What stays
+  open is what the bucket is keyed to, since nobody has read Nodely's side,
+  and the 200,000 figure is the one number here that is cited rather than
+  measured.
+
+  The retry stands as the right thing for the reports regardless: the edge
+  sheds about 9% of requests once blocked, a `health` run makes about 40, and
   `1 - 0.91^40` is 98%, which is why two runs in three died while a single
-  `curl` never did. Nothing here is fixable by sending less. The clients
-  `net.connect` hands out now retry a 403 or 429 up to five times
-  (`scripts/node_retry.py`), which every script gets by connecting. Three
-  live `health` runs afterwards: all three succeeded, recovering from 1, 6
-  and 2 refusals.
+  `curl` never did. `net.connect` installs four retries after the first
+  attempt, five tries in all (`scripts/node_retry.py`), and every script gets
+  it by connecting; three live `health` runs afterwards succeeded, recovering
+  from 1, 6 and 2 refusals. It is a band-aid over a bot that reads all 33
+  boxes every five rounds, and it should not be mistaken for the repair.
 
-## 6. Would this change the MainNet answer?
+## 6. Three independent passes over this branch
 
-No. The audit said yes-with-two-conditions, and both conditions survive: fund
-the base minimum balance and prove it, and keep the creator a multisig with a
-freeze decision made on a date. Section 3 adds a third thing, and it is
-advice to creators rather than a gate: **tell them what `fee_cap` costs
-them when their target can be blocked.** A creator who leaves it at 0 cannot
-be hurt by anything in this document.
+The two documents above were written by the same model family in two sessions,
+which is a weakness no amount of care inside them fixes. So the branch was put
+to Grok 4.6, Kimi 3 and Fable 5.1 headless, each with the same prompt, none
+shown the others' answers, each asked to refute the new finding and to end
+with a confidence number it was told to keep honest rather than agreeable.
+The three reviews are checked in beside this one, unedited.
 
-The one thing worth carrying into the freeze decision is section 3's second
-recommendation. The escalation ramp is the only finding here that is
-fixable by `update` and unfixable after `freeze`, which is a small but real
-argument for the order those two happen in.
+| | Confidence | What it found that the others did not |
+|---|---|---|
+| [Grok 4.6](2026-09-01-grok-4.6-branch-review.md) | **52** | The reference bot backs off on a target refusal, so there is no race to win; the spike passed when the attack did not happen; `fee_cap` is write-once |
+| [Fable 5.1](2026-09-01-fable-5.1-branch-review.md) | **62** | The node quota is probably ours, not shared; the solvency fallback guessed in the unsafe direction; a better remedy than the ramp |
+| [Kimi 3](2026-09-01-kimi-3-branch-review.md) | **78** | The branch shipped contradictory premises about outside users; the per-episode bound is the escrow, not the cap |
+
+None could refute the finding. All three reproduced it, and each made it
+worse. What they changed:
+
+- **Section 3 was rewritten.** Its "self-heals within two cycles", "extraction
+  not capture" and "the attacker must win a race" were all false, and the
+  cooldown-longer-than-interval and sibling-upkeep variants are now measured
+  and asserted rather than absent.
+- **The ramp remedy was withdrawn** in favour of a creator-signed raise.
+- **`scripts/spike_hostile_target.py` exited 0 when the attack did not
+  happen.** Every path that measures nothing now fails, and `_send` no longer
+  reads a dead node as a refusal from the chain. A lane step that passes
+  without measuring is worse than no lane step, and this is the second time
+  this repository has caught that shape in its own spikes.
+- **`test_the_fallback_to_base_is_the_keepers_to_decline` ended in a
+  tautology**, `cap - shortfall == held` where `shortfall` was defined as
+  `cap - held`. It now compares the two paths against each other.
+- **`read_solvency` guessed the ledger's floor low when a node omitted it**,
+  which inflates spendable and hides the shortfall the check exists to find.
+  It refuses now. The live registry runs at exactly zero margin — 54.126 ALGO
+  spendable against 54.126 owed — so an inflated figure would have hidden a
+  real hole one for one.
+- **`read_upkeeps` did not paginate** while `keeper_bot.scan_upkeeps` did, so
+  the new solvency sum would have under-reported liabilities past 1,000 boxes
+  and called an insolvent registry solvent. It reuses the paginated reader now.
+- **Three documents carried premises the attribution fix had already
+  retired.** `AGENTS.md`, `docs/design/split.md` and `docs/status.md` still
+  grounded the dogfood and MainNet-gate arguments on outside adoption that
+  `61d9a5a` had just shown does not exist. Kimi found two; the third was found
+  looking for its siblings. This is #105 again, and finding it by looking for
+  siblings is the technique section 4 recommends.
+- **The advice landed.** `docs/integrating.md` now says what a blockable
+  target costs, with the measured numbers, and says that `fee_cap` cannot be
+  changed afterwards.
+- **Section 5's account of the node refusals was wrong, and it was this
+  document's own confident sentence rather than the audit's.** Fable would not
+  take "shared across everyone" as established. Measuring it showed the
+  opposite: our own keeper daemon accounts for essentially the whole counter.
+  The retry is still right for the reports; it is a band-aid, and the fix
+  belongs in the bot.
+- **`node_retry` claimed a POST replay was safe because the CDN never
+  forwarded the request.** That was never checkable. The true argument is that
+  a replay re-sends the same signed blob, and an Algorand transaction id is a
+  hash of it, so the chain answers "already in ledger" rather than paying
+  twice. The duplicate answer is now recognised and returned rather than
+  raised, because `keeper_bot` would otherwise report it as losing a race to
+  itself. 5xx is now retried for reads and never for a submission.
+
+Four small errors they caught are corrected in place above: the table row that
+labelled a one-round-late execution "on schedule", "22x" for 21.6x, F1's
+"first creator" (the shortfall lands on whoever's `cancel` runs last, not on
+whoever registered first), and the retry count.
+
+## 7. Would this change the MainNet answer?
+
+No, and all three reviewers agreed on that separately: nothing here is a theft
+path in the program. The audit said yes-with-two-conditions and both survive.
+Fund the base minimum balance and prove it. Keep the creator a multisig, with
+a freeze decision made on a date.
+
+What changed is the third condition, which is no longer just advice. Section 3
+is an incentive bug in a feature that shipped with #14, it is reachable by
+`update`, and `freeze` closes it forever. So the ordering matters: **do not
+freeze while the fee mechanism still pays automatically for lateness a third
+party can manufacture.** Either decide that escalation stays off by default
+and say so where creators read it, which is now done, or replace it with a
+creator-signed raise before the programs stop being replaceable.
+
+There is also a liveness question this branch opened and did not answer. One
+inner-transaction failure sends the reference keeper away from an upkeep for
+up to an hour, escalation or not. For a liquidation or an oracle that can be
+worth more than every fee in this document, and nothing meters it. That is
+the next piece of work, not a blocker on this one.

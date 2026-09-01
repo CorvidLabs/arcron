@@ -1,19 +1,23 @@
 """Asking a refused request again, and knowing when to stop.
 
 `fledge run health` died on two of three runs on 2026-09-01 with a 403 raised
-before the report reached any of its own code. The endpoint was over its
-shared daily free-tier quota and shedding about 9% of requests; a health run
-sends about 40, so it almost always caught one, while the `curl` used to check
-the node was fine almost never did.
+before the report reached any of its own code. The endpoint was over its daily
+free-tier quota and shedding about 9% of requests; a health run sends about 40,
+so it almost always caught one, while the `curl` used to check the node was
+fine almost never did. (Whose quota that is was asserted here once and is now
+measured; `scripts/node_retry` carries the numbers, and the short version is
+that our own keeper is the one blowing it.)
 
 Nothing here touches a network. The retry is a decision about an exception and
 a schedule, so both are asserted directly, with a fake clock so a test that
-proves a four second wait takes no time at all.
+proves a four second wait takes no time at all. The signed blobs are real, but
+signing is arithmetic: `generate_account` and a signer reach nothing.
 """
 
 from __future__ import annotations
 
 import ast
+import base64
 from pathlib import Path
 
 import pytest
@@ -24,10 +28,15 @@ from scripts.node_retry import (
     MAX_WAIT_SECONDS,
     describe_request,
     install,
+    is_duplicate_submission,
     is_refusal,
+    is_submission,
+    request_method,
     retry_after_seconds,
     retrying,
+    should_retry,
     status_of,
+    submitted_txid,
     wait_before,
 )
 
@@ -53,6 +62,42 @@ def indexer_error(message: str) -> Exception:
     from algosdk import error
 
     return error.IndexerHTTPError(message)
+
+
+def signed_blob(count: int = 1) -> tuple[bytes, str]:
+    """A real submission body, and the id algod would answer it with.
+
+    Offline: a throwaway account and a signature are arithmetic, and no field
+    here has to be plausible to anything but the encoder. `count` above 1 makes
+    a group, which is several signed transactions concatenated in one body and
+    the case `submitted_txid` has to unpack by hand, because algod answers a
+    group with its first transaction's id.
+    """
+    from algosdk import account, encoding, transaction
+    from algosdk.atomic_transaction_composer import AccountTransactionSigner
+
+    private_key, address = account.generate_account()
+    params = transaction.SuggestedParams(
+        fee=1_000,
+        first=1,
+        last=1_001,
+        gh=base64.b64encode(b"arcron-test-genesis-hash-32byte!").decode(),
+        flat_fee=True,
+    )
+    payments = [
+        transaction.PaymentTxn(address, params, address, index) for index in range(count)
+    ]
+    if count > 1:
+        transaction.assign_group_id(payments)
+    signer = AccountTransactionSigner(private_key)
+    signed = signer.sign_transactions(payments, list(range(count)))
+    blob = b"".join(base64.b64decode(encoding.msgpack_encode(one)) for one in signed)
+    return blob, str(signed[0].get_txid())
+
+
+def duplicate_error(txid: str) -> Exception:
+    """What algod says when it is handed a transaction it already holds."""
+    return algod_error(f"TransactionPool.Remember: transaction already in ledger: {txid}", 400)
 
 
 class _Clock:
@@ -111,14 +156,11 @@ def test_a_logic_error_is_not_a_refusal() -> None:
     assert is_refusal(algod_error("logic eval error: assert failed pc=1122", 400)) is False
 
 
-def test_a_server_error_is_deliberately_not_retried() -> None:
-    """5xx is a different question and this module does not answer it.
-
-    A 403 is refused by the CDN in front of the node, so the request provably
-    never reached algod and replaying it cannot submit anything twice. A 502
-    can come from a node that already accepted a transaction, and resending
-    that is not a decision to make on the way past.
-    """
+def test_a_server_error_is_not_an_edge_refusal() -> None:
+    """`is_refusal` stays narrow: it means the CDN declined to pass a request
+    on, which is the thing that was measured at 9%. A 5xx is a different claim
+    about a different machine, and whether to ask again about one is
+    `should_retry`'s decision because it depends on what was asked."""
     assert is_refusal(algod_error("HTTP Error 502: Bad Gateway", 502)) is False
     assert is_refusal(algod_error("HTTP Error 503: Service Unavailable", 503)) is False
 
@@ -142,6 +184,59 @@ def test_status_of_ignores_a_code_that_is_not_a_status() -> None:
 
     assert status_of(_Odd()) is None
     assert is_refusal(_Odd()) is False
+
+
+# --- 5xx, which depends on what was asked ------------------------------
+
+
+def test_a_server_error_is_worth_asking_about_again_for_a_read() -> None:
+    """The opportunity the first version of this module gave up.
+
+    A 502 or 503 from the edge kills a `health` run exactly as a 403 does, and
+    a GET is idempotent whoever generated the error, so refusing to ask again
+    bought nothing at all.
+    """
+    server = algod_error("HTTP Error 502: Bad Gateway", 502)
+    assert should_retry(server, "GET") is True
+    assert should_retry(algod_error("HTTP Error 503: Service Unavailable", 503), "GET") is True
+
+
+def test_a_server_error_is_not_asked_about_again_for_a_submission() -> None:
+    """Not because a replay could pay twice: an id is a hash of the signed
+    blob, so the chain sees one transaction however many copies arrive. It is
+    that a 5xx means the node behind the edge is unwell rather than the edge
+    shedding, and the duplicate recovery needs algod well enough to answer
+    "already in ledger". Nothing here has been measured — 47 hours of keeper
+    log hold 2,067 refusals and every one of them is a 403 — so the request
+    that spends money is the one that keeps surfacing it."""
+    assert should_retry(algod_error("HTTP Error 502: Bad Gateway", 502), "POST") is False
+
+
+def test_an_unknown_verb_is_treated_as_one_that_cannot_be_replayed() -> None:
+    """`retrying` is general, and a caller wrapping something that is not an
+    algosdk funnel has no method to offer. Reading that as idempotent would
+    make the safe default the one nobody chose."""
+    assert should_retry(algod_error("HTTP Error 502: Bad Gateway", 502)) is False
+
+
+def test_the_edge_refusals_are_retried_whatever_the_verb() -> None:
+    """The 403 and the 429 are the edge declining to pass a request on, and
+    the argument for replaying a submission holds for both."""
+    assert should_retry(algod_error(LIVE_403, 403), "POST") is True
+    assert should_retry(algod_error("HTTP Error 429: Too Many Requests", 429), "POST") is True
+    assert should_retry(algod_error(LIVE_403, 403)) is True
+
+
+def test_what_is_neither_a_refusal_nor_a_server_error_is_still_left_alone() -> None:
+    assert should_retry(algod_error("box not found", 404), "GET") is False
+    assert should_retry(algod_error("logic eval error: assert failed pc=1122", 400), "GET") is False
+
+
+def test_request_method_reads_the_verb_positionally_or_by_name() -> None:
+    assert request_method("get", "/v2/status") == "GET"
+    assert request_method(method="post", requrl="/transactions") == "POST"
+    assert request_method() == ""
+    assert request_method(None) == ""
 
 
 # --- the schedule ------------------------------------------------------
@@ -287,6 +382,164 @@ def test_describe_reads_the_url_positionally_or_by_name() -> None:
         "POST /v2/transactions"
     )
     assert describe_request() == "request"
+
+
+def test_a_read_survives_a_bad_gateway() -> None:
+    """End to end for the 5xx half: the report keeps running."""
+    clock = _Clock()
+    node = _Node(algod_error("HTTP Error 502: Bad Gateway", 502), {"boxes": []})
+    call = retrying(node, sleep=clock)
+
+    assert call("GET", "/v2/applications/769891898/boxes") == {"boxes": []}
+    assert node.calls == 2
+    assert clock.waits == [FIRST_WAIT_SECONDS]
+
+
+def test_a_submission_that_hits_a_bad_gateway_is_raised_at_once() -> None:
+    clock = _Clock()
+    node = _Node(*[algod_error("HTTP Error 503: Service Unavailable", 503)] * 5)
+    with pytest.raises(Exception, match="503"):
+        retrying(node, sleep=clock)("POST", "/transactions", data=b"")
+    assert node.calls == 1
+    assert clock.waits == []
+
+
+# --- a submission whose first copy landed after all --------------------
+
+
+def test_the_id_is_taken_from_the_blob_rather_than_the_node_s_prose() -> None:
+    """The safety argument used the other way round.
+
+    An Algorand transaction id is a hash of the signed transaction, so the
+    bytes already in our hand name the transaction algod says it holds. Reading
+    the id out of algod's message instead would tie this to a format we do not
+    control, and leaning on an unverifiable claim about the endpoint is exactly
+    the mistake that made this function necessary.
+    """
+    blob, txid = signed_blob()
+    assert submitted_txid("POST", "/transactions", None, blob) == txid
+    assert submitted_txid("POST", "/transactions", data=blob) == txid
+
+
+def test_a_group_is_named_by_its_first_transaction() -> None:
+    """A group arrives as several signed transactions concatenated in one body,
+    which `msgpack_decode` rejects as extra data, and algod answers it with the
+    first one's id."""
+    group, first = signed_blob(3)
+    single, _ = signed_blob(1)
+    assert len(group) > len(single)
+    assert submitted_txid("POST", "/transactions", data=group) == first
+
+
+def test_a_body_that_names_nothing_is_not_guessed_at() -> None:
+    """This runs while an error is already on its way to the caller, so
+    anything unexpected has to leave that error alone rather than replace it."""
+    assert submitted_txid("POST", "/transactions") is None
+    assert submitted_txid("POST", "/transactions", data=b"") is None
+    assert submitted_txid("POST", "/transactions", data="not even bytes") is None
+
+
+def test_a_replayed_submission_that_already_landed_is_not_a_failure() -> None:
+    """The consequence the first version of this module did not handle.
+
+    A 403 is written at the edge, which does not prove the edge had not already
+    forwarded the request. When it had, the replay comes back as algod's
+    "already in ledger" and the transaction is on chain. Raised, `keeper_bot`
+    would ask the registry whether it had moved on, find that it had — we moved
+    it — and emit `race_lost` naming the keeper that actually won. Nothing is
+    lost but the truth: the fee was paid once and collected once.
+    """
+    blob, txid = signed_blob()
+    clock = _Clock()
+    node = _Node(algod_error(LIVE_403, 403), duplicate_error(txid))
+    call = retrying(node, sleep=clock)
+
+    assert call("POST", "/transactions", data=blob) == {"txId": txid}
+    assert node.calls == 2
+    # The caller now waits on its own transaction and watches it confirm, which
+    # is what happened. It never learns there was a second copy.
+    assert clock.waits == [FIRST_WAIT_SECONDS]
+
+
+def test_a_transaction_still_in_the_pool_reads_the_same_way() -> None:
+    """Whether the first copy is committed or merely accepted decides the
+    wording and nothing else: either way the chain has the blob we sent."""
+    blob, txid = signed_blob()
+    node = _Node(
+        algod_error(LIVE_403, 403),
+        algod_error("TransactionPool.Remember: transaction already in the pool", 400),
+    )
+    assert retrying(node, sleep=_Clock())("POST", "/transactions", data=blob) == {"txId": txid}
+
+
+def test_the_recovery_says_so_in_the_log(caplog) -> None:
+    """An `executed` line that came out of a duplicate is a strange enough
+    thing that an operator should be able to find why."""
+    blob, txid = signed_blob()
+    node = _Node(algod_error(LIVE_403, 403), duplicate_error(txid))
+    with caplog.at_level("WARNING"):
+        retrying(node, sleep=_Clock(), describe=describe_request)(
+            "POST", "/transactions", data=blob
+        )
+    assert txid in caplog.text
+    assert "not a failure" in caplog.text
+
+
+def test_a_duplicate_on_the_first_try_is_the_caller_s_to_hear() -> None:
+    """Only a replay this wrapper made can be assumed to be ours.
+
+    A caller whose very first submission is told "already in ledger" sent that
+    transaction itself, earlier, and swallowing it here would hide a genuine
+    double submission behind a success.
+    """
+    blob, txid = signed_blob()
+    node = _Node(duplicate_error(txid))
+    with pytest.raises(Exception, match="already in ledger"):
+        retrying(node, sleep=_Clock())("POST", "/transactions", data=blob)
+    assert node.calls == 1
+
+
+def test_a_duplicate_this_cannot_name_is_raised_rather_than_invented() -> None:
+    """No blob, no id, and a made-up one would send the caller off to wait on a
+    transaction that does not exist. A wrong log line is the lesser wrong."""
+    node = _Node(algod_error(LIVE_403, 403), duplicate_error("SOMETXID"))
+    with pytest.raises(Exception, match="already in ledger"):
+        retrying(node, sleep=_Clock())("POST", "/transactions")
+    assert node.calls == 2
+
+
+def test_only_the_call_that_broadcasts_counts_as_a_submission() -> None:
+    """`/v2/transactions/params` and `/v2/transactions/pending/<id>` share the
+    prefix, spend nothing, and must not be answered with an invented id."""
+    assert is_submission("POST", "/transactions") is True
+    assert is_submission("POST", "/v2/transactions") is True
+    assert is_submission("POST", "/v2/transactions?foo=1") is True
+    assert is_submission("POST", requrl="/transactions") is True
+    assert is_submission("GET", "/transactions") is False
+    assert is_submission("GET", "/transactions/params") is False
+    assert is_submission("POST", "/transactions/pending/ABCDEF") is False
+    assert is_submission("POST", "/v2/applications/769891898/boxes") is False
+    assert is_submission() is False
+
+
+def test_a_duplicate_is_recognised_by_its_words_not_its_status() -> None:
+    """A bare 400 is also what a target's logic error looks like, and that one
+    has to keep reaching the caller untouched."""
+    assert is_duplicate_submission(duplicate_error("SOMETXID")) is True
+    assert is_duplicate_submission(algod_error("transaction already in pool", 400)) is True
+    assert (
+        is_duplicate_submission(algod_error("logic eval error: assert failed pc=1122", 400))
+        is False
+    )
+
+
+def test_a_duplicate_answer_to_something_that_is_not_a_submission_is_raised() -> None:
+    """The gate is the request, not the error text. A read that somehow came
+    back with those words has no blob behind it and no id to answer with."""
+    node = _Node(algod_error(LIVE_403, 403), duplicate_error("SOMETXID"))
+    with pytest.raises(Exception, match="already in ledger"):
+        retrying(node, sleep=_Clock())("GET", "/v2/applications/769891898/boxes")
+    assert node.calls == 2
 
 
 # --- installing on a client --------------------------------------------

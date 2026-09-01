@@ -97,7 +97,16 @@ def status(algorand, app_id: int) -> int:
     # ledger with the box still saying they are payable. Measured on
     # LocalNet, 2026-09-01. `create` cannot fund an address that does not
     # exist yet, so the check belongs here, where somebody looks afterwards.
-    solvency = read_solvency(algod, app_id, read_escrowed(algod, app_id))
+    # `read_solvency` refuses to guess the ledger's floor rather than assuming
+    # the 100,000 µALGO minimum, because guessing low inflates spendable and
+    # hides exactly the shortfall this line exists to show. A status command
+    # should say that it cannot answer, not answer wrongly, and not fall over
+    # with a traceback on the way.
+    try:
+        solvency = read_solvency(algod, app_id, read_escrowed(algod, app_id))
+    except ValueError as refusal:
+        logger.warning(f"  escrow    cannot be judged: {refusal}")
+        return 0
     logger.info(f"  escrow    {solvency.escrowed / 1e6:.3f} ALGO owed, "
                 f"{solvency.spendable / 1e6:.3f} ALGO spendable")
     if solvency.shortfall:

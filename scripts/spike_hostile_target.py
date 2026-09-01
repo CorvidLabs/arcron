@@ -64,6 +64,9 @@ INTERVAL = 10
 #: never blocked by the guard and the only lateness measured is bought.
 GUARD_GAP = 6
 CATCH_UP = 0
+SKIP_AHEAD = 1
+#: Longer than the interval, which is the configuration that never recovers.
+LONG_GAP = 15
 #: The keeper's own call, Arcron's inner call, and the payment back.
 EXECUTE_FEE = 3_000
 
@@ -82,7 +85,7 @@ def _payment(algorand, sender, receiver: str, amount: int):
 
 
 def _register(algorand, keeper, creator, target_app: int, signature: str,
-              funding: int, fee_cap: int = 0) -> int:
+              funding: int, fee_cap: int = 0, policy: int = CATCH_UP) -> int:
     call_args = [_selector(signature)]
     return keeper.send.register(
         args=RegisterArgs(
@@ -92,7 +95,7 @@ def _register(algorand, keeper, creator, target_app: int, signature: str,
             call_args=call_args,
             interval_rounds=INTERVAL,
             fee_per_execution=BASE_FEE,
-            policy=CATCH_UP,
+            policy=policy,
             fee_cap=fee_cap,
             fee_asset=0,
             asset_fee=0,
@@ -101,6 +104,21 @@ def _register(algorand, keeper, creator, target_app: int, signature: str,
             sender=creator.address, signer=creator.signer
         ),
     ).abi_return
+
+
+TOP_UP_SIGNATURE = "top_up(uint64,pay)uint64"
+
+
+def _call(algod, app_id: int, sender: str, signature: str, args, *, boxes=None, fee=1_000):
+    """One ABI method call, for the methods this spike needs beside `execute`."""
+    params = algod.suggested_params()
+    params.flat_fee = True
+    params.fee = fee
+    return transaction.ApplicationNoOpTxn(
+        sender=sender, sp=params, index=app_id,
+        app_args=[abi.Method.from_signature(signature).get_selector(), *args],
+        boxes=boxes or [],
+    )
 
 
 def _execute_txn(algod, app_id: int, sender: str, upkeep_id: int, target_app: int,
@@ -120,15 +138,30 @@ def _execute_txn(algod, app_id: int, sender: str, upkeep_id: int, target_app: in
     )
 
 
+#: What the AVM says when it rejects a group. Anything else that goes wrong is
+#: infrastructure, and infrastructure must not read as a refusal: a dead node
+#: would otherwise make every "the target could not be executed" measurement
+#: below pass without a chain having answered anything.
+REJECTION_MARKERS = ("logic eval error", "rejected by logic", "assert failed", "err opcode")
+
+
 def _send(algod, txns, account) -> bool:
-    """Submit a group. Returns whether it was accepted; a rejection is a result."""
+    """Submit a group. Returns whether it was accepted; a rejection is a result.
+
+    Only an AVM rejection counts as False. A refused connection, a 403 from a
+    node, a malformed group: those raise, because a spike that reads them as
+    "the chain said no" is a spike that passes when nothing was measured.
+    """
     if len(txns) > 1:
         transaction.assign_group_id(txns)
     signed = account.signer.sign_transactions(txns, list(range(len(txns))))
     try:
         txid = algod.send_transactions(signed)
-    except Exception as exc:  # noqa: BLE001 - the refusal is what is being measured
-        logger.debug(f"refused: {exc}")
+    except Exception as exc:
+        text = str(exc).lower()
+        if not any(marker in text for marker in REJECTION_MARKERS):
+            raise
+        logger.debug(f"rejected by the AVM: {exc}")
         return False
     transaction.wait_for_confirmation(algod, txid, 6)
     return True
@@ -235,9 +268,8 @@ def measure_bought_lateness(algorand, keeper, probe, creator, attacker, honest) 
     _wait_until_due(algorand, keeper, upkeep_id, creator)
     honest_paid = execute(honest)
     if honest_paid is None:
-        escapes.append("an honest keeper could not execute a healthy upkeep at all")
         _cancel(keeper, creator, upkeep_id)
-        return escapes
+        return ["an honest keeper could not execute a healthy upkeep at all"]
     logger.info(f"  honest keeper, on schedule: creator paid {honest_paid}")
 
     # Now the attacker shuts the window over the round the upkeep comes due.
@@ -251,9 +283,12 @@ def measure_bought_lateness(algorand, keeper, probe, creator, attacker, honest) 
     blocked = execute(honest)
     honest_cost = honest_before - _balance(algorand, honest.address)
     if blocked is not None:
-        logger.info("  the guard did not hold; nothing was bought")
         _cancel(keeper, creator, upkeep_id)
-        return escapes
+        return [
+            "the guard did not hold, so nothing was bought and nothing was measured. "
+            "This used to log and return green, which is how a spike stops being "
+            "evidence: the finding it exists to reproduce silently went unreproduced"
+        ]
     logger.info(f"  honest keeper blocked, and it cost them {honest_cost} uALGO")
 
     # And waits for the window it closed to reopen.
@@ -265,9 +300,8 @@ def measure_bought_lateness(algorand, keeper, probe, creator, attacker, honest) 
         net.wait_for_round(algorand, algod.status()["last-round"] + 1, poker=creator)
     net_gain = _balance(algorand, attacker.address) - spent_before
     if paid is None:
-        logger.info("  the attacker could not get through either")
         _cancel(keeper, creator, upkeep_id)
-        return escapes
+        return ["the attacker never got through, so the attack was not measured this run"]
 
     logger.info(f"  attacker executed the upkeep it delayed: creator paid {paid}, "
                 f"attacker up {net_gain} uALGO on the episode")
@@ -281,6 +315,191 @@ def measure_bought_lateness(algorand, keeper, probe, creator, attacker, honest) 
         escapes.append(f"the attack cost more than it returned ({net_gain} uALGO)")
     _cancel(keeper, creator, upkeep_id)
     return escapes
+
+
+def measure_no_self_heal(algorand, keeper, probe, creator, honest) -> list[str]:
+    """A cooldown longer than the interval, and nobody has to keep paying for it.
+
+    The first version of this spike used a gap of 6 against an interval of 10,
+    and on that setup the upkeep recovers: the attacker stops, the schedule
+    re-phases, honest keepers are back on base within two cycles. The
+    verification in docs/reviews/ wrote that down as a limit of the attack.
+    It is a limit of that configuration.
+
+    Point the same upkeep at a target whose cooldown is *longer* than the
+    interval and the recovery never happens. Every successful execution
+    re-arms the guard past the next due round, so the upkeep is late again by
+    its own schedule, `due > last_serviced` stays true, and the fee stays
+    escalated for as long as the escrow lasts. Under SKIP_AHEAD nobody has to
+    send another blocking transaction: the upkeep blocks itself, and the
+    keeper that happens to be waiting collects the difference every cycle.
+
+    Which makes this the more likely shape in the wild, not the more exotic
+    one: "an oracle that refuses a stale update, a rebalancer that runs once
+    an epoch" is exactly a cooldown, and a creator who sets a cadence shorter
+    than that epoch has built it by accident.
+    """
+    probe.send.set_gap(args=SetGapArgs(gap=LONG_GAP))
+    upkeep_id = _register(algorand, keeper, creator, probe.app_id, "guarded()uint64",
+                          FEE_CAP * 20, fee_cap=FEE_CAP, policy=SKIP_AHEAD)
+    algod = algorand.client.algod
+    fees: list[int] = []
+    for _ in range(4):
+        upkeep, _ = _read_upkeep(algorand, keeper.app_id, upkeep_id)
+        net.wait_for_round(algorand, upkeep.next_execution_round, poker=creator)
+        for _ in range(LONG_GAP + INTERVAL):
+            before, _ = _read_upkeep(algorand, keeper.app_id, upkeep_id)
+            if _send(algod, [_execute_txn(algod, keeper.app_id, honest.address, upkeep_id,
+                                          probe.app_id)], honest):
+                after, _ = _read_upkeep(algorand, keeper.app_id, upkeep_id)
+                fees.append(before.balance - after.balance)
+                break
+            net.wait_for_round(algorand, algod.status()["last-round"] + 1, poker=creator)
+    probe.send.set_gap(args=SetGapArgs(gap=GUARD_GAP))
+    _cancel(keeper, creator, upkeep_id)
+
+    logger.info(f"  cooldown {LONG_GAP} > interval {INTERVAL}, SKIP_AHEAD, no attacker at all: "
+                f"fees {fees}")
+    if len(fees) < 4:
+        return ["the upkeep could not be executed four times, so nothing was measured"]
+    # The first is the honest baseline; every one after it should have
+    # recovered to base if the verification's "self-heals" sentence were true.
+    if all(fee <= BASE_FEE for fee in fees[1:]):
+        return [
+            "the upkeep recovered to base on its own, so a cooldown longer than the "
+            "interval does self-heal after all, and the correction in docs/reviews/ "
+            "is wrong"
+        ]
+    return []
+
+
+def measure_sibling_blocker(algorand, keeper, probe, creator, attacker, honest) -> list[str]:
+    """Block with an upkeep of your own, and Arcron pays you to do it.
+
+    The cheap version of buying lateness sends an ordinary application call
+    for 1,000 uALGO. The cheaper version registers a second upkeep against the
+    same target: its execution trips the guard on a schedule, the attacker
+    executes it themselves so the base fee comes straight back, and no
+    blocking transaction is ever sent by hand.
+
+    It also walks through the defence `docs/integrating.md` recommends. A
+    target told to `assert Txn.sender == keeper_app.address` refuses a raw
+    call and accepts this one, because the inner sender is the keeper app
+    either way, and a permissionless registry cannot stop anyone registering
+    a second upkeep.
+    """
+    algod = algorand.client.algod
+    victim = _register(algorand, keeper, creator, probe.app_id, "guarded()uint64",
+                       FEE_CAP * 20, fee_cap=FEE_CAP)
+    blocker = _register(algorand, keeper, attacker, probe.app_id, "guarded()uint64",
+                        BASE_FEE * 20)
+    logger.info(f"  victim upkeep {victim} (cap {FEE_CAP}), attacker's blocker {blocker} "
+                f"(no cap), same target")
+
+    def execute(who, uid):
+        before, _ = _read_upkeep(algorand, keeper.app_id, uid)
+        if not _send(algod, [_execute_txn(algod, keeper.app_id, who.address, uid,
+                                          probe.app_id)], who):
+            return None
+        after, _ = _read_upkeep(algorand, keeper.app_id, uid)
+        return before.balance - after.balance
+
+    started = _balance(algorand, attacker.address)
+    victim_start = _read_upkeep(algorand, keeper.app_id, victim)[0].balance
+    excluded, paid_to_attacker = 0, []
+    for _ in range(4):
+        upkeep, _ = _read_upkeep(algorand, keeper.app_id, victim)
+        net.wait_for_round(algorand, upkeep.next_execution_round, poker=creator)
+        execute(attacker, blocker)          # trips the guard, and pays the attacker
+        if execute(honest, victim) is not None:
+            continue                        # an honest keeper got through this cycle
+        excluded += 1
+        for _ in range(GUARD_GAP + INTERVAL):
+            took = execute(attacker, victim)
+            if took is not None:
+                paid_to_attacker.append(took)
+                break
+            net.wait_for_round(algorand, algod.status()["last-round"] + 1, poker=creator)
+
+    victim_spent = victim_start - _read_upkeep(algorand, keeper.app_id, victim)[0].balance
+    net_gain = _balance(algorand, attacker.address) - started
+    logger.info(f"  honest keepers shut out of {excluded} of 4 cycles; victim spent "
+                f"{victim_spent} where four base fees are {4 * BASE_FEE}")
+    logger.info(f"  attacker collected {paid_to_attacker}, up {net_gain} uALGO net of its "
+                f"own escrow float and every fee")
+    for uid, who in ((victim, creator), (blocker, attacker)):
+        _cancel(keeper, who, uid)
+
+    if excluded == 0:
+        return ["the sibling upkeep blocked nobody, so this variant was not measured"]
+    if net_gain <= 0:
+        return [f"blocking with an upkeep of your own lost {net_gain} uALGO, so it is not "
+                "the cheaper variant docs/reviews/ says it is"]
+    return []
+
+
+def measure_escrow_bound(algorand, keeper, probe, creator, attacker, honest) -> list[str]:
+    """Composed with the fallback decline, the ceiling is the escrow, not the cap.
+
+    `execute` drops to the base fee when the escalated one is more than the
+    upkeep holds, which keeps a starving upkeep executable. Buy the lateness
+    on an upkeep in that state and the fallback is what you collect, which may
+    not cover the block. Top the escrow up to the cap in the same group and
+    you collect the cap instead, of which only the shortfall was yours: the
+    upkeep is emptied in one execution, and the attacker's take is whatever it
+    was still holding.
+
+    So the per-episode bound the first draft of docs/reviews/ gave, `cap -
+    base`, is the bound on the *plain* attack only. Kimi 3 found this
+    composition during the branch review and proved it in a scratch file; it
+    belongs here, asserted, rather than in a file nobody runs again.
+    """
+    algod = algorand.client.algod
+    probe.send.set_gap(args=SetGapArgs(gap=GUARD_GAP))
+    # Funded with exactly the cap and run once, so the escrow sits below the
+    # escalated fee and the fallback is what an ordinary keeper would get.
+    upkeep_id = _register(algorand, keeper, creator, probe.app_id, "guarded()uint64",
+                          FEE_CAP, fee_cap=FEE_CAP)
+    _wait_until_due(algorand, keeper, upkeep_id, creator)
+    if not _send(algod, [_execute_txn(algod, keeper.app_id, honest.address, upkeep_id,
+                                      probe.app_id)], honest):
+        _cancel(keeper, creator, upkeep_id)
+        return ["the first honest execution was refused, so nothing was measured"]
+
+    _wait_until_due(algorand, keeper, upkeep_id, creator)
+    net.wait_for_round(algorand, algod.status()["last-round"] + INTERVAL, poker=creator)
+    held = _read_upkeep(algorand, keeper.app_id, upkeep_id)[0].balance
+    if held >= FEE_CAP:
+        _cancel(keeper, creator, upkeep_id)
+        return [f"the escrow held {held}, at or above the cap {FEE_CAP}, so the fallback "
+                "this composes with was never reachable and nothing was measured"]
+
+    started = _balance(algorand, attacker.address)
+    params = algod.suggested_params()
+    shortfall = FEE_CAP - held
+    group = [
+        transaction.PaymentTxn(attacker.address, params, keeper.app_address, shortfall),
+        _call(algod, keeper.app_id, attacker.address, TOP_UP_SIGNATURE,
+              [upkeep_id.to_bytes(8, "big")], boxes=[(0, b"u" + upkeep_id.to_bytes(8, "big"))]),
+        _execute_txn(algod, keeper.app_id, attacker.address, upkeep_id, probe.app_id),
+    ]
+    if not _send(algod, group, attacker):
+        _cancel(keeper, creator, upkeep_id)
+        return ["the top-up-and-execute group was refused, so the composition is not "
+                "possible and docs/reviews/ overstates the bound"]
+
+    left = _read_upkeep(algorand, keeper.app_id, upkeep_id)[0].balance
+    net_gain = _balance(algorand, attacker.address) - started
+    logger.info(f"  escrow held {held} under a cap of {FEE_CAP}: the fallback would have paid "
+                f"{BASE_FEE}")
+    logger.info(f"  topped up {shortfall} in the same group, took the cap: escrow -> {left}, "
+                f"attacker up {net_gain} uALGO")
+    _cancel(keeper, creator, upkeep_id)
+    if left != 0:
+        return [f"the escrow was not emptied ({left} left), so the bound is not the escrow"]
+    if net_gain <= BASE_FEE:
+        return [f"the composition cleared {net_gain}, no better than the {BASE_FEE} fallback"]
+    return []
 
 
 def measure_atomic_backlog(algorand, keeper, probe, creator, honest) -> list[str]:
@@ -308,6 +527,14 @@ def measure_atomic_backlog(algorand, keeper, probe, creator, honest) -> list[str
     logger.info(f"  three executions in one group: {'accepted' if accepted else 'refused'}, "
                 f"{runs} execution(s), escrow -{drained}")
     _cancel(keeper, creator, upkeep_id)
+    if not accepted:
+        return ["the three-execution group was refused, so the backlog claim went unmeasured"]
+    if runs < 2:
+        return [
+            f"one group produced {runs} execution(s). The audit's claim that a race "
+            "yields one payment would then hold, and the verification's correction of "
+            "it in docs/reviews/ is wrong"
+        ]
     if drained > runs * BASE_FEE:
         return [f"{runs} replay(s) drained {drained}, more than {runs} base fees"]
     return []
@@ -352,6 +579,15 @@ def main(argv: list[str] | None = None) -> None:
     logger.info("── what an upkeep's lateness costs to buy ──")
     escapes += measure_bought_lateness(algorand, keeper, probe, creator, attacker, honest)
     logger.info("")
+    logger.info("── a cooldown longer than the interval never recovers ──")
+    escapes += measure_no_self_heal(algorand, keeper, probe, creator, honest)
+    logger.info("")
+    logger.info("── blocking with an upkeep of your own, which Arcron pays for ──")
+    escapes += measure_sibling_blocker(algorand, keeper, probe, creator, attacker, honest)
+    logger.info("")
+    logger.info("── composed with the fallback decline, the bound is the escrow ──")
+    escapes += measure_escrow_bound(algorand, keeper, probe, creator, attacker, honest)
+    logger.info("")
     logger.info("── one group, one backlog, how many fees ──")
     escapes += measure_atomic_backlog(algorand, keeper, probe, creator, honest)
 
@@ -365,6 +601,7 @@ def main(argv: list[str] | None = None) -> None:
         )
     logger.info("A target cannot see the bracket, cannot charge the keeper for failing,")
     logger.info("and can be used by a third party to buy the lateness escalation pays for.")
+    logger.info("A cooldown longer than the interval buys it for nobody in particular, for good.")
 
 
 if __name__ == "__main__":

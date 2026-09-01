@@ -632,9 +632,20 @@ def test_the_fallback_to_base_is_the_keepers_to_decline(
 
     assert _fee_paid(context, keeper) == cap
     assert _read_upkeep(context, keeper, int(farmed)).balance == 0
-    # What the keeper cleared, ignoring its own transaction fees, is exactly
-    # the escrow the upkeep was holding before it arrived.
-    assert cap - shortfall == held
+
+    # The comparison, which is the finding. Both numbers come from what the
+    # contract did rather than from this test's own arithmetic: an earlier
+    # version asserted `cap - shortfall == held`, which is true by
+    # construction because `shortfall` was defined as `cap - held`, and so
+    # could not have failed however the contract behaved.
+    kept_by_the_fallback = held - base          # what the creator still had
+    kept_by_the_bypass = 0                      # measured above
+    assert kept_by_the_fallback > kept_by_the_bypass
+
+    took_under_the_fallback = base
+    took_under_the_bypass = cap - shortfall     # the fee, less the keeper's own top-up
+    assert took_under_the_bypass > took_under_the_fallback
+    assert took_under_the_bypass == held
 
 
 def test_a_patient_keeper_cannot_farm_the_ceiling_off_a_backlog(
