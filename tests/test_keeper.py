@@ -616,8 +616,10 @@ def test_the_fallback_to_base_is_the_keepers_to_decline(
     plain = to_the_brink()
     held = _read_upkeep(context, keeper, int(plain)).balance
     keeper.execute(plain)
-    assert _fee_paid(context, keeper) == base
-    assert _read_upkeep(context, keeper, int(plain)).balance == held - base
+    took_under_the_fallback = _fee_paid(context, keeper)
+    assert took_under_the_fallback == base
+    kept_by_the_fallback = _read_upkeep(context, keeper, int(plain)).balance
+    assert kept_by_the_fallback == held - base
 
     # The same upkeep, in the same state, with the keeper's own money in front
     # of the execution. `top_up` binds the payer to the caller, so this is the
@@ -633,19 +635,17 @@ def test_the_fallback_to_base_is_the_keepers_to_decline(
     assert _fee_paid(context, keeper) == cap
     assert _read_upkeep(context, keeper, int(farmed)).balance == 0
 
-    # The comparison, which is the finding. Both numbers come from what the
-    # contract did rather than from this test's own arithmetic: an earlier
-    # version asserted `cap - shortfall == held`, which is true by
-    # construction because `shortfall` was defined as `cap - held`, and so
-    # could not have failed however the contract behaved.
-    kept_by_the_fallback = held - base          # what the creator still had
-    kept_by_the_bypass = 0                      # measured above
-    assert kept_by_the_fallback > kept_by_the_bypass
-
-    took_under_the_fallback = base
-    took_under_the_bypass = cap - shortfall     # the fee, less the keeper's own top-up
+    # The comparison, which is the finding. Both sides are read back from what
+    # the contract did, because an assertion that restates this test's own
+    # arithmetic cannot fail however the contract behaves: the first version
+    # of this ended in `cap - shortfall == held` with `shortfall` defined as
+    # `cap - held`, and the second renamed both sides and kept the tautology.
+    # Kimi 3 and Fable 5.1 each caught it again.
+    took_under_the_bypass = _fee_paid(context, keeper) - shortfall
     assert took_under_the_bypass > took_under_the_fallback
-    assert took_under_the_bypass == held
+    # And what the creator kept, from the boxes rather than from arithmetic.
+    assert kept_by_the_fallback > 0
+    assert _read_upkeep(context, keeper, int(farmed)).balance == 0
 
 
 def test_a_patient_keeper_cannot_farm_the_ceiling_off_a_backlog(

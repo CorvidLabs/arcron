@@ -60,14 +60,23 @@ reviewer who found the thing it fixes, and knows what the fix was trying to do.
 Then three independent passes over that branch, on the reasoning that two
 sessions of one model family grading each other is not independence. Same
 prompt, no shared answers, each asked to refute rather than confirm:
-[Grok 4.6](2026-09-01-grok-4.6-branch-review.md) **52/100**,
-[Fable 5.1](2026-09-01-fable-5.1-branch-review.md) **62/100**,
-[Kimi 3](2026-09-01-kimi-3-branch-review.md) **78/100**. None refuted the
-finding; all three made it worse, and between them they found a spike that
-passed without measuring anything, a test whose last assertion could not fail,
-a solvency check that guessed in the direction that hides a shortfall, and
-three documents still arguing from a premise the repository had already
-retired. The verification's section 6 lists what each changed.
+[Grok 4.6](2026-09-01-grok-4.6-branch-review.md) **52 → 76**,
+[Fable 5.1](2026-09-01-fable-5.1-branch-review.md) **62 → 68**,
+[Kimi 3](2026-09-01-kimi-3-branch-review.md) **78 → 88**, each read twice with
+its own report handed back the second time. None refuted the finding; all three
+made it worse, and between them they found a spike that passed without
+measuring anything, a test whose last assertion could not fail, a solvency
+check that guessed in the direction that hides a shortfall, six documents
+still arguing from a premise the repository had already retired, and — on the
+second pass, by checking a test's fake against the client the production path
+uses — a pagination bug in `keeper_bot.scan_upkeeps` that would have raised
+`TypeError` on any registry over one page. The verification's section 6 lists
+what each changed.
+
+Nobody reached 95, and the gap is worth reading rather than closing. What is
+left is a liveness question the branch opened and did not answer: one inner
+transaction failure sends the reference keeper away from an upkeep for up to
+an hour, escalation or not.
 
 ---
 

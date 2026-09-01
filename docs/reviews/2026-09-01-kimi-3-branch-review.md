@@ -59,3 +59,49 @@ Correct the two wrong numbers in checked-in evidence: node_retry.py's "1 in 15,0
 Land the fee_cap = 0 advice where the verification says it belongs (docs/integrating.md, console), or track it explicitly — right now the "immediate" recommendation exists only inside a review document
 
 To resume this session: kimi -r session_99f77235-19b9-4935-baed-44655c425d2f
+
+---
+
+# Second pass, after the fixes
+
+Re-run the same day against the same branch with the blockers above worked on,
+this report handed back so it could mark each one closed, partly closed or
+open. **Confidence 78 to 88.** What it found this time was mostly created
+by the first round of fixes.
+
+---
+
+## My earlier blockers
+
+- **Attribution contradiction (AGENTS.md dogfood bullet, split.md D5)** — CLOSED. Both rewritten to say zero outside users and soak-test-not-adoption explicitly, and the third sibling (`docs/status.md:52`) they found on their own is corrected too; no live document still argues from outside adoption.
+- **§3 honest limits (escrow-not-cap, reopening race, `fee_cap` needs re-register)** — CLOSED. §3 now states all three, the escrow composition is measured and asserted in `measure_escrow_bound` (I watched it drain an escrow to 0 on LocalNet), the backoff paragraph correctly cites `INNER_FAILURE_MARKER`/`MAX_BACKOFF_ROUNDS`, and the write-once caveat is in §3 and `docs/integrating.md`.
+- **Two wrong numbers in checked-in evidence (1-in-15,000; "up to five times")** — CLOSED. Docstring now says `0.09**5 ≈ 1 in 169,000` with `MAX_ATTEMPTS = 5`, and §5 says four retries, five tries.
+- **Creator advice not landed** — CLOSED. `docs/integrating.md` now has the blockable-target warning with measured numbers and the `fee_cap`-is-write-once note.
+
+## The other claims I verified
+
+- **Claim 1 (spike exit-0)** — CLOSED. I walked every early-return path in all six measures: each unmeasured outcome now returns a failure string and `main` exits non-zero; `_send` re-raises anything not matching the AVM rejection markers.
+- **Claim 2 (variants measured and asserted)** — CLOSED, with a caveat below. All three variants exist, assert, and the spike ran green twice on my machine.
+- **Claim 3 (raise_fee over spread-ramp)** — the right call. The ramp remedy assumed an honest keeper gets through once; against the shipped bot's one-hour backoff that event doesn't exist, against cooldown>interval there is no attacker to outlast, and against the sibling the block is scheduled. A creator-signed raise bounded by `fee_cap` puts the bid with the party who pays and can see the target; no box change, update-reachable, and the freeze ordering is correctly identified as the binding decision. It also honestly leaves the liveness question open rather than pretending to fix it.
+- **Claim 4** — CLOSED. `read_solvency` raises on missing `min-balance` (with tests), `read_upkeeps` reuses the paginated `scan_upkeeps` (pagination tests included), `govern status` catches the refusal and warns instead of tracing back. The deliberate retention of the floor fallback in `read_keepers` is argued correctly.
+- **Claim 5** — CLOSED. The test now runs both paths and asserts the comparison from measured state (`_fee_paid == cap`, balance 0 vs `held − base`).
+- **Claim 6** — CLOSED. txid-idempotency argument replaces the unverifiable CDN one; duplicate-after-replay is recognized and answered with the id hashed from our own blob, gated on `replayed` so a first-try duplicate still raises; 5xx retried for GET/HEAD/OPTIONS only; all covered by named tests.
+- **Claim 7** — CLOSED, and the reversal is right. I checked the evidence myself: `launchctl` shows `xyz.corvidlabs.arcron.keeper.testnet` running, and its log holds 11,543 scans and 1,993 `scan_failed` 403s — the document's 11,541/1,964 plus log growth. A bot scanning 33 boxes every ~5 rounds lands at exactly the counter's magnitude, so "shared across everyone, sending less won't help" is refuted whichever way the bucket is keyed.
+- **Claim 8 / spot-checks** — CLOSED. ci lane green (14/14), 559 tests pass, specsync strict green, spike green twice, tree clean.
+
+## What the fixes introduced or missed
+
+- **The quoted spike numbers are not stable across runs.** My first run of the identical, unmodified spike printed 32,800/+28,800, fees [7600, 29200, 22000, 29200], 3-of-4 shut out / 62,800 / +44,600, and 28,800 escrow / 11,200 top-up / +23,800 — different from the document on all four scenarios. My second run reproduced the document's figures exactly (25,600/+21,600; 22,000×3; 4-of-4/55,600/+45,600; 32,400/7,600/+27,400). The assertions are inequalities and held both times, and every qualitative finding is robust — but the verification §3, `docs/integrating.md`, and the commit message all quote one sample's exact figures as measured fact, and a reader rerunning has roughly even odds of watching the spike contradict them. This is the "checked-in evidence that doesn't reproduce" failure in a milder form; the docs should say "about", or the spike should pin its phases.
+- **`measure_sibling_blocker` keeps one green-without-measuring path.** `net_gain > 0` can be satisfied by the blocker's own base fees (+1,000/cycle) with `paid_to_attacker` empty — nothing asserts the attacker ever collected an escalated fee from the victim, which is the variant's core claim. Small, but it is the same shape this commit exists to fix.
+- **One unfailable assert survives in the fallback test.** `took_under_the_bypass == held` with `shortfall` defined as `cap − held` is still true by construction, and the new comment ("both numbers come from what the contract did") overclaims for that line. Cosmetic now that the real comparison is asserted.
+
+## Still wrong in the documents
+
+- §5's measurement paragraph has sub-1% arithmetic slips: 11,541 × 37 = 427,017, not the stated 429,957; 429,957/1.958 days = 219,590/day, not 219,564; 5.53 × 86,400 = 477,792, not 477,403. Direction unaffected — I verified the underlying log independently — but this is a paragraph whose whole job is to be measured rather than asserted.
+- §1's table row "508 unit tests pass | 508, unchanged" is stale at 559. Dated historical record, tolerable, but it now reads as a current claim.
+- Nothing else. The MainNet answer, the freeze-ordering argument, and the corrected limits all hold up.
+
+CONFIDENCE: 88 - that this branch is correct, its documents are true, and it is safe to merge
+BLOCKERS: NONE
+
+To resume this session: kimi -r session_be155098-0c7b-48f4-9032-8e353d6f707f

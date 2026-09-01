@@ -20,6 +20,7 @@ import pytest
 
 from scripts.keeper_bot import BONUS_FEE_MICROALGO, EXECUTION_COST_MICROALGO
 from algosdk.logic import get_application_address
+from algosdk.v2client.algod import AlgodClient
 
 from scripts.registry_health import (
     LOW_RUNWAY_DAYS,
@@ -293,11 +294,24 @@ class TestEveryBoxIsCounted:
         raw[66:74] = balance.to_bytes(8, "big")
         return b"u" + upkeep_id.to_bytes(8, "big"), bytes(raw)
 
-    class PagedAlgod:
+    class PagedAlgod(AlgodClient):
         """An algod that hands back the box list a page at a time, as a node does.
 
+        **Subclasses the real `AlgodClient` and stubs only `algod_request`,
+        the one method that reaches the network.** An earlier version of this
+        fake defined `application_boxes(self, app_id, **kwargs)` and accepted
+        a `next` keyword, which the real client does not: it builds that
+        call's query string from `limit` alone and forwards everything else to
+        `algod_request`, which has no such parameter. So the reader under test
+        passed here and raised `TypeError` against a node, and the bug the
+        pagination was added to fix would have become a crash instead of an
+        undercount. Grok 4.6 found it by checking the fake against the client
+        the production path uses, which is the only way this class of mistake
+        is ever found.
+
         The page token is opaque to the caller, so it is just the index of the
-        next page here; what matters is that the caller has to follow it.
+        next page here; what matters is that the caller has to follow it, and
+        has to do so through a real client's real signature.
         """
 
         def __init__(self, pages: list[list[tuple[bytes, bytes]]]) -> None:
@@ -305,18 +319,28 @@ class TestEveryBoxIsCounted:
             self.asked_for: list[str | None] = []
             self.values = {name: raw for page in pages for name, raw in page}
 
-        def application_boxes(self, app_id: int, **kwargs) -> dict:
-            token = kwargs.get("next")
+        def _page(self, token: "str | None") -> dict:
             self.asked_for.append(token)
             index = 0 if token is None else int(token)
             page: dict = {
                 "boxes": [
-                    {"name": base64.b64encode(name).decode()} for name, _ in self.pages[index]
+                    {"name": base64.b64encode(name).decode()}
+                    for name, _ in self.pages[index]
                 ]
             }
             if index + 1 < len(self.pages):
                 page["next-token"] = str(index + 1)
             return page
+
+        def application_boxes(self, app_id: int, limit: int = 0, **kwargs) -> dict:
+            # The real signature, which takes no `next`: a reader that tries to
+            # continue through this method is wrong, and must fail here.
+            assert not kwargs, f"application_boxes takes no {sorted(kwargs)}"
+            return self._page(None)
+
+        def algod_request(self, method, requrl, params=None, **kwargs):
+            assert "/boxes" in requrl, f"unexpected request {method} {requrl}"
+            return self._page((params or {}).get("next"))
 
         def application_box_by_name(self, app_id: int, name: bytes) -> dict:
             return {"value": base64.b64encode(self.values[name]).decode()}

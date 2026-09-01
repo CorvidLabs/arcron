@@ -28,7 +28,7 @@ Everything, without qualification.
 
 | Claim | Result |
 |---|---|
-| 508 unit tests pass | 508, unchanged |
+| the audit's 508 unit tests pass | 508 at the time; 559 now, as this branch added tests |
 | `scripts/attacks.py` 3/3 refused | 3/3, each for the right reason |
 | `scripts/spike_reentrancy.py` 3/3 refused | 3/3, `attempt to re-enter <app>` |
 | F1's whole table on a fresh unfunded keeper | every number identical, including `balance 37900 below min 100000` |
@@ -84,8 +84,19 @@ free, all day, without noticing anything except a target that looks broken.
 
 **Measured** (`scripts/spike_hostile_target.py`, LocalNet). Upkeep with base
 4,000, cap 40,000, interval 10 rounds, against a target that refuses two
-calls inside 6 rounds — short enough that an honest keeper on schedule is
+calls inside 6 rounds — short enough that an honest keeper on cadence is
 never blocked.
+
+**Every µALGO figure in this section is one run's.** LocalNet advances a round
+per transaction, so which round an execution lands on moves between runs and
+the fee moves with it: `excess` is counted in rounds. A second run of the
+identical spike printed 32,800 and +28,800 where the table below prints 25,600
+and +21,600, and both are correct. Two of the three reviewers reran it and saw
+different numbers, which is why this paragraph exists. **The properties are
+what reproduce**, and they are what the spike asserts: the honest keeper is
+blocked at zero cost, the attacker collects more than base, the escrow reaches
+zero, the fee never returns to base. Read the numbers as a sample of a shape,
+not as constants.
 
 | | |
 |---|---|
@@ -121,8 +132,9 @@ an interval of 10. Point the same upkeep at a target whose cooldown is
 *longer* than the interval and every successful execution re-arms the guard
 past the next due round, so the upkeep is permanently late by its own
 schedule and the fee never comes back down. Measured under SKIP_AHEAD with a
-15-round cooldown and **no attacker at any point**: fees of 7,600 then
-22,000, 22,000, 22,000. Under CATCH_UP the same setup pays base after two
+15-round cooldown and **no attacker at any point**: a first fee near base, then
+every later cycle escalated and none returning — 7,600 then 22,000, 22,000,
+22,000 on the run this was written from. Under CATCH_UP the same setup pays base after two
 hits and the backlog grows without bound instead. Nobody has to buy anything;
 the upkeep blocks itself and whichever keeper is waiting collects. This is
 the likelier shape in the wild, not the exotic one, because "an oracle that
@@ -134,9 +146,10 @@ it by accident.
 Register a second upkeep against the same target at `fee_cap = 0`. Its
 execution trips the guard on a schedule, the attacker executes it themselves
 so the base fee comes straight back, and no blocking transaction is ever sent
-by hand. Measured over four cycles: honest keepers shut out of **4 of 4**,
-the creator spent 55,600 where four base fees are 16,000, and the attacker
-finished **45,600 µALGO up** after its own escrow float and every fee. This
+by hand. Measured over four cycles: honest keepers shut out of **every cycle**, the
+creator spending several times what four base fees would have cost, and the
+attacker finishing well ahead after its own escrow float and every fee. On the
+run this was written from, 4 of 4, 55,600 against 16,000, and +45,600. This
 also walks through the defence `docs/integrating.md` recommends: a target
 told to `assert Txn.sender == keeper_app.address` refuses a raw call and
 accepts this one, because the inner sender is the keeper app either way, and
@@ -147,9 +160,10 @@ decline in section 2. On an upkeep whose escrow has fallen below the
 escalated fee, the fallback is what an ordinary keeper collects, and it may
 not cover the block. Top the escrow up to the cap in the same group instead
 and the cap is what you collect, of which only the shortfall was yours.
-Measured: an escrow holding 32,400 under a cap of 40,000, where the fallback
-would have paid 4,000, went to **zero** in one execution for a 7,600 top-up,
-clearing the attacker 27,400. Kimi 3 found this composition during the branch
+Measured: an escrow below the escalated fee, where the fallback would have
+paid base, goes to **zero** in one execution and the attacker clears roughly
+what the box was holding. On the run this was written from, 32,400 under a cap
+of 40,000, a 7,600 top-up, and +27,400. Kimi 3 found this composition during the branch
 review. The per-episode ceiling is the whole remaining escrow, not
 `cap − base`.
 
@@ -268,11 +282,15 @@ asks for the output rather than the memory:
 
   Measured since. `launchctl list` shows `xyz.corvidlabs.arcron.keeper.testnet`
   running on this machine, pointed at the same host as the refused `health`
-  runs. Its own logs give 11,541 scans across 62,689 rounds in 47 hours at 37
-  requests a scan: **429,957 requests in 1.958 days, 219,564 a day, from this
-  one bot** against a counter that stood at 230,824. The two agree to within
-  7%. Unthrottled it would be 477,403 a day, and the only thing holding it
-  down is the 1,964 refusals it has already absorbed. Two read-only
+  runs. Counting `{"event": "scan"}` lines in its own log: 11,543 scans across
+  63,013 rounds, one every 5.46 rounds, at 37 requests a scan (a status, the
+  box listing, one read for each of 33 boxes, and the block wait; the account
+  read is on the heartbeat, one scan in twenty). That is **416,125 requests
+  over 1.97 days, about 211,000 a day, from this one bot**, against a counter
+  that stood at 230,824 — roughly 92% of it,
+  from one process on one laptop. Three people counted this separately and
+  landed within 1% of each other, which is the agreement that matters rather
+  than the last digit; the log grows while you read it. Two read-only
   `GET /v2/status` calls 45 seconds apart moved `reqs` by 50, about one a
   second, which is not how a bucket shared by every user of a public Algorand
   endpoint would climb.
@@ -358,6 +376,45 @@ Four small errors they caught are corrected in place above: the table row that
 labelled a one-round-late execution "on schedule", "22x" for 21.6x, F1's
 "first creator" (the shortfall lands on whoever's `cancel` runs last, not on
 whoever registered first), and the retry count.
+
+### The second pass
+
+The same three read the branch again with their own reports in front of them
+and were asked to mark each of their blockers closed, partly closed or open.
+Grok moved 52 to 76, Kimi 78 to 88, Fable 62 to 68; none held a blocker from
+the first pass open. What they found the second time was mostly created by the
+first round of fixes, which is the useful direction:
+
+- **The pagination fix was broken, and so was what it reused.** Grok checked
+  the new test's fake against the client the production path uses and found
+  `scan_upkeeps(algod, app_id)` continuing pages with
+  `application_boxes(app_id, next=token)`, which algosdk cannot accept: it
+  builds that call's query string from `limit` alone and forwards the rest to
+  `algod_request`, which has no `next`. A second page raised `TypeError`. This
+  was a **pre-existing bug in the keeper bot**, not in the branch — it has
+  never fired because the registry is 33 boxes — and the branch had just built
+  a solvency check on top of it. Fable found it independently. The first page
+  now goes through the typed method and only the continuation drops to the raw
+  request, and the fake subclasses the real client so a keyword it would
+  reject cannot pass here again.
+- **Two spike assertions did not match the sentences they were evidence for.**
+  `measure_no_self_heal` escaped only if *every* later cycle recovered, so a
+  single escalated cycle followed by three at base would have been reported as
+  confirming the opposite. `measure_sibling_blocker` checked only that the
+  attacker finished ahead, which its own blocking upkeep's base fees satisfy
+  even if the victim was never taken. Both now assert the claim.
+- **The tautology survived its own fix.** `cap - shortfall == held` became
+  `took_under_the_bypass == held` with the same arithmetic underneath, and the
+  comment claiming otherwise made it worse. Both sides are now read back from
+  the contract, and mutating the fee to base fails the test.
+- **The numbers are one run's, and three reviewers reran the spike and got
+  different ones.** Section 3 now says so and quotes the properties.
+- **The sibling sweep found three sites and there were six.** `CLAUDE.md` —
+  the file that tells agents to keep the three top-level documents in step —
+  `docs/testnet.md`, and `docs/design/1.0.md`, which still gated MainNet on
+  "its outside creators", all carried the retired premise. Missing them in the
+  commit that named #105 as the recurring failure is the most instructive
+  thing on this page.
 
 ## 7. Would this change the MainNet answer?
 

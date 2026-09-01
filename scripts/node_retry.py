@@ -38,16 +38,18 @@ This repository's own keeper runs on the machine that ran the report, as the
 launchd agent `scripts/keeper_daemon.py` installs
 (`xyz.corvidlabs.arcron.keeper.testnet`), and `.env.testnet` points it at the
 same `testnet-api.algonode.cloud` from the same address. Counted out of its own
-log at `~/Library/Logs/arcron/keeper-testnet.log`: 11,541 scans across 62,689
-rounds in a 47.0 hour window, so a 2.70 s round and a scan every 5.4 of them.
-One scan of the live 33-upkeep registry is 37 requests — `status`, the box
-listing, 33 box reads, `account_info`, and the `status_after_block` long poll.
-That is 429,957 requests in 1.958 days, or **219,564 a day from this one bot**.
+log at `~/Library/Logs/arcron/keeper-testnet.log`: 11,543 `scan` events across
+63,013 rounds, so a 2.70 s round and a scan every 5.46 of them. One scan of the
+live 33-upkeep registry is 36 requests — `status`, the box listing, 33 box
+reads, and the `status_after_block` long poll. `account_info` is not among
+them: it runs on the heartbeat, one scan in `HEARTBEAT_SCANS` = 20, which an
+earlier count here folded into every scan. That is 416,125 requests in 1.97
+days, or **about 211,000 a day from this one bot**.
 The counter that was blocked stood at 230,824. Both of those are measured, and
-they are the same number to within 7%: one keeper of ours accounts for
+they are the same number to within 9%: one keeper of ours accounts for
 substantially all of the traffic the endpoint refused us over.
 
-And 219,564 is the figure the refusals have already throttled us down to. 96%
+And that is the figure the refusals have already throttled us down to. 96%
 of those scans are 2 to 4 rounds apart, a mean of 2.48 rounds or 6.70 s, which
 unrefused is 5.53 requests a second, or 477,403 a day. The 1,964 `scan_failed`
 403s in the same log, each followed by a doubling sleep, are the only reason

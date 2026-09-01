@@ -567,12 +567,41 @@ def align_to(period_seconds: int, stop=None) -> None:
         time.sleep(min(0.5, target - time.time()))
 
 
+def _box_page(algod, app_id: int, token: "str | None") -> dict:
+    """One page of an app's box names, continuing from `token`.
+
+    The continuation cannot go through `algod.application_boxes`. That is what
+    this did until 2026-09-01 and it cannot work: algosdk builds that call's
+    query string from `limit` alone and forwards every other keyword to
+    `algod_request`, whose signature has no `next`. A second page therefore
+    raised `TypeError: algod_request() got an unexpected keyword argument
+    'next'` rather than paging, and every reader built on this — the bot's own
+    scan, the health report, the solvency check — would have stopped at one
+    page. It never fired because the live registry is 33 boxes against a
+    server maximum in the thousands, and the unit tests passed because a mock
+    accepts a keyword the real client rejects.
+
+    So the first page keeps using the typed method, which every other reader
+    here calls and every fake implements, and only the continuation drops to
+    the request the typed API cannot express.
+
+    Grok 4.6 found it reviewing the branch that added the third reader, by
+    checking the fake against the client the production path actually uses.
+    """
+    if not token:
+        # The first page goes through the typed client, which is what every
+        # other reader in this repository calls and what every test fakes.
+        return algod.application_boxes(app_id)
+    return algod.algod_request(
+        "GET", f"/applications/{app_id}/boxes", params={"next": token}
+    )
+
+
 def scan_upkeeps(algod, app_id: int) -> list[Upkeep]:
     upkeeps: list[Upkeep] = []
     token: str | None = None
     while True:  # paginate the box list
-        kwargs = {"next": token} if token else {}
-        page = algod.application_boxes(app_id, **kwargs)
+        page = _box_page(algod, app_id, token)
         for box in page["boxes"]:
             name = _as_bytes(box["name"])
             if name[:1] != b"u":

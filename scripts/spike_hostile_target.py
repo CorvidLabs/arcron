@@ -28,11 +28,20 @@ the compiled TEAL. Reading is not measuring, so this runs them.
      escalated fee when it reopens. Measured here at roughly twenty times the
      attacker's outlay.
 
-Nothing here is a contract bug. Every µALGO moves within the cap the upkeep's
-creator chose, and the registry recovers on its own once the attacker stops.
-What it changes is the advice: an upkeep whose target can be blocked should
-not enable escalation, because the market escalation exists to clear can be
-closed by the person being paid.
+Nothing here is a contract bug: every µALGO moves within the cap the upkeep's
+creator chose. What it changes is the advice. An upkeep whose target can be
+blocked should not enable escalation, because the market escalation exists to
+clear can be closed by the person being paid — and, as `measure_no_self_heal`
+shows, a target whose cooldown is longer than the upkeep's interval closes it
+permanently with nobody attacking anything.
+
+**Every figure this prints is one run's.** LocalNet advances a round per
+transaction, so which round an execution lands on moves between runs, and the
+fee moves with it: `excess` is measured in rounds, so a run that lands two
+rounds later pays a different escalated fee. What does not move is the
+property each measurement asserts — blocked, shut out, emptied, above base —
+and those are what the assertions below check. Quote the properties; treat
+the numbers as a sample.
 
 Run:  poetry run python -m scripts.spike_hostile_target [--network localnet]
 """
@@ -270,7 +279,9 @@ def measure_bought_lateness(algorand, keeper, probe, creator, attacker, honest) 
     if honest_paid is None:
         _cancel(keeper, creator, upkeep_id)
         return ["an honest keeper could not execute a healthy upkeep at all"]
-    logger.info(f"  honest keeper, on schedule: creator paid {honest_paid}")
+    logger.info(f"  honest keeper, at the first due round (LocalNet lands it a round or "
+                f"two late, so this is already above the {BASE_FEE} base): "
+                f"creator paid {honest_paid}")
 
     # Now the attacker shuts the window over the round the upkeep comes due.
     # One call, at the ordinary transaction fee.
@@ -362,13 +373,17 @@ def measure_no_self_heal(algorand, keeper, probe, creator, honest) -> list[str]:
                 f"fees {fees}")
     if len(fees) < 4:
         return ["the upkeep could not be executed four times, so nothing was measured"]
-    # The first is the honest baseline; every one after it should have
-    # recovered to base if the verification's "self-heals" sentence were true.
-    if all(fee <= BASE_FEE for fee in fees[1:]):
+    # The document's claim is that the fee never comes back down, so *every*
+    # cycle after the baseline has to stay above base. An earlier version
+    # escaped only when all of them recovered, which would have passed on a
+    # single escalated cycle followed by three at base — the opposite result
+    # reported as a confirmation.
+    recovered = [fee for fee in fees[1:] if fee <= BASE_FEE]
+    if recovered:
         return [
-            "the upkeep recovered to base on its own, so a cooldown longer than the "
-            "interval does self-heal after all, and the correction in docs/reviews/ "
-            "is wrong"
+            f"{len(recovered)} of {len(fees) - 1} cycles came back to base ({recovered}), "
+            "so a cooldown longer than the interval does recover, and the correction "
+            "in docs/reviews/ overstates it"
         ]
     return []
 
@@ -432,6 +447,18 @@ def measure_sibling_blocker(algorand, keeper, probe, creator, attacker, honest) 
 
     if excluded == 0:
         return ["the sibling upkeep blocked nobody, so this variant was not measured"]
+    # `net_gain` on its own is not enough: executing the blocker pays the
+    # attacker its own base fee every cycle, so a run in which the victim was
+    # never taken at all still finishes positive. The claim is that the
+    # attacker collected an *escalated* fee from somebody else's upkeep, and
+    # that is what has to be asserted.
+    if not paid_to_attacker:
+        return ["the attacker never executed the victim, so it collected nothing from it"]
+    if max(paid_to_attacker) <= BASE_FEE:
+        return [
+            f"the most the attacker took from the victim was {max(paid_to_attacker)}, no "
+            f"more than the {BASE_FEE} base fee, so nothing was extracted by blocking"
+        ]
     if net_gain <= 0:
         return [f"blocking with an upkeep of your own lost {net_gain} uALGO, so it is not "
                 "the cheaper variant docs/reviews/ says it is"]
