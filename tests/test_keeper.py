@@ -559,6 +559,95 @@ def test_an_escrow_below_the_escalated_fee_falls_back_to_base(
     assert _read_upkeep(context, keeper, int(upkeep_id)).balance == 0
 
 
+def test_the_fallback_to_base_is_the_keepers_to_decline(
+    context: AlgopyTestContext, keeper: Keeper, pulse: Pulse
+) -> None:
+    """The safety valve above protects the upkeep, not the creator's wallet.
+
+    `execute` drops to the base fee when the escrow cannot cover the escalated
+    one. A keeper who would rather have the ceiling can pay the difference in
+    the same group: `top_up` takes money from anyone, so the keeper lifts the
+    escrow over the escalated fee, executes, and takes the whole thing back
+    plus what was already there. Their profit is the balance the upkeep held,
+    which is strictly better than base whenever the fallback would have
+    triggered — so on any upkeep worth executing at all, the fallback is a
+    price no keeper has to accept.
+
+    Measured on LocalNet during the 2026-09-01 audit's verification, base
+    4,000 and cap 40,000 against an escrow of 24,400: the plain execution paid
+    4,000 and left 20,400 in escrow, and the same execution with a 15,600
+    top-up in front of it paid 40,000, left nothing, and cleared the keeper
+    19,400 after its own transaction fees.
+
+    Nothing here is theft — the creator set the cap and the lateness is real —
+    but the audit that found this called it "no third-party loss", and that is
+    the wrong way round. The loss lands on the creator, who pays the ceiling
+    at exactly the moment the code was written to charge them base. What is
+    true is that it is bounded by the cap they chose.
+    """
+    base, cap = MIN_UPKEEP_FEE, MIN_UPKEEP_FEE * 10
+    start = 1_000
+    app_address = context.ledger.get_app(keeper).address
+
+    def to_the_brink():
+        """An upkeep one full interval late, holding less than the cap.
+
+        Returns the id as the contract's own `UInt64`, not a Python int: the
+        methods below take it straight back as an argument.
+        """
+        context.ledger.patch_global_fields(round=UInt64(start))
+        upkeep_id = _register(
+            context, keeper, pulse, _selector("tick()uint64"), funding=cap, fee_cap=cap
+        )
+        # One punctual run at base, which is what takes the escrow below the
+        # cap. Funding is exactly the cap, so without this the escalated fee
+        # is affordable and there is no fallback to decline.
+        due = _read_upkeep(context, keeper, int(upkeep_id)).next_execution_round
+        context.ledger.patch_global_fields(round=UInt64(due))
+        keeper.execute(upkeep_id)
+        assert _fee_paid(context, keeper) == base
+        upkeep = _read_upkeep(context, keeper, int(upkeep_id))
+        context.ledger.patch_global_fields(
+            round=UInt64(upkeep.last_serviced_round + 2 * MIN_INTERVAL_ROUNDS)
+        )
+        return upkeep_id
+
+    # Left alone, the fallback holds and the upkeep survives to run again.
+    plain = to_the_brink()
+    held = _read_upkeep(context, keeper, int(plain)).balance
+    keeper.execute(plain)
+    took_under_the_fallback = _fee_paid(context, keeper)
+    assert took_under_the_fallback == base
+    kept_by_the_fallback = _read_upkeep(context, keeper, int(plain)).balance
+    assert kept_by_the_fallback == held - base
+
+    # The same upkeep, in the same state, with the keeper's own money in front
+    # of the execution. `top_up` binds the payer to the caller, so this is the
+    # keeper paying — and getting it straight back inside the fee.
+    farmed = to_the_brink()
+    held = _read_upkeep(context, keeper, int(farmed)).balance
+    shortfall = cap - held
+    keeper.top_up(
+        farmed, context.any.txn.payment(receiver=app_address, amount=shortfall)
+    )
+    keeper.execute(farmed)
+
+    assert _fee_paid(context, keeper) == cap
+    assert _read_upkeep(context, keeper, int(farmed)).balance == 0
+
+    # The comparison, which is the finding. Both sides are read back from what
+    # the contract did, because an assertion that restates this test's own
+    # arithmetic cannot fail however the contract behaves: the first version
+    # of this ended in `cap - shortfall == held` with `shortfall` defined as
+    # `cap - held`, and the second renamed both sides and kept the tautology.
+    # Kimi 3 and Fable 5.1 each caught it again.
+    took_under_the_bypass = _fee_paid(context, keeper) - shortfall
+    assert took_under_the_bypass > took_under_the_fallback
+    # And what the creator kept, from the boxes rather than from arithmetic.
+    assert kept_by_the_fallback > 0
+    assert _read_upkeep(context, keeper, int(farmed)).balance == 0
+
+
 def test_a_patient_keeper_cannot_farm_the_ceiling_off_a_backlog(
     context: AlgopyTestContext, keeper: Keeper, pulse: Pulse
 ) -> None:

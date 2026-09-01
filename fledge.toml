@@ -153,6 +153,11 @@ scenario = "poetry run python -m scripts.scenario --network localnet"
 # which they took turns proves nothing. Not in a lane: it is a timing
 # experiment on a live chain, not an assertion that holds every time.
 race = "poetry run python -m scripts.keeper_race --network localnet"
+# What a hostile target can see, what it can cost a keeper, and what a third
+# party can buy. Unlike `race` this is deterministic and asserts, so it sits
+# in the local lane: the three properties it pins are ones only an audit has
+# ever checked, and the last audit checked them by reading TEAL.
+hostile-target = "poetry run python -m scripts.spike_hostile_target --network localnet"
 
 [lanes.ci]
 description = "Full CI pipeline: contracts + console, unit tests, spec drift check, rendered-page audit"
@@ -160,7 +165,7 @@ steps = ["build", "test", "spec", "js-install", "js-test", "web-test", "web-buil
 
 [lanes.local]
 description = "CI plus the LocalNet end-to-end test and the console rendering audit (needs algokit localnet start, and web-render-install once)"
-steps = ["build", "test", "spec", "js-install", "js-test", "web-test", "web-build", "web-build-hosted", "web-verify-hosted", "web-render", "keeper-ui-test", "keeper-ui-build", "govern-ui-test", "govern-ui-build", "smoke-keeper", "smoke-subscription", "smoke-govern", "smoke-multisig", "smoke-clawback", "attacks", "smoke-reference-boundary"]
+steps = ["build", "test", "spec", "js-install", "js-test", "web-test", "web-build", "web-build-hosted", "web-verify-hosted", "web-render", "keeper-ui-test", "keeper-ui-build", "govern-ui-test", "govern-ui-build", "smoke-keeper", "smoke-subscription", "smoke-govern", "smoke-multisig", "smoke-clawback", "attacks", "hostile-target", "smoke-reference-boundary"]
 
 [lanes.endurance]
 description = "The local lane plus a soak: many consecutive executions, no drift"

@@ -51,7 +51,9 @@ Upkeep **113** services the live hub `770746178`: it calls `draw()uint64` every
 target is maintained in another repository, and that is the ordinary case
 rather than a loose end: 26 of the 33 live upkeeps were registered by accounts
 other than the deployer, across seven addresses, against targets this
-repository has never built.
+repository has never built. All seven of those addresses are ours, so this is
+a statement about how the registry is exercised and not about who uses it:
+the count of upkeeps registered by somebody who is not us is zero.
 
 A loose end that genuinely is one, stated because it is true: upkeep **91**
 still points at `770130162`, the hub rain ran on until 2026-08-31. That hub has

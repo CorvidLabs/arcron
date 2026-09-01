@@ -31,7 +31,7 @@ is not deployed to any public network.
 
 | Type | Description |
 |------|-------------|
-| `ResourceProbe` | ARC-4 contract class; global state `subject: Address`, `subject_asset: uint64`, `subject_app: uint64`, `probes_run: uint64`, `last_reading: uint64`, `last_number: uint64`, `last_text: string`, `last_caller: Address`, `keeper_app: uint64`, `keeper_upkeep: uint64` (the keeper application and upkeep `reenter` aims at, set by `configure_reentry`). |
+| `ResourceProbe` | ARC-4 contract class; global state `subject: Address`, `subject_asset: uint64`, `subject_app: uint64`, `probes_run: uint64`, `last_reading: uint64`, `last_number: uint64`, `last_text: string`, `last_caller: Address`, `keeper_app: uint64`, `keeper_upkeep: uint64` (the keeper application and upkeep `reenter` aims at, set by `configure_reentry`), `gap: uint64`, `next_allowed: uint64` (how long `guarded` locks itself for, and the round it will next accept a call). |
 
 #### ResourceProbe Methods
 
@@ -48,6 +48,11 @@ is not deployed to any public network.
 | `configure_reentry` | `keeper_app: uint64, upkeep_id: uint64` | `void` | Point `reenter` at a keeper app and one of its upkeeps. |
 | `reenter` | — | `uint64` | Calls the keeper's `execute` back from inside its own execution, once. Measures whether a target can re-enter Arcron and who a nested execution would pay. |
 | `report_caller` | — | `address` | Records who the target sees as its caller. Called through an upkeep this is Arcron's app account rather than the keeper, and that decides whether a target can pay a keeper itself. |
+| `report_group` | — | `uint64` | Records the group size this call arrived in, as the target sees it. Through an upkeep the answer is 1 however large the keeper's own group was, which is why a target cannot detect being bracketed. |
+| `exhaust_budget` | — | `uint64` | Spends more opcode budget than a keeper can bring, so a failing execution can be priced. |
+| `refuse` | — | `void` | Rejects every call, the way a target with a bug or a grudge would. |
+| `set_gap` | `gap: uint64` | `void` | Set how long `guarded` locks itself for after a call. |
+| `guarded` | — | `uint64` | Refuses a second call inside `gap` rounds: an oracle rejecting a stale update, a rebalancer that runs once an epoch. The shape that lets a third party manufacture lateness. |
 | `absorb` | `number: uint64, text: string` | `uint64` | A hook with arguments of its own, a shape Arcron cannot call today. Records the budget it was handed and both arguments, so a call that loses one is distinguishable from a call that works. |
 
 ## Invariants
@@ -58,6 +63,8 @@ is not deployed to any public network.
 4. Nothing here is called by the keeper network; it is only ever a target.
 5. `report_caller` records rather than asserts, because the answer differs by how the call arrived and both answers are correct.
 6. `reenter` re-enters once and only once; unconditional recursion would hit the AVM's depth limit and measure that instead of the question asked.
+7. `exhaust_budget` and `refuse` are the two ways a target can fail: too expensive, and unwilling. Both exist so that the *cost to the keeper* of a failed execution can be measured rather than assumed.
+8. `guarded` is the only method here whose behaviour depends on who called it last. That is the point: everything else answers the same way every time, and a target that does not is what makes an upkeep's lateness something a third party can buy.
 
 ## Behavioral Examples
 
@@ -84,6 +91,24 @@ is not deployed to any public network.
 - **Given** an upkeep registered against `reenter()uint64`, with or without a catch-up backlog
 - **When** a keeper executes it and the probe calls `execute` back
 - **Then** the whole group fails with `attempt to re-enter <app>`. The AVM refuses before the contract's own ordering is even consulted
+
+### Scenario: A bracketed target cannot tell
+
+- **Given** an upkeep registered against `report_group()uint64`
+- **When** a keeper executes it inside a group of three transactions of its own
+- **Then** `last_reading` holds 1, because the inner call is its own group. The target cannot see the bracket, so any defence has to be in its own state
+
+### Scenario: A failing target costs the keeper nothing
+
+- **Given** upkeeps registered against `exhaust_budget()uint64` and `refuse()void`
+- **When** a keeper executes either
+- **Then** the transaction is rejected, the keeper's balance is unchanged because a rejected transaction is not in the ledger, and the upkeep's box is untouched
+
+### Scenario: Lateness can be bought
+
+- **Given** an upkeep with `fee_cap` above `fee_per_execution` against `guarded()uint64`, whose gap is shorter than the upkeep's interval so honest execution always succeeds
+- **When** a third party calls `guarded` directly just before the upkeep is due, so every keeper's execution reverts until the window reopens
+- **Then** the upkeep is late through no keeper's choice, and whoever executes it when the window reopens is paid the escalated fee. The cost of arranging this is one application call
 
 ### Scenario: A hook with arguments needs an app arg per argument
 
@@ -115,6 +140,7 @@ is not deployed to any public network.
 | `scripts/spike_multiarg.py` | Calls `report_budget` and `absorb` through today's keeper and a multi-arg variant, and compares |
 | `scripts/spike_asa_fee.py` | Calls `report_caller` directly and through an upkeep, and uses the probe as a target for an ASA-paying keeper variant |
 | `scripts/spike_reentrancy.py` | Registers `reenter` as an upkeep under each catch-up policy and records what the AVM does |
+| `scripts/spike_hostile_target.py` | Registers `report_group`, `exhaust_budget`, `refuse` and `guarded`, and asserts what a hostile target can see, cost and manufacture |
 
 ## Change Log
 
@@ -125,4 +151,5 @@ is not deployed to any public network.
 | 2026-08-24 | CorvidLabs | Added `configure_reentry` and `reenter` for the #7/#14 security review: the AVM rejects a re-entrant `execute` outright (`attempt to re-enter`), so a target cannot call the keeper back under any catch-up policy. |
 | 2026-08-24 | CorvidLabs | Added `report_caller` for issue #9: an Arcron-executed call arrives as an inner transaction, so the target sees Arcron's app account and never learns who the keeper is. |
 | 2026-08-24 | CorvidLabs | Added `absorb` for issue #8: a hook taking real arguments, used to price a multi-arg call shape (1,216 budget for one argument, 1,139 for three). |
+| 2026-09-01 | CorvidLabs | Added `report_group`, `exhaust_budget`, `refuse`, `set_gap` and `guarded` for the verification of the 2026-09-01 audit. The first three settle claims the audit made from the TEAL alone: a bracketed target sees `group_size` 1, and a failing target costs the keeper nothing. `guarded` settles one it did not make: a third party can buy an upkeep's lateness for one application call and be paid the escalated fee for it. |
 | 2026-08-27 | CorvidLabs | Documented `keeper_app` and `keeper_upkeep` in the state row. Both were added with `configure_reentry` and never written down; `keeper_app` appeared only as one of its arguments. `specsync check --strict` passed throughout, because it checks a spec's shape and never reads the compiled contract. `tests/test_specs_match_contracts.py` now compares both against the ARC-56 artifact. |

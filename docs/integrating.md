@@ -429,6 +429,31 @@ So: leave the ceiling at zero unless an upkeep is genuinely going unserviced.
 It buys reliability from a competitive keeper set and buys nothing from a
 single one.
 
+**And nothing at all if your target can be made to refuse.** Escalation pays
+for lateness on the premise that lateness means no keeper would take the job
+at the base price. That premise fails whenever a third party can make your
+hook revert: a cooldown, a freshness bound, a once-an-epoch guard, anything
+conditional on state somebody else can move. Blocking costs an attacker one
+application call, a keeper whose execution reverts pays nothing and simply
+goes away, and whoever arranged the block collects the escalated fee when the
+window reopens. Measured on LocalNet: a 4,000 µALGO fee with a 40,000 ceiling
+paid 25,600 for a block that cost 1,000 to arrange, and a variant that blocks
+with a second upkeep against the same target shut every other keeper out of
+four cycles in four and finished 45,600 µALGO ahead. Setting
+`assert Txn.sender == <keeper app address>` on your hook does not stop that
+one: the inner sender is the keeper app whoever registered the upkeep.
+
+Worse, if your target's cooldown is *longer* than your cadence, nobody needs
+to attack it. Each run re-arms the cooldown past the next due round, so the
+upkeep is permanently late by its own schedule and pays the ceiling forever.
+Measured with a 15-round cooldown on a 10-round cadence: 22,000 µALGO a cycle,
+indefinitely, with no attacker present.
+
+If your hook can refuse for any reason another account controls, set the
+ceiling to zero. Note that you cannot change your mind later: `fee_cap` is
+fixed at `register`, and the only way to change it is `cancel` and register
+again, which returns your escrow and box MBR and gives you a new upkeep id.
+
 A ceiling does not raise the balance at which an upkeep stops being
 executable. When the escalated fee is more than the escrow holds, the contract
 drops the fee back to `fee_per_execution`, so an upkeep with a 4,000 µALGO fee

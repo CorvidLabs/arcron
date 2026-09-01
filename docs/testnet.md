@@ -46,15 +46,19 @@ Read from the chain at round 66,852,815 on 2026-08-31.
 | 81 | `770041460` (our agent) | 58 min | 3.9000 ALGO | ~16 days | 78 | skip ahead |
 | 82 | `769891902` pulse | 58 min | 7.3253 ALGO | ~29 days | 61 | skip ahead |
 | 91 | `770130162`, a **superseded** rain hub | 58 min | 2.9280 ALGO | ~29 days | 39 | skip ahead |
-| 110 | `770734249`, a stranger's | 7 days | 0.5000 ALGO | ~873 days | 0 | skip ahead |
+| 110 | `770734249`, our agent `CEPY52VZRWFL`'s | 7 days | 0.5000 ALGO | ~873 days | 0 | skip ahead |
 | 113 | `770746178`, the live rain hub | 58 min | 0.0360 ALGO | **~0.4 days** | 11 | skip ahead |
 
 A selection out of thirty-three, each row here because it shows something: the
 `pulse` set is both catch-up policies side by side, **113** drives the rain hub
 that is actually live and is about to starve, **91** still pays keepers to call
-the hub rain abandoned, and **110** belongs to somebody who is not us, on the
-longest cadence in the registry and funded for more than two years of it. The
-rest are agent registrations, twelve of them starved on a 20 round cadence.
+the hub rain abandoned, and **110** is on the longest cadence in the
+registry, funded for more than two years of it. It was listed here as a
+stranger's until [#236](https://github.com/CorvidLabs/arcron/pull/236): it belongs to `CEPY52VZRWFL`, an agent of ours
+that funded itself from the public dispenser and so did not look like the
+others. Nothing in this registry was registered by somebody who is not us.
+The rest are agent registrations, twelve of them starved on a 20 round
+cadence.
 `fledge run health` is the live view and says which of the two kinds of overdue
 each one is.
 

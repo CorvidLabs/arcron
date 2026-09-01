@@ -13,17 +13,26 @@ report that flags everything is one nobody reads.
 
 from __future__ import annotations
 
+import base64
 import hashlib
 
 import pytest
 
 from scripts.keeper_bot import BONUS_FEE_MICROALGO, EXECUTION_COST_MICROALGO
+from algosdk.logic import get_application_address
+from algosdk.v2client.algod import AlgodClient
+
 from scripts.registry_health import (
     LOW_RUNWAY_DAYS,
+    RegistrySolvency,
     UpkeepHealth,
     classify_failure,
     execute_selector,
+    read_escrowed,
+    read_solvency,
+    read_upkeeps,
 )
+from tests.test_keeper_bot import LIVE_BOX_HEX
 
 
 def health(**over) -> UpkeepHealth:
@@ -186,3 +195,189 @@ class TestBlockedFlag:
 
     def test_an_on_schedule_upkeep_is_never_flagged_by_this(self) -> None:
         assert health(rounds_late=0, blocked="").flags() == []
+
+
+class TestRegistrySolvency:
+    """The app account must be able to pay out every µALGO its boxes promise.
+
+    Found by the 2026-09-01 audit, on LocalNet, against a keeper created
+    without its base minimum balance: `register` charges the box MBR exactly
+    and `opt_in_asset` charges the holding deposit exactly, but nothing ever
+    charges the 0.1 ALGO the account itself needs. A creator who overpaid the
+    box MBR to get past that got a box saying 120,000 with 57,900 spendable
+    behind it; the 15th execution and then `cancel` were refused by the ledger
+    ("balance 37900 below min 100000"), until a stranger donated 0.1 ALGO.
+    `deploy_config` funds it; `govern create`, the MainNet path, only says to.
+    This report is where an operator would look, and it did not look.
+    """
+
+    def test_a_registry_whose_base_mbr_was_never_funded_is_short(self) -> None:
+        # Exactly the LocalNet numbers: MBR overpaid to 100,000 against a
+        # required 62,100, 120,000 of funding, one box.
+        solvency = RegistrySolvency(amount=220_000, min_balance=162_100, escrowed=120_000)
+        assert solvency.spendable == 57_900
+        assert solvency.shortfall == 62_100
+        assert solvency.flags() == ["THE APP CANNOT PAY OUT 62,100 uALGO IT HOLDS IN ESCROW"]
+
+    def test_a_funded_registry_has_no_shortfall(self) -> None:
+        # The same registry after the 0.1 ALGO arrives from anyone at all.
+        solvency = RegistrySolvency(amount=320_000, min_balance=162_100, escrowed=120_000)
+        assert solvency.shortfall == 0
+        assert solvency.flags() == []
+
+    def test_surplus_is_not_a_problem(self) -> None:
+        # Overpaid MBR and opt-in deposits only ever accumulate. That is fine.
+        solvency = RegistrySolvency(amount=1_000_000, min_balance=162_100, escrowed=120_000)
+        assert solvency.shortfall == 0
+
+    def test_solvency_is_read_from_the_app_account(self) -> None:
+        class Algod:
+            def account_info(self, address: str) -> dict:
+                assert address == get_application_address(769891898)
+                return {"amount": 220_000, "min-balance": 162_100}
+
+        solvency = read_solvency(Algod(), 769891898, 120_000)
+        assert solvency == RegistrySolvency(amount=220_000, min_balance=162_100, escrowed=120_000)
+
+    def test_a_node_that_does_not_report_min_balance_is_refused_not_guessed(self) -> None:
+        """The floor is a lower bound, so assuming it answers the wrong way.
+
+        `min-balance` is at least 100,000 and rises by the exact MBR of every
+        box the app holds; on the registry above it is 162,100. Substituting
+        the floor would have called that account 400,000 spendable instead of
+        237,900, and a registry 62,100 short would have printed as solvent —
+        the one failure this check was added to catch. An answer that can only
+        be wrong in that direction is worth less than no answer.
+        """
+        class Algod:
+            def account_info(self, address: str) -> dict:
+                return {"amount": 220_000}
+
+        with pytest.raises(ValueError) as raised:
+            read_solvency(Algod(), 769891898, 120_000)
+        assert "min-balance" in str(raised.value)
+
+    def test_the_refusal_says_what_it_will_not_assume(self) -> None:
+        # Whoever reads this is holding a node that answered short, and needs
+        # to know the report stopped rather than rounded.
+        class Algod:
+            def account_info(self, address: str) -> dict:
+                return {"amount": 220_000}
+
+        with pytest.raises(ValueError) as raised:
+            read_solvency(Algod(), 769891898, 120_000)
+        assert "100,000" in str(raised.value)
+        assert "769891898" in str(raised.value)
+
+
+class TestEveryBoxIsCounted:
+    """The escrow sum is only as good as the box list it is summed from.
+
+    `read_upkeeps` took a single `limit=1_000` page of boxes and called it the
+    registry. At the 33 upkeeps live on TestNet that is the registry, so the
+    solvency check shipped correct and would have stayed correct right up to
+    the point where it mattered. Past a thousand boxes the dropped tail comes
+    off the *liability* side of the comparison, so the app looks like it owes
+    less than it does and an insolvent registry prints as healthy: the same
+    direction of error as guessing the ledger's floor low.
+
+    `keeper_bot.scan_upkeeps` has paged with the `next-token` since it was
+    written. These assert that this module now uses that one rather than a
+    second copy that can drift away from it again.
+    """
+
+    @staticmethod
+    def _box(upkeep_id: int, balance: int) -> tuple[bytes, bytes]:
+        # The recorded LocalNet box, with only the escrow moved, so each box
+        # carries a number that says which page it came from.
+        raw = bytearray(bytes.fromhex(LIVE_BOX_HEX))
+        raw[66:74] = balance.to_bytes(8, "big")
+        return b"u" + upkeep_id.to_bytes(8, "big"), bytes(raw)
+
+    class PagedAlgod(AlgodClient):
+        """An algod that hands back the box list a page at a time, as a node does.
+
+        **Subclasses the real `AlgodClient` and stubs only `algod_request`,
+        the one method that reaches the network.** An earlier version of this
+        fake defined `application_boxes(self, app_id, **kwargs)` and accepted
+        a `next` keyword, which the real client does not: it builds that
+        call's query string from `limit` alone and forwards everything else to
+        `algod_request`, which has no such parameter. So the reader under test
+        passed here and raised `TypeError` against a node, and the bug the
+        pagination was added to fix would have become a crash instead of an
+        undercount. Grok 4.6 found it by checking the fake against the client
+        the production path uses, which is the only way this class of mistake
+        is ever found.
+
+        The page token is opaque to the caller, so it is just the index of the
+        next page here; what matters is that the caller has to follow it, and
+        has to do so through a real client's real signature.
+        """
+
+        def __init__(self, pages: list[list[tuple[bytes, bytes]]]) -> None:
+            self.pages = pages
+            self.asked_for: list[str | None] = []
+            self.values = {name: raw for page in pages for name, raw in page}
+
+        def _page(self, token: "str | None") -> dict:
+            self.asked_for.append(token)
+            index = 0 if token is None else int(token)
+            page: dict = {
+                "boxes": [
+                    {"name": base64.b64encode(name).decode()}
+                    for name, _ in self.pages[index]
+                ]
+            }
+            if index + 1 < len(self.pages):
+                page["next-token"] = str(index + 1)
+            return page
+
+        def application_boxes(self, app_id: int, limit: int = 0, **kwargs) -> dict:
+            # The real signature, which takes no `next`: a reader that tries to
+            # continue through this method is wrong, and must fail here.
+            assert not kwargs, f"application_boxes takes no {sorted(kwargs)}"
+            return self._page(None)
+
+        def algod_request(self, method, requrl, params=None, **kwargs):
+            assert "/boxes" in requrl, f"unexpected request {method} {requrl}"
+            return self._page((params or {}).get("next"))
+
+        def application_box_by_name(self, app_id: int, name: bytes) -> dict:
+            return {"value": base64.b64encode(self.values[name]).decode()}
+
+    def test_a_registry_that_spans_two_pages_is_read_whole(self) -> None:
+        algod = self.PagedAlgod([
+            [self._box(1, 10_000), self._box(2, 20_000)],
+            [self._box(3, 30_000)],
+        ])
+
+        upkeeps = read_upkeeps(algod, 769891898, 2.8, 15_055)
+
+        assert [u.upkeep_id for u in upkeeps] == [1, 2, 3]
+        assert algod.asked_for == [None, "1"], "the second page was never asked for"
+
+    def test_the_escrow_sum_includes_the_boxes_on_later_pages(self) -> None:
+        # The assertion the old single-page read would have failed: 60,000 owed
+        # against 40,000 seen is a 20,000 hole in the wrong direction.
+        algod = self.PagedAlgod([
+            [self._box(1, 10_000), self._box(2, 30_000)],
+            [self._box(3, 20_000)],
+        ])
+        assert read_escrowed(algod, 769891898) == 60_000
+
+    def test_a_page_of_boxes_that_are_not_upkeeps_is_still_filtered(self) -> None:
+        # Paging must not smuggle past the name check: anyone can pay for a box
+        # under a name of their choosing, and only `u`-prefixed ones are ours.
+        algod = self.PagedAlgod([
+            [(b"config", bytes.fromhex(LIVE_BOX_HEX)), self._box(1, 10_000)],
+            [self._box(2, 20_000)],
+        ])
+        assert [u.upkeep_id for u in read_upkeeps(algod, 769891898, 2.8, 15_055)] == [1, 2]
+        assert read_escrowed(algod, 769891898) == 30_000
+
+    def test_a_registry_that_fits_on_one_page_costs_one_request(self) -> None:
+        # A missing token ends the walk. A pager that treats it as "start over"
+        # would page forever against the live registry, which serves one page.
+        algod = self.PagedAlgod([[self._box(1, 10_000)]])
+        assert len(read_upkeeps(algod, 769891898, 2.8, 15_055)) == 1
+        assert algod.asked_for == [None]

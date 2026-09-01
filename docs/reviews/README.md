@@ -46,6 +46,37 @@ reviewer who found the thing it fixes, and knows what the fix was trying to do.
 - [`2026-08-26-fable-5-console.md`](2026-08-26-fable-5-console.md) ,  does the
   trust banner close M1? **Partial.** It closes the plain case; a hostile app
   can still switch it off for the price of one box.
+- [`2026-09-01-opus-5-keeper-audit.md`](2026-09-01-opus-5-keeper-audit.md) ,
+  the keeper contract alone, on a real AVM. One Low finding with a test (the
+  app account's own solvency was assumed by the contract and watched by
+  nothing; `health` watches it now), the sandwich and reentrancy claims
+  measured rather than argued, and a plain answer to the MainNet question.
+- [`2026-09-01-opus-5-audit-verification.md`](2026-09-01-opus-5-audit-verification.md) ,
+  the same model trying to break its own audit a day later. Everything
+  reproduced, two of its sentences are wrong, and the thing it never looked
+  for is the biggest: an upkeep's lateness can be bought for one application
+  call, and whoever buys it collects the escalated fee.
+
+Then three independent passes over that branch, on the reasoning that two
+sessions of one model family grading each other is not independence. Same
+prompt, no shared answers, each asked to refute rather than confirm:
+[Grok 4.6](2026-09-01-grok-4.6-branch-review.md) **52 → 76**,
+[Fable 5.1](2026-09-01-fable-5.1-branch-review.md) **62 → 68**,
+[Kimi 3](2026-09-01-kimi-3-branch-review.md) **78 → 88**, each read twice with
+its own report handed back the second time. None refuted the finding; all three
+made it worse, and between them they found a spike that passed without
+measuring anything, a test whose last assertion could not fail, a solvency
+check that guessed in the direction that hides a shortfall, six documents
+still arguing from a premise the repository had already retired, and — on the
+second pass, by checking a test's fake against the client the production path
+uses — a pagination bug in `keeper_bot.scan_upkeeps` that would have raised
+`TypeError` on any registry over one page. The verification's section 6 lists
+what each changed.
+
+Nobody reached 95, and the gap is worth reading rather than closing. What is
+left is a liveness question the branch opened and did not answer: one inner
+transaction failure sends the reference keeper away from an upkeep for up to
+an hour, escalation or not.
 
 ---
 

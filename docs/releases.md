@@ -129,7 +129,9 @@ clock can be argued down is not a gate.
 
 - [ ] The rc bytecode, unchanged, hash recorded and published
 - [ ] A **fresh deployer**, never used on TestNet, its key handling documented
-- [ ] The app account funded for its base minimum balance
+- [ ] The app account funded for its base minimum balance, **confirmed by
+      `govern status` showing spendable at or above escrow** rather than by
+      remembering to do it
 - [ ] `verify_build` run against the MainNet app id, output published
 - [ ] The unaudited-risk disclosure prominent wherever anyone can find it
 - [ ] A keeper running before the first upkeep is registered, because an empty registry with no watcher is worse than no deployment

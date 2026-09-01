@@ -49,6 +49,7 @@ import algokit_utils
 from algosdk import transaction
 
 from scripts import multisig as ms, network as net
+from scripts.registry_health import read_escrowed, read_solvency
 from scripts.verify_build import _digest, _programs, _spec, rebuild
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -88,6 +89,33 @@ def status(algorand, app_id: int) -> int:
     else:
         logger.info("  frozen    0: the creator can still replace the programs")
         logger.info("            Anyone escrowing here is trusting that they will not.")
+
+    # The contract charges every box its exact minimum balance and charges
+    # nobody for the 0.1 ALGO the app account itself needs, so the boxes and
+    # the ledger can disagree by that much for as long as nobody funds it.
+    # While they do, the last executions and the last `cancel` fail at the
+    # ledger with the box still saying they are payable. Measured on
+    # LocalNet, 2026-09-01. `create` cannot fund an address that does not
+    # exist yet, so the check belongs here, where somebody looks afterwards.
+    # `read_solvency` refuses to guess the ledger's floor rather than assuming
+    # the 100,000 µALGO minimum, because guessing low inflates spendable and
+    # hides exactly the shortfall this line exists to show. A status command
+    # should say that it cannot answer, not answer wrongly, and not fall over
+    # with a traceback on the way.
+    try:
+        solvency = read_solvency(algod, app_id, read_escrowed(algod, app_id))
+    except ValueError as refusal:
+        logger.warning(f"  escrow    cannot be judged: {refusal}")
+        return 0
+    logger.info(f"  escrow    {solvency.escrowed / 1e6:.3f} ALGO owed, "
+                f"{solvency.spendable / 1e6:.3f} ALGO spendable")
+    if solvency.shortfall:
+        # Anyone can fix this, with an ordinary payment and no key of the
+        # creator's, which is worth saying: the person reading this is often
+        # not the person holding the multisig.
+        logger.warning(f"            SHORT BY {solvency.shortfall:,} uALGO. Until somebody "
+                       "sends the app account at least")
+        logger.warning("            that much, some upkeeps cannot be executed or cancelled.")
     return 0
 
 

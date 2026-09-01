@@ -16,6 +16,7 @@ Three questions, which are the ones that actually go wrong:
   does any upkeep pay a keeper nothing  fee less what an execution costs
   can the keepers still afford to run   spendable, not total, balance
   why is an overdue upkeep overdue      simulate the execution and read the error
+  can the app pay out what it escrows   spendable, against the sum of the boxes
 
 The fourth was added after upkeep 87 sat overdue for 9,000 rounds with 5.75
 ALGO in it and its fee escalated to the ceiling, while twelve others were
@@ -23,6 +24,15 @@ overdue because they had run out of money. This report printed all thirteen
 identically, as OVERDUE, and telling them apart took six commands and a
 disassembler. They are not the same problem: one is a funding problem and the
 other is a broken target, which no amount of funding fixes.
+
+The fifth came out of the 2026-09-01 audit. The contract charges every box
+its exact minimum balance and every asset opt-in its exact deposit, and
+charges nobody for the 0.1 ALGO the app account itself needs to exist.
+`deploy_config` sends that; the MainNet path, `govern create`, only says to.
+On a keeper where nobody did, a box read 120,000 with 57,900 spendable behind
+it, and the ledger refused the fifteenth execution and then the creator's
+`cancel` until a stranger paid the 0.1 ALGO in. Nothing in the contract can
+notice that, so this report has to.
 
 Reads public state. Holds no account and signs nothing: the simulation sends
 unsigned transactions with `allow_empty_signatures`, from a keeper address
@@ -42,6 +52,7 @@ from collections import Counter
 from dataclasses import dataclass, replace
 
 from algosdk import transaction
+from algosdk.logic import get_application_address
 from algosdk.v2client.models import SimulateRequest, SimulateRequestTransactionGroup
 
 from scripts import network as net
@@ -49,8 +60,8 @@ from scripts.keeper_bot import (
     ACCOUNT_MBR_MICROALGO,
     BONUS_FEE_MICROALGO,
     EXECUTION_COST_MICROALGO,
-    _decode_upkeep,
     effective_fee,
+    scan_upkeeps,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -93,6 +104,8 @@ class UpkeepHealth:
     #: when nothing was simulated, which is not the same as "would succeed":
     #: only overdue upkeeps are worth the round trip.
     blocked: str = ""
+    #: What the box says it holds, which is what `cancel` would try to refund.
+    escrow: int = 0
 
     @property
     def pays_nothing(self) -> bool:
@@ -127,19 +140,28 @@ class UpkeepHealth:
 
 
 def read_upkeeps(algod, app_id: int, seconds_per_round: float, current_round: int) -> list[UpkeepHealth]:
+    """Every upkeep in the registry, in the terms the questions above ask in.
+
+    The box list is paginated, and this used to take one `limit=1_000` page and
+    call it the registry. At the 33 upkeeps live on TestNet that is the whole
+    registry, so nothing was wrong yet; past a thousand boxes it would have
+    dropped the rest without saying so, and the sum below is what
+    `RegistrySolvency` weighs the app account against. A short read there can
+    only make the registry look like it owes *less* than it does, which is the
+    same unsafe direction as guessing the ledger's floor low: the check added
+    to catch a registry that cannot pay would have been the first thing to lie.
+
+    So the paging is `keeper_bot.scan_upkeeps`, which the bot itself runs on
+    every scan, rather than a second copy of the loop here. Two copies of it is
+    how one of them came to be missing the `next-token` in the first place.
+    """
     found: list[UpkeepHealth] = []
-    for box in algod.application_boxes(app_id, limit=1_000)["boxes"]:
-        name = base64.b64decode(box["name"])
-        if not name.startswith(b"u"):
-            continue
-        upkeep_id = int.from_bytes(name[1:], "big")
-        raw = base64.b64decode(algod.application_box_by_name(app_id, name)["value"])
-        upkeep = _decode_upkeep(upkeep_id, raw)
+    for upkeep in scan_upkeeps(algod, app_id):
         cost = EXECUTION_COST_MICROALGO + (BONUS_FEE_MICROALGO if upkeep.fee_asset else 0)
         runs = upkeep.balance // upkeep.fee_per_execution if upkeep.fee_per_execution else 0
         found.append(
             UpkeepHealth(
-                upkeep_id=upkeep_id,
+                upkeep_id=upkeep.upkeep_id,
                 target_app=upkeep.target_app,
                 times_executed=upkeep.times_executed,
                 net_to_keeper=upkeep.fee_per_execution - cost,
@@ -147,9 +169,87 @@ def read_upkeeps(algod, app_id: int, seconds_per_round: float, current_round: in
                 rounds_late=max(0, current_round - upkeep.next_execution_round),
                 interval_rounds=upkeep.interval_rounds,
                 can_pay_fee=upkeep.balance >= effective_fee(upkeep, current_round),
+                escrow=upkeep.balance,
             )
         )
     return sorted(found, key=lambda u: u.upkeep_id)
+
+
+@dataclass(frozen=True)
+class RegistrySolvency:
+    """Whether the app account can pay out every µALGO its boxes promise.
+
+    The boxes are the contract's book; the ledger keeps its own. They agree
+    only if the account holds its base minimum balance on top of what the
+    boxes and opt-ins reserve, and the contract never collects that base, so
+    the two can disagree by up to 0.1 ALGO for as long as nobody sends it.
+    While they disagree the last executions and the last `cancel` fail at the
+    ledger with the box still saying they are payable.
+    """
+
+    amount: int
+    min_balance: int
+    escrowed: int
+
+    @property
+    def spendable(self) -> int:
+        return self.amount - self.min_balance
+
+    @property
+    def shortfall(self) -> int:
+        """How much escrow the ledger would refuse to pay out. Zero is the norm."""
+        return max(0, self.escrowed - self.spendable)
+
+    def flags(self) -> list[str]:
+        if self.shortfall:
+            return [f"THE APP CANNOT PAY OUT {self.shortfall:,} uALGO IT HOLDS IN ESCROW"]
+        return []
+
+
+def read_escrowed(algod, app_id: int) -> int:
+    """Sum what the boxes say the app owes, without the rest of the report.
+
+    `govern status` needs the number and nothing else around it, and reading
+    the boxes twice to get it would be the more expensive way to be wrong
+    later.
+
+    The seconds-per-round and current-round arguments below are placeholders:
+    they only feed `runway_days` and `rounds_late`, which nothing here reads.
+    Passing the real ones would mean `govern` knowing the network's block time
+    to compute a number it throws away.
+    """
+    return sum(u.escrow for u in read_upkeeps(algod, app_id, 1.0, 0))
+
+
+def read_solvency(algod, app_id: int, escrowed: int) -> RegistrySolvency:
+    """The ledger's side of the book, read rather than assumed.
+
+    A node that does not report `min-balance` gets an error here instead of the
+    100,000 floor every other reader falls back to. The floor is a *lower*
+    bound: an app account's real minimum rises by the exact MBR of every box it
+    holds and every asset it has opted into, which on the registry is most of
+    it. `spendable` is `amount - min_balance`, so substituting the floor
+    inflates the spendable side, shrinks the shortfall, and reports an app that
+    cannot pay out its escrow as solvent. That is precisely the failure this
+    function exists to catch, so it must never be the failure it produces. A
+    solvency check that cannot see the ledger's floor has no answer to give,
+    and saying so is the only honest thing it can do.
+    """
+    info = algod.account_info(get_application_address(app_id))
+    min_balance = info.get("min-balance")
+    if min_balance is None:
+        raise ValueError(
+            f"the node reported no min-balance for the account of app {app_id}, so how "
+            f"much of its balance is spendable cannot be known. Refusing to assume the "
+            f"{ACCOUNT_MBR_MICROALGO:,} uALGO floor: that is the smallest a minimum "
+            f"balance can be, and assuming it would report an app that cannot pay out "
+            f"its escrow as solvent."
+        )
+    return RegistrySolvency(
+        amount=int(info["amount"]),
+        min_balance=int(min_balance),
+        escrowed=escrowed,
+    )
 
 
 def classify_failure(message: str, can_pay_fee: bool = True) -> str:
@@ -255,6 +355,15 @@ def read_keepers(algod, indexer, app_id: int, current_round: int) -> list[tuple[
     rows = []
     for address, count in counts.most_common():
         info = algod.account_info(address)
+        # The floor fallback stays here, unlike in `read_solvency`. This row is
+        # a courtesy about somebody else's wallet: the execution count beside
+        # it is measured, and the worst a floor guessed low can do is leave off
+        # the RUNNING OUT note next to a keeper we do not run and cannot fund.
+        # Solvency is a verdict on whether this registry can pay out what its
+        # boxes promise, and a wrong verdict there is the whole reason that
+        # check was written. Raising here would also lose every keeper row
+        # because one third-party account's response was short a field, which
+        # is a worse report than an optimistic estimate labelled with a `~`.
         spendable = int(info["amount"]) - int(info.get("min-balance", ACCOUNT_MBR_MICROALGO))
         rows.append((address, count, spendable, spendable // EXECUTION_COST_MICROALGO))
     return rows
@@ -276,6 +385,7 @@ def main(argv: list[str] | None = None) -> int:
 
     upkeeps = read_upkeeps(algod, args.app_id, spr, current)
     keepers = read_keepers(algod, indexer, args.app_id, current)
+    solvency = read_solvency(algod, args.app_id, sum(u.escrow for u in upkeeps))
 
     # Ask from the busiest keeper's address: it is the account most likely to
     # be executing, so its view is the one that matters. With no keeper to
@@ -300,6 +410,15 @@ def main(argv: list[str] | None = None) -> int:
             logger.warning(f"{line}   {' / '.join(flags)}")
         else:
             logger.info(line)
+
+    logger.info("")
+    line = (f"  app account  {solvency.spendable / 1e6:>9.3f} ALGO spendable  "
+            f"{solvency.escrowed / 1e6:>9.3f} ALGO escrowed")
+    if solvency.flags():
+        problems += 1
+        logger.warning(f"{line}   {' / '.join(solvency.flags())}")
+    else:
+        logger.info(line)
 
     logger.info("")
     if not keepers:
