@@ -453,6 +453,11 @@ console locally, that's the second path: `cd web && bun install && bun run ng
 serve`, then open
 `http://localhost:4200/register?network=testnet&app=769891898`.
 
+Arcui is a second official signing surface for the same Pulse `tick` register:
+<https://corvidlabs.github.io/arcui/?preset=pulse>. The console is still the
+canonical form. Arcui packs the group from an ARC-56. Pera will not sign
+inside an embedded preview; use the GitHub page.
+
 ### The numbers you'll need
 
 | | |

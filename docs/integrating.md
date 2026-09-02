@@ -19,6 +19,11 @@ pass, so you do not have to assemble it from five places.
 below. Copy it and start editing; a test in this repo compiles it on every
 run, so it cannot rot.
 
+To pack `register` from a browser against an arbitrary ARC-56, including this
+keeper, [Arcui](https://corvidlabs.github.io/arcui/) is the generic workbench.
+The packing source of truth remains `js/src/upkeep.ts` and
+`js/src/keeper-txns.ts` in this repository.
+
 ## The hook
 
 Expose one NoOp ABI method that takes no arguments of its own:

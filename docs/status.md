@@ -1,6 +1,6 @@
 # Where Arcron stands
 
-Last updated 2026-08-30. This page is the one place to look if you want to
+Last updated 2026-09-02. This page is the one place to look if you want to
 know what exists, what state it is in, and what happens next. If it disagrees
 with anything else in this repo, this page is probably the stale one: check
 [the release table](releases.md), which is generated against live app ids.
@@ -27,14 +27,28 @@ already knew how it worked.
 | Demo target | Pulse [`769891902`](https://testnet.explorer.perawallet.app/application/769891902) |
 | Programs | 2,219 bytes across two pages, sha256 `c94c6e0c…` (alpha-3) |
 | Governance | **not frozen**: the creator can still replace the programs |
-| Registry | 28 upkeeps as of round 66,819,095 on 2026-08-30; 358 executions in the preceding 24 hours from 4 distinct keeper accounts |
+| Registry | 36 live boxes as of round 66,922,643 on 2026-09-02; `next_upkeep_id` 121. Last full creator attribution was 2026-09-01 (32 live, seven addresses, all ours). Stranger count still zero. |
+| Pulse | `beats` 341, `last_note` `arcron`, `last_beat_round` 66,920,434 |
 | Console | [corvidlabs.xyz/arcron/console/](https://corvidlabs.xyz/arcron/console/), live and current with this tree |
+| Arcui | [corvidlabs.github.io/arcui](https://corvidlabs.github.io/arcui/?preset=pulse): generic ARC-56 workbench that can Sign & register the same Pulse `tick` path. Packing measured 2026-09-02 against `js/` and live boxes 19/22. |
 
 `poetry run python -m scripts.verify_build --network testnet --app-id 769891898`
 proves the deployed programs are this source, byte for byte. Anyone can run it.
 
 Three earlier deployments are superseded and must not be used: `769823086`,
 `769802474`, and `769772891`.
+
+### Measured 2026-09-02
+
+Read from TestNet algod at round 66,922,643. Nothing submitted.
+
+- Keeper `769891898`: `frozen` 0, `next_upkeep_id` 121, 36 boxes named `"u"` plus a big-endian uint64. App account holds 54.097616 ALGO. Creator `E5M2OH5XNDMN…FJZQ3E`. Extra program pages: 1.
+- Pulse `769891902`: `beats` 341, `last_note` `arcron`, `last_beat_round` 66,920,434.
+- Live box ids: 19-22, 81, 82, 84-86, 89, 92-94, 98-120. **91 is gone.**
+- Packing: Arcui `encodeCallArgs` / `boxMbr` / notes / box name match `@corvidlabs/arcron` JS and live boxes 19 and 22 byte for byte. Arcui also sets `appForeignApps: [target]`; the JS `register` helper does not. Extra, not wrong: both groups simulate-succeed. A dummy-account simulate overspends. A funded empty-sig simulate of Pulse `tick` register returned ABI `121`. Due execute of upkeeps 82 and 120 also succeeded on simulate.
+- A signed register from a wallet has still not landed from Arcui. That last mile is a human Pera signature on the GitHub page.
+
+Do not treat this page as a substitute for `fledge run health` or for regenerating [`testnet.md`](testnet.md).
 
 ## The dogfood
 
@@ -49,24 +63,23 @@ upkeeps before it.
 Upkeep **113** services the live hub `770746178`: it calls `draw()uint64` every
 1,286 rounds (about an hour), SKIP_AHEAD, paying 4,000 µALGO an execution. Its
 target is maintained in another repository, and that is the ordinary case
-rather than a loose end: 26 of the 33 live upkeeps were registered by accounts
-other than the deployer, across seven addresses, against targets this
-repository has never built. All seven of those addresses are ours, so this is
-a statement about how the registry is exercised and not about who uses it:
-the count of upkeeps registered by somebody who is not us is zero.
+rather than a loose end. The last full creator attribution, on 2026-09-01,
+found seven addresses against targets this repository has never built. All
+seven of those addresses are ours, so this is a statement about how the
+registry is exercised and not about who uses it: the count of upkeeps
+registered by somebody who is not us is zero. Re-read from the chain on
+2026-09-02 the live set is 36 boxes and `next_upkeep_id` is 121; that
+attribution was not re-run.
 
-A loose end that genuinely is one, stated because it is true: upkeep **91**
-still points at `770130162`, the hub rain ran on until 2026-08-31. That hub has
-no update path and predates the fix that stops a ONE draw being aimed by
-tickets bought after the seed is public, so it could not be repaired and rain
-redeployed rather than upgraded. `arcron-rain` does not adopt the old id at
-all. A target is fixed in the box at registration, so 91 cannot be pointed at
-the new hub; it holds 2.928 ALGO, about 29 days of runway, and keepers are
-still paid 4,000 µALGO an hour to call `draw()` on the abandoned one. Nothing
-is stuck (`cancel` refunds escrow and box MBR in full), but every one of those
-calls is escrow spent exercising an app this page says is superseded. This is
-the second time: upkeep **79** was the same fault one hub earlier and was
-cancelled on 2026-08-31, which is what 91 wants too.
+Upkeep **91** used to point at `770130162`, the hub rain ran on until
+2026-08-31. That hub has no update path and predates the fix that stops a ONE
+draw being aimed by tickets bought after the seed is public, so it could not
+be repaired and rain redeployed rather than upgraded. `arcron-rain` does not
+adopt the old id at all. **91 was cancelled on 2026-09-01**; the box is gone,
+which [`testnet.md`](testnet.md) already records. The abandoned hub is
+immutable and still holds money; the registry is no longer paying to poke it.
+This was the second time: upkeep **79** was the same fault one hub earlier and
+was cancelled on 2026-08-31.
 
 Upkeep 79 had itself replaced upkeep 77, which was registered against a
 selector its target does not have and so could never have executed: every
@@ -262,6 +275,10 @@ can build a front end for Arcron, and where a console is served from is the
 only thing that separates ours from a copy asking you to sign something.
 Nothing else about a page proves anything, so check the address rather than
 the page.
+
+The generic workbench that packs the same `register` group is
+[Arcui](https://corvidlabs.github.io/arcui/?preset=pulse). The console remains
+the canonical register form. Arcui is the contract-agnostic path.
 
 Everything is TestNet, so there is no real money anywhere in any of this.
 Get test ALGO from <https://bank.testnet.algorand.network/>.

@@ -112,9 +112,9 @@ jobs:
         run: cd web && bun install --frozen-lockfile && bunx playwright install --with-deps chromium
 
       - name: SpecSync
-        uses: CorvidLabs/spec-sync@v6.0.0-rc.7
+        uses: CorvidLabs/spec-sync@v6.0.0-rc.12
         with:
-          version: 6.0.0-rc.7
+          version: 6.0.0-rc.12
           strict: "true"
 
       - name: Run the CI lane's tasks

@@ -26,11 +26,16 @@ console.
 And **SpecSync**, which is easy to miss because nothing installs it for you:
 it is not a Poetry or a Bun dependency, but `fledge lanes run ci` runs it and
 CI fails without it. Take
-[v6.0.0-rc.7](https://github.com/CorvidLabs/spec-sync/releases/tag/v6.0.0-rc.7),
+[v6.0.0-rc.12](https://github.com/CorvidLabs/spec-sync/releases/tag/v6.0.0-rc.12),
 which is what CI pins. Do not reach for `cargo install specsync`: crates.io
 stops at 5.2.0, so it will quietly give you an older tool than the one that
 gates your pull request. And every 6.0 candidate reports itself as
 `specsync 6.0.0`, so `--version` will not tell you which one you have.
+
+**Trust is a different tool, and this repository does not adopt it.** There is
+no `.trust.toml` and CI does not call the Trust action. The latest candidate
+is [v1.2.0-rc.4](https://github.com/CorvidLabs/trust/releases/tag/v1.2.0-rc.4).
+Do not run `fledge trust adopt` here unless you intend to change the CI shape.
 
 ## Deploying, if you want your own
 

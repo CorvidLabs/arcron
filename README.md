@@ -200,7 +200,9 @@ The registry has evidence. Some of the things around it do not, and the two
 are worth keeping apart.
 
 **The keeper registry has been used, and all of the use is still our own.**
-Read from the chain on 2026-09-01, at round 66,900,984:
+Read from the chain on 2026-09-02, at round 66,922,643: **36 live boxes**,
+`next_upkeep_id` 121, `frozen` 0. Pulse `beats` 341. The last full creator
+attribution is still 2026-09-01, at round 66,900,984:
 
 - **32 live upkeeps**, registered by **seven distinct addresses**. Our deployer
   registered 6; the other 26 came from six addresses that are not it.
@@ -564,8 +566,9 @@ Note what a long-missed upkeep does depends on its policy. A `CATCH_UP` upkeep
 schedules from the *scheduled* round, so it stays due until it has replayed one
 execution per missed interval — a keeper coming back after an outage will find
 a burst of them, and the escrow pays for every one. A `SKIP_AHEAD` upkeep is
-due exactly once, then jumps to the next future slot. 30 of the 32 live
-upkeeps are `SKIP_AHEAD`.
+due exactly once, then jumps to the next future slot. 19 and 116 still use
+`CATCH_UP`; the rest of the live set has been `SKIP_AHEAD` wherever last
+decoded. The 2026-09-01 snapshot said 30 of 32.
 
 ### Keeping it up
 
@@ -637,10 +640,12 @@ is not a gate.
 ## Spec-driven development
 
 This repo is managed with [spec-sync](https://github.com/CorvidLabs/spec-sync)
-(strict) and [fledge](https://github.com/CorvidLabs/fledge) lanes. Each of the
+`v6.0.0-rc.12` (strict) and [fledge](https://github.com/CorvidLabs/fledge) lanes. Each of the
 five contracts has a spec under `specs/` covering requirements, module
 contract, invariants, error cases and testing. `specsync check --strict` runs
 in the `ci` lane and fails if code drifts from the documented public API.
+[Trust](https://github.com/CorvidLabs/trust) latest is `v1.2.0-rc.4`; this
+repository does not adopt it.
 
 ## Roadmap
 
