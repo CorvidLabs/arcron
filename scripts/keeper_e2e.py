@@ -820,10 +820,24 @@ def main(argv: list[str] | None = None) -> None:
         doomed_id, keeper_bot.failure_text(broke), 100, INTERVAL_ROUNDS, advanced=broken_moved
     )
     assert entry is not None, "a broken target must be backed off"
-    _assert("and is retried later, not never", entry.next_attempt_round, 100 + INTERVAL_ROUNDS)
+    # A round, not an interval. `docs/reviews/2026-09-01-opus-5-audit-verification.md`
+    # §3: a target that refuses conditionally — an oracle on a stale price, a
+    # rebalancer on an epoch — is indistinguishable from a broken one at the
+    # moment it refuses, and this used to cost the upkeep `1 x interval`
+    # rounds, capped at an hour. The whole argument for the short schedule is
+    # in `scripts/keeper_backoff.py`, and this is where it meets a real node:
+    # the classification and the site below are read out of what algod
+    # actually wrote, not out of a string a test made up.
+    _assert("and is retried a round later, not an hour", entry.next_attempt_round, 101)
+    _assert("algod attributed it to the target", entry.target_refusal, True)
+    _assert(
+        "and named the instruction that refused",
+        entry.site.startswith(f"app={still_doomed.target_app} pc="),
+        True,
+    )
     logger.info(
         f"  ✔ the loser paid 0 µALGO and kept trying; the broken target waits "
-        f"{INTERVAL_ROUNDS} rounds"
+        f"1 round and is recorded at {entry.site}"
     )
 
     for cleanup_id in (race_id, collision_id, doomed_id):

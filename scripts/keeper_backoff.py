@@ -98,16 +98,23 @@ until an operator changes something, and waiting an hour costs nothing.
   and it fails in the expensive direction on precisely the upkeeps whose
   lateness is worth the most.
 
-**What it costs and why that is the right purchase.** A refused attempt is one
-`simulate` and one box read (`scripts/keeper_bot.py` sends nothing when the
-simulate refuses), so a permanently dead target costs about
-`2 x 30,857 / 64` = 964 requests a day at this cap, against 48 a day at the
-old one. That is bought with the reduction in §5's other half: the same branch
-takes the bot from about 211,000 requests a day to about 21,000, so ~1,000 a
-day per refusing target is affordable, and it buys never being more than
+**What it costs and why that is the right purchase.** Nothing is broadcast for
+a refused attempt: `scripts/keeper_bot.py` simulates first, algokit-utils
+raises on a failed group, and the send never happens. So a retry is the wake it
+needs plus one `simulate` and one box read — **measured at 3.99 requests, 484
+retries and 1,929 requests a day** for one permanently dead target
+(`tests/test_keeper_bot.py::test_what_one_permanently_refusing_target_costs`),
+against 48 a day at the old ceiling.
+
+That is paid for out of §5's other half, in the same branch: the bot now costs
+**about 3,000 requests a day** against the 211,000 that section measured, so a
+refusing target roughly doubles a quiet day and is still four hundredths of
+what one bot used to spend. What it buys is never being more than
 `TARGET_REFUSAL_BACKOFF_ROUNDS` away from a window that matters.
 `KEEPER_TARGET_REFUSAL_BACKOFF` raises it for an operator who knows a target is
-dead and would rather not pay; `--retry-now` is the other direction.
+dead and would rather not pay; `--retry-now` is the other direction, and the
+`blackout` line the bot emits for every due upkeep it is skipping is how they
+find out there is a decision to make.
 
 **What an attacker can still do.** All of this narrows the blackout; none of it
 closes the hole, and the honest list is:

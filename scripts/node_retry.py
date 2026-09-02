@@ -67,9 +67,26 @@ What stays open is what the bucket is keyed to: our address, the absent token,
 something else. Nobody here has read Nodely's side of it. The direction is not
 open, and it is the opposite of what this file used to say. Sending fewer is
 exactly the fix, and it is `scripts/keeper_bot.py` that owns it rather than
-this module: a scan re-reads all 33 boxes every 2.5 rounds to notice that a
-handful are due. Retrying keeps a report alive in the meantime; it is not a
+this module: a scan re-read all 33 boxes every 2.5 rounds to notice that a
+handful were due. Retrying keeps a report alive in the meantime; it is not a
 reason the traffic is fine.
+
+**Done, and here is the new figure.** `keeper_bot.Registry` re-reads a box on
+the round its cached copy stops being able to change a decision, and the loop
+sleeps until the soonest of those rounds rather than scanning every couple of
+them. Counted the same way, over the same 63,013 rounds, against the same live
+registry: **5,901 requests, about 3,000 a day**, of which 2,400 are reading the
+registry and 600 are the 594 executions themselves. That is a seventieth of the
+211,000 above, and it is measured at the client rather than argued —
+`tests/test_keeper_bot.py::TestWhatOneDayCosts` is the measurement, and
+`TestNothingDueIsMissed` is the argument that none of it is bought by missing
+work.
+
+One correction to the accounting above, in the unhelpful direction: the loop
+also read `account_info` on **every** scan, for the bonus assets the keeper was
+opted in to, which this paragraph placed on the heartbeat. So one scan was 37
+requests rather than 36 and the 211,000 is a floor. Both reads are one
+`account_info` on the heartbeat now (`keeper_bot.account_state`).
 
 
 What is retried

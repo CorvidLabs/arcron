@@ -375,11 +375,29 @@ poetry run python -m scripts.keeper_bot --app-id N # other keeper instance
   invocation does not re-attempt a doomed upkeep on every run, which the old
   skip-for-the-rest-of-this-run behaviour did.
 
-  The schedule is deliberately gentle, because failing costs nothing: the wait
-  doubles in the upkeep's own intervals up to 8×, but is capped at ~1,286
-  rounds (about an hour) in absolute terms. Without that cap a daily upkeep
-  would go unretried for over a week, and the only thing that buys is a slow
-  recovery once someone fixes the target. A success resets it to zero.
+  The schedule is deliberately gentle, because failing costs nothing, and it
+  branches on **where** the failure happened:
+
+  - **The target's own program refused** (algod says `inner tx N failed`). The
+    wait doubles in *rounds* (1, 2, 4 and so on) and stops at 64, under three
+    minutes. A target that refuses conditionally, which is what an oracle
+    rejecting a stale price or a rebalancer on an epoch does, is
+    indistinguishable from a broken one at the moment it refuses, so a keeper
+    that went away for an hour would miss the window that mattered. Retrying
+    is cheap: the bot simulates before it sends, so a refusal costs one
+    request and puts nothing in the transaction pool.
+  - **Anything else**: a keeper-side refusal, a fee below the minimum, a
+    node that timed out. The wait doubles in the upkeep's own intervals up to
+    8×, capped at ~1,286 rounds (about an hour). The same call will fail the
+    same way until an operator changes something, so retrying sooner buys
+    nothing; the cap is there because without it a daily upkeep would go
+    unretried for over a week.
+
+  A success resets either to zero, and so does the registry moving on, because
+  an execution by anybody is proof the target works. While an upkeep is being
+  skipped the bot emits a `blackout` line naming it, the fee going unclaimed
+  and how long it has been going on, which is the only place that shows up:
+  an upkeep with `fee_cap = 0` going unserviced changes nothing on chain.
 
   **Losing a race never backs off.** Another keeper getting there first is the
   common case in a healthy network, it is free, and a keeper that stopped
@@ -743,8 +761,12 @@ with just its selector. Two properties matter when writing one:
 
 - **It is called on every cadence**, whether or not there is work to do. The
   no-op path must be cheap.
-- **A hook that fails trips keeper backoff** and stops being serviced. Fail
-  soft: record the condition in state rather than throwing.
+- **A hook that fails trips keeper backoff.** The reference keeper retries a
+  refusing target within a round and then at most every 64 rounds, so a hook
+  that refuses on a cooldown is serviced again as soon as the cooldown lifts.
+  But no other keeper is obliged to be that patient, and a hook that always
+  fails is a hook nobody will service. Fail soft: record the condition in
+  state rather than throwing.
 
 **The pull-payment pattern.** Scheduled calls should do accounting only and let
 counterparties claim in transactions they send themselves:
