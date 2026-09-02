@@ -35,7 +35,7 @@ contract class, the `Upkeep` struct, and its constants.
 | `MIN_UPKEEP_FEE` | `4_000` | Minimum ALGO reward per execution (µALGO); keepers pay ~3,000 µALGO in txn fees, so this keeps executions profitable. |
 | `MAX_UPKEEP_FEE` | `1_000_000_000` | Ceiling on both `fee_per_execution` and `fee_cap` (µALGO). Bounds the escalation arithmetic well clear of overflow on a contract that can never be patched. |
 | `MAX_CALL_DATA` | `1_024` | Maximum size of the stored argument list, in bytes. It covers the whole ARC-4 encoding, not one argument. The AVM's own cap on an app call's arguments is 2,048. |
-| `MAX_CALL_ARGS` | `3` | How many app args an execution may carry, counting the selector. Every count needs its own branch in `execute`, so this is what keeps the contract inside one 2,048-byte program page. |
+| `MAX_CALL_ARGS` | `3` | How many app args an execution may carry, counting the selector. Every count needs its own branch in `execute`, and each branch costs program bytes, so this is what keeps the contract inside its two 2,048-byte program pages. The approval program is 2,219 bytes today, so the second page is in use and a third would cost the creator minimum balance. |
 | `ASSET_OPT_IN_MBR` | `100_000` | What the app account's minimum balance rises by per asset it can hold. |
 | `CATCH_UP` | `0` | Catch-up policy: replay every missed interval, one fee each. The zero value, so it is what an upkeep means by default. |
 | `SKIP_AHEAD` | `1` | Catch-up policy: run once and advance to the first slot still in the future, keeping the schedule's phase. |
