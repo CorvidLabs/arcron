@@ -7,6 +7,30 @@ and none was told what the others had found.
 They are kept unedited, including the parts that are wrong, because a review
 that gets quietly corrected after the fact stops being evidence of anything.
 
+**Start with [`findings.md`](findings.md).** It indexes every finding these
+files raised, what happened to each one, and what is still open. Twenty-two
+files and 182,000 words of review are not a record anybody can consult; the
+ledger is what makes them one.
+
+Two things about the files themselves, both recorded rather than tidied away.
+
+The Kimi branch review was committed with roughly 1.4 MB of the reviewer's
+working transcript pasted in beneath two of its four passes: a reading plan,
+tool output in 64 KB chunks, a copy of `fledge.toml`, the diffs under review.
+About forty of its 777 KB were the reviewer's own words. The transcript was cut
+on 2026-09-02 and a note stands at each cut; both verdicts are untouched.
+
+**The panel is retired, and it is worth saying what that costs.** Grok 4.6 and
+Kimi 3 were genuinely different weights, and on the escalation round they were
+the two that caught a headline contradicting its own table and a dateline
+mixing two snapshots. They are not being replaced. The Fable column was never
+the independent one it is described as above: the session doing the work
+reports the same model id as the panelist reviewing it, which is precisely the
+failure the panel was convened to avoid. What replaces all three is an
+adversarial pass that may only overturn on evidence it opened, on the reasoning
+that a skeptic sharing the author's weights cannot be trusted to disagree but
+can be held to a citation.
+
 ## What they agreed on
 
 All three led with the same finding: `SECURITY.md` said the contracts have no

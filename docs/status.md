@@ -118,7 +118,7 @@ it is ready to hold value belonging to someone other than us.
 
 | Contract | What it is | Ships | Notes |
 |---|---|---|---|
-| `keeper` | the network itself: escrow, scheduling, keeper payment, governance | **yes** | five adversarial review rounds, none of them a paid audit; no unresolved findings |
+| `keeper` | the network itself: escrow, scheduling, keeper payment, governance | **yes** | five adversarial review rounds, none of them a paid audit; every finding indexed in [`reviews/findings.md`](reviews/findings.md), which is also where the open ones are |
 | `subscription` | recurring payments, an example target | **yes** | reviewed clean; the integration example the docs recommend copying |
 | `pulse` | trivial demo target | n/a | exists to be called; the heartbeat target for the dogfood's uptime clock |
 
