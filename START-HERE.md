@@ -87,7 +87,7 @@ them, and it matters which one you are looking at.
 2026-09-02, at round 66,922,643: **36 live boxes**, `next_upkeep_id` 121,
 `frozen` 0. Pulse `beats` 341, `last_note` `arcron`. The last full creator
 attribution is still 2026-09-01, at round 66,901,001: **32 live upkeeps** from
-**seven distinct addresses**, of which our deployer registered 7 and six other
+**seven distinct addresses**, of which our deployer registered 6 and six other
 addresses registered the other **26**. That second number flatters us: five of
 those six addresses share a single funding account and one of the five is an
 agent [`docs/testnet.md`](docs/testnet.md) records as ours, so read them as
