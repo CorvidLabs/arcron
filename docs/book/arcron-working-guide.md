@@ -129,11 +129,7 @@ superseded by corrections to [`docs/why.md`](../why.md) and
 disagree with themselves here" flags that the docs have since settled. The
 second round was 2026-09-01, when a security finding and two changes to the
 reference keeper landed in a single day and this edition had to be rewritten
-around them. The first draft
-was written on 2026-08-24, and by 2026-08-27 seven of its load-bearing figures
-had been superseded by corrections to [`docs/why.md`](../why.md) and
-[`docs/first-upkeep.md`](../first-upkeep.md). It also carried two "the docs
-disagree with themselves here" flags that the docs have since settled.
+around them.
 
 Two things hold that line, and it's worth knowing what neither of them covers.
 Every figure below was re-derived against the repository on 2026-09-01, and
@@ -141,10 +137,7 @@ Every figure below was re-derived against the repository on 2026-09-01, and
 number that moves in its owning file fails CI instead of waiting for a reader to
 notice. What no test pins is prose. A passing CI run says the figures still
 agree, not that the story does, so check the date on a chapter's source before
-you lean on the chapter. Every figure below was re-derived against the
-repository on 2026-08-27, and `tests/test_book.py` pins the load-bearing ones to
-the files that own them, so the next drift fails CI instead of waiting for a
-reader to notice.
+you lean on the chapter.
 
 The project's own docs warn: *"Do not trust this page's numbers. Several of them
 were wrong last week and were corrected by a review. Recompute anything you
@@ -221,7 +214,7 @@ perpetual free tier, doesn't drift, and doesn't expire. If you're already on AWS
 it defeats this comparison outright. GitHub Actions cron is free too, in a private repo, though free is all it is:
 measured across two half-hourly workflows in the project's own repository, it
 delivered 7% and 10% of their runs, with a mean gap of 8.2 hours. Arcron is not
-competing on raw cost against the free options. Arcron is not competing on raw cost against the free options.
+competing on raw cost against the free options.
 
 What a scheduler you host yourself can't give you is the thing Part IV builds
 toward: a schedule that **outlives the process that created it**, needs **no hot
@@ -653,7 +646,6 @@ if self.pending.value == 0:
     # assert False     # wrong, see below
 ```
 
-**A hook that fails stops being serviced.** When a target rejects, the keeper bot
 **A hook that fails stops being serviced.** When a target rejects, the keeper
 bot holds that upkeep back before trying again, and how long depends on where
 the failure happened. If your own program refused, the wait doubles in rounds,
@@ -1320,8 +1312,7 @@ not its content, and leave the alert more than an hour of slack. A heartbeat tha
 
 **It runs out of ALGO.** This one is nastier, because a keeper earns fees into
 the same account it spends from: self-sustaining while the registry is busy, and
-stuck the moment it's empty, with no way to earn its way back out. So the balance
-is checked before the first scan and at every heartbeat. So the balance is checked before the first scan and at every heartbeat, and
+stuck the moment it's empty, with no way to earn its way back out. So the balance is checked before the first scan and at every heartbeat, and
 what it checks is what the account can spend rather than what it holds. Every
 Algorand account has a minimum balance it can't spend, and that floor isn't a
 constant: it rises by 100,000 µALGO for every asset the account is opted in
@@ -1399,10 +1390,7 @@ Backoff state survives restarts, so a `--once` cron doesn't re-attempt a
 doomed upkeep every run. A success resets it to zero, and so does the registry
 moving on, because an execution by anybody is proof the target works. Once
 you've fixed a target, `--retry-now <id>` clears one upkeep's backoff and
-`--clear-backoff` clears them all. That state survives restarts, so a
-`--once` cron doesn't re-attempt a doomed upkeep every run, and a success resets
-it to zero. Once you've fixed a target, `--retry-now <id>` clears one upkeep's
-backoff and `--clear-backoff` clears them all.
+`--clear-backoff` clears them all.
 
 **A lost race never backs off.** Another keeper getting there first is the
 common, healthy, free case, and a keeper that stopped trying everything it lost a
@@ -1855,7 +1843,7 @@ narrow:
 > and the demand was not there.
 
 That's the number that settles it. Not keeper count, not throughput, and nothing
-Ethereum measures. As of this writing the count of upkeeps registered by strangers is **zero**, and the project says that louder than any critic would. Go and check it and the registry will look busier than that: seven different addresses have registered upkeeps, and most of the live ones came from an account that isn't the deployer. Every one of those addresses is the project's own. That's how the registry gets exercised, and it isn't evidence of anyone outside it., and the project says that louder than any critic would.
+Ethereum measures. As of this writing the count of upkeeps registered by strangers is **zero**, and the project says that louder than any critic would. Go and check it and the registry will look busier than that: seven different addresses have registered upkeeps, and most of the live ones came from an account that isn't the deployer. Every one of those addresses is the project's own. That's how the registry gets exercised, and it isn't evidence of anyone outside it.
 The mechanism holds up everywhere the project has managed to test it, with one exception it found and published rather than quietly patched: escalation pays for lateness, lateness can be bought by anyone who can make your target refuse, and it can arrive with no attacker at all when a target's cooldown outlasts the cadence. Nothing is stolen, `cancel` still works, and `fee_cap = 0`, the console default, makes an upkeep immune. [`docs/security.md`](../security.md) states it as an accepted risk rather than a fixed one. Whether the world wants it is genuinely unknown, and that
 honesty is the most trustworthy thing about the project.
 
