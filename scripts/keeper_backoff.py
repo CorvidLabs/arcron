@@ -119,13 +119,19 @@ find out there is a decision to make.
 **What an attacker can still do.** All of this narrows the blackout; none of it
 closes the hole, and the honest list is:
 
-* They can still buy this keeper's absence, just not by the hour. One arranged
-  refusal buys `TARGET_REFUSAL_BACKOFF_ROUNDS` at the top of the ramp — under
-  three minutes — so holding the keeper away for an hour now needs about twenty
-  arranged refusals rather than one. At 1,000 µALGO an application call that is
-  20,000 µALGO an hour instead of 1,000, and against the sibling-upkeep variant
-  in §3, where the blocking is a `fee_cap = 0` upkeep the attacker executes and
-  is paid for, it is cheaper than that. Twenty times harder is not closed.
+* They can still buy this keeper's absence. **The number that matters is not
+  the cost of an hour, it is how long a window stays shut**, because an
+  attacker who is being paid does not want the hour — they want the keeper
+  gone at the moment the target reopens. That was up to 1,286 rounds and is now
+  at most `TARGET_REFUSAL_BACKOFF_ROUNDS`, under three minutes, at the top of
+  the ramp. Holding the keeper away *continuously* now costs about twenty
+  arranged refusals an hour instead of one, and less than that via the
+  sibling-upkeep variant in §3, where the block is a `fee_cap = 0` upkeep the
+  attacker executes and is paid for. Both numbers are improvements; neither is
+  a closure.
+* And a target that fails on **cost rather than logic** still buys the whole
+  hour, because `is_target_refusal` cannot see a failure that happens before
+  the inner program starts. See its docstring; that hole is deliberate.
 * They can still win the reopening round. A keeper that is back within a few
   rounds is in the race; one watching every block is still ahead of it.
 * Nothing here touches the case that needs no attacker at all: a creator whose
@@ -226,6 +232,27 @@ def is_target_refusal(reason: str) -> bool:
     and not the client. A target cannot suppress it, and a keeper-side refusal
     never carries it, because `execute` checks the schedule and the escrow
     before it calls anything.
+
+    **This is a narrower split than "the target's fault", and the difference
+    matters.** What it catches is a refusal by the target's own *program
+    logic*, once that program is running: an assert, an `err`, a budget it
+    exhausts itself (measured across burns of 100 to 5,000 on LocalNet, all
+    ten attributed to `inner tx 0`). What it does not catch is a failure that
+    happens **before the inner program starts**, because there is no inner
+    transaction to attribute it to yet. Two real ones, both seen in this
+    repository's own runs:
+
+        dynamic cost budget exceeded ... at PC 1487   (the keeper's program)
+        tx references exceed MaxAppTotalTxnReferences = 8
+
+    A target whose cost or resource appetite is state-dependent can therefore
+    still put itself on the far side of this line and buy the full hour. That
+    is a cost-shaped shutter rather than a logic-shaped one, and it is
+    deliberately left on the long schedule: those two failures usually mean
+    the target needs more than a keeper can bring at all, which does not
+    improve by retrying in a round. Grok 4.6 and Fable 5.1 both found it on
+    2026-09-01; it is written down rather than closed because closing it
+    means guessing which resource bombs are temporary.
     """
     return INNER_FAILURE_MARKER in reason.lower()
 

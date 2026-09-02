@@ -158,7 +158,7 @@ STALL_INTERVALS = 2
 #
 # How much an upkeep that cannot pay is worth re-reading. It is due, so it is
 # read every scan under the rule above, and it will never be executable until
-# somebody tops it up — thirteen of the 33 live upkeeps are in exactly that
+# somebody tops it up — twelve of the 32 live upkeeps are in exactly that
 # state and have been for 94,000 rounds. A top-up is a person with a wallet,
 # not a race, so noticing one within the hour is enough, and that is the whole
 # of what this constant relaxes.

@@ -628,8 +628,19 @@ def run_the_loop(algod: CountingAlgod, rounds: int, monkeypatch) -> dict:
         )
         scans += 1
         for upkeep in due:
-            # One simulate to resolve the target's resources, one send.
-            algod.counts["execute"] += 2
+            # Not a client count: the execute path goes through algokit-utils'
+            # composer, which this harness does not drive. Measured instead,
+            # from a real `--once` against LocalNet on 2026-09-01 with 17 due
+            # and one that went through: 103 requests, of which 17 simulates,
+            # 21 suggested-params, one send and three pending-transaction
+            # polls. That is about eight for an execution that lands.
+            #
+            # It was 2 until Fable 5.1 pointed out that a hand-added constant
+            # is not a measurement and that the number this test exists to
+            # produce was therefore a fifth of the truth on its execution
+            # half. `reading` below is the half that really is counted at the
+            # client, and is the figure to quote when only one is wanted.
+            algod.counts["execute"] += REQUESTS_PER_EXECUTION
             registry.remember_execution(
                 upkeep.upkeep_id, chain.execute(upkeep.upkeep_id), current
             )
@@ -647,6 +658,9 @@ def run_the_loop(algod: CountingAlgod, rounds: int, monkeypatch) -> dict:
         "requests": algod.requests,
         "reading": algod.requests - algod.counts["execute"],
     }
+
+
+REQUESTS_PER_EXECUTION = 8
 
 
 class TestWhatOneDayCosts:
@@ -672,16 +686,18 @@ class TestWhatOneDayCosts:
             f"({dict(algod.counts)})"
         )
         # Measured on 2026-09-01, over the live registry and §5's own window:
-        # 5,901 requests in 63,013 rounds, of which 4,713 are reading it and
-        # 1,188 are the 594 executions. That is **about 3,000 a day, 2,400 of
-        # them reading**, against 211,000. Bounded rather than pinned to the
+        # about 9,500 requests in 63,013 rounds, of which 4,713 are reading it
+        # and the rest are the 594 executions at the measured eight apiece.
+        # That is **about 4,800 a day, 2,400 of them reading**, against
+        # 211,000: a fortieth, not the seventieth this test claimed while it
+        # was hand-adding two per execution. Bounded rather than pinned to the
         # digit, because the arithmetic moves with any of the constants above;
         # bounded tightly enough that putting the traffic back has to come and
         # edit this line.
         assert 2_000 <= reading_per_day <= 2_800, detail
-        assert 2_600 <= per_day <= 3_400, detail
-        # The claim, as an assertion: two orders of magnitude, not a trim.
-        assert result["reading"] * 60 < OLD_REQUESTS, detail
+        assert 4_200 <= per_day <= 5_400, detail
+        # The claim, as an assertion: a different order of magnitude, not a trim.
+        assert result["requests"] * 30 < OLD_REQUESTS, detail
 
     def test_a_scan_no_longer_reads_every_box(self) -> None:
         """The heart of it: 33 boxes read once, then only what could matter."""

@@ -197,14 +197,29 @@ single failure silences the bot on an upkeep **whose escalation is off**. For
 a liquidation, an oracle or a keep-alive, the missed window can be worth far
 more than the fee, and nothing in the contract or the health report meters it.
 
-**Since fixed.** The schedule now branches on where the failure happened — a
-refusal from inside the target is conditional by construction, because
-`execute` checked the schedule and the escrow before it called anything — so
-those back off 1, 2, 4 … rounds to a 64-round ceiling instead of an hour, and
-any execution clears the streak. An arranged blackout costs about twenty
-refusals an hour rather than one, and the loop now reports each due-but-held
-upkeep with the fee going unclaimed, so it is metered. The figures above stay
-lower bounds for the registry as it was when they were measured.
+**Since fixed, with one hole left open on purpose.** The schedule now branches
+on where the failure happened: a refusal by the target's own program logic is
+conditional by construction, because `execute` checked the schedule and the
+escrow before it called anything, so those back off 1, 2, 4 … rounds to a
+64-round ceiling instead of an hour. Any execution clears the streak, and the
+loop reports each due-but-held upkeep with the fee going unclaimed, so a
+blackout is now visible rather than inferred.
+
+What the split does not cover is a failure that happens **before the inner
+program starts**, which carries no `inner tx N failed` for algod to attribute:
+`dynamic cost budget exceeded` against the keeper's own program, and
+`tx references exceed MaxAppTotalTxnReferences = 8`. A target whose cost or
+resource appetite is state-dependent can put itself on that side of the line
+and still buy the full hour. It is a cost-shaped shutter rather than a
+logic-shaped one, both reviewers found it, and it stays on the long schedule
+because those two usually mean the target needs more than any keeper can
+bring, which retrying in a round does not fix.
+
+So the honest price of an arranged blackout is not "twenty refusals an hour".
+Against a logic-shaped refusal it is a **reopening every 64 rounds at the top
+of the ramp**, which the attacker must win; against a cost-shaped one it is
+still the hour. The figures above stay lower bounds for the registry as it was
+when they were measured.
 
 **What to do.**
 
@@ -307,9 +322,15 @@ asks for the output rather than the memory:
   as written above, so 211,000 a day was a floor. And the fix has landed —
   `keeper_bot.py` now re-reads a box only on the round its cached copy could
   change a decision and sleeps to the soonest of those rounds, measured at
-  **5,901 requests over the same window, about 3,000 a day.** A seventieth,
-  counted at a client that subclasses the real one
-  (`tests/test_keeper_bot.py::TestWhatOneDayCosts`).
+  **about 9,500 requests over the same window, some 4,800 a day: a
+  fortieth.** Counted at a client that subclasses the real one
+  (`tests/test_keeper_bot.py::TestWhatOneDayCosts`), but only half of it is a
+  client count. The 2,400-a-day reading half is genuinely counted; the
+  execution half is 594 executions at a measured eight requests each, taken
+  from a real `--once` on LocalNet. That test claimed "about 3,000 a day, a
+  seventieth" until 2026-09-01, when Fable 5.1 pointed out it was hand-adding
+  two per execution: a constant is not a measurement, and the half it stood in
+  for was a fifth of the truth.
 
   So it was our request rate, it was one bot, and sending less was exactly the
   fix — which belonged in `keeper_bot.py`, not in a retry helper. What stays
@@ -447,8 +468,20 @@ party can manufacture.** Either decide that escalation stays off by default
 and say so where creators read it, which is now done, or replace it with a
 creator-signed raise before the programs stop being replaceable.
 
-There is also a liveness question this branch opened and did not answer. One
-inner-transaction failure sends the reference keeper away from an upkeep for
-up to an hour, escalation or not. For a liquidation or an oracle that can be
-worth more than every fee in this document, and nothing meters it. That is
-the next piece of work, not a blocker on this one.
+There was also a liveness question this branch opened and did not answer: one
+inner-transaction failure sent the reference keeper away from an upkeep for up
+to an hour, escalation or not, worth more than every fee in this document on a
+liquidation or an oracle, and metered by nothing.
+
+**It is answered now**, in section 3 and in `scripts/keeper_backoff.py`: a
+logic-shaped refusal costs 64 rounds rather than an hour, an execution clears
+the streak, and each due-but-held upkeep is reported with the fee going
+unclaimed. A cost-shaped one still costs the hour and is written down as such.
+
+That this paragraph said otherwise for several hours after section 3 was
+updated is the fourth instance in one day of the failure this document keeps
+naming: a fix applied where the finding was raised and absent at the sibling
+saying the same thing elsewhere. Grok 4.6 caught it. #105 is not a bug to be
+closed; on this evidence it is a property of how this repository is edited,
+and the only technique that has ever worked against it is grepping for the
+claim rather than the code.

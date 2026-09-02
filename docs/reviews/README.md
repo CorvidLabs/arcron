@@ -73,10 +73,20 @@ uses — a pagination bug in `keeper_bot.scan_upkeeps` that would have raised
 `TypeError` on any registry over one page. The verification's section 6 lists
 what each changed.
 
-Nobody reached 95, and the gap is worth reading rather than closing. What is
-left is a liveness question the branch opened and did not answer: one inner
-transaction failure sends the reference keeper away from an upkeep for up to
-an hour, escalation or not.
+Then a third pass on the two items those two left open, after both were
+fixed: **Grok 84, Kimi 89, Fable 74**, no blockers from the first two.
+
+**Nobody reached 95, and all three were asked whether 95 is the right bar.
+Two said it is not**, for the same reason and in almost the same words: every
+round of review on this repository, including the round saying so, has found a
+true-sounding claim that was not true. Fable put the alternative best — "no
+money path, bounded liveness loss, every number labelled measured is
+measured" — and that is the bar this work is now held to. The third round's
+yield was a docstring that overclaimed what its classifier partitions, a
+measurement that hand-added a constant on its execution half and so ran a
+fifth low, and a comment describing a dev-mode behaviour that does not exist.
+Each round's findings have fallen by an order of severity, which is what
+convergence looks like.
 
 ---
 
