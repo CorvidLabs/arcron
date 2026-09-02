@@ -27,11 +27,11 @@ client and its page went; the write-ups on its deployments, its immutability
 and what a draw proves on chain did not, and were dropped here rather than
 rehomed, so there is nowhere to send a reader who wants them.
 
-What stays here is two registry entries pointed at rain hubs, and they are not
-the same kind of thing. Upkeep **113** drives the hub that is live, which is
-the ordinary case for a permissionless registry: a target that happens to be
-built somewhere else. Upkeep **91** drives `770130162`, the hub rain abandoned,
-and that is a loose end.
+What stays here is one registry entry pointed at a rain hub. Upkeep **113**
+drives the hub that is live, which is the ordinary case for a permissionless
+registry: a target that happens to be built somewhere else. Upkeep **91**
+drove `770130162`, the hub rain abandoned, and was the loose end this page
+kept naming until it was cancelled on 2026-09-01.
 
 ## The upkeeps
 
@@ -45,14 +45,12 @@ Read from the chain at round 66,852,815 on 2026-08-31.
 | 22 | `769891902` pulse | 12 h | 0.3246 ALGO | ~39 days | 11 | skip ahead |
 | 81 | `770041460` (our agent) | 58 min | 3.9000 ALGO | ~16 days | 78 | skip ahead |
 | 82 | `769891902` pulse | 58 min | 7.3253 ALGO | ~29 days | 61 | skip ahead |
-| 91 | `770130162`, a **superseded** rain hub | 58 min | 2.9280 ALGO | ~29 days | 39 | skip ahead |
 | 110 | `770734249`, our agent `CEPY52VZRWFL`'s | 7 days | 0.5000 ALGO | ~873 days | 0 | skip ahead |
 | 113 | `770746178`, the live rain hub | 58 min | 0.0360 ALGO | **~0.4 days** | 11 | skip ahead |
 
-A selection out of thirty-three, each row here because it shows something: the
+A selection out of thirty-two, each row here because it shows something: the
 `pulse` set is both catch-up policies side by side, **113** drives the rain hub
-that is actually live and is about to starve, **91** still pays keepers to call
-the hub rain abandoned, and **110** is on the longest cadence in the
+that is actually live, and **110** is on the longest cadence in the
 registry, funded for more than two years of it. It was listed here as a
 stranger's until [#236](https://github.com/CorvidLabs/arcron/pull/236): it belongs to `CEPY52VZRWFL`, an agent of ours
 that funded itself from the public dispenser and so did not look like the
@@ -62,18 +60,16 @@ cadence.
 `fledge run health` is the live view and says which of the two kinds of overdue
 each one is.
 
-**Upkeep 91 is a loose end, stated because it is true.** It was registered
-against `770130162` when that was the rain hub, and a target is fixed in the
-box at registration exactly as a selector and a cadence are. Rain redeployed on
-2026-08-31 as `770746178` — the old hub has no update path and predates the fix
-that stops a ONE draw being aimed by tickets bought after the seed is public,
-so nobody could repair it in place — and registered upkeep 113 against the new
-one. 91 still holds 2.928 ALGO and still pays a keeper 4,000 µALGO an hour to
-call `draw()` on a hub the repository that owns rain now refuses to adopt.
-Nothing is stuck (`cancel` refunds escrow and box MBR in full), but every one
-of those calls is escrow spent exercising an app this page says is superseded.
-It wants cancelling, or re-registering against `770746178`, and this paragraph
-stays until it is.
+**Upkeep 91 was a loose end and is now cancelled.** It was registered against
+`770130162` when that was the rain hub, and a target is fixed in the box at
+registration exactly as a selector and a cadence are. Rain redeployed on
+2026-08-31 as `770746178`, because the old hub has no update path and predates
+the fix that stops a ONE draw being aimed by tickets bought after the seed is
+public, so nobody could repair it in place. That left 91 paying a keeper 4,000
+µALGO an hour to call `draw()` on a hub the repository that owns rain refuses
+to adopt. Cancelled on 2026-09-01 at round 66,895,186: 2.8861 ALGO back, and
+the payments stopped. The old hub still exists, still holds boxes and money,
+and still cannot be fixed; it simply is not being driven any more.
 
 **Two rows this table used to carry are gone, both cancelled.** Upkeep 79 was
 the same fault as 91 one hub earlier: it paid keepers to call a rain app

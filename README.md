@@ -163,7 +163,7 @@ interval per execution rather than skipping its history — which also means an
 outage can spend the whole escrow on replays nobody wanted. Under `SKIP_AHEAD`
 (policy 1) the contract snaps to the first slot strictly in the future, keeping
 the schedule's phase and dropping the backlog. Most of the live registry is
-`SKIP_AHEAD`: 31 of the 33 upkeeps at round 66,860,306, with only 19 and 116 on
+`SKIP_AHEAD`: 30 of the 32 upkeeps at round 66,901,001, with only 19 and 116 on
 `CATCH_UP`. Pick deliberately; it cannot be changed afterwards.
 
 Cadences are counted in rounds, not wall-clock time, so "daily" means "every
@@ -199,24 +199,25 @@ selectively timed by an interested party.
 The registry has evidence. Some of the things around it do not, and the two
 are worth keeping apart.
 
-**The keeper registry has been used, and almost all of the use is still our
-own.** Read from the chain on 2026-08-31, at round 66,860,306:
+**The keeper registry has been used, and all of the use is still our own.**
+Read from the chain on 2026-09-01, at round 66,900,984:
 
-- **33 live upkeeps**, registered by **seven distinct addresses**. Our deployer
-  registered 7; the other 26 came from six addresses that are not it.
+- **32 live upkeeps**, registered by **seven distinct addresses**. Our deployer
+  registered 6; the other 26 came from six addresses that are not it.
 - **That is not 26 outside upkeeps.** Five of those six addresses were funded
   by a single account, and [`docs/testnet.md`](docs/testnet.md) records one of
   the five (`A3OZPORJ…`) as an agent we dispatched. Treat the five as one
   operator wearing five costumes: 20 of the 26. Only the sixth address is even
   a candidate for outside registration.
-- **746 executions** are recorded across those 33 boxes. **Three addresses
-  executed** in the preceding 30,857 rounds (about a day): `NUGVPQGZ…` 232 and
+- **1,069 executions** are recorded across those 32 boxes. **Two addresses
+  executed** in the preceding 30,857 rounds (about a day): `NUGVPQGZ…` 231 and
   `GCQL3M7A…` 57. **Both are ours** — the long-running keeper and the GitHub
   Actions cron keeper in
   [`.github/workflows/keeper-bot.yml`](.github/workflows/keeper-bot.yml). All
   time, fifteen addresses have sent an `execute`, and `GCQL3M7A…` is the
-  largest keeper this registry has had: 682 of 1,387 executions ever sent,
-  against `NUGVPQGZ…`'s 631. The other thirteen have fourteen or fewer each.
+  largest keeper this registry has had: 689 of 1,399 executions ever sent,
+  against `NUGVPQGZ…`'s 636. The other thirteen have fourteen or fewer each,
+  and eleven of them are the end-to-end suite rather than a keeper.
 - `CEPY52VZRWFL…` is ours as well, and it was the hardest to place. Funded once
   by the public TestNet dispenser and by nothing else, it deployed its own
   target apps, registered upkeeps 110, 111, 112, 114, 115 and 116 at four
@@ -230,11 +231,12 @@ own.** Read from the chain on 2026-08-31, at round 66,860,306:
   proves the deployed programs are this source, byte for byte. `fledge run
   health` prints the per-upkeep and per-keeper lines — runs, net-to-keeper,
   runway, keeper solvency — but **not** the creator attribution above, which
-  has no column in it; that came from decoding all 33 boxes with
+  has no column in it; that came from decoding every box with
   `scripts.keeper_bot._decode_upkeep` and querying the indexer. `health` also
-  reads those 33 boxes back to back, which the public TestNet endpoint will
-  rate-limit into an HTTP 403; re-run it, or point `ALGOD_SERVER` at a node you
-  control.
+  reads those boxes back to back, which the public TestNet endpoint will
+  rate-limit into an HTTP 403; the clients retry it now
+  ([`scripts/node_retry.py`](scripts/node_retry.py)), and pointing
+  `ALGOD_SERVER` at a node you control is the real fix.
 
 **What that does not prove.** Nobody has escrowed anything but test ALGO. No
 third party has audited the contract, and the creator can still replace its
@@ -562,7 +564,7 @@ Note what a long-missed upkeep does depends on its policy. A `CATCH_UP` upkeep
 schedules from the *scheduled* round, so it stays due until it has replayed one
 execution per missed interval — a keeper coming back after an outage will find
 a burst of them, and the escrow pays for every one. A `SKIP_AHEAD` upkeep is
-due exactly once, then jumps to the next future slot. 31 of the 33 live
+due exactly once, then jumps to the next future slot. 30 of the 32 live
 upkeeps are `SKIP_AHEAD`.
 
 ### Keeping it up

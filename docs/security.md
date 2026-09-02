@@ -273,7 +273,7 @@ by `freeze`, which makes the ordering of those two the decision this risk
 actually turns on. Full measurements and the three options in
 [`docs/reviews/2026-09-01-opus-5-audit-verification.md`](reviews/2026-09-01-opus-5-audit-verification.md).
 
-As of 2026-09-01 **no live upkeep is exposed**: seven of thirty-three have
+As of 2026-09-01 **no live upkeep is known to be exposed**: seven of the thirty-two have
 escalation enabled and all seven point at unconditional counters, which
 nothing a third party controls can make refuse.
 

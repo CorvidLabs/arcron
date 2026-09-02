@@ -83,16 +83,16 @@ Two things in this repository have very different amounts of evidence behind
 them, and it matters which one you are looking at.
 
 **The keeper registry has been used, mostly by us.** Read from the chain on
-2026-08-31, at round 66,860,306: **33 live upkeeps** from **seven distinct
+2026-09-01, at round 66,901,001: **32 live upkeeps** from **seven distinct
 addresses**, of which our deployer registered 7 and six other addresses
 registered the other **26**. That second number flatters us: five of those six
 addresses share a single funding account and one of the five is an agent
 [`docs/testnet.md`](docs/testnet.md) records as ours, so read them as one
-operator wearing five costumes — 20 of the 26. **746 executions** are recorded
+operator wearing five costumes — 20 of the 26. **1,069 executions** are recorded
 across the boxes, and **two addresses executed in the preceding day**:
-`NUGVPQGZ…` 232 and `GCQL3M7A…` 57. Both are ours, the second being the GitHub
+`NUGVPQGZ…` 231 and `GCQL3M7A…` 57. Both are ours, the second being the GitHub
 Actions cron keeper; all time it is the largest keeper this registry has had,
-682 executions of 1,387 by fifteen addresses. `CEPY52VZRWFL…` is
+689 executions of 1,399. `CEPY52VZRWFL…` is
 ours too, and it was the hardest to place: funded once by the public TestNet
 dispenser and by nothing else, it deployed its own targets, registered six
 upkeeps and runs its own keeper, taking no top-up from the account behind the
@@ -151,7 +151,7 @@ findings:
   2 touch-target.
 - **`CATCH_UP` can burn an upkeep's whole escrow** after an outage. Measured:
   upkeep 18 spent everything on 17 replays and advanced 41 rounds against a
-  23,478 round backlog. 31 of the 33 live upkeeps avoid this by using
+  23,478 round backlog. 30 of the 32 live upkeeps avoid this by using
   `SKIP_AHEAD`; 19 and 116 do not.
 - **Rounds are not a clock.** TestNet measured 2.695 s a round on 2026-08-28,
   so an "hourly" upkeep fires about 2.2 minutes early every hour — roughly
@@ -252,7 +252,7 @@ If you looked and decided *not* to use it, that is worth more still:
 
 ## The state of it, honestly
 
-Read from the chain on 2026-08-31 at round 66,860,306. Recompute rather than
+Read from the chain on 2026-09-01 at round 66,901,001. Recompute rather than
 quote: `fledge run health` is the live version of the runway and solvency
 columns. It does not attribute creators or keepers, and on the public TestNet
 endpoint its 33 back-to-back box reads can be rate-limited into an HTTP 403.
@@ -261,9 +261,9 @@ endpoint its 33 back-to-back box reads can be rate-limited into an HTTP 403.
 |---|---|
 | Contract | Live on TestNet, **unaudited**, **unfrozen** (the creator can replace the programs), 1.0 surface complete |
 | Deployment age | The app id since 2026-08-25; the programs it runs now since 2026-08-26. Days, not months |
-| Registry | **33 live upkeeps** from **7 distinct addresses**. Our deployer registered 7; 26 came from six addresses that are not the deployer. **746 executions** recorded across the live boxes |
-| Upkeeps registered by strangers | **Zero.** 26 of the 33 live upkeeps come from six addresses that are not our deployer, and all six are ours: five share a funding account, and the sixth, `CEPY52VZRWFL`, funded itself from the public dispenser and looked like a stranger for a day before it was attributed |
-| Keepers | **Two addresses executed in the last day**, and both are ours: `NUGVPQGZ…` 232, `GCQL3M7A…` 57. All time, fifteen addresses have executed and `GCQL3M7A…` is the largest: 682 of 1,387. Nobody outside has run one |
+| Registry | **32 live upkeeps** from **7 distinct addresses**. Our deployer registered 6; 26 came from six addresses that are not the deployer. **1,069 executions** recorded across the live boxes |
+| Upkeeps registered by strangers | **Zero.** 26 of the 32 live upkeeps come from six addresses that are not our deployer, and all six are ours: five share a funding account, and the sixth, `CEPY52VZRWFL`, funded itself from the public dispenser and looked like a stranger for a day before it was attributed |
+| Keepers | **Two addresses executed in the last day**, and both are ours: `NUGVPQGZ…` 231, `GCQL3M7A…` 57. All time, fifteen addresses have executed, eleven of them the e2e suite, and `GCQL3M7A…` is the largest: 689 of 1,399. Nobody outside has run one |
 | Built on it | One thing: [CorvidLabs/arcron-rain](https://github.com/CorvidLabs/arcron-rain), which we also wrote |
 | MainNet | Not deployed. Gated on sustained TestNet time; the creator will be `corvid.algo` |
 | Review history | Every round, including the ones that said no, is in `docs/reviews/`. None of them is a paid audit |
