@@ -1,8 +1,15 @@
 """Permissionless keeper bot for the Keeper network.
 
-Scans the Keeper app's upkeep boxes each round, executes every upkeep that
-is due and funded, and collects the per-execution fees. Loops block-by-block
-by default, or runs a single scan with --once.
+Reads the Keeper app's upkeep boxes, executes every upkeep that is due and
+funded, and collects the per-execution fees. Loops until the next round any
+upkeep could need something, or runs a single scan with --once.
+
+It used to scan every couple of rounds and re-read all 33 boxes each time,
+which measured at about 211,000 requests a day against a public node
+(`docs/reviews/2026-09-01-opus-5-audit-verification.md` §5). `Registry` below
+re-reads a box only when a stale copy could change a decision, and the loop
+sleeps until the soonest of those rounds: about 3,000 a day, measured the same
+way in `tests/test_keeper_bot.py::TestWhatOneDayCosts`.
 
 Picks its network with --network (or ARCRON_NETWORK), loading .env.localnet
 or .env.testnet. Signs as the account from KEEPER_MNEMONIC if set, else
@@ -32,7 +39,7 @@ import algokit_utils
 from algosdk import constants, encoding
 
 from scripts import keeper_assets, network as net
-from scripts.keeper_backoff import Backoff, default_state_path
+from scripts.keeper_backoff import Backoff, default_state_path, is_target_refusal
 from smart_contracts.artifacts.keeper.keeper_client import (
     ExecuteArgs,
     KeeperClient,
@@ -112,8 +119,74 @@ ACCOUNT_MBR_MICROALGO = 100_000
 LOW_BALANCE_MICROALGO = 100 * EXECUTION_COST_MICROALGO
 # Scans between heartbeats while looping.
 HEARTBEAT_SCANS = 20
+# And never longer than this between them, however few scans there have been.
+# Scans used to be one a round, so twenty of them was a minute; they are now
+# spaced by what the registry is about to need, so on a quiet registry twenty
+# could be most of a day. The heartbeat carries the balance check, which is the
+# number that kills keepers silently, so it gets a clock of its own.
+HEARTBEAT_ROUNDS = 1_286  # about an hour at the measured 2.752 s/round
 # An upkeep overdue by more than this many of its own intervals is a stall.
 STALL_INTERVALS = 2
+
+# --- how often the loop reads anything --------------------------------------
+#
+# `docs/reviews/2026-09-01-opus-5-audit-verification.md` §5, and
+# `scripts/node_retry.py`, which says plainly that the repair belongs here
+# rather than in a retry helper. Measured there: this bot issued about
+# **211,000 requests a day** against a public node whose refused quota counter
+# stood at 230,824 — one process, essentially the whole allowance. The shape of
+# it was 11,543 scans over 63,013 rounds, one every 5.46 rounds, and a scan was
+# a status, the box listing, a read of every one of the 33 boxes, and the block
+# wait.
+#
+# Two things were wrong with that and both are about re-reading state that had
+# not changed:
+#
+#   * every box, every scan, to find the handful that were due, and
+#   * a scan every couple of rounds whether or not anything could happen in
+#     them. The shortest live cadence is 20 rounds and most of the registry
+#     runs on 1,286 or 15,428.
+#
+# What makes caching safe is a property of the contract rather than a guess
+# about traffic: `next_execution_round` is written once by `register` and only
+# ever *advanced* by `execute` (smart_contracts/keeper/contract.py). No method
+# moves it backwards. So a cached box that says "not due until round X" cannot
+# be hiding an upkeep that has quietly become due — the true value is X or
+# later — and the only staleness a cache can produce is being too eager, never
+# too late. `Registry` below turns that into "read a box on the round its
+# cached copy stops being able to change a decision".
+#
+# How much an upkeep that cannot pay is worth re-reading. It is due, so it is
+# read every scan under the rule above, and it will never be executable until
+# somebody tops it up — twelve of the 32 live upkeeps are in exactly that
+# state and have been for 94,000 rounds. A top-up is a person with a wallet,
+# not a race, so noticing one within the hour is enough, and that is the whole
+# of what this constant relaxes.
+STARVED_RECHECK_ROUNDS = 1_286
+# Nothing is trusted for ever. If the reasoning above is wrong somewhere, this
+# is what bounds how long it can be wrong for, at a cost of one read per box
+# per day.
+MAX_CACHE_ROUNDS = 30_857  # a day
+# The longest the loop will sleep when the registry has nothing coming up. The
+# box listing is what reveals a new registration, and `MIN_INTERVAL_ROUNDS` is
+# 10, so a brand-new upkeep could in principle be due before this elapses; it
+# stays due, and the next scan takes it. This is the ceiling on how late that
+# first execution can be, against roughly 480 requests a day to hold it.
+MAX_IDLE_ROUNDS = 128
+# Within this many rounds of something falling due, wait on algod's own long
+# poll: it returns the moment a block appears, which is what decides a race.
+# Further out, sleep locally instead — the long poll times out after a minute,
+# so sitting out a thousand rounds on it costs a request a minute, and sleeping
+# costs nothing. Two rather than four because every extra long poll is a
+# request: the local sleep lands within a round or two of the target anyway,
+# since `seconds_per_round` is a measured per-network figure and the sleep it
+# governs is capped at MAX_SLEEP_SECONDS, which bounds the error a wrong
+# estimate can accumulate.
+LONG_POLL_ROUNDS = 2
+# …but never sleep longer than this in one go, so a wrong seconds-per-round
+# estimate, a stalled chain or a dev-mode node that produces no blocks at all
+# costs a minute of dozing rather than an unbounded one.
+MAX_SLEEP_SECONDS = 300.0
 # Catch-up policies, mirroring smart_contracts/keeper/contract.py.
 CATCH_UP = 0
 SKIP_AHEAD = 1
@@ -214,29 +287,49 @@ def effective_fee(upkeep: Upkeep, current_round: int) -> int:
     return base if upkeep.balance < fee else fee
 
 
+def partition_due(
+    upkeeps: list[Upkeep],
+    current_round: int,
+    is_blocked=None,
+) -> tuple[list[Upkeep], list[Upkeep]]:
+    """The work a keeper should take, and the work backoff is holding back.
+
+    Both halves, from one pass, because the second half had no name and
+    therefore no report. An upkeep that is due, funded and skipped is the
+    keeper's own blind spot: `docs/reviews/2026-09-01-opus-5-audit-verification.md`
+    §3 ends on it — for a liquidation, an oracle or a keep-alive the missed
+    window can be worth more than every fee in that document, "and nothing
+    meters it". The caller emits one line per upkeep in the second list, which
+    is the meter.
+
+    Ordered by what each upkeep pays *now* rather than by registry order:
+    escalation exists to change which work a keeper reaches for, and registry
+    order would mean a neglected upkeep stays neglected however far its fee
+    has risen.
+    """
+    take: list[Upkeep] = []
+    held: list[Upkeep] = []
+    for upkeep in upkeeps:
+        if current_round < upkeep.next_execution_round:
+            continue
+        if upkeep.balance < effective_fee(upkeep, current_round):
+            continue
+        blocked = is_blocked is not None and is_blocked(upkeep.upkeep_id)
+        (held if blocked else take).append(upkeep)
+
+    def order(upkeep: Upkeep) -> tuple[int, int]:
+        return (-effective_fee(upkeep, current_round), upkeep.upkeep_id)
+
+    return sorted(take, key=order), sorted(held, key=order)
+
+
 def select_due(
     upkeeps: list[Upkeep],
     current_round: int,
     is_blocked=None,
 ) -> list[Upkeep]:
-    """The work a keeper should take, in the order it should take it.
-
-    Ordered by what each upkeep pays *now* rather than by registry order:
-    escalation exists to change which work a keeper reaches for, and registry
-    order would mean a neglected upkeep stays neglected however far its fee
-    has risen. Anything `is_blocked` names is left out entirely, because its target
-    is the thing that is broken, and a rising fee does not fix it.
-    """
-    return sorted(
-        (
-            upkeep
-            for upkeep in upkeeps
-            if current_round >= upkeep.next_execution_round
-            and upkeep.balance >= effective_fee(upkeep, current_round)
-            and not (is_blocked is not None and is_blocked(upkeep.upkeep_id))
-        ),
-        key=lambda upkeep: (-effective_fee(upkeep, current_round), upkeep.upkeep_id),
-    )
+    """Just the work to take. See `partition_due` for what is left out and why."""
+    return partition_due(upkeeps, current_round, is_blocked)[0]
 
 
 def _merge_unnamed_resources(*accessed: dict | None) -> dict:
@@ -597,20 +690,187 @@ def _box_page(algod, app_id: int, token: "str | None") -> dict:
     )
 
 
-def scan_upkeeps(algod, app_id: int) -> list[Upkeep]:
-    upkeeps: list[Upkeep] = []
+def _box_names(algod, app_id: int) -> list[bytes]:
+    """Every upkeep box name the app holds, following the pagination.
+
+    Names only: this is one request per page, and it is the cheap half of a
+    scan. The expensive half is a read per name, which `Registry` skips when it
+    can.
+    """
+    names: list[bytes] = []
     token: str | None = None
-    while True:  # paginate the box list
+    while True:
         page = _box_page(algod, app_id, token)
         for box in page["boxes"]:
             name = _as_bytes(box["name"])
-            if name[:1] != b"u":
-                continue
-            raw = _as_bytes(algod.application_box_by_name(app_id, name)["value"])
-            upkeeps.append(_decode_upkeep(int.from_bytes(name[1:9], "big"), raw))
+            # Anyone can pay for a box under a name of their choosing; only the
+            # `u`-prefixed ones are the contract's.
+            if name[:1] == b"u" and len(name) >= 9:
+                names.append(name)
         token = page.get("next-token") or None
         if not token:
-            return upkeeps
+            return names
+
+
+def scan_upkeeps(algod, app_id: int) -> list[Upkeep]:
+    """Every upkeep, read fresh. One request per box, plus the listing.
+
+    Still the right thing for a one-shot reader — the health report, the
+    top-up planner, the notifier's snapshot, `--check` — where the whole point
+    is a consistent picture of the registry as it stands. The bot's loop uses
+    `Registry` instead, because it asks the same question thousands of times a
+    day and almost nothing changes between two of them.
+    """
+    return [
+        _decode_upkeep(
+            int.from_bytes(name[1:9], "big"),
+            _as_bytes(algod.application_box_by_name(app_id, name)["value"]),
+        )
+        for name in _box_names(algod, app_id)
+    ]
+
+
+@dataclass
+class Cached:
+    """One upkeep box, and the round its bytes were read on."""
+
+    upkeep: Upkeep
+    read_at_round: int
+
+
+class Registry:
+    """The upkeep boxes, re-read only when a stale copy could change a decision.
+
+    The bot used to call `scan_upkeeps` every scan: 33 box reads plus the
+    listing, thousands of times a day, to find the handful of upkeeps that
+    were due. That is most of the 211,000 requests a day
+    `docs/reviews/2026-09-01-opus-5-audit-verification.md` §5 measured, and the
+    constants above are the argument for each part of the rule.
+
+    **Why a stale box cannot hide a due upkeep.** `next_execution_round` is
+    written by `register` and only ever advanced by `execute`; nothing in the
+    contract moves it earlier. So a cached copy saying "not due until X" is a
+    *lower bound* on the truth, and re-reading at X can only ever be early.
+    Everything else follows from that:
+
+      not due yet          nothing about it can be acted on before X, and
+                           while it is not due nobody can execute it, so its
+                           escrow can only grow (`top_up`) and its schedule
+                           cannot move. Read it at X.
+      due and funded       about to be attempted. Read it now.
+      due and cannot pay   no keeper can execute it whatever it says, and only
+                           a top-up changes that. Read it every
+                           STARVED_RECHECK_ROUNDS.
+      backed off           the bot is not going to attempt it before
+                           `next_attempt_round`, so its bytes cannot change a
+                           decision before then either.
+      cancelled            it leaves the box listing, which is read every scan.
+      newly registered     it appears in that listing, and has never been read.
+
+    The one thing a cache must never do is decide *not* to look at something
+    that is about to matter, so every rule above is a round at which the copy
+    stops being good enough, and the scan clock waits for the soonest of them
+    (`next_wake_round`). Reading and waking come off the same number on
+    purpose: a bot that slept past the round it had promised to re-read would
+    be exactly the bug this class could introduce.
+    """
+
+    def __init__(self) -> None:
+        self.cached: dict[int, Cached] = {}
+        #: Box reads issued since the process started. The heartbeat reports it,
+        #: because "how much am I asking of this node" is the question §5 says
+        #: nobody could answer without going back through the logs. The
+        #: authoritative count is
+        #: `tests/test_keeper_bot.py::TestWhatOneDayCosts`, which counts at the
+        #: client rather than taking a counter's word for it.
+        self.box_reads = 0
+
+    # -- queries ---------------------------------------------------------
+    def upkeeps(self) -> list[Upkeep]:
+        return [entry.upkeep for entry in self.cached.values()]
+
+    def wanted_at(self, entry: Cached, backoff) -> int:
+        """The round this cached copy stops being good enough to decide on."""
+        upkeep = entry.upkeep
+        wanted = max(upkeep.next_execution_round, backoff.next_attempt_round(upkeep.upkeep_id))
+        # Judged against the *base* fee rather than the escalated one, because
+        # the contract falls back to base when an escrow cannot cover the
+        # escalation (`execute`, and `effective_fee`'s twin of it). An upkeep
+        # holding the base fee is executable by somebody; one holding less is
+        # executable by nobody, and reading it more often does not change that.
+        if upkeep.balance < upkeep.fee_per_execution:
+            wanted = max(wanted, entry.read_at_round + STARVED_RECHECK_ROUNDS)
+        return min(wanted, entry.read_at_round + MAX_CACHE_ROUNDS)
+
+    def next_wake_round(self, current_round: int, backoff) -> int:
+        """The soonest round at which this registry could need anything done.
+
+        Floored at the next round, because nothing on chain changes inside one
+        and scanning twice in the same round asks the node the same question
+        twice. Capped at MAX_IDLE_ROUNDS so a quiet registry still gets its box
+        listing read, which is how a registration nobody told us about arrives.
+        """
+        soonest = min(
+            (self.wanted_at(entry, backoff) for entry in self.cached.values()),
+            default=current_round + MAX_IDLE_ROUNDS,
+        )
+        return max(current_round + 1, min(soonest, current_round + MAX_IDLE_ROUNDS))
+
+    # -- updates ---------------------------------------------------------
+    def refresh(self, algod, app_id: int, current_round: int, backoff) -> list[Upkeep]:
+        """Bring the cache up to date for this round, reading as little as possible."""
+        live: set[int] = set()
+        for name in _box_names(algod, app_id):
+            upkeep_id = int.from_bytes(name[1:9], "big")
+            live.add(upkeep_id)
+            entry = self.cached.get(upkeep_id)
+            if entry is not None and current_round < self.wanted_at(entry, backoff):
+                continue
+            raw = _as_bytes(algod.application_box_by_name(app_id, name)["value"])
+            self.cached[upkeep_id] = Cached(_decode_upkeep(upkeep_id, raw), current_round)
+            self.box_reads += 1
+        # Cancelled: the box is gone, and so is any reason to keep its escrow
+        # and schedule in mind.
+        for gone in set(self.cached) - live:
+            del self.cached[gone]
+        return self.upkeeps()
+
+    def remember(self, upkeep: Upkeep, current_round: int) -> None:
+        """Take a copy somebody else already paid for.
+
+        `registry_moved_on` reads the box after a failure to settle whether a
+        race was lost. That read is as fresh as one of this class's own, so
+        throwing it away and reading the same box again on the next scan would
+        be spending a request to learn what is already in hand.
+        """
+        self.cached[upkeep.upkeep_id] = Cached(upkeep, current_round)
+
+    def remember_execution(self, upkeep_id: int, next_due: int, current_round: int) -> None:
+        """Note that `execute` moved this upkeep's schedule to `next_due`.
+
+        The contract returns the round it rescheduled to, so the one field that
+        governs when this box next matters is known without reading it back —
+        which is worth a request per execution, and a scan: without it the
+        cached copy still says "due", so the bot would wake on the next round
+        purely to discover it had already done the work.
+
+        The rest of the copy is now stale — `balance` is the fee too high,
+        `times_executed` and `last_serviced_round` are one execution behind —
+        and none of it can change a decision before `next_due`, because the
+        upkeep is not due until then and `wanted_at` reads it again when it is.
+        A balance that is stale *high* is the safe direction as well: it makes
+        this look funded, and a funded upkeep is read at its due round rather
+        than left to the slower starved recheck.
+        """
+        entry = self.cached.get(upkeep_id)
+        if entry is None or next_due <= entry.upkeep.next_execution_round:
+            # No answer, or an answer that would move the schedule backwards.
+            # Drop the copy rather than trust it; the next scan reads the box.
+            self.cached.pop(upkeep_id, None)
+            return
+        self.cached[upkeep_id] = Cached(
+            replace(entry.upkeep, next_execution_round=next_due), current_round
+        )
 
 
 def resolve_app_id(parser: argparse.ArgumentParser, app_id: int | None, network: str) -> int:
@@ -768,6 +1028,94 @@ def account_floor(algod, address: str) -> tuple[int, int]:
     info = algod.account_info(address)
     return int(info["amount"]), int(info.get("min-balance", ACCOUNT_MBR_MICROALGO))
 
+
+def account_state(algod, address: str) -> tuple[int, int, set[int]]:
+    """Balance, the ledger's floor under it, and the assets this keeper can hold.
+
+    One request for all three, because the loop was spending two: one every
+    scan to see which bonus assets the keeper had opted in to, and another on
+    the heartbeat for the balance guard. They are the same `account_info`
+    response and always were, which is a request a scan given away for nothing
+    — about 11,500 of them across the 1.97 days
+    `docs/reviews/2026-09-01-opus-5-audit-verification.md` §5 measured, and one
+    the accounting there missed: it recorded the account read as being on the
+    heartbeat, one scan in twenty, when the loop was making it every scan. So
+    the 211,000 a day it landed on is a floor rather than a ceiling.
+    """
+    info = algod.account_info(address)
+    return (
+        int(info["amount"]),
+        int(info.get("min-balance", ACCOUNT_MBR_MICROALGO)),
+        {int(holding["asset-id"]) for holding in info.get("assets", [])},
+    )
+
+
+def sleep_until(seconds: float, stop=None) -> None:
+    """Doze for `seconds`, in slices short enough that SIGTERM still lands."""
+    deadline = time.time() + seconds
+    while time.time() < deadline:
+        if stop is not None and stop.requested:
+            return
+        time.sleep(min(0.5, deadline - time.time()))
+
+
+def wait_for_work(algod, current_round: int, target_round: int, seconds_per_round: float, stop=None) -> dict:
+    """Block until `target_round`, and hand back the node's status there.
+
+    Two ways to wait, and the choice between them is about requests rather than
+    precision. algod's `wait-for-block-after` long poll returns the instant a
+    block appears, which is exactly what a keeper wants in the rounds around an
+    upkeep falling due, because whoever is in the first block wins — but it
+    gives up after a minute, so sitting out a thousand rounds on it costs a
+    request a minute for the best part of an hour. A local sleep costs nothing
+    and knows nothing. So the long stretch is slept through and only the last
+    LONG_POLL_ROUNDS are watched.
+
+    The waiting loops **here** rather than returning to the caller each time.
+    Going back would make every long poll a whole scan — a box listing to be
+    told nothing had changed — which measured at ten requests per retry against
+    a refusing target instead of five.
+
+    It gives up after MAX_SLEEP_SECONDS whether or not the target was reached,
+    so the caller still gets its turn: a seconds-per-round estimate that is
+    simply wrong ends up here, and it should not be able to hold a keeper
+    indefinitely. It also gives up the moment a long poll comes back with the
+    same round it went in with, which is what a stalled chain looks like — and
+    what LocalNet looks like all the time, since a dev-mode node produces a
+    block per transaction and none at all in between.
+
+    The status this returns is the loop's clock for the next scan. The old loop
+    called `status()` at the top and `status_after_block()` at the bottom, and
+    the second answer already contains everything the first one would have
+    said, which is one request a scan given away.
+    """
+    started = time.monotonic()
+    status = None
+    round_now = current_round
+    while round_now < target_round:
+        remaining = target_round - round_now
+        if remaining > LONG_POLL_ROUNDS:
+            sleep_until(
+                min((remaining - LONG_POLL_ROUNDS) * seconds_per_round, MAX_SLEEP_SECONDS),
+                stop,
+            )
+            status = algod.status()
+        else:
+            # `status_after_block(round_now)` returns as soon as a round later
+            # than this one exists, so it always makes progress and never waits
+            # out a round the bot has already seen.
+            status = algod.status_after_block(round_now)
+            if int(status["last-round"]) == round_now:
+                # The node's own minute elapsed and no block arrived. Nothing
+                # is going to change by asking again immediately, and the
+                # caller may have a shutdown to honour.
+                break
+        round_now = int(status["last-round"])
+        if (stop is not None and stop.requested) or time.monotonic() - started >= MAX_SLEEP_SECONDS:
+            break
+    return status if status is not None else algod.status()
+
+
 def _env_int(name: str) -> int | None:
     """An integer from the environment, or None when unset or unreadable.
 
@@ -873,7 +1221,7 @@ def _maybe_sweep(algorand, address: str, args, *, spendable: int, backoff) -> No
     backoff.record_sweep(now)
 
 
-def guard_balance(algod, address: str, warn_below: int) -> int:
+def guard_balance(algod, address: str, warn_below: int, state: tuple[int, int] | None = None) -> int:
     """Refuse to run below what it takes to broadcast; warn while it is low.
 
     A keeper earns its fees into the same account it spends from, so it is
@@ -883,8 +1231,12 @@ def guard_balance(algod, address: str, warn_below: int) -> int:
     Returns what the account can actually spend, which is the number every
     decision here is about: an account can hold several ALGO and be unable to
     pay a 1,000 µALGO fee, because minimum balance is not a balance.
+
+    `state` is `(balance, floor)` already read, for the caller that has just
+    read the same `account_info` for something else. Passing it makes this
+    check free rather than a second request for the same response.
     """
-    balance, floor = account_floor(algod, address)
+    balance, floor = state if state is not None else account_floor(algod, address)
     spendable = balance - floor
     if spendable < EXECUTION_COST_MICROALGO:
         raise UnrecoverableError(
@@ -1089,15 +1441,23 @@ def main(argv: list[str] | None = None) -> None:
 
     if args.sweep_to:
         _validate_sweep(args, keeper.address)
-    spendable = guard_balance(algod, keeper.address, args.min_balance)
+    balance, floor, opted_in_assets = account_state(algod, keeper.address)
+    spendable = guard_balance(algod, keeper.address, args.min_balance, state=(balance, floor))
+    registry = Registry()
+    seconds_per_round = net.seconds_per_round(args.network)
+    status = algod.status()
     # Said once at startup rather than every scan. An operator who has decided
     # to decline these does not need telling every round, and one who has not
     # decided at all needs telling before the first execution, not after a
     # month of them.
     try:
         report_forgone_bonuses(
-            scan_upkeeps(algod, app_id),
-            algod.status()["last-round"],
+            # Through the cache, not a bare `scan_upkeeps`: this is a full read
+            # of every box, and the loop is about to want exactly those bytes.
+            # Reading them twice a few milliseconds apart was 33 requests spent
+            # on nothing.
+            registry.refresh(algod, app_id, int(status["last-round"]), backoff),
+            int(status["last-round"]),
             keeper.address,
             algod,
         )
@@ -1133,6 +1493,7 @@ def main(argv: list[str] | None = None) -> None:
     error_delay = ERROR_RETRY_SECONDS
     executed_count = 0
     scans = 0
+    last_heartbeat_round = 0
     # None rather than "now": the duration trigger measures from the last
     # sweep, and on a fresh start there has not been one. Seeding it with the
     # clock would make the first sweep wait a whole period for no reason.
@@ -1141,16 +1502,11 @@ def main(argv: list[str] | None = None) -> None:
             emit("stopped", "Shutting down cleanly")
             return
         try:
-            current = algod.status()["last-round"]
-            upkeeps = scan_upkeeps(algod, app_id)
-            # Re-read every scan rather than caching: an operator can opt in
-            # to a new bonus asset while the bot is running, and should not
-            # have to restart it to start earning that bonus.
-            opted_in_assets = {
-                holding["asset-id"]
-                for holding in algod.account_info(keeper.address).get("assets", [])
-            }
-            due = select_due(
+            if status is None:  # a node blip; re-read the clock before deciding
+                status = algod.status()
+            current = int(status["last-round"])
+            upkeeps = registry.refresh(algod, app_id, current, backoff)
+            due, held = partition_due(
                 upkeeps, current, lambda upkeep_id: backoff.blocked(upkeep_id, current)
             )
             error_delay = ERROR_RETRY_SECONDS
@@ -1162,11 +1518,47 @@ def main(argv: list[str] | None = None) -> None:
                 upkeeps=len(upkeeps),
                 due=len(due),
                 skipped=len(backoff.blocked_ids(current)),
+                box_reads=registry.box_reads,
             )
+            for upkeep in held:
+                # The meter §3 asked for. A due, funded upkeep that this keeper
+                # is deliberately not touching is invisible in every other line
+                # it prints, and for an upkeep with escalation off it is
+                # invisible on chain too: no fee rises, no report notices, the
+                # window simply passes. Warned rather than logged once the
+                # blackout has outlasted one of the upkeep's own intervals,
+                # because by then it is a missed cycle rather than a pause.
+                entry = backoff.entry(upkeep.upkeep_id)
+                since = entry.since_round if entry and entry.since_round else current
+                unserviced = current - since
+                emit(
+                    "blackout",
+                    f"Not touching due upkeep {upkeep.upkeep_id} (target app "
+                    f"{upkeep.target_app}) until round "
+                    f"{entry.next_attempt_round if entry else current}: "
+                    f"{entry.failures if entry else 0} failure(s) over {unserviced} "
+                    f"rounds, {effective_fee(upkeep, current)} µALGO unclaimed"
+                    + (f", last at {entry.site}" if entry and entry.site else ""),
+                    level=(
+                        logging.WARNING
+                        if unserviced > max(upkeep.interval_rounds, 1)
+                        else logging.DEBUG
+                    ),
+                    round=current,
+                    upkeep_id=upkeep.upkeep_id,
+                    target_app=upkeep.target_app,
+                    unserviced_rounds=unserviced,
+                    failures=entry.failures if entry else 0,
+                    next_attempt_round=entry.next_attempt_round if entry else current,
+                    fee_forgone=effective_fee(upkeep, current),
+                    escalating=upkeep.fee_cap > upkeep.fee_per_execution,
+                    site=entry.site if entry else "",
+                )
             for upkeep in due:
                 if shutdown.requested:
                     break
                 balance_before = None
+                broadcast = False
                 try:
                     # An upkeep offering an ASA bonus sends a third inner
                     # transaction when the bonus is actually paid, and only a
@@ -1189,16 +1581,29 @@ def main(argv: list[str] | None = None) -> None:
                         and upkeep.fee_asset in opted_in_assets
                     ):
                         extra_fee += BONUS_FEE_MICROALGO
+                    # This simulates, and algokit-utils raises on a failed
+                    # group (`TransactionComposer._handle_simulate_error`), so
+                    # a target that refuses is refused *here* and nothing is
+                    # ever broadcast. Two things follow, and both are why the
+                    # ordering below changed:
+                    #   * an attempt that a target refuses costs one request
+                    #     and puts nothing in the transaction pool, which is
+                    #     what makes the short retry in `keeper_backoff`
+                    #     affordable, and
+                    #   * a balance read either side of it would be measuring
+                    #     a transaction that never happened.
+                    params = _resolve_execute_references(client, upkeep, extra_fee)
                     # Read before reaching, so that if this call loses a race
                     # the keeper's own log can say what losing cost it. That
                     # number is the whole argument for running a keeper at all
                     # (docs/arcron.md), and until now nothing but a controlled
                     # experiment had ever measured it.
                     balance_before = _balance(algod, keeper.address)
+                    broadcast = True
                     with muffled(as_json):
                         response = client.send.execute(
                             args=ExecuteArgs(upkeep_id=upkeep.upkeep_id),
-                            params=_resolve_execute_references(client, upkeep, extra_fee),
+                            params=params,
                             # Every reference the call needs is already named
                             # directly by _resolve_execute_references, so the
                             # populator has nothing left to add. It is told not
@@ -1217,6 +1622,14 @@ def main(argv: list[str] | None = None) -> None:
                     fee = effective_fee(
                         upkeep, int(response.confirmation.get("confirmed-round", current))
                     )
+                    # `execute` returns the round it rescheduled to, so the
+                    # cache learns the one field that decides when this box
+                    # next matters without reading it back.
+                    registry.remember_execution(
+                        upkeep.upkeep_id,
+                        int(response.abi_return) if isinstance(response.abi_return, int) else 0,
+                        current,
+                    )
                     emit(
                         "executed",
                         f"Executed upkeep {upkeep.upkeep_id} "
@@ -1234,10 +1647,27 @@ def main(argv: list[str] | None = None) -> None:
                     )
                 except Exception as exc:
                     reason = failure_text(exc)
-                    # Ask the registry what happened before deciding what this
-                    # failure was. The box is the contract's own record, so it
-                    # settles the question the error string can only hint at.
-                    moved, after = registry_moved_on(algod, app_id, upkeep)
+                    if not broadcast and is_target_refusal(reason):
+                        # The simulate is what refused, and it refused *inside
+                        # the target*. To get that far the call passed
+                        # `execute`'s own asserts against the very latest
+                        # state — the upkeep exists, `Global.round >= due`, the
+                        # escrow covers the fee — so the registry demonstrably
+                        # had not moved on, and asking it again would be a
+                        # request spent to be told what the failure already
+                        # says. This is the common failure once a target starts
+                        # refusing, and it is now the cheapest one.
+                        moved, after = False, None
+                    else:
+                        # Ask the registry what happened before deciding what
+                        # this failure was. The box is the contract's own
+                        # record, so it settles the question the error string
+                        # can only hint at.
+                        moved, after = registry_moved_on(algod, app_id, upkeep)
+                        if after is not None:
+                            # Already paid for; the cache would only read it
+                            # again on the next scan.
+                            registry.remember(after, current)
                     entry = backoff.record_failure(
                         upkeep.upkeep_id,
                         reason,
@@ -1255,12 +1685,21 @@ def main(argv: list[str] | None = None) -> None:
                         # to look up afterwards. This line is the only record
                         # the race ever gets, which is why it carries the
                         # winner and the cost rather than just an apology.
-                        balance_after = _balance(algod, keeper.address)
-                        spent = (
-                            None
-                            if balance_before is None or balance_after is None
-                            else balance_before - balance_after
-                        )
+                        #
+                        # Unless nothing was broadcast at all, which is what
+                        # happens when the simulate saw the winner's execution
+                        # first. Then the cost is zero by construction, and
+                        # reading the balance twice to arrive at zero is two
+                        # requests spent on arithmetic.
+                        if not broadcast:
+                            spent = 0
+                        else:
+                            balance_after = _balance(algod, keeper.address)
+                            spent = (
+                                None
+                                if balance_before is None or balance_after is None
+                                else balance_before - balance_after
+                            )
                         # Only name a winner when the registry has actually
                         # moved. Observed on TestNet: a keeper refused while
                         # the winner's transaction was still in the pool read
@@ -1289,6 +1728,7 @@ def main(argv: list[str] | None = None) -> None:
                             won_at_round=won_at or None,
                             fee_forgone=effective_fee(upkeep, current),
                             spent=spent,
+                            broadcast=broadcast,
                             registry_advanced=moved,
                             # The id of the transaction that was thrown away.
                             # Nothing on chain will ever have it, which is the
@@ -1308,12 +1748,38 @@ def main(argv: list[str] | None = None) -> None:
                             upkeep_id=upkeep.upkeep_id,
                             failures=entry.failures,
                             next_attempt_round=entry.next_attempt_round,
+                            # False means the simulate refused and no
+                            # transaction was ever sent, which is the claim
+                            # the short retry schedule rests on. It is worth
+                            # having in the log rather than in a comment.
+                            broadcast=broadcast,
+                            target_refusal=entry.target_refusal,
+                            site=entry.site,
                             registry_advanced=moved,
                             reason=reason[:400],
                         )
-            if scans % HEARTBEAT_SCANS == 0 or args.once:
-                # Proof of life, and the number that kills bots silently.
-                spendable = guard_balance(algod, keeper.address, args.min_balance)
+            # Scans are no longer one a round, so counting them is no longer
+            # counting time. Whichever clock runs out first wins: the balance
+            # guard is the number that kills keepers silently, and on a quiet
+            # registry twenty scans could otherwise be most of a day.
+            due_a_heartbeat = (
+                scans % HEARTBEAT_SCANS == 0
+                or current - last_heartbeat_round >= HEARTBEAT_ROUNDS
+                or args.once
+            )
+            if due_a_heartbeat:
+                last_heartbeat_round = current
+                # Proof of life, and the number that kills bots silently. One
+                # `account_info` answers both this and which bonus assets the
+                # keeper can receive; the loop used to spend a second request a
+                # scan on the latter. Refreshing the asset set here rather than
+                # every scan means an operator who opts in mid-run starts
+                # earning the bonus within a heartbeat instead of within a
+                # round, which is the whole of what it costs.
+                balance, floor, opted_in_assets = account_state(algod, keeper.address)
+                spendable = guard_balance(
+                    algod, keeper.address, args.min_balance, state=(balance, floor)
+                )
                 if args.sweep_to:
                     _maybe_sweep(
                         algorand,
@@ -1326,17 +1792,31 @@ def main(argv: list[str] | None = None) -> None:
                     "heartbeat",
                     f"Heartbeat: round {current}, {len(upkeeps)} upkeeps, "
                     f"{len(due)} due, {executed_count} executed this session, "
-                    f"{spendable} µALGO spendable",
+                    f"{spendable} µALGO spendable, {registry.box_reads} box read(s) "
+                    f"over {scans} scan(s)",
                     round=current,
                     upkeeps=len(upkeeps),
                     due=len(due),
                     executed_session=executed_count,
                     backed_off=len(backoff.blocked_ids(current)),
                     spendable=spendable,
+                    scans=scans,
+                    box_reads=registry.box_reads,
                 )
             if args.once:
                 return
-            algod.status_after_block(current + 1)
+            # Wake when the registry could next need something, not every
+            # round. `next_wake_round` is the soonest round at which any cached
+            # box stops being good enough to decide on, which is the same
+            # number the cache re-reads on, so the loop cannot sleep past a
+            # promise the cache made.
+            status = wait_for_work(
+                algod,
+                current,
+                registry.next_wake_round(current, backoff),
+                seconds_per_round,
+                shutdown,
+            )
         except UnrecoverableError:
             raise
         except KeyboardInterrupt:
@@ -1352,6 +1832,9 @@ def main(argv: list[str] | None = None) -> None:
                 reason=str(exc)[:400],
                 retry_in_seconds=error_delay,
             )
+            # Whatever failed may have been the clock itself, and a stale round
+            # would have the next scan deciding against a chain that has moved.
+            status = None
             time.sleep(error_delay)
             # Back off while the node is unhappy, but recover quickly once it
             # answers again.

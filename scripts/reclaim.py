@@ -106,11 +106,21 @@ def main(argv: list[str] | None = None) -> None:
         logger.info("Nothing selected. Nothing to reclaim.")
         return
 
+    # Only the creator can cancel, so an upkeep somebody else created is worth
+    # nothing to us however much it holds. Checked here rather than only at
+    # the cancel: naming twelve upkeeps by hand used to print
+    # "0.747200 ALGO comes back" and then refuse all twelve with "Only the
+    # creator can cancel", because the price was computed before anyone asked
+    # whose they were. A preview that overstates the refund is the one
+    # direction this report must never be wrong in.
+    ours = [row for row in found if row[1].creator == deployer.address]
+    theirs = [row for row in found if row[1].creator != deployer.address]
+
     logger.info("")
     logger.info(f"{'upkeep':>24} {'target':>10} {'runs':>5} {'escrow':>10} {'box MBR':>10}")
     escrow_total = 0
     mbr_total = 0
-    for upkeep_id, upkeep, mbr in found:
+    for upkeep_id, upkeep, mbr in ours:
         escrow_total += upkeep.balance
         mbr_total += mbr
         logger.info(
@@ -122,6 +132,25 @@ def main(argv: list[str] | None = None) -> None:
     )
     logger.info("")
     logger.info(f"{(escrow_total + mbr_total)/1e6:.6f} ALGO comes back if every cancel succeeds.")
+
+    if theirs:
+        logger.info("")
+        logger.warning(
+            f"{len(theirs)} of the {len(found)} selected were created by somebody else and "
+            "cannot be cancelled from this account:"
+        )
+        by_creator: dict[str, list[int]] = {}
+        for upkeep_id, upkeep, _ in theirs:
+            by_creator.setdefault(upkeep.creator, []).append(upkeep_id)
+        for creator, ids in sorted(by_creator.items()):
+            held = sum(u.balance for _, u, _ in theirs if u.creator == creator)
+            logger.warning(f"  {creator[:14]}…  {sorted(ids)}  holding {held/1e6:.6f} ALGO")
+        logger.warning("  Whoever holds those keys has to cancel them.")
+
+    if not ours:
+        logger.info("")
+        logger.info("Nothing here is ours to cancel.")
+        return
 
     if not args.commit:
         logger.info("Priced only. Pass --commit to cancel.")

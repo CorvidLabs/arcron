@@ -13,22 +13,33 @@ that was actually paid (the asset escrow is 750,000 of the 1,000,000 funded).
 """
 
 import base64
+from collections import Counter
 from dataclasses import replace
 
 import pytest
+from algosdk.v2client.algod import AlgodClient
 
+from scripts import keeper_bot
+from scripts.keeper_backoff import Backoff
 from scripts.keeper_bot import (
     CATCH_UP,
+    HEARTBEAT_ROUNDS,
+    HEARTBEAT_SCANS,
+    MAX_CACHE_ROUNDS,
     SKIP_AHEAD,
+    STARVED_RECHECK_ROUNDS,
+    Registry,
     is_frozen,
     _as_bytes,
     _decode_upkeep,
     effective_fee,
     find_winner,
+    partition_due,
     read_upkeep,
     registry_moved_on,
     resolve_app_id,
     select_due,
+    wait_for_work,
 )
 
 # Box value of upkeep 0 on LocalNet app 20153.
@@ -366,3 +377,514 @@ def test_find_winner_never_raises() -> None:
 
     assert find_winner(_Broken(), 1002, 1, 5186) is None
     assert find_winner(_BlockAlgod({}), 1002, 1, 0) is None
+
+
+# --- what the loop reads, and how often -------------------------------
+#
+# `docs/reviews/2026-09-01-opus-5-audit-verification.md` §5 measured this bot
+# at about **211,000 requests a day** against a public node whose refused
+# daily-quota counter stood at 230,824: one process, essentially the whole
+# allowance. The shape was 11,543 scans over 63,013 rounds — one every 5.46
+# rounds — and every scan re-read all 33 boxes to find the handful that were
+# due.
+#
+# `Registry` is the repair, and these tests are how the new figure is measured
+# rather than asserted. They count at the client, through a subclass of the
+# real `AlgodClient` with only the methods that reach the network stubbed, so a
+# call the production path makes and this fake does not implement is a failure
+# here rather than a surprise against a node.
+
+
+def _box_with(**fields) -> bytes:
+    """The recorded LocalNet box with some fields moved, still 130 bytes of head."""
+    offsets = {
+        "target_app": (32, 40),
+        "interval_rounds": (42, 50),
+        "next_execution_round": (50, 58),
+        "fee_per_execution": (58, 66),
+        "balance": (66, 74),
+        "times_executed": (74, 82),
+        "policy": (82, 90),
+        "fee_cap": (90, 98),
+        "last_serviced_round": (98, 106),
+        "fee_asset": (106, 114),
+        "asset_fee": (114, 122),
+        "asset_balance": (122, 130),
+    }
+    raw = bytearray(bytes.fromhex(LIVE_BOX_HEX))
+    for name, value in fields.items():
+        start, end = offsets[name]
+        raw[start:end] = int(value).to_bytes(end - start, "big")
+    return bytes(raw)
+
+
+class Chain:
+    """A registry that keeps its own round and rewrites boxes when they execute."""
+
+    def __init__(self, round: int, upkeeps: dict[int, dict]) -> None:
+        self.round = round
+        self.upkeeps = upkeeps
+
+    def box(self, upkeep_id: int) -> bytes:
+        state = self.upkeeps[upkeep_id]
+        return _box_with(
+            interval_rounds=state["interval"],
+            next_execution_round=state["next"],
+            fee_per_execution=state["fee"],
+            balance=state["balance"],
+            fee_cap=0,
+            fee_asset=0,
+            asset_fee=0,
+            asset_balance=0,
+            last_serviced_round=state.get("serviced", 0),
+        )
+
+    def execute(self, upkeep_id: int) -> int:
+        """What `execute` does to the box, so the simulation stays honest."""
+        state = self.upkeeps[upkeep_id]
+        assert self.round >= state["next"], "executed an upkeep that was not due"
+        assert state["balance"] >= state["fee"], "executed an upkeep that cannot pay"
+        state["balance"] -= state["fee"]
+        state["serviced"] = self.round
+        missed = (self.round - state["next"]) // state["interval"]
+        state["next"] += (missed + 1) * state["interval"]  # SKIP_AHEAD
+        return state["next"]
+
+
+class CountingAlgod(AlgodClient):
+    """The real client with only its network calls stubbed, counting each one.
+
+    Subclassed rather than duck-typed for the reason
+    `tests/test_registry_health.py::TestEveryBoxIsCounted` gives: a fake that
+    accepts a keyword the real client rejects lets a broken reader pass here
+    and fail against a node, which is how the box pagination shipped broken.
+    """
+
+    def __init__(self, chain: Chain) -> None:
+        self.chain = chain
+        self.counts: Counter[str] = Counter()
+
+    def status(self, **kwargs):
+        self.counts["status"] += 1
+        return {"last-round": self.chain.round}
+
+    def status_after_block(self, block_num=None, round_num=None, **kwargs):
+        self.counts["status"] += 1
+        wanted = (block_num if block_num is not None else round_num) or 0
+        self.chain.round = max(self.chain.round + 1, wanted + 1)
+        return {"last-round": self.chain.round}
+
+    def application_boxes(self, application_id: int, limit: int = 0, **kwargs):
+        assert not kwargs, f"application_boxes takes no {sorted(kwargs)}"
+        self.counts["boxes"] += 1
+        return {
+            "boxes": [
+                {"name": base64.b64encode(b"u" + i.to_bytes(8, "big")).decode()}
+                for i in sorted(self.chain.upkeeps)
+            ]
+        }
+
+    def application_box_by_name(self, application_id: int, box_name: bytes, **kwargs):
+        self.counts["box_read"] += 1
+        upkeep_id = int.from_bytes(box_name[1:9], "big")
+        return {"value": base64.b64encode(self.chain.box(upkeep_id)).decode()}
+
+    def account_info(self, address: str, exclude=None, **kwargs):
+        self.counts["account"] += 1
+        return {"amount": 5_000_000, "min-balance": 100_000, "assets": []}
+
+    @property
+    def requests(self) -> int:
+        return sum(self.counts.values())
+
+
+# The 33 upkeeps live on TestNet app 769891898 at round 66,894,910, read
+# read-only on 2026-09-01: (id, interval, rounds until due, escrow, base fee).
+# Thirteen of them hold less than one fee and have been overdue for 94,000
+# rounds, which is the case the starved recheck exists for; nothing here is
+# invented, and `scripts/testnet_snapshot.py` reproduces it.
+LIVE_REGISTRY = [
+    (19, 15_428, 6_095, 312_578, 4_000),
+    (20, 15_428, 6_098, 312_578, 4_000),
+    (21, 15_428, 6_101, 357_380, 4_000),
+    (22, 15_428, 6_104, 312_578, 4_000),
+    (81, 1_286, 164, 3_650_000, 10_000),
+    (82, 1_286, 418, 6_982_530, 10_000),
+    (84, 1_286, 24, 6_986_891, 10_000),
+    (85, 1_286, 33, 4_962_326, 10_000),
+    (86, 1_286, 39, 4_986_688, 10_000),
+    (89, 1_286, 239, 2_812_000, 4_000),
+    (91, 1_286, 0, 2_824_000, 4_000),
+    (92, 1_286, 0, 2_812_000, 4_000),
+    (93, 1_286, 0, 6_981_301, 10_000),
+    (94, 1_286, 0, 7_002_212, 10_000),
+    (98, 20, 0, 0, 4_000),
+    (99, 20, 0, 0, 4_000),
+    (100, 20, 0, 0, 4_000),
+    (101, 20, 0, 0, 4_000),
+    (102, 20, 0, 0, 4_000),
+    (103, 20, 0, 0, 4_000),
+    (104, 20, 0, 0, 4_000),
+    (105, 20, 0, 0, 4_000),
+    (106, 20, 0, 0, 4_000),
+    (107, 20, 0, 2_000, 4_000),
+    (108, 20, 0, 0, 4_000),
+    (109, 20, 0, 0, 4_000),
+    (110, 224_000, 159_338, 500_000, 4_000),
+    (111, 30_857, 2_060, 496_000, 4_000),
+    (112, 1_700, 127, 364_000, 4_000),
+    (113, 1_286, 0, 0, 4_000),
+    (114, 7_200, 1_434, 472_000, 4_000),
+    (115, 1_700, 0, 404_000, 4_000),
+    (116, 30_857, 17_913, 500_000, 4_000),
+]
+
+#: The window §5 counted over, so the two figures are comparable.
+MEASURED_ROUNDS = 63_013
+MEASURED_DAYS = 1.97
+#: A target refusing the way a real one does: algod attributes it to the inner
+#: transaction, and no assert message reaches the chain.
+REFUSAL = "inner tx 0 failed: logic eval error: assert failed pc=249"
+#: What that window cost before this change, from §5: 11,543 scans at 36
+#: requests each plus one account read per twenty scans.
+OLD_REQUESTS = 416_125
+APP_ID = 769891898
+
+
+def live_chain(start_round: int = 66_894_910) -> Chain:
+    return Chain(
+        start_round,
+        {
+            upkeep_id: {
+                "interval": interval,
+                "next": start_round + due_in,
+                "balance": balance,
+                "fee": fee,
+                "serviced": start_round + due_in - interval,
+            }
+            for upkeep_id, interval, due_in, balance, fee in LIVE_REGISTRY
+        },
+    )
+
+
+def settle(
+    algod: CountingAlgod, registry: Registry, backoff, current: int, refusing: set[int] = frozenset()
+) -> None:
+    """Refresh, then take everything that is due, as one turn of the loop does.
+
+    Several of the 33 live upkeeps are due at the snapshot round, so a test
+    that asserts about a *quiet* registry has to do the work first. Leaving
+    them undone would assert against a keeper that is behind, which is not the
+    state this cache is about.
+    """
+    for upkeep in partition_due(
+        registry.refresh(algod, APP_ID, current, backoff),
+        current,
+        lambda upkeep_id: backoff.blocked(upkeep_id, current),
+    )[0]:
+        if upkeep.upkeep_id in refusing:
+            backoff.record_failure(
+                upkeep.upkeep_id, REFUSAL, current, upkeep.interval_rounds, False
+            )
+            continue
+        registry.remember_execution(
+            upkeep.upkeep_id, algod.chain.execute(upkeep.upkeep_id), current
+        )
+
+
+def run_the_loop(algod: CountingAlgod, rounds: int, monkeypatch) -> dict:
+    """The read half of `main`'s loop, over `rounds` rounds of the live registry.
+
+    Everything that costs a request is here — the clock, the box listing, the
+    box reads, the heartbeat's account read — and it is driven through the same
+    `Registry`, `partition_due` and `wait_for_work` the bot runs. What is left
+    out is the signing, so the two requests an execution costs (the simulate
+    inside `_resolve_execute_references` and the send) are added by hand where
+    they happen. §5's 416,125 excluded execution traffic on both sides of the
+    comparison, and it has not changed, so the split is reported rather than
+    folded in.
+    """
+    chain = algod.chain
+    # A local sleep costs no requests and takes no time here; it advances the
+    # chain by what it would have advanced by in the real world.
+    seconds_per_round = 2.752
+    monkeypatch.setattr(
+        keeper_bot,
+        "sleep_until",
+        lambda seconds, stop=None: setattr(
+            chain, "round", chain.round + max(1, round(seconds / seconds_per_round))
+        ),
+    )
+    backoff = Backoff(None)
+    registry = Registry()
+    stop_at = chain.round + rounds
+    scans = executions = 0
+    last_heartbeat_round = 0
+    while chain.round < stop_at:
+        current = chain.round
+        upkeeps = registry.refresh(algod, APP_ID, current, backoff)
+        due, _held = partition_due(
+            upkeeps, current, lambda upkeep_id: backoff.blocked(upkeep_id, current)
+        )
+        scans += 1
+        for upkeep in due:
+            # Not a client count: the execute path goes through algokit-utils'
+            # composer, which this harness does not drive. Measured instead,
+            # from a real `--once` against LocalNet on 2026-09-01 with 17 due
+            # and one that went through: 103 requests, of which 17 simulates,
+            # 21 suggested-params, one send and three pending-transaction
+            # polls. That is about eight for an execution that lands.
+            #
+            # It was 2 until Fable 5.1 pointed out that a hand-added constant
+            # is not a measurement and that the number this test exists to
+            # produce was therefore a fifth of the truth on its execution
+            # half. `reading` below is the half that really is counted at the
+            # client, and is the figure to quote when only one is wanted.
+            algod.counts["execute"] += REQUESTS_PER_EXECUTION
+            registry.remember_execution(
+                upkeep.upkeep_id, chain.execute(upkeep.upkeep_id), current
+            )
+            executions += 1
+        if scans % HEARTBEAT_SCANS == 0 or current - last_heartbeat_round >= HEARTBEAT_ROUNDS:
+            last_heartbeat_round = current
+            keeper_bot.account_state(algod, "KEEPER")
+        wait_for_work(
+            algod, current, registry.next_wake_round(current, backoff), seconds_per_round
+        )
+        assert chain.round > current, "the loop must always make progress"
+    return {
+        "scans": scans,
+        "executions": executions,
+        "requests": algod.requests,
+        "reading": algod.requests - algod.counts["execute"],
+    }
+
+
+REQUESTS_PER_EXECUTION = 8
+
+
+class TestWhatOneDayCosts:
+    """The number, measured the way the old one was.
+
+    §5 counted a status, the box listing, a read of every box and the block
+    wait, plus an account read per twenty scans: 416,125 requests over 63,013
+    rounds, **about 211,000 a day**. The same four things are counted here,
+    over the same window, against the registry as it actually stood on
+    2026-09-01.
+    """
+
+    def test_the_live_registry_over_the_same_window(self, monkeypatch) -> None:
+        algod = CountingAlgod(live_chain())
+        result = run_the_loop(algod, MEASURED_ROUNDS, monkeypatch)
+
+        per_day = result["requests"] / MEASURED_DAYS
+        reading_per_day = result["reading"] / MEASURED_DAYS
+        detail = (
+            f"{result['requests']:,} requests over {MEASURED_ROUNDS:,} rounds "
+            f"= {per_day:,.0f} a day, from {result['scans']:,} scans and "
+            f"{result['executions']:,} executions "
+            f"({dict(algod.counts)})"
+        )
+        # Measured on 2026-09-01, over the live registry and §5's own window:
+        # about 9,500 requests in 63,013 rounds, of which 4,713 are reading it
+        # and the rest are the 594 executions at the measured eight apiece.
+        # That is **about 4,800 a day, 2,400 of them reading**, against
+        # 211,000: a fortieth, not the seventieth this test claimed while it
+        # was hand-adding two per execution. Bounded rather than pinned to the
+        # digit, because the arithmetic moves with any of the constants above;
+        # bounded tightly enough that putting the traffic back has to come and
+        # edit this line.
+        assert 2_000 <= reading_per_day <= 2_800, detail
+        assert 4_200 <= per_day <= 5_400, detail
+        # The claim, as an assertion: a different order of magnitude, not a trim.
+        assert result["requests"] * 30 < OLD_REQUESTS, detail
+
+    def test_a_scan_no_longer_reads_every_box(self) -> None:
+        """The heart of it: 33 boxes read once, then only what could matter."""
+        algod = CountingAlgod(live_chain())
+        backoff, registry = Backoff(None), Registry()
+        current = algod.chain.round
+
+        registry.refresh(algod, APP_ID, current, backoff)
+        assert algod.counts["box_read"] == 33, "the first scan has no cache to spare it"
+
+        settle(algod, registry, backoff, current)
+        # Nothing else can happen in the next round, so the next scan reads no
+        # boxes at all: thirteen of the due upkeeps are starved and only a
+        # top-up changes that, and the rest are not due for hundreds of rounds.
+        algod.counts.clear()
+        registry.refresh(algod, APP_ID, current + 1, backoff)
+        assert algod.counts["box_read"] == 0
+        assert algod.counts["boxes"] == 1, "the listing is still read every scan"
+
+    def test_what_one_permanently_refusing_target_costs(self, monkeypatch) -> None:
+        """The price of the short retry in `keeper_backoff`, measured.
+
+        A target that refuses for ever is retried at
+        TARGET_REFUSAL_BACKOFF_ROUNDS, and each retry is a wake: the clock, the
+        listing, a box read and the simulate that refuses. Nothing is
+        broadcast, which is why it is four requests and not more — the whole
+        argument for a three-minute ceiling instead of an hour rests on that
+        number being small enough that the two halves of this branch are not
+        pulling against each other.
+
+        Measured as a difference between the same day run twice, because the
+        registry costs a few thousand requests a day on its own and an
+        absolute figure would be mostly that.
+        """
+        def a_day(refusing: set[int]) -> tuple[int, int]:
+            algod = CountingAlgod(live_chain())
+            seconds_per_round = 2.752
+            monkeypatch.setattr(
+                keeper_bot,
+                "sleep_until",
+                lambda seconds, stop=None: setattr(
+                    algod.chain,
+                    "round",
+                    algod.chain.round + max(1, round(seconds / seconds_per_round)),
+                ),
+            )
+            backoff, registry = Backoff(None), Registry()
+            stop_at = algod.chain.round + 30_857  # a day at 2.8 s/round
+            attempts = 0
+            while algod.chain.round < stop_at:
+                current = algod.chain.round
+                upkeeps = registry.refresh(algod, APP_ID, current, backoff)
+                due, _ = partition_due(
+                    upkeeps, current, lambda upkeep_id: backoff.blocked(upkeep_id, current)
+                )
+                for upkeep in due:
+                    if upkeep.upkeep_id in refusing:
+                        algod.counts["execute"] += 1  # the simulate; nothing is sent
+                        backoff.record_failure(
+                            upkeep.upkeep_id, REFUSAL, current, upkeep.interval_rounds, False
+                        )
+                        attempts += 1
+                    else:
+                        algod.counts["execute"] += 2
+                        registry.remember_execution(
+                            upkeep.upkeep_id, algod.chain.execute(upkeep.upkeep_id), current
+                        )
+                wait_for_work(
+                    algod,
+                    current,
+                    registry.next_wake_round(current, backoff),
+                    seconds_per_round,
+                )
+            return algod.requests, attempts
+
+        # Upkeep 89 runs hourly and would otherwise be executed 24 times.
+        clean, _ = a_day(set())
+        refusing, attempts = a_day({89})
+
+        assert attempts > 400, f"only {attempts} retries in a day of rounds"
+        per_retry = (refusing - clean) / attempts
+        assert per_retry < 5, (
+            f"{refusing - clean} extra requests over {attempts} retries "
+            f"= {per_retry:.1f} each, against a clean day of {clean:,}"
+        )
+        # And it is a slice of the day rather than the day: the old schedule
+        # bought its 48 retries with an hour of not looking.
+        assert refusing < clean * 2
+
+
+class TestNothingDueIsMissed:
+    """Correctness first: the cache may be early, and must never be late."""
+
+    def test_an_upkeep_is_read_again_on_the_round_it_falls_due(self) -> None:
+        algod = CountingAlgod(live_chain())
+        backoff, registry = Backoff(None), Registry()
+        start = algod.chain.round
+        settle(algod, registry, backoff, start)
+
+        # Upkeep 84 is due in 24 rounds and is the soonest in the registry.
+        assert registry.next_wake_round(start, backoff) == start + 24
+
+        algod.counts.clear()
+        upkeeps = registry.refresh(algod, APP_ID, start + 24, backoff)
+        assert algod.counts["box_read"] == 1, "only the one that came due"
+        due, _ = partition_due(upkeeps, start + 24, None)
+        assert [u.upkeep_id for u in due] == [84]
+
+    def test_a_new_registration_is_read_the_scan_it_appears(self) -> None:
+        algod = CountingAlgod(live_chain())
+        backoff, registry = Backoff(None), Registry()
+        current = algod.chain.round
+        settle(algod, registry, backoff, current)
+
+        algod.chain.upkeeps[200] = {
+            "interval": 10, "next": current + 10, "balance": 100_000, "fee": 4_000,
+        }
+        algod.counts.clear()
+        upkeeps = registry.refresh(algod, APP_ID, current, backoff)
+
+        assert algod.counts["box_read"] == 1
+        assert 200 in {u.upkeep_id for u in upkeeps}
+        # And the loop wakes for it rather than sleeping past its first cycle.
+        assert registry.next_wake_round(current, backoff) == current + 10
+
+    def test_a_cancelled_upkeep_leaves_the_cache_with_its_box(self) -> None:
+        algod = CountingAlgod(live_chain())
+        backoff, registry = Backoff(None), Registry()
+        current = algod.chain.round
+        registry.refresh(algod, APP_ID, current, backoff)
+
+        del algod.chain.upkeeps[84]
+        upkeeps = registry.refresh(algod, APP_ID, current, backoff)
+
+        assert 84 not in {u.upkeep_id for u in upkeeps}
+        assert len(upkeeps) == len(LIVE_REGISTRY) - 1
+
+    def test_a_top_up_that_revives_a_starved_upkeep_is_noticed(self) -> None:
+        """The one thing caching a due upkeep could hide.
+
+        Thirteen live upkeeps are due and hold less than one fee. Nothing but a
+        `top_up` changes that, and a top-up is somebody with a wallet rather
+        than a race, so the recheck is an hour rather than a round — but it has
+        to happen, or a funded upkeep would sit unserviced for ever.
+        """
+        algod = CountingAlgod(live_chain())
+        backoff, registry = Backoff(None), Registry()
+        start = algod.chain.round
+        registry.refresh(algod, APP_ID, start, backoff)
+
+        algod.chain.upkeeps[98]["balance"] = 400_000  # a top-up lands
+
+        # Not seen immediately, which is the trade this makes on purpose.
+        upkeeps = registry.refresh(algod, APP_ID, start + 1, backoff)
+        assert 98 not in {u.upkeep_id for u in select_due(upkeeps, start + 1)}
+
+        upkeeps = registry.refresh(algod, APP_ID, start + STARVED_RECHECK_ROUNDS, backoff)
+        assert 98 in {u.upkeep_id for u in select_due(upkeeps, start + STARVED_RECHECK_ROUNDS)}
+
+    def test_nothing_is_trusted_for_longer_than_a_day(self) -> None:
+        """Upkeep 110 is not due for 159,338 rounds; its box is still re-read."""
+        algod = CountingAlgod(live_chain())
+        backoff, registry = Backoff(None), Registry()
+        start = algod.chain.round
+        registry.refresh(algod, APP_ID, start, backoff)
+
+        algod.counts.clear()
+        registry.refresh(algod, APP_ID, start + MAX_CACHE_ROUNDS, backoff)
+        assert algod.counts["box_read"] == len(LIVE_REGISTRY)
+
+    def test_backoff_holds_a_box_shut_and_then_opens_it(self) -> None:
+        """A blocked upkeep is not going to be attempted, so its bytes cannot
+        change a decision — and the round it reopens on is a round the loop has
+        to be awake for. The cache and the clock read the same number."""
+        algod = CountingAlgod(live_chain())
+        backoff, registry = Backoff(None), Registry()
+        start = algod.chain.round
+        # 91 is one of the five upkeeps due at the snapshot round; its target
+        # refuses rather than being executed, and the rest are settled.
+        settle(algod, registry, backoff, start, refusing={91})
+        entry = backoff.entry(91)
+        assert entry is not None and entry.next_attempt_round == start + 1
+
+        algod.counts.clear()
+        registry.refresh(algod, APP_ID, start, backoff)
+        assert algod.counts["box_read"] == 0, "not while it is held back"
+        assert registry.next_wake_round(start, backoff) == start + 1
+
+        registry.refresh(algod, APP_ID, start + 1, backoff)
+        assert algod.counts["box_read"] == 1

@@ -224,6 +224,70 @@ the price, and the cadence is roughly half what was asked for.
 says so where the number is entered. Leave it at zero unless an upkeep is
 genuinely going unserviced.
 
+### Lateness can be manufactured, and sometimes nobody has to
+
+The risk above is the passive one: a lone keeper waits for the price to peak.
+The active one is worse, and it was found on 2026-09-01 rather than reasoned
+about. Escalation pays for lateness on the premise that lateness means no
+keeper would take the job at the base price. That premise fails whenever a
+third party can make the *target* refuse: a cooldown, a freshness bound, a
+once-an-epoch guard, anything conditional on state somebody else can move.
+
+Blocking costs one application call. A keeper whose execution reverts pays
+nothing, because a rejected transaction is not in the ledger, so honest
+keepers can be made to fail for free. Whoever arranged the block collects the
+escalated fee when the window reopens. Measured on LocalNet with a 4,000
+µALGO fee and a 40,000 ceiling: a creator paid 25,600 for a block that cost
+1,000 to arrange. Two variants are worse. Registering a *second* upkeep
+against the same target makes Arcron pay the attacker the base fee for the
+block, and shut every other keeper out of four cycles in four. And composed
+with the fallback below, the bound on one episode is the whole remaining
+escrow rather than `fee_cap - fee_per_execution`.
+
+**Worst of all is the case with no attacker in it.** If a target's cooldown is
+longer than the upkeep's interval, every successful run re-arms the guard past
+the next due round, so the upkeep is permanently late by its own schedule and
+pays the ceiling for as long as the escrow lasts. Measured at 22,000 µALGO a
+cycle, indefinitely, with nobody attacking anything. A creator who picks a
+cadence shorter than their target's epoch has built this by accident.
+
+None of it is a theft path: every µALGO stays inside the `fee_cap` the creator
+stored, `cancel` still works, and no other upkeep's escrow is reachable. It is
+an incentive bug in a feature.
+
+**Mitigation:** `fee_cap = 0`, which is the console's default and this
+document's standing advice, makes an upkeep immune to all of it.
+`docs/integrating.md` now says what a blockable target costs and gives the
+numbers. **Note that `fee_cap` cannot be changed after `register`**, because there is
+no method for it, so an upkeep that wants this advice has to be cancelled and
+registered again.
+
+**Not mitigated, and deliberately:** the fee mechanism still pays
+automatically for lateness a third party can create. The ramp lives in the
+program rather than the box, so it is reachable by `update` and closed forever
+by `freeze`, which makes the ordering of those two the decision this risk
+actually turns on. Full measurements and the three options in
+[`docs/reviews/2026-09-01-opus-5-audit-verification.md`](reviews/2026-09-01-opus-5-audit-verification.md).
+
+As of 2026-09-01 **no live upkeep is exposed**: seven of thirty-three have
+escalation enabled and all seven point at unconditional counters, which
+nothing a third party controls can make refuse.
+
+### A refusal costs a keeper its attention, briefly
+
+A target that reverts takes the whole group down, so the keeper pays no fee,
+but the reference bot has to decide whether the target is broken or merely
+saying no this round. It backs off 1, 2, 4 … rounds to a 64-round ceiling on a
+refusal from inside the target, and in whole intervals to an hour on anything
+else. So an arranged blackout is buyable, at roughly twenty arranged refusals
+an hour rather than one.
+
+This was an hour per refusal until 2026-09-01, which made every figure in the
+risk above a lower bound and, on upkeeps with escalation off, silently cost a
+liquidation or an oracle its window. The bot now reports each due-but-held
+upkeep and the fee going unclaimed, so a blackout is visible rather than
+inferred.
+
 ### A top-up does not reset lateness
 
 Funding a long-dormant upkeep is charged the ceiling on the very next run,
