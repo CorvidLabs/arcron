@@ -266,7 +266,7 @@ endpoint its box reads can be rate-limited into an HTTP 403.
 |---|---|
 | Contract | Live on TestNet, **unaudited**, **unfrozen** (the creator can replace the programs), 1.0 surface complete |
 | Deployment age | The app id since 2026-08-25; the programs it runs now since 2026-08-26. Days, not months |
-| Registry | **36 live boxes** as of 2026-09-02, round 66,922,643; `next_upkeep_id` 121. Last full attribution 2026-09-01: 32 live from 7 addresses, all ours. Pulse `beats` 341 |
+| Registry | **36 live boxes** as of 2026-09-02, round 66,922,643; `next_upkeep_id` 121. Last full attribution 2026-09-01: 32 live from 7 addresses (deployer 6; six others 26, still ours). Pulse `beats` 341 |
 | Upkeeps registered by strangers | **Zero.** The 2026-09-01 decode found six addresses that are not our deployer, and all six are ours: five share a funding account, and the sixth, `CEPY52VZRWFL`, funded itself from the public dispenser and looked like a stranger for a day before it was attributed |
 | Keepers | **Two addresses executed in the last day of that 2026-09-01 snapshot**, and both are ours: `NUGVPQGZ…` 231, `GCQL3M7A…` 57. All time, fifteen addresses have executed, eleven of them the e2e suite, and `GCQL3M7A…` is the largest: 689 of 1,399. Nobody outside has run one |
 | Built on it | One thing: [CorvidLabs/arcron-rain](https://github.com/CorvidLabs/arcron-rain), which we also wrote. [Arcui](https://corvidlabs.github.io/arcui/) packs `register` from a browser against any ARC-56 |
