@@ -111,6 +111,21 @@ not us, and an agent we dispatched is us. That item is still open. An earlier
 version of this page claimed it was met, on the strength of the address not
 matching two we had hardcoded, which is not the same question.
 
+**How to tell whether a registrant is somebody else, without guessing.** This
+page has been wrong about that twice, both times by checking an address against
+a list of ours and concluding that a miss meant a stranger. The check that
+actually answers it is the funding trace: follow a creator's first incoming
+payment, and follow that account's first payment in turn. As of round
+66,926,348 the registry has **36 upkeeps from seven creator addresses**, and
+all seven land on the same account, `IFZZOTEBLLAV7DA4WP7IPZWZW67KXB5ZNYLZAWJ2S6M3KKNAX55BRXVK2Y`,
+which funded `N43ZVH3J`, `A3OZPORJ`, `RABTKCI5`, `TIXBOQYG`, `2Z3UZR2L` and
+`5HNYJR5H` and was itself opened by the TestNet dispenser. One operator seeding
+agents, which is what it looks like from the chain and what it is.
+
+So the count of upkeeps registered by somebody who is not us is still **zero**,
+and three addresses that would have read as strangers under the old check are
+not. Anybody can run this trace; it needs no knowledge of which keys we hold.
+
 **Runway** is escrow divided by burn rate at TestNet's measured 2.695 s/round. It is
 what the upkeep can pay for, not a promise about keeper availability.
 
