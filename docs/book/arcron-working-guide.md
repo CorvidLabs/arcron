@@ -2,7 +2,7 @@
 title: "Arcron: The Working Guide"
 subtitle: "A permissionless keeper network for Algorand, from your first upkeep to running the network"
 author: "Compiled from the Arcron project documentation (CorvidLabs)"
-date: "2026-08-27 · TestNet app 769891898 (alpha-3) · alpha, unaudited"
+date: "2026-09-01 · TestNet app 769891898 (alpha-3) · alpha, unaudited"
 lang: en-US
 ---
 
@@ -33,6 +33,13 @@ inherits that. Four facts frame everything else.
 >   console quarantines them (Chapter 9). Don't put MainNet value into any of it.
 >   Alpha also means this app id can be replaced for any reason. Cancelling is
 >   how you leave, and it refunds your escrow and your box deposit.
+>   Unaudited means what it says: nobody qualified has been paid to review this.
+>   The project reviews itself hard instead, and `docs/reviews/` is the record,
+>   including a keeper audit and three independent passes over it on
+>   2026-09-01. Read that as a reason for confidence in the *process* and none
+>   at all in the absence of bugs: every round so far has found something the
+>   round before it missed, and the most recent one found a claim this book
+>   used to make.
 > - **The contract is upgradeable until its creator freezes it, and it is not
 >   frozen today.** Until then the creator can replace the programs and reach
 >   every escrow. That's readable on-chain and you can check it yourself
@@ -106,13 +113,26 @@ writes to a chain says so.
 two ever disagree, the doc wins and this book has a bug.
 
 That ordering matters, because a book is the easiest place in a repository for a
-figure to go quietly stale. This one already ran that risk once. The first draft
+figure to go quietly stale. This one has already run that risk twice. The first draft was written on
+2026-08-24, and by 2026-08-27 seven of its load-bearing figures had been
+superseded by corrections to [`docs/why.md`](../why.md) and
+[`docs/first-upkeep.md`](../first-upkeep.md). It also carried two "the docs
+disagree with themselves here" flags that the docs have since settled. The
+second round was 2026-09-01, when a security finding and two changes to the
+reference keeper landed in a single day and this edition had to be rewritten
+around them. The first draft
 was written on 2026-08-24, and by 2026-08-27 seven of its load-bearing figures
 had been superseded by corrections to [`docs/why.md`](../why.md) and
 [`docs/first-upkeep.md`](../first-upkeep.md). It also carried two "the docs
 disagree with themselves here" flags that the docs have since settled.
 
-Two things hold that line now. Every figure below was re-derived against the
+Two things hold that line, and it's worth knowing what neither of them covers.
+Every figure below was re-derived against the repository on 2026-09-01, and
+`tests/test_book.py` pins the load-bearing ones to the files that own them, so a
+number that moves in its owning file fails CI instead of waiting for a reader to
+notice. What no test pins is prose. A passing CI run says the figures still
+agree, not that the story does, so check the date on a chapter's source before
+you lean on the chapter. Every figure below was re-derived against the
 repository on 2026-08-27, and `tests/test_book.py` pins the load-bearing ones to
 the files that own them, so the next drift fails CI instead of waiting for a
 reader to notice.
@@ -189,8 +209,10 @@ actually use it." That comes back in Chapters 10 and 11.
 You can, and plenty of people should. The project says so itself. Lambda plus
 EventBridge Scheduler, at the volume one schedule needs, sits deep inside a
 perpetual free tier, doesn't drift, and doesn't expire. If you're already on AWS
-it defeats this comparison outright. GitHub Actions cron is free too, in a
-private repo. Arcron is not competing on raw cost against the free options.
+it defeats this comparison outright. GitHub Actions cron is free too, in a private repo, though free is all it is:
+measured across two half-hourly workflows in the project's own repository, it
+delivered 7% and 10% of their runs, with a mean gap of 8.2 hours. Arcron is not
+competing on raw cost against the free options. Arcron is not competing on raw cost against the free options.
 
 What a scheduler you host yourself can't give you is the thing Part IV builds
 toward: a schedule that **outlives the process that created it**, needs **no hot
@@ -264,7 +286,7 @@ this table.
 | Hetzner CX22 | ~$4.10 | as above |
 | AWS Lambda + EventBridge | $0.00 | as above, but genuinely free at this volume |
 | Oracle Always Free | $0.00 | free, but Oracle reclaims idle instances |
-| GitHub Actions cron (private repo) | $0.00 | delayed under load, runs may be dropped |
+| GitHub Actions cron (private repo) | $0.00 | free, and measured delivering 7% of a half-hourly schedule |
 
 So Arcron is **7.6x cheaper than the cheapest *paid* host at the floor fee, and
 3.0x cheaper at the fee the console actually suggests**. It is **not cheaper at
@@ -462,7 +484,7 @@ keeper will turn up, and whether the call's needs will grow later.
 |---|---|---|
 | INTERVAL (ROUNDS) | `215` | about 10 minutes at ~2.70 s/round |
 | FEE PER EXECUTION | `0.010` | what the console suggests. Keepers spend ~0.003 in group fees, so this leaves them ~0.007. The 0.004 minimum leaves only ~0.001, which can't fund a machine. |
-| FEE CEILING | `0` | off. Only raise it if an upkeep is actually going unserviced. |
+| FEE CEILING | `0` | Off, and the console's default. You can't change your mind later: there's no method to set `fee_cap` after `register`, so raising it means cancel and register again. Leave it at zero unless an upkeep is genuinely going unserviced, and at zero either way if anyone but you can make your target refuse a call (Chapter 6, Lesson 2). |
 | FUNDING | `0.03` | three runs at the suggested fee |
 | IF A RUN IS MISSED | **Skip ahead** | see the box below |
 
@@ -513,10 +535,12 @@ You should land on `/u/<id>`, the upkeep's own page, rather than a confirmation
 panel. That page shows what it calls, its cadence, its next run, its escrow, its
 runway, and a plain sentence about what happens when the escrow runs out.
 
-> **When will it actually run?** The project's only live keeper polls about every
-> 30 minutes, so `RUNS` can sit at `0` for that long even though everything
-> worked. That's a keeper cadence, not a failure, and losing a race to another
-> keeper is free and normal too. If you don't want to wait, run the first
+> **When will it actually run?** Every keeper on this deployment is one of ours,
+> and ours are GitHub Actions asking for a run every 30 minutes on a platform
+> that doesn't honour the ask. Gaps of more than ninety minutes are ordinary and
+> multi-hour ones have been measured, so `RUNS` can sit at `0` well past the
+> half hour with everything working. That's keeper cadence, not failure, and
+> losing a race to another keeper is free and normal too. If you don't want to wait, run the first
 > execution yourself from the upkeep page.
 
 ### Lesson 5. Clean up
@@ -611,8 +635,15 @@ if self.pending.value == 0:
 ```
 
 **A hook that fails stops being serviced.** When a target rejects, the keeper bot
-backs that upkeep off exponentially: 1, then 2, then 4, up to 8 of the upkeep's
-own intervals, capped near an hour. That state survives restarts. Failing costs
+**A hook that fails stops being serviced.** When a target rejects, the keeper
+bot holds that upkeep back before trying again, and how long depends on where
+the failure happened. If your own program refused, the wait doubles in rounds,
+1, then 2, then 4, and stops at 64, under three minutes, because a hook that
+says no this round may well say yes in the next one. If the call never reached
+your program, on cost, on references, or on a node that timed out, the wait
+doubles in the upkeep's own intervals up to about an hour, because nothing
+about that clears on its own. That state survives restarts, and no other keeper
+is obliged to be as patient as this one. That state survives restarts. Failing costs
 the keeper nothing, because Algorand rejects the transaction before it reaches a
 block, but it costs *you* the schedule. Fail soft. Record the problem in state
 and return.
@@ -660,8 +691,13 @@ self.last_run.value = Global.round
 > **Why return and not assert?** Under `CATCH_UP` a backlogged upkeep calls again
 > in the same round. An assert rejects that call, which fails the whole
 > `execute`, which the keeper records as a failure and backs the upkeep off,
-> until the schedule stops entirely. That's the exact outcome the never-fail rule
-> exists to prevent, reached through the code that was supposed to protect you.
+> and the schedule stalls at the moment it's trying to catch up. That's the
+> exact outcome the never-fail rule exists to prevent, reached through the code
+> that was supposed to protect you. The reference bot no longer stops entirely
+> for this: a refusal from inside your hook tops out at a 64-round retry rather
+> than an hour. But if the interval your hook enforces is longer than the
+> interval your upkeep asks for, no retry schedule saves you, because the hook
+> refuses every call that arrives early and it always will.
 > Returning refuses the *work* without refusing the *call*: the griefer still
 > pays the fee and still moves nothing.
 > `smart_contracts/subscription/` is the worked example, and it had both bugs in
@@ -843,8 +879,12 @@ cp .env.testnet.template .env.testnet          # add a funded throwaway DEPLOYER
 poetry run python -m examples.register_upkeep
 ```
 
-Then either wait for the project's keeper, on its roughly 30-minute cron, or run
-your own against it (Part III).
+Then either run your own keeper against it (Part III) or wait for the project's.
+Waiting takes longer than it sounds. That keeper is a GitHub Actions cron that
+asks for every 30 minutes and gets about 7% of them, a handful of runs a day
+with a mean gap over 8 hours, so an upkeep that hasn't executed after an hour is
+almost certainly waiting on a keeper rather than failing. Running your own is
+the fastest way to tell the two apart.
 
 ## Chapter 6. Scheduling and fees
 
@@ -932,11 +972,11 @@ escrow nobody can spend. Lateness only ever grows, so without that fallback an
 escrow that once fell below the escalated fee could never reach it again. Budget
 your runway against the ceiling anyway, since a late run can consume that much.
 
-### Lesson 3. Escalation can't be farmed
+### Lesson 3. A backlog can't be farmed, but lateness can be bought
 
-The natural worry: could a lone keeper deliberately let an upkeep fall behind and
-collect the ceiling over and over? No, and the reason is the cleverest piece of
-economics in the contract.
+The natural worry: The natural worry: could a lone keeper deliberately let an upkeep fall behind and
+collect the ceiling over and over off the backlog? No, and the reason is the
+cleverest piece of economics in the contract.
 
 Lateness is measured from `last_serviced_round`, not from the schedule, and that
 field jumps to "now" on every run. So a replay of a backlog never escalates. Once
@@ -1050,7 +1090,7 @@ or three independent keepers is the target and it's enough.
 | Where | Cost | Uptime | Key lives | Effort |
 |---|---|---|---|---|
 | **A server you already run** (recommended) | nothing extra | continuous | on your box | one script |
-| GitHub Actions cron | free to ~$115/mo by cadence | best-effort | repo secrets | uncomment a line |
+| GitHub Actions cron | free to ~$115/mo by cadence | ~7% of schedule, measured | repo secrets | uncomment a line |
 | A small always-on host | ~$2 to $5/mo | continuous | on that host | a container |
 | A laptop | nothing | poor | on your laptop | one plist |
 
@@ -1077,14 +1117,12 @@ redeploy never abandons a half-signed execution.
 
 **GitHub Actions** (`.github/workflows/keeper-bot.yml`) runs `--once` on a
 schedule. It's a stopgap, not the end state, and there are four things to watch.
-Cron granularity is about 5 minutes and best-effort, so GitHub delays runs and
-may drop them. Each run is a fresh process with no disk, so backoff state doesn't
+It doesn't run on the schedule you write, and that isn't a bad week. Measured on 2026-08-29 across two workflows in this repository, both scheduled every thirty minutes, GitHub delivered 7% and 10% of the runs asked for over windows of 41.2 and 25.0 hours, with a mean gap of 8.2 hours and a longest of 12.9. There's no half-hour interval anywhere in that history, and the second workflow fails the same way on its own, so it's the platform rather than the job. Two upkeeps sat 3,524 and 2,104 rounds unserviced inside one of those gaps and climbed to their fee ceiling before a keeper took them. Each run is a fresh process with no disk, so backoff state doesn't
 persist and a persistently failing upkeep gets retried every run (Chapter 8). The
 mnemonic lives in repository secrets. And a scheduled workflow in a **public**
 repository is disabled after 60 days without activity, though a private
 repository, which is where you'd run this since it's billed per minute there,
-isn't auto-disabled. ([`docs/hosting.md`](../hosting.md) still states that rule
-unconditionally; [`docs/why.md`](../why.md) carries the correction.)
+isn't auto-disabled. ([`docs/hosting.md`](../hosting.md) has the delivery table behind all of this, and [`docs/why.md`](../why.md) sets the same measurement against the other free schedulers.)
 
 The cost is the thing to check first, because it's billed per minute on a private
 repo and a keeper runs constantly.
@@ -1106,7 +1144,7 @@ There **was** a second keeper workflow beside `keeper-bot.yml`, on the *same*
 cron as the first, deleted on 2026-08-31. It existed to make Arcron's economic claim
 happen on a real chain: that competition holds the fee below the ceiling, and
 that losing a race costs nothing. Neither has been observed, and this did not
-change that — `KEEPER_2_MNEMONIC` was never set, so for four days the job ran
+change that. `KEEPER_2_MNEMONIC` was never set, so for four days the job ran
 on schedule, skipped itself in twenty seconds, and exited green. The Actions
 history looked like two keepers. One was running.
 
@@ -1123,8 +1161,7 @@ the collision on demand, with two real bots on LocalNet.
 ### What the account needs
 
 A keeper pays 3,000 µALGO per execution and collects the upkeep's fee, so it's
-profitable as long as fees exceed costs. It refuses to start below 103,000
-µALGO: 100,000 to keep the account, plus one execution. Use an account that holds
+profitable as long as fees exceed costs. It refuses to start when it can't afford one execution, and what it can afford isn't what it holds. Every Algorand account has a minimum balance it can't spend, and that floor isn't a constant: it rises by 100,000 µALGO for every asset the account is opted in to, and again for every app and every asset it has created. A keeper opted in to eleven bonus assets was measured at a floor of 5,439,000 µALGO. The bot reads the floor from the node rather than assuming it, and `--min-balance` counts spendable µALGO, so an account can hold five ALGO and still be told, correctly, that it's nearly empty. Use an account that holds
 no more than it needs. It's a hot key on an unattended machine whose whole job is
 to spend small amounts constantly.
 
@@ -1173,8 +1210,15 @@ a human at a terminal.
 an external probe. You don't need the keeper's account or its cooperation. It
 draws one distinction that matters, and the exit code encodes it.
 
-**Stalled** means an upkeep is funded, due, and nobody came. That's a keeper
-problem, and `--check` exits 1.
+**Stalled** means an upkeep is funded, due, and nobody came. That's usually a
+keeper problem, and `--check` exits 1. Usually rather than always, because
+`--check` reads box state, and box state can promise more than the ledger will
+pay: the contract charges each box its exact minimum balance and charges
+nobody for the 0.1 ALGO the app account itself needs to exist, so a deployment
+where nobody funded that holds escrow it can't send. Every upkeep then looks
+funded, every execution fails, and the probe blames keepers for it. `fledge
+run health` prints what the boxes owe against what the app account can
+actually spend, which is what tells the two apart.
 
 **Starved** means an upkeep's escrow has fallen below one fee, so no keeper
 *can* execute it. That's the creator's problem rather than a keeper's, so
@@ -1190,14 +1234,27 @@ problem, and `--check` exits 1.
 A keeper fails silently in two ways, and both take the network down with it.
 
 **It dies.** Nothing on-chain says so, and upkeeps just quietly pile up as due.
-Every twenty scans, and on every `--once` run, the bot emits a `heartbeat`. Alert
-on its absence, not its content. A heartbeat that stops is the signal.
+Every twenty scans, and on every `--once` run, the bot emits a `heartbeat`.
+Scans aren't one a round any more, because the loop sleeps until the next
+round that could change a decision, so twenty of them on a quiet registry
+could be most of a day. That's why the heartbeat has a clock of its own as
+well: at most 1,286 rounds, about an hour, between them. Alert on its absence,
+not its content, and leave the alert more than an hour of slack. A heartbeat that stops is the signal.
 
 **It runs out of ALGO.** This one is nastier, because a keeper earns fees into
 the same account it spends from: self-sustaining while the registry is busy, and
 stuck the moment it's empty, with no way to earn its way back out. So the balance
-is checked before the first scan and at every heartbeat. Below 103,000 µALGO it
-refuses to start and exits `2`. Below `--min-balance`, which defaults to about
+is checked before the first scan and at every heartbeat. So the balance is checked before the first scan and at every heartbeat, and
+what it checks is what the account can spend rather than what it holds. Every
+Algorand account has a minimum balance it can't spend, and that floor isn't a
+constant: it rises by 100,000 µALGO for every asset the account is opted in
+to, and again for every app or asset it has created, so a keeper opted in to
+eleven bonus assets was measured at a floor of 5,439,000. The bot reads that
+floor from the node rather than assuming it. With less than one execution's
+3,000 µALGO spendable above it, the bot refuses to start, says how much of the
+balance is floor, and exits `2`. Below `--min-balance`, which defaults to
+about 100 executions of spendable headroom, it warns each heartbeat and keeps
+working. Below `--min-balance`, which defaults to about
 100 executions of headroom, it warns each heartbeat and keeps working.
 
 ### Races, and why losing is free
@@ -1240,9 +1297,29 @@ shouldn't read as a pass.
 
 The bot separates these two, because they mean opposite things.
 
-**A failing upkeep**, meaning a target that rejects the call, backs off
-exponentially. The wait doubles in the upkeep's own intervals up to 8x, capped
-near an hour (1,286 rounds) in absolute terms. That state survives restarts, so a
+**A failing upkeep** backs off, and which schedule it comes off depends on
+where the failure happened, which is the one thing about a failure that a
+target can't choose. When the target's own program refuses, the wait doubles
+in rounds, 1 then 2 then 4, to a ceiling of 64 rounds, under three minutes,
+and never longer than the upkeep's own interval. That branch exists because a
+refusal is usually conditional: an oracle rejecting a stale price, a claim
+that pays once a period, a rebalancer that runs once an epoch. At the moment
+it happens it looks exactly like a dead target, so a keeper that went away for
+an hour would miss the window that mattered, and anyone able to make the
+target revert could buy that hour of silence for the price of one application
+call. Every other failure still doubles in the upkeep's own intervals up to
+8x, capped near an hour (1,286 rounds): a keeper-side refusal, a fee below the
+minimum, a call that exhausts its cost or reference budget before the target's
+program starts, a node that timed out. Those fail the same way until an
+operator changes something. What separates the two is algod's own attribution,
+`inner tx N failed`, which a target can't suppress and a keeper-side failure
+never carries.
+
+Backoff state survives restarts, so a `--once` cron doesn't re-attempt a
+doomed upkeep every run. A success resets it to zero, and so does the registry
+moving on, because an execution by anybody is proof the target works. Once
+you've fixed a target, `--retry-now <id>` clears one upkeep's backoff and
+`--clear-backoff` clears them all. That state survives restarts, so a
 `--once` cron doesn't re-attempt a doomed upkeep every run, and a success resets
 it to zero. Once you've fixed a target, `--retry-now <id>` clears one upkeep's
 backoff and `--clear-backoff` clears them all.
@@ -1357,7 +1434,13 @@ sustained-uptime and self-audit requirements before MainNet is even considered.
 MainNet itself is gated on the 1.0 contract staying *unchanged* for a sustained
 period, where any struct change restarts the clock, plus a continuously serviced
 dogfood with the notifier's record as evidence, plus a rigorous self-audit and no
-paid audit, behind a 2-of-3 multisig.
+paid audit. MainNet governance is one account rather than the 2-of-3 multisig the
+plan once named, because no wallet will sign for a multisig: asked through Pera's
+own SDK, with an account that genuinely is a member, the answer is `multisig
+signing is not supported`. So while `frozen` is 0 one key can replace `execute`
+and reach every escrow, with no second holder to stop it and no way back if it's
+lost. What makes that defensible is freezing promptly rather than keeping the
+option open.
 
 So "alpha, unaudited" on the title page is a contract, not a disclaimer. Use only
 `769891898` and treat it as replaceable.
@@ -1375,8 +1458,15 @@ escalation working as designed, bounded by `fee_cap`. What it can't do is farm
 the ceiling off a backlog, because a replay never escalates (Chapter 6, Lesson
 3). Measured before the guard: 100% of a 400,000 µALGO escrow across 34 runs.
 After it, the first run only. Can it drain one upkeep to pay another? No. Each
-box carries its own balance, checked before payment, and the app's spendable
-balance always covers the sum of every escrow. The refund on cancel exactly
+box carries its own balance, checked before payment, and box carries its own balance, checked before payment, and the app's spendable
+balance covers the sum of every escrow as long as the deployment funded its own
+account. The contract charges each box exactly what that box costs and charges
+nobody for the app account's base 0.1 ALGO, so a registry nobody funded can
+promise more than the ledger will pay, and it fails late, on somebody's `cancel`,
+rather than at registration. `govern status` and `fledge run health` print what
+the boxes owe against what the account can spend, and anyone can send the
+difference, because funding an app account needs no key. The refund on cancel
+exactly. The refund on cancel exactly
 matches the escrow plus the released deposit, and inner-transaction fees are set
 to zero via fee pooling, so the escrow is never touched for fees. The keeper's
 own transaction group pays them.
@@ -1399,7 +1489,10 @@ keeper sized, and a target's own inner transactions are paid by the target.
 > **What a read for this book found.** While compiling this book, its author read
 > the contract source and compiled bytecode looking specifically for a path that
 > loses money, a way to lock an upkeep's funds without the creator's consent, and
-> a griefing win. That pass found none. The refund accounting is conservative,
+> > a griefing win. That pass found none, and it was looking in the wrong place: a
+> security audit and three rounds of review on 2026-09-01 found one it had
+> missed, the buyable lateness described under known risks below. The refund
+> accounting is conservative, The refund accounting is conservative,
 > the one dangerous multiply (fee escalation) is bounded by the input caps and
 > can't overflow, and a creator can always cancel and recover, even against a
 > hostile bonus asset, because the ASA transfer is best-effort while the ALGO
@@ -1641,7 +1734,7 @@ narrow:
 That's the number that settles it. Not keeper count, not throughput, and nothing
 Ethereum measures. As of this writing the count of upkeeps registered by
 strangers is **zero**, and the project says that louder than any critic would.
-The mechanism holds up. Whether the world wants it is genuinely unknown, and that
+The mechanism holds up everywhere the project has managed to test it, with one exception it found and published rather than quietly patched: escalation pays for lateness, lateness can be bought by anyone who can make your target refuse, and it can arrive with no attacker at all when a target's cooldown outlasts the cadence. Nothing is stolen, `cancel` still works, and `fee_cap = 0`, the console default, makes an upkeep immune. [`docs/security.md`](../security.md) states it as an accepted risk rather than a fixed one. Whether the world wants it is genuinely unknown, and that
 honesty is the most trustworthy thing about the project.
 
 
@@ -1855,7 +1948,7 @@ approval-only hash would let a hostile clear program ship beside an honest
 approval. A pre-governance app prints `frozen absent`, which is the stronger
 guarantee, because it has no update path at all.
 
-**Multisig, for MainNet.** Set `ARCRON_MULTISIG_THRESHOLD` and
+**Multisig, which MainNet no longer uses.** Set `ARCRON_MULTISIG_THRESHOLD` and
 `ARCRON_MULTISIG_ADDRESSES` and the creator becomes a multisig;
 `scripts/deploy.py` then refuses to run from a single key. `govern update` and
 `govern freeze` write an unsigned transaction for holders to sign wherever their
@@ -1868,8 +1961,21 @@ SIGNER_MNEMONIC="..." fledge run govern -- sign --file update.json --app-id <id>
 fledge run govern -- submit --file update.json --app-id <id>
 ```
 
-The MainNet plan is three keys with a threshold of two, so one can be lost and
-one compromised without losing control. Member order is part of a multisig
+MainNet doesn't work that way any more. The creator is one account, `corvid.algo`
+(`WGSHC4TYKYBS6EX5V5E377BQDLKWIIPBCFOLZQZIXCKHFIEKRPBFOMW25A`), and
+`require_mainnet_creator` refuses `--network mainnet` for any other signer. It was
+three keys with a threshold of two until 2026-08-29, and what retired that is that
+no wallet will sign for a multisig sender: asked through Pera's own SDK, on
+TestNet, with an account that's genuinely a member, the answer is `multisig
+signing is not supported`. A 2-of-3 in practice meant three people typing
+mnemonics into a shell for every governance action, one of whom keeps a key on a
+hardware device precisely so that never has to happen. The cost of the single key
+is real and [`docs/security.md`](../security.md) states it: while `frozen` is 0,
+that one key could replace `execute` with something that drains every escrow, and
+losing it loses control permanently. What makes it defensible is `freeze`, which
+retires the key for good. The machinery here still works, `fledge run
+smoke-multisig` still proves a 2-of-3 on LocalNet, and going back is one constant
+if a wallet ever ships multisig signing. Member order is part of a multisig
 address, so the same keys in a different order are a different account holding
 nothing. Post-quantum Falcon accounts can't be multisig members, because their
 address is a hash rather than a curve point, and `scripts/multisig.py` refuses
@@ -1931,7 +2037,7 @@ scheduled call is a heartbeat, not a courier."*
 | **Escrow / balance** | The ALGO an upkeep holds to pay for its executions. |
 | **Box deposit** | The minimum-balance cost of an upkeep's box; refunded on cancel. |
 | **CATCH_UP / SKIP_AHEAD** | Missed-run policy: replay every missed interval, or drop the backlog and keep phase. |
-| **fee_cap / escalation** | An optional ceiling; a neglected upkeep's fee rises toward it. 0 = off. |
+| **fee_cap / escalation** | An optional ceiling; a late upkeep's fee rises toward it. 0 is off, and off is both the console's default and the standing advice, because anyone who can make a target refuse can manufacture the lateness that pays. Fixed at `register`. |
 | **Effective fee** | The fee actually paid: base, or escalated when late and a ceiling is set. |
 | **Starved / stalled** | Starved = escrow below one fee (creator's problem). Stalled = funded, due, unserviced (keeper's problem). |
 | **Frozen** | Whether the creator has permanently given up the power to replace the programs. |
