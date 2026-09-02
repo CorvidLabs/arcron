@@ -89,10 +89,10 @@ registered the other **26**. That second number flatters us: five of those six
 addresses share a single funding account and one of the five is an agent
 [`docs/testnet.md`](docs/testnet.md) records as ours, so read them as one
 operator wearing five costumes — 20 of the 26. **746 executions** are recorded
-across the boxes, and **three addresses executed in the preceding day**:
-`NUGVPQGZ…` 215, `GCQL3M7A…` 36, `CEPY52VZRWFL…` 10. The first two are both
-ours, the second being the GitHub Actions cron keeper; all time it is the
-largest keeper this registry has had, 592 executions of 1,011. `CEPY52VZRWFL…` is
+across the boxes, and **two addresses executed in the preceding day**:
+`NUGVPQGZ…` 232 and `GCQL3M7A…` 57. Both are ours, the second being the GitHub
+Actions cron keeper; all time it is the largest keeper this registry has had,
+682 executions of 1,387 by fifteen addresses. `CEPY52VZRWFL…` is
 ours too, and it was the hardest to place: funded once by the public TestNet
 dispenser and by nothing else, it deployed its own targets, registered six
 upkeeps and runs its own keeper, taking no top-up from the account behind the
@@ -263,7 +263,7 @@ endpoint its 33 back-to-back box reads can be rate-limited into an HTTP 403.
 | Deployment age | The app id since 2026-08-25; the programs it runs now since 2026-08-26. Days, not months |
 | Registry | **33 live upkeeps** from **7 distinct addresses**. Our deployer registered 7; 26 came from six addresses that are not the deployer. **746 executions** recorded across the live boxes |
 | Upkeeps registered by strangers | **Zero.** 26 of the 33 live upkeeps come from six addresses that are not our deployer, and all six are ours: five share a funding account, and the sixth, `CEPY52VZRWFL`, funded itself from the public dispenser and looked like a stranger for a day before it was attributed |
-| Keepers | **Three addresses executed in the last day**, and all three are ours: `NUGVPQGZ…` 215, `GCQL3M7A…` 36, `CEPY52VZRWFL` 10. All time, `GCQL3M7A…` is the largest keeper here: 592 of 1,011 executions. Nobody outside has run one |
+| Keepers | **Two addresses executed in the last day**, and both are ours: `NUGVPQGZ…` 232, `GCQL3M7A…` 57. All time, fifteen addresses have executed and `GCQL3M7A…` is the largest: 682 of 1,387. Nobody outside has run one |
 | Built on it | One thing: [CorvidLabs/arcron-rain](https://github.com/CorvidLabs/arcron-rain), which we also wrote |
 | MainNet | Not deployed. Gated on sustained TestNet time; the creator will be `corvid.algo` |
 | Review history | Every round, including the ones that said no, is in `docs/reviews/`. None of them is a paid audit |

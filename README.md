@@ -210,12 +210,13 @@ own.** Read from the chain on 2026-08-31, at round 66,860,306:
   operator wearing five costumes: 20 of the 26. Only the sixth address is even
   a candidate for outside registration.
 - **746 executions** are recorded across those 33 boxes. **Three addresses
-  executed** in the preceding 32,000 rounds (about a day): `NUGVPQGZ…` 215,
-  `GCQL3M7A…` 36, `CEPY52VZRWFL…` 10. **The first two are both ours** — the
-  long-running keeper and the GitHub Actions cron keeper in
+  executed** in the preceding 30,857 rounds (about a day): `NUGVPQGZ…` 232 and
+  `GCQL3M7A…` 57. **Both are ours** — the long-running keeper and the GitHub
+  Actions cron keeper in
   [`.github/workflows/keeper-bot.yml`](.github/workflows/keeper-bot.yml). All
-  time, `GCQL3M7A…` is the largest keeper this registry has had: 592 of 1,011
-  executions ever sent, against `NUGVPQGZ…`'s 345.
+  time, fifteen addresses have sent an `execute`, and `GCQL3M7A…` is the
+  largest keeper this registry has had: 682 of 1,387 executions ever sent,
+  against `NUGVPQGZ…`'s 631. The other thirteen have fourteen or fewer each.
 - `CEPY52VZRWFL…` is ours as well, and it was the hardest to place. Funded once
   by the public TestNet dispenser and by nothing else, it deployed its own
   target apps, registered upkeeps 110, 111, 112, 114, 115 and 116 at four
