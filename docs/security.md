@@ -263,13 +263,17 @@ no method for it, so an upkeep that wants this advice has to be cancelled and
 registered again.
 
 **Not mitigated, and deliberately:** the fee mechanism still pays
-automatically for lateness a third party can create. The ramp lives in the
+automatically for lateness a third party can create. What to do about that is
+[`docs/design/escalation.md`](design/escalation.md), which measures what
+escalation has actually done on this registry (17% of executions, 0.831 ALGO,
+and not one keeper it brought in) and frames the three options without picking
+one. The ramp lives in the
 program rather than the box, so it is reachable by `update` and closed forever
 by `freeze`, which makes the ordering of those two the decision this risk
 actually turns on. Full measurements and the three options in
 [`docs/reviews/2026-09-01-opus-5-audit-verification.md`](reviews/2026-09-01-opus-5-audit-verification.md).
 
-As of 2026-09-01 **no live upkeep is exposed**: seven of thirty-three have
+As of 2026-09-01 **no live upkeep is known to be exposed**: seven of the thirty-two have
 escalation enabled and all seven point at unconditional counters, which
 nothing a third party controls can make refuse.
 
