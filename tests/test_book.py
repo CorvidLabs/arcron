@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -123,11 +124,22 @@ def test_the_book_directory_stays_text() -> None:
     a Markdown file that is itself derived from `docs/`, so committing one adds
     a copy of every figure that nothing can date and nothing can check. Build it
     with `./build.sh`, or attach it to a release.
+
+    Asked of **git**, not of the directory. This walked `iterdir()` until
+    2026-09-01, so it measured "a rendered book exists on this disk" while its
+    message said "committed" and `.gitignore` two directories up said the two
+    are unrelated. Anyone who followed the repository's own instruction and ran
+    `./build.sh` to read the thing then failed their own CI, which is the
+    fastest way to teach somebody that a red test means nothing.
     """
+    tracked = subprocess.run(
+        ["git", "ls-files", "--", str(BOOK_DIR)],
+        capture_output=True, text=True, check=True,
+    ).stdout.split()
     committed = sorted(
-        path.name
-        for path in BOOK_DIR.iterdir()
-        if path.is_file() and path.suffix.lower() in {".pdf", ".epub", ".mobi", ".docx"}
+        Path(path).name
+        for path in tracked
+        if Path(path).suffix.lower() in {".pdf", ".epub", ".mobi", ".docx"}
     )
     assert not committed, (
         f"docs/book/ has committed build products: {committed}. They are gitignored; "
