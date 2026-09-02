@@ -72,8 +72,9 @@ because these are easy to get wrong from memory:
   **the count of upkeeps registered by somebody who is not us is zero**, and
   every address that looked like a stranger is an agent of ours. What the
   registry proves is sustained operation across every policy and cadence, by
-  one operator, which is a soak test and not adoption. Upkeep 91 points at the
-  hub rain abandoned and is a loose end, not the dogfood.
+  one operator, which is a soak test and not adoption. Upkeep 91 was the loose
+  end this bullet used to name, pointing at the hub rain abandoned; it was
+  cancelled on 2026-09-01 and 2.8861 ALGO came back.
 - **MainNet gate** is self-review plus sustained TestNet time across the live
   registry. No paid audit. Any struct change restarts that clock, and no other
   repository can stall it.

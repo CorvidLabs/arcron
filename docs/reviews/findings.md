@@ -10,9 +10,14 @@ finding, and checking each one against the tree as it stood at `7de0cde`.
 
 ## The numbers
 
-**881 distinct findings** were raised across five review rounds. **608 of them
-have been checked against the tree**; the other 273 are named at the bottom of
+**881 distinct findings** were raised across five review rounds. **761 of them
+have been checked against the tree**; the other 120 are named at the bottom of
 this page as unchecked, because saying so is cheaper than implying otherwise.
+
+The first 608 were checked one file at a time and are the table below. The
+2026-09-01 round's 153 were checked separately, by hand, and are summarised in
+their own section rather than merged into the table, because their residue has
+a different shape.
 
 Of the 608:
 
@@ -422,23 +427,57 @@ it; where several found the same thing, the table keeps the first.
 | copier answers still name hello_world and corvid_vault | release audit | low | Closing it means editing the recorded answers despite the header (they are just recorded answers), or deleting the file if `copier update` will nev... |
 | Experiments assume MainNet consensus parameters match LocalNet | audit 9-01 | nit | A standing caveat rather than a defect; closing it would take recording the consensus version the spikes ran under and having verify_build or clock... |
 | Fallback test docstring overclaims "strictly better" at balance == base | K branch | nit | Closing takes rewording the docstring to say what the assertion proves (the bypass takes more than the clamped fee, up to the escrow), one sentence. |
-## The 273 findings this pass did not check
+## The 2026-09-01 round, checked by hand
 
-Five files were extracted but never verified against the tree, because the
-model running the checks hit its usage limit partway through. They are not
-included in any count above.
+The keeper audit, its verification and the three-model panel on it: **153
+findings**, checked on 2026-09-02 without the automated pass.
 
-| file | findings extracted | why it matters |
+| | count |
+|---|---|
+| closed by #237, #238 and #241 | 56 |
+| accepted, and written down as accepted | 20 |
+| deferred to the moment before `freeze` | 2 |
+| open | 75 |
+
+The residue has a shape worth naming. **Fifteen of the 75 are corrections to
+the review documents themselves**, and those stay as they are: an arithmetic
+slip inside a review is evidence of what the reviewer thought on the day, and
+the no-edit policy in `README.md` is the reason the whole directory is worth
+anything. Most of the remaining sixty are nits, refutations of the audit's own
+sentences, and recommendations, all of them already argued in
+[`../design/escalation.md`](../design/escalation.md).
+
+Four named live sites were genuinely stale, and this commit fixes them:
+
+- **`CLAUDE.md` and `AGENTS.md` both still called upkeep 91 a live loose end.**
+  It was cancelled on 2026-09-01 and `docs/testnet.md` was updated to say so,
+  in the same session. Two of three sites, which is the first lesson above,
+  found by the panel and not acted on until now.
+- **`docs/design/1.0.md` still argued that escalation "is what makes a small
+  user's upkeep reliable at all"**, which is the premise `escalation.md`
+  spends a page refuting. That row now says the claim is why the feature
+  shipped and that it has not held up.
+- **`docs/integrating.md` quoted one run of the hostile-target spike as
+  measured fact.** The spike asserts a shape, not the figures; the paragraph
+  now says which it is.
+
+Three the panel raised against live code were checked and are closed: the
+spike escapes on every path where the attack does not reproduce
+(`spike_hostile_target.py:224,254,281,298,315`), the request-load figure is
+measured at eight per execution rather than a hand-added constant
+(`tests/test_keeper_bot.py:663`), and `keeper_backoff`'s docstring already says
+the sibling variant costs the attacker less and pays them for it.
+
+## The 120 findings nobody has checked
+
+| file | findings extracted | why they were left |
 |---|---|---|
 | `2026-08-26-fable-5-console-plan.md` | 62 | a plan, so most rows are unbuilt steps rather than defects |
 | `2026-08-26-grok-4.6-console-plan.md` | 58 | same |
-| `2026-09-01-fable-5.1-branch-review.md` | 60 | its blockers were addressed in #237, #238 and #241, but not checked here |
-| `2026-09-01-grok-4.6-branch-review.md` | 51 | same |
-| `2026-09-01-opus-5-audit-verification.md` | 42 | same |
 
-The three 2026-09-01 files are the ones whose findings this repository acted on
-most recently, so their residue is likeliest to be small. Likeliest is not
-checked. Finishing them is the obvious next pass.
+Both are reviews of a plan rather than of code, so a row that is "open" mostly
+means a step nobody built, and `docs/console-plan.md` is the document that
+should absorb them. That is the obvious next pass.
 
 ## How to redo this
 
