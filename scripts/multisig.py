@@ -327,6 +327,7 @@ def refusals(
     max_fee: int,
     allow_account_txn: bool = False,
     allow_rekey: bool = False,
+    expected_create: dict | None = None,
 ) -> list[str]:
     """Every reason this file must not be signed. Empty means it may be.
 
@@ -405,6 +406,38 @@ def refusals(
                 "outright. Shrinking it bricks the app and growing it costs the creator "
                 "minimum balance permanently. An honest update sets none."
             )
+    # A create fixes extra pages and both schemas forever, and `show` prints
+    # all three. Printing a value asks somebody to compare it, and until now
+    # nothing did: the checks below lived on the `in_file != 0` branch, which
+    # is the update path, so on a create they were skipped entirely. A
+    # coordinator could inflate extra pages (permanent creator minimum balance)
+    # or set a schema that bricks `__init__`, and `sign` had no reason to
+    # refuse. This is the comparison.
+    if is_app_call and in_file == 0 and (getattr(txn, "approval_program", b"") or b""):
+        if expected_create is None:
+            reasons.append(
+                "This CREATES an application and nothing compared the fields a create "
+                "fixes forever. Extra pages and both state schemas are permanent, and "
+                "no program digest says anything about them. Sign a create only from a "
+                "tree that can rebuild it."
+            )
+        else:
+            found = {
+                "extra pages": int(getattr(txn, "extra_pages", 0) or 0),
+                "global uints": int(getattr(getattr(txn, "global_schema", None), "num_uints", 0) or 0),
+                "global byte slices": int(getattr(getattr(txn, "global_schema", None), "num_byte_slices", 0) or 0),
+                "local uints": int(getattr(getattr(txn, "local_schema", None), "num_uints", 0) or 0),
+                "local byte slices": int(getattr(getattr(txn, "local_schema", None), "num_byte_slices", 0) or 0),
+            }
+            for field, want in expected_create.items():
+                if found.get(field) != want:
+                    reasons.append(
+                        f"This create sets {field} to {found.get(field)}, and this tree "
+                        f"builds {want}. That field is permanent: too small fails the "
+                        "create or bricks it later, too large costs the creator minimum "
+                        "balance for state nobody uses."
+                    )
+
     if expected_digest is not None:
         carried = carried_programs(path)
         if carried is not None and combined_digest(*carried) != expected_digest:

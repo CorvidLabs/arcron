@@ -319,8 +319,18 @@ someone funds the account first. The keeper side of this is already defended:
 
 `register` accepts an MBR payment larger than the box costs and credits the
 excess to nobody. It cannot be stolen (it only makes the app account *more*
-solvent), but it is not refunded either. Send the exact amount; the contract
-exports the formula and the console computes it.
+solvent), but it is not refunded either. `cancel` pays back the escrow plus the
+formula's `BOX_MBR_FIXED + 400 * size`, not what was sent. Send the exact
+amount; the contract exports the formula and the console computes it.
+
+**`opt_in_asset` has the same shape and was named nowhere until 2026-09-02.**
+It takes `mbr_payment.amount >= ASSET_OPT_IN_MBR` with no upper bound
+(`contract.py:518`), and that deposit is not refundable at all, so a surplus
+there is stranded rather than merely uncredited. Both sites are accepted on the
+same reasoning and both are pinned by
+`tests/test_keeper.py::test_an_overpaid_box_mbr_is_kept_and_never_refunded`,
+because a risk accepted in prose at one of two identical sites is how the
+second one stays invisible.
 
 ### Registry spam degrades keepers
 

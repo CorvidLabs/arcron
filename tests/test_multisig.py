@@ -127,10 +127,23 @@ def _write(tmp_path, txn):
     return ms.export_unsigned(txn, tmp_path / "txn.json")
 
 
+# The shape `_create_txn` below actually builds. `sign` derives this from the
+# build; here it is written out so a test that changes the transaction has to
+# change the expectation too, and cannot pass by both moving together.
+CREATE_SHAPE = {
+    "extra pages": 1,
+    "global uints": 2,
+    "global byte slices": 0,
+    "local uints": 0,
+    "local byte slices": 0,
+}
+
+
 def _refusals(path, **overrides):
     kwargs = dict(
         app_id=769891898, genesis_ids=TESTNET_GENESIS,
         expected_address=ms.address(), expected_digest=None, max_fee=10_000,
+        expected_create=CREATE_SHAPE,
     )
     kwargs.update(overrides)
     return ms.refusals(path, **kwargs)
@@ -376,6 +389,71 @@ def test_sign_accepts_programs_that_are_this_tree(configured, tmp_path) -> None:
     assert carried is not None
     reasons = _refusals(path, app_id=0, expected_digest=ms.combined_digest(*carried))
     assert reasons == [], reasons
+
+
+def test_a_create_that_inflates_extra_pages_is_refused(configured, tmp_path) -> None:
+    """The gap the ledger found: checked on update, skipped on create.
+
+    `refusals` compared `extra_pages` and both schemas behind the `in_file != 0`
+    branch, which is the update path. On a create `in_file` is 0, so a
+    coordinator could inflate pages, costing the creator minimum balance
+    forever, and `sign` had nothing to say while `show` printed the number.
+    """
+    from algosdk import transaction
+
+    configured(2, SIGNERS)
+    txn = transaction.ApplicationCreateTxn(
+        sender=ms.address(), sp=_params(), on_complete=transaction.OnComplete.NoOpOC,
+        approval_program=b"\x0a\x81\x01", clear_program=b"\x0a\x81\x01",
+        global_schema=transaction.StateSchema(2, 0),
+        local_schema=transaction.StateSchema(0, 0),
+        extra_pages=3,
+    )
+    path = _write(tmp_path, txn)
+    reasons = _refusals(path, app_id=0)
+    assert any("extra pages to 3" in r and "builds 1" in r for r in reasons), reasons
+
+
+def test_a_create_that_shrinks_the_global_schema_is_refused(configured, tmp_path) -> None:
+    """Too small is the other direction, and it bricks `__init__` on the way in."""
+    from algosdk import transaction
+
+    configured(2, SIGNERS)
+    txn = transaction.ApplicationCreateTxn(
+        sender=ms.address(), sp=_params(), on_complete=transaction.OnComplete.NoOpOC,
+        approval_program=b"\x0a\x81\x01", clear_program=b"\x0a\x81\x01",
+        global_schema=transaction.StateSchema(1, 0),
+        local_schema=transaction.StateSchema(0, 0),
+        extra_pages=1,
+    )
+    path = _write(tmp_path, txn)
+    assert any("global uints to 1" in r for r in _refusals(path, app_id=0)), _refusals(path, app_id=0)
+
+
+def test_a_create_nothing_can_rebuild_is_refused_rather_than_waved_through(
+    configured, tmp_path
+) -> None:
+    """Silence has to announce itself, the same as the unconfigured-multisig case.
+
+    A holder on a machine that cannot rebuild gets no comparison, and a
+    create's permanent fields are exactly what no digest covers.
+    """
+    configured(2, SIGNERS)
+    path = _write(tmp_path, _create_txn(ms.address()))
+    reasons = _refusals(path, app_id=0, expected_create=None)
+    assert any("nothing compared the fields a create" in r for r in reasons), reasons
+
+
+def test_an_update_is_not_put_through_the_create_check(configured, tmp_path) -> None:
+    """The check is for creates. An honest update must stay silent."""
+    from algosdk import transaction
+
+    configured(2, SIGNERS)
+    path = _write(tmp_path, transaction.ApplicationUpdateTxn(
+        sender=ms.address(), sp=_params(), index=769891898,
+        approval_program=b"\x0a\x81\x01", clear_program=b"\x0a\x81\x01",
+    ))
+    assert _refusals(path) == [], _refusals(path)
 
 
 def test_the_extra_pages_formula_holds_at_the_page_boundary() -> None:

@@ -184,6 +184,25 @@ def update(algorand, app_id: int, no_rebuild: bool, out: 'pathlib.Path | None' =
 PROGRAM_PAGE = 2_048
 
 
+def _create_shape(spec: dict, approval: bytes, clear: bytes) -> dict:
+    """What a create fixes forever, derived from the build rather than typed.
+
+    `create` writes these into the transaction and `sign` compares the file
+    against them. One function so the writer and the check cannot drift apart:
+    a second derivation that agrees today is a second derivation to keep
+    agreeing.
+    """
+    schema = spec.get("state", {}).get("schema", {})
+    g, l = schema.get("global", {}), schema.get("local", {})
+    return {
+        "extra pages": (len(approval) + len(clear) - 1) // PROGRAM_PAGE,
+        "global uints": int(g.get("ints", 0)),
+        "global byte slices": int(g.get("bytes", 0)),
+        "local uints": int(l.get("ints", 0)),
+        "local byte slices": int(l.get("bytes", 0)),
+    }
+
+
 def create(algorand, expect_creator: str, assume_yes: bool, allow_dirty: bool,
            out: 'pathlib.Path | None' = None) -> int:
     """Write an unsigned create for the multisig to sign.
@@ -244,7 +263,7 @@ def create(algorand, expect_creator: str, assume_yes: bool, allow_dirty: bool,
     # minimum balance forever for state that is never used.
     schema = spec.get("state", {}).get("schema", {})
     g, l = schema.get("global", {}), schema.get("local", {})
-    extra_pages = (len(approval) + len(clear) - 1) // PROGRAM_PAGE
+    extra_pages = _create_shape(spec, approval, clear)["extra pages"]
 
     logger.info("This create is permanent in every field below.")
     logger.info(f"  creator       {ms.address()}")
@@ -355,6 +374,7 @@ def _refuse(args, verb: str) -> bool:
     # than merely described. Skipped when the file carries none, and when the
     # signer explicitly opted out of rebuilding.
     expected_digest = None
+    expected_create = None
     carried = ms.carried_programs(args.file)
     if carried is not None:
         if args.no_rebuild:
@@ -370,7 +390,10 @@ def _refuse(args, verb: str) -> bool:
             )
             return True
         rebuild()
-        expected_digest = _digest(*_programs(_spec("keeper")))
+        spec = _spec("keeper")
+        programs = _programs(spec)
+        expected_digest = _digest(*programs)
+        expected_create = _create_shape(spec, *programs)
 
     reasons = ms.refusals(
         args.file,
@@ -378,6 +401,7 @@ def _refuse(args, verb: str) -> bool:
         genesis_ids=net.genesis_ids(args.network),
         expected_address=ms.address() if ms.configured() else None,
         expected_digest=expected_digest,
+        expected_create=expected_create,
         max_fee=MAX_SIGNABLE_FEE if not args.allow_high_fee else 2**63,
         allow_account_txn=args.account_txn,
         allow_rekey=args.i_mean_to_rekey,
