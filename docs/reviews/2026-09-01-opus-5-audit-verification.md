@@ -195,9 +195,16 @@ is therefore a lower bound against the reference client, not an overestimate.
 That has a second consequence worth more than the fee arithmetic: the same
 single failure silences the bot on an upkeep **whose escalation is off**. For
 a liquidation, an oracle or a keep-alive, the missed window can be worth far
-more than the fee, and nothing in the contract or the health report meters
-it. What the bot should do when a target refuses is now an open question, not
-a settled one.
+more than the fee, and nothing in the contract or the health report meters it.
+
+**Since fixed.** The schedule now branches on where the failure happened — a
+refusal from inside the target is conditional by construction, because
+`execute` checked the schedule and the escrow before it called anything — so
+those back off 1, 2, 4 … rounds to a 64-round ceiling instead of an hour, and
+any execution clears the streak. An arranged blackout costs about twenty
+refusals an hour rather than one, and the loop now reports each due-but-held
+upkeep with the fee going unclaimed, so it is metered. The figures above stay
+lower bounds for the registry as it was when they were measured.
 
 **What to do.**
 
@@ -295,8 +302,17 @@ asks for the output rather than the memory:
   second, which is not how a bucket shared by every user of a public Algorand
   endpoint would climb.
 
-  So it is our request rate, it is one bot, and sending less is exactly the
-  fix — which belongs in `keeper_bot.py`, not in a retry helper. What stays
+  **Corrected twice since, both against this paragraph.** The scan is 37
+  requests, not 36: the account read is made every scan, not on the heartbeat
+  as written above, so 211,000 a day was a floor. And the fix has landed —
+  `keeper_bot.py` now re-reads a box only on the round its cached copy could
+  change a decision and sleeps to the soonest of those rounds, measured at
+  **5,901 requests over the same window, about 3,000 a day.** A seventieth,
+  counted at a client that subclasses the real one
+  (`tests/test_keeper_bot.py::TestWhatOneDayCosts`).
+
+  So it was our request rate, it was one bot, and sending less was exactly the
+  fix — which belonged in `keeper_bot.py`, not in a retry helper. What stays
   open is what the bucket is keyed to, since nobody has read Nodely's side,
   and the 200,000 figure is the one number here that is cited rather than
   measured.
