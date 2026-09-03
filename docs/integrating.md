@@ -436,10 +436,14 @@ hook revert: a cooldown, a freshness bound, a once-an-epoch guard, anything
 conditional on state somebody else can move. Blocking costs an attacker one
 application call, a keeper whose execution reverts pays nothing and simply
 goes away, and whoever arranged the block collects the escalated fee when the
-window reopens. Measured on LocalNet: a 4,000 µALGO fee with a 40,000 ceiling
-paid 25,600 for a block that cost 1,000 to arrange, and a variant that blocks
-with a second upkeep against the same target shut every other keeper out of
-four cycles in four and finished 45,600 µALGO ahead. Setting
+window reopens. Measured on LocalNet in one run of
+`scripts/spike_hostile_target.py`: a 4,000 µALGO fee with a 40,000 ceiling paid
+25,600 for a block that cost 1,000 to arrange, and a variant that blocks with a
+second upkeep against the same target shut every other keeper out of four
+cycles in four and finished 45,600 µALGO ahead. Read those as one run rather
+than as constants: the exact figures move with how many rounds pass between
+the block and the next execution, and the spike asserts the shape (a premium
+over base, every cycle taken) rather than the numbers. Setting
 `assert Txn.sender == <keeper app address>` on your hook does not stop that
 one: the inner sender is the keeper app whoever registered the upkeep.
 
