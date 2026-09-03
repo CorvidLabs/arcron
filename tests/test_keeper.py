@@ -232,6 +232,32 @@ def test_register_rejects_low_mbr(
         _register(context, keeper, pulse, call_data, mbr=short)
 
 
+def test_an_overpaid_box_mbr_is_kept_and_never_refunded(
+    context: AlgopyTestContext, keeper: Keeper, pulse: Pulse
+) -> None:
+    """The accepted risk in docs/security.md, pinned rather than described.
+
+    `register` takes `>=`, so a client that computes the MBR generously funds
+    the app account and is credited nothing for it: `cancel` refunds the escrow
+    plus the formula's `BOX_MBR_FIXED + 400 * size`, not what was sent. The
+    surplus cannot be stolen and cannot be recovered either.
+
+    Written as a test because the risk was accepted in prose for `register`
+    while `opt_in_asset` carries the identical `>=` at contract.py:518 and was
+    named nowhere. Prose accepts one site; this accepts the shape.
+    """
+    call_data = _selector("tick()uint64")
+    required = BOX_MBR_FIXED + 400 * len(_encode_args([call_data]))
+    surplus = 250_000
+    upkeep_id = _register(context, keeper, pulse, call_data, mbr=required + surplus)
+
+    refund = keeper.cancel(UInt64(int(upkeep_id)))
+
+    assert int(refund) == MIN_UPKEEP_FEE * 5 + required, (
+        "cancel refunds the escrow plus the formula's MBR, so the surplus stays behind"
+    )
+
+
 def test_execute_happy_path(
     context: AlgopyTestContext, keeper: Keeper, pulse: Pulse
 ) -> None:
