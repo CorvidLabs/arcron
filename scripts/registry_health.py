@@ -107,6 +107,10 @@ class UpkeepHealth:
     blocked: str = ""
     #: What the box says it holds, which is what `cancel` would try to refund.
     escrow: int = 0
+    #: The target executed cleanly and said it did nothing. See
+    #: `reports_no_work`. False also means "not asked", which is not the same
+    #: as "did something".
+    idle_target: bool = False
 
     @property
     def pays_nothing(self) -> bool:
@@ -123,6 +127,25 @@ class UpkeepHealth:
         return self.runway_days < LOW_RUNWAY_DAYS
 
     @property
+    def idle(self) -> bool:
+        """Paying a keeper on schedule to call a target with nothing to do.
+
+        The gap this closes is that such an upkeep looks perfect from every
+        other angle: the target simulates clean, so it is not `TARGET
+        REVERTS`; the escrow pays, so it is not the funding case; and the
+        keeper is paid, so it is not `PAYS THE KEEPER NOTHING`. Four upkeeps
+        reached this state before anything reported it (73, 79, 91 and 113),
+        and rain 2 declined sixty-three consecutive scheduled draws while
+        every reading here was green.
+        """
+        return self.idle_target
+
+    @property
+    def due(self) -> bool:
+        """Executable right now, which is what makes it worth simulating."""
+        return self.rounds_late > 0
+
+    @property
     def overdue(self) -> bool:
         """Late by more than one whole cycle, which is not a race being lost."""
         return self.rounds_late > self.interval_rounds
@@ -135,6 +158,8 @@ class UpkeepHealth:
             found.append(f"{self.runway_days:.1f} DAYS OF RUNWAY")
         if self.overdue:
             found.append(f"OVERDUE BY {self.rounds_late:,} ROUNDS")
+        if self.idle:
+            found.append("TARGET REPORTS NO WORK")
         if self.blocked:
             found.append(self.blocked)
         return found
@@ -296,7 +321,46 @@ def classify_failure(message: str, can_pay_fee: bool = True) -> str:
     return f"WOULD FAIL: {quoted.split('. Details')[0][:80]}"
 
 
-def simulate_execute(algod, app_id: int, upkeep: UpkeepHealth, sender: str) -> str:
+#: An ARC-4 return value is logged by the callee, prefixed with this.
+ARC4_RETURN_PREFIX = b"\x15\x1f\x7c\x75"
+
+
+def reports_no_work(group: dict) -> bool:
+    """Did the target execute cleanly and say it did nothing?
+
+    Read narrowly. This is a **convention**, not a guarantee: a target that
+    returns a count of what it did, and returns zero, is telling us it did
+    nothing. `rain`'s `draw()` returns how many rains it fired, and a hub with
+    empty pots returns 0 on every scheduled call, forever, while looking
+    healthy from every other angle.
+
+    So this answers "the target says it did nothing", not "the target did
+    nothing". A target returning void, a string, or a meaningful zero is not
+    flagged, and a target that changes state while returning zero is missed.
+    That is the honest bound, and it is worth having anyway: the alternative
+    on the four upkeeps this would have caught was nothing at all.
+
+    Only the target's own call is read, not the keeper's fee payment, and only
+    an eight-byte unsigned return: anything else is left alone rather than
+    guessed at.
+    """
+    for txn in group.get("txn-results", []):
+        for inner in txn.get("txn-result", {}).get("inner-txns", []):
+            if "application-transaction" not in inner.get("txn", {}).get("txn", {}):
+                if not inner.get("application-index") and "logs" not in inner:
+                    continue
+            for entry in inner.get("logs", []):
+                raw = base64.b64decode(entry)
+                if not raw.startswith(ARC4_RETURN_PREFIX):
+                    continue
+                value = raw[len(ARC4_RETURN_PREFIX):]
+                if len(value) != 8:
+                    continue
+                return int.from_bytes(value, "big") == 0
+    return False
+
+
+def simulate_execute(algod, app_id: int, upkeep: UpkeepHealth, sender: str) -> tuple[str, bool]:
     """What `execute` would do right now, without doing it.
 
     Unsigned, with `allow_empty_signatures`, so this needs no key and cannot
@@ -324,24 +388,47 @@ def simulate_execute(algod, app_id: int, upkeep: UpkeepHealth, sender: str) -> s
     try:
         response = algod.simulate_transactions(request)
     except Exception as error:  # a simulate that cannot run is not a verdict
-        return f"WOULD FAIL: simulate unavailable ({type(error).__name__})"
-    return classify_failure(
-        response["txn-groups"][0].get("failure-message", "").replace("\n", " "),
+        return f"WOULD FAIL: simulate unavailable ({type(error).__name__})", False
+    group = response["txn-groups"][0]
+    verdict = classify_failure(
+        group.get("failure-message", "").replace("\n", " "),
         can_pay_fee=upkeep.can_pay_fee,
     )
+    # Only a clean run can say the target did nothing. A failed one has not
+    # reached the target at all, or has, and refused.
+    return verdict, (not verdict and reports_no_work(group))
 
 
 def diagnose_overdue(algod, app_id: int, upkeeps: list[UpkeepHealth], sender: str) -> list[UpkeepHealth]:
-    """Annotate the overdue upkeeps with why, leaving the rest untouched.
+    """Annotate every due upkeep with what a run of it would do.
 
-    Only the overdue ones: an upkeep that is on schedule is being executed,
-    which is a stronger statement than any simulation could make.
+    This used to simulate only the overdue ones, on the reasoning that an
+    upkeep on schedule is being executed, which is a stronger statement than
+    any simulation could make. That reasoning is wrong, and the registry
+    proved it: being executed on schedule says nothing about whether the
+    execution *does* anything. Upkeeps 73, 79, 91 and 113 were all serviced
+    punctually while their targets had nothing to do, and every reading on
+    this page was green for all four.
+
+    So the simulate now runs for anything actually due. `blocked` is still
+    only set for the overdue, because a due-and-serviced upkeep failing a
+    simulate is usually a race being lost rather than a fault, but the idle
+    reading is taken wherever it can be: a not-yet-due upkeep cannot be
+    simulated at all, since `execute` asserts the schedule before it ever
+    reaches the target.
     """
-    return [
-        replace(upkeep, blocked=simulate_execute(algod, app_id, upkeep, sender))
-        if upkeep.overdue else upkeep
-        for upkeep in upkeeps
-    ]
+    out = []
+    for upkeep in upkeeps:
+        if not upkeep.due:
+            out.append(upkeep)
+            continue
+        verdict, idle = simulate_execute(algod, app_id, upkeep, sender)
+        out.append(replace(
+            upkeep,
+            blocked=verdict if upkeep.overdue else "",
+            idle_target=idle,
+        ))
+    return out
 
 
 def read_keepers(algod, indexer, app_id: int, current_round: int) -> list[tuple[str, int, int, int]]:

@@ -23,6 +23,7 @@ from algosdk.logic import get_application_address
 from algosdk.v2client.algod import AlgodClient
 
 from scripts.registry_health import (
+    ARC4_RETURN_PREFIX,
     LOW_RUNWAY_DAYS,
     RegistrySolvency,
     UpkeepHealth,
@@ -31,6 +32,7 @@ from scripts.registry_health import (
     read_escrowed,
     read_solvency,
     read_upkeeps,
+    reports_no_work,
 )
 from tests.test_keeper_bot import LIVE_BOX_HEX
 
@@ -381,3 +383,70 @@ class TestEveryBoxIsCounted:
         algod = self.PagedAlgod([[self._box(1, 10_000)]])
         assert len(read_upkeeps(algod, 769891898, 2.8, 15_055)) == 1
         assert algod.asked_for == [None]
+
+
+class TestATargetThatDoesNothing:
+    """The blind spot four upkeeps fell into before anything reported it.
+
+    73, 79, 91 and 113 all paid a keeper on schedule to call a target with no
+    work to do. Every other reading was green: the target simulated clean, so
+    not TARGET REVERTS; the escrow paid, so not the funding case; the keeper
+    was paid, so not PAYS THE KEEPER NOTHING. `rain` hub 770746178 declined
+    sixty-three consecutive scheduled draws this way.
+    """
+
+    @staticmethod
+    def _group(return_value: bytes | None, failure: str = ""):
+        """A simulate group whose inner app call logged an ARC-4 return."""
+        logs = []
+        if return_value is not None:
+            logs = [base64.b64encode(ARC4_RETURN_PREFIX + return_value).decode()]
+        return {
+            "failure-message": failure,
+            "txn-results": [{
+                "txn-result": {
+                    "inner-txns": [
+                        {"application-index": 770746178, "logs": logs},
+                        # The keeper's fee payment, which logs nothing.
+                        {"payment-transaction": {"amount": 1_000}},
+                    ]
+                }
+            }],
+        }
+
+    def test_a_target_returning_zero_is_reported(self) -> None:
+        assert reports_no_work(self._group((0).to_bytes(8, "big"))) is True
+
+    def test_a_target_that_did_something_is_not(self) -> None:
+        assert reports_no_work(self._group((1).to_bytes(8, "big"))) is False
+        assert reports_no_work(self._group((63).to_bytes(8, "big"))) is False
+
+    def test_a_target_returning_nothing_is_left_alone(self) -> None:
+        """Void is not zero. A convention this cannot read is not a finding."""
+        assert reports_no_work(self._group(None)) is False
+
+    def test_a_return_that_is_not_eight_bytes_is_left_alone(self) -> None:
+        """A string or a struct says nothing about how much work was done."""
+        assert reports_no_work(self._group(b"nothing")) is False
+        assert reports_no_work(self._group(b"")) is False
+
+    def test_no_inner_calls_at_all_is_not_idle(self) -> None:
+        assert reports_no_work({"txn-results": [{"txn-result": {}}]}) is False
+        assert reports_no_work({}) is False
+
+    def test_the_flag_says_what_it_saw(self) -> None:
+        upkeep = health(rounds_late=5, interval_rounds=1_286, idle_target=True)
+        assert "TARGET REPORTS NO WORK" in upkeep.flags()
+
+    def test_an_upkeep_doing_work_carries_no_such_flag(self) -> None:
+        upkeep = health(rounds_late=5, interval_rounds=1_286)
+        assert "TARGET REPORTS NO WORK" not in upkeep.flags()
+
+    def test_it_is_separate_from_every_other_reading(self) -> None:
+        """The point of the flag: an idle upkeep is otherwise perfect.
+
+        No revert, escrow pays, keeper paid, on schedule. Without this the
+        line reads clean, which is what it did for four upkeeps.
+        """
+        upkeep = health(rounds_late=5, interval_rounds=1_286, idle_target=True)
+        assert upkeep.flags() == ["TARGET REPORTS NO WORK"]
