@@ -35,6 +35,20 @@ ABI and box layout and serve a page that looks identical; the URL is the only
 thing separating our front end from a copy. Check it before you connect a
 wallet.
 
+**Or Sign & register the same Pulse `tick` from Arcui**, the generic ARC-56
+workbench, if you would rather connect Pera to a page that is not the
+console:
+
+<https://corvidlabs.github.io/arcui/?preset=pulse>
+
+The packing (`call_args`, box name, MBR, and the `arcron:mbr` /
+`arcron:funding` notes) was measured on 2026-09-02 against
+`js/src/upkeep.ts` / `js/src/keeper-txns.ts` and live boxes 19 and 22.
+The console remains the canonical register form. Arcui is the
+contract-agnostic path that also signs it. Do this on a top-level origin
+(the GitHub page), not an embedded preview: Pera will not sign inside
+an iframe.
+
 Running it locally is the alternative, and the right choice if you want to see
 the code you are signing against. It needs a checkout and
 [Bun](https://bun.sh):
