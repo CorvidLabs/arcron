@@ -13,9 +13,18 @@ at stake if it is wrong?**
 | **alpha** | TestNet | nothing | nothing, since we run every part |
 | **beta** | TestNet | the ABI surface and the `Upkeep` struct | other people's test upkeeps |
 | **rc** | TestNet | the exact bytecode intended for MainNet | the same, plus our credibility |
-| **mainnet** | MainNet | everything, forever | real money |
+| **mainnet** | MainNet | the app id, which cannot be moved | our own real money |
+| **public** | MainNet | everything, forever | other people's real money |
 
 The labels are ordinary. The gates are not, so they are written down.
+
+**mainnet and public are two stages because they are two decisions**, and until
+2026-09-04 this page ran them together. Creating the application risks our own
+money and nobody else's: an app id nobody has published is an app id nobody can
+escrow into. Publishing it, and calling `freeze`, is what risks somebody else's.
+Those have different gates and do not have to happen in the same month.
+Conflating them made the whole of MainNet wait on evidence that only the second
+half needs.
 
 ## What a version *is* here
 
@@ -63,6 +72,12 @@ publishing it comes first. Its address is
 to check a link against: anything claiming to be Arcron at another address is
 somebody else's front end, whatever it looks like.
 
+**And if nobody comes, this stage still ends.** Wanting outside upkeeps before
+the struct freezes is right. Making the stage *depend* on one was not, because
+nothing we do can cause it, and a gate nothing we do can satisfy is a deadlock
+rather than a bar. What the beta gate asks for instead is in the next section,
+under the amendment that replaced it.
+
 ## beta: other people may rely on it
 
 **The step that matters**, because it is where a struct change stops being
@@ -88,10 +103,46 @@ and re-registering by hand.
   `--gate` to make it exit non-zero, which is what to hang a check on.
 - [ ] A keeper running somewhere that is not a laptop
 - [ ] Documentation an integrator can follow without asking us anything
-- [ ] **At least one upkeep registered by somebody who is not us, which survived a redeploy.**
-      Not "an outside upkeep exists": one that was cancelled and re-registered when we
-      replaced the app, because that is the thing beta promises not to make people do again,
-      and it is worth knowing somebody has done it once before we promise it
+- [ ] **A cold start succeeded, twice, from two independent starts.** Somebody
+      working only from the published docs, with no access to this repository and
+      no question answered by us, registered an upkeep, watched a keeper execute
+      it, and cancelled it. Twice, because the first run has already happened and
+      once is an anecdote: on 2026-08-26 an agent given only `README.md`,
+      [`docs/arcron.md`](arcron.md) and [`docs/integrating.md`](integrating.md)
+      did get there, but needed twelve guesses and had to disassemble the
+      approval program to recover the ARC-4 selectors. The docs were then
+      repaired *from that agent's report*, which is exactly the condition under
+      which a rerun proves something and a memory of the first run does not
+
+  **Amended 2026-09-04.** This item used to read **"at least one upkeep
+  registered by somebody who is not us, which survived a redeploy"**, and the
+  reasoning under it was sound: beta promises not to make creators cancel and
+  re-register by hand, so it is worth knowing somebody has survived that once
+  before promising it. It was still the wrong gate, for a reason nothing on this
+  page had noticed. Every other item here is something we can go and do. That one
+  required a stranger to volunteer, and no document in this repository said what
+  happens if none ever does. It is a deadlock rather than a bar: alpha cannot
+  end, so the struct never freezes, so there is never a deployment stable enough
+  to be worth a stranger's attention, so alpha cannot end.
+
+  What the outsider was standing in for is three things, and they separate
+  cleanly:
+
+  1. **Feedback that could still change the struct.** If nobody comes, nobody
+     holds an opinion about the struct, and the only people a wrong shape costs
+     are us. A self-borne risk is one we are allowed to accept, and that is the
+     whole difference between this stage and the money gates below.
+  2. **Evidence the docs work end to end.** The instrument for that is a cold
+     start, not a volunteer, and it can be run on any afternoon.
+  3. **Evidence that somebody who is not us can operate it.** The same
+     instrument: a clean checkout, no repository access, nobody to ask.
+
+  Two of those are purchasable on demand, and are what the item now asks for. The
+  third is self-borne, and is accepted here rather than gated. An outside upkeep
+  remains the better evidence and is still wanted ([#92](../../issues/92),
+  [#93](../../issues/93) and [#94](../../issues/94) are open and unchanged), but
+  it is now something that makes the case stronger rather than something whose
+  absence stops the release.
 
 **What we promise at beta:** we will not redeploy without a stated reason, and
 if we do, we will say so before the old app is abandoned.
@@ -116,37 +167,98 @@ rewrite of it; this.
       the release row below, not that it go a particular way
 - [ ] **#12 complete**: threat model, escrow isolation proven on chain, arithmetic reviewed, immutability posture stated, incident playbook written
 - [ ] At least one **independent adversarial review** beyond our own
-- [ ] Outside upkeeps still registered and being serviced, unchanged since beta
+- [ ] **The cold start reproduces against the rc docs**, which are not the beta
+      docs: every stage edits them, and the 2026-08-26 run is the standing proof
+      that docs repaired from a report are not thereby known to work. If outside
+      upkeeps exist by then, they are still registered and being serviced,
+      unchanged since beta
 - [ ] **60 days** at rc with no contract change
 
 **The rule that gives the stage its meaning:** *any* change to the contract
 resets the 60 days. There is no "significant change" exemption. A stage whose
 clock can be argued down is not a gate.
 
-## mainnet
+## mainnet: the deployment
+
+**Meaning:** the rc bytecode exists on MainNet, at an app id we have told
+nobody. Our own upkeeps, our own money, our own keeper.
+
+**This is the strongest soak available to us**, which is worth saying plainly
+because it reads like the risky step and is not. TestNet time is evidence about
+code paths. MainNet time with our own money is evidence about code paths *and*
+about everything that only becomes real when the ALGO is: a fee market we do not
+set, a keeper that has to actually stay up, a mistake that costs something. The
+contract cannot tell which chain it is on. We can, and only one of the two
+chains bills us for being wrong.
 
 **Gate:**
 
-- [ ] The rc bytecode, unchanged, hash recorded and published
+- [ ] The rc bytecode, unchanged, hash recorded
 - [ ] A **fresh deployer**, never used on TestNet, its key handling documented
 - [ ] The app account funded for its base minimum balance, **confirmed by
       `govern status` showing spendable at or above escrow** rather than by
       remembering to do it
-- [ ] `verify_build` run against the MainNet app id, output published
-- [ ] The unaudited-risk disclosure prominent wherever anyone can find it
+- [ ] `verify_build` run against the MainNet app id
 - [ ] A keeper running before the first upkeep is registered, because an empty registry with no watcher is worse than no deployment
+- [ ] The create ceremony **rehearsed end to end from a clean checkout on a
+      second machine**, before the one that counts. It is the only path in this
+      repository that has never executed, and the fields a create fixes are
+      permanent: extra pages, both schemas, the creator. `scripts/multisig.py`
+      compares all of them at sign since #245; nothing has yet watched it do so
+      on a create that was not a test
+- [ ] Every finding a create would make permanent is closed. Not every open
+      finding: "the console has no MainNet entry" is an open finding whose
+      closure publishes the app id, and that belongs to the stage below
 
-**What MainNet does not change:** it is still unaudited, still unpatchable,
-and the incident playbook is still "tell people to cancel". Shipping to
-MainNet is a statement that we believe the contract is right, not that anyone
-has certified it.
+**What holds this stage together is one control:** the app id is published
+nowhere. Not in the console, not in the JS client, not in a README, not in a bot
+log, not in a status post. Read the warning below before treating that as easy.
+
+## public: the invitation
+
+**Meaning:** the app id is published, outside escrow is welcome, and `freeze`
+has been called or explicitly declined in writing.
+
+**Gate:**
+
+- [ ] Everything above, still true
+- [ ] **A decision executed about `freeze`.** rc required the choice to be
+      recorded; this is the stage where it is acted on
+- [ ] The MainNet hash and the `verify_build` output **published**
+- [ ] The unaudited-risk disclosure prominent wherever anyone can find it
+- [ ] The console, the JS client and the docs carry the MainNet entry, which
+      *is* the act of publishing and so happens here and nowhere earlier
+- [ ] An incident playbook for the day somebody else's money is stuck, written
+      before it is needed rather than during it
+
+### The warning that makes the split honest
+
+**There is no such thing as not inviting people, on chain.** `register` is
+permissionless, so anybody who learns the app id can escrow into it during the
+unpublished window, and an explorer listing, a bot log, a README or a status
+post is the invitation whatever we intended by it. The protection during that
+window is not our intent and not a calendar. It is that the id is nowhere.
+
+That gives the window one rule, and it is a trigger rather than a schedule.
+**If an upkeep we did not create appears before freeze, that is a real person
+who has trusted us, and the answer is to freeze then**, not to finish the
+remaining time first. An unfrozen app holding somebody else's money means they
+are trusting a keyholder rather than bytecode, and the 90-to-95 percent
+confidence this project accepts is justified by a remedy that is ours and does
+not transfer. [`status.md`](status.md) argues that at length; this paragraph is
+the operational half of it.
+
+**What MainNet does not change:** it is still unaudited, and once frozen still
+unpatchable, and the incident playbook is still "tell people to cancel".
+Shipping to MainNet is a statement that we believe the contract is right, not
+that anyone has certified it.
 
 ## Recording a release
 
 Each stage is a git tag on the commit that produced the bytecode, plus a row
-in the table below. Tags are `alpha-N`, `beta-N`, `rc-N`, `mainnet-N`. That is
-a counter, not a semver, because the interesting number is which deployment it
-is rather than how it compares to another.
+in the table below. Tags are `alpha-N`, `beta-N`, `rc-N`, `mainnet-N`,
+`public-N`. That is a counter, not a semver, because the interesting number is
+which deployment it is rather than how it compares to another.
 
 | Stage | Date | Commit | Contract sha256 | App id | Notes |
 |---|---|---|---|---|---|

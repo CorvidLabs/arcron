@@ -216,8 +216,13 @@ order:
    only evidence that accrues while nobody is looking, and it no longer
    depends on any one upkeep continuing to be interesting.
 3. Answer the three unknowns above through the alpha tasks.
-4. MainNet, deployed from `corvid.algo` and frozen promptly, with the app id unpublished
-   until it is frozen.
+4. **MainNet, deployed from `corvid.algo`, with the app id published nowhere.**
+   Our own upkeeps and our own money, which is a soak that exposes nobody else
+   and is better evidence than TestNet time for exactly that reason.
+5. **Publishing the id, and freezing.** A separate decision with its own gate,
+   for the reason the rest of this section gives: creating the app risks our
+   money, and publishing it risks somebody else's.
+   [releases.md](releases.md) splits those into two stages rather than one.
 
 ### Why 90 to 95 and not 100
 

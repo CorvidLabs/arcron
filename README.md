@@ -628,14 +628,19 @@ any reason. Nothing here is a promise yet.
 | **alpha** | nothing | nothing; we run every part |
 | beta | the ABI surface and the `Upkeep` struct | other people's test upkeeps |
 | rc | the exact bytecode intended for MainNet | our credibility |
-| mainnet | everything, forever | real money |
+| mainnet | the app id, which cannot be moved | our own real money |
+| public | everything, forever | other people's real money |
 
 Getting outside upkeeps registered is **alpha** work, not beta work: beta is
 the freeze, so feedback that could still change the struct has to arrive before
-it. The gates are in [`docs/releases.md`](docs/releases.md), and they
-are deliberately specific: a struct change means a new app id whether or not
-the programs can still be replaced, so a stage whose clock can be argued down
-is not a gate.
+it. Since 2026-09-04 it is not something beta *waits* on, because a gate nothing
+we do can satisfy is a deadlock rather than a bar; what replaced it is a cold
+start from the published docs, which we can run on any afternoon. The last two
+stages are separate for a related reason: creating the app risks our money,
+while publishing its id and freezing risks somebody else's. The gates are in
+[`docs/releases.md`](docs/releases.md), and they are deliberately specific: a
+struct change means a new app id whether or not the programs can still be
+replaced, so a stage whose clock can be argued down is not a gate.
 
 ## Spec-driven development
 
@@ -659,7 +664,7 @@ repository does not adopt it.
 - [x] Multi-arg call shapes: three app args counting the selector, so up to **two** ARC-4 arguments per upkeep (`MAX_CALL_ARGS = 3`), or any arity at all if the target takes a single struct
 - [x] Release stages, with the gate that ends each one ([`docs/releases.md`](docs/releases.md))
 - [x] Something real built on it, in its own repository: [CorvidLabs/arcron-rain](https://github.com/CorvidLabs/arcron-rain)
-- [ ] An upkeep registered by somebody who is not us, for something they actually wanted scheduled
+- [ ] An upkeep registered by somebody who is not us, for something they actually wanted scheduled — wanted, and [no longer a release gate](docs/releases.md#beta-other-people-may-rely-on-it)
 - [ ] A keeper we can attribute to somebody else
 
 ## Contributing
