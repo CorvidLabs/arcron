@@ -89,6 +89,9 @@ KEEPER_MNEMONIC=
 # misread them.
 KEEPER_APP_ID=769891898
 
+# systemd takes the network from this file, not from the unit.
+ARCRON_NETWORK=testnet
+
 ALGOD_SERVER=https://testnet-api.algonode.cloud
 ALGOD_PORT=
 ALGOD_TOKEN=

@@ -51,6 +51,13 @@ def main(argv: list[str] | None = None) -> int:
     algorand = net.connect(args.network)
     algod = algorand.client.algod
 
+    if args.network == net.MAINNET:
+        # The connect gate is only ARCRON_ALLOW_MAINNET: a keeper hot key has
+        # to be able to talk to MainNet. Create is the one call that must be
+        # `corvid.algo`, because the creator cannot be changed afterwards.
+        deployer = algorand.account.from_environment("DEPLOYER")
+        net.require_mainnet_creator(deployer.address)
+
     if ms.configured():
         # A multisig cannot sign in process, so creating from one is a separate
         # flow: `govern create` is it. Do not point anyone at

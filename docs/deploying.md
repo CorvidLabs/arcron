@@ -41,7 +41,7 @@ fledge lanes run local          # the above plus the e2e and every demo
 |------|---------|-------|
 | `fledge run deploy-localnet` | LocalNet | `algokit localnet start`, nothing else |
 | `fledge run deploy-testnet` | TestNet | `.env.testnet` with `DEPLOYER_MNEMONIC` |
-| `fledge run deploy-mainnet` | MainNet | `.env.mainnet`, and `ARCRON_ALLOW_MAINNET=1` |
+| `fledge run deploy-mainnet` | MainNet | `.env.mainnet` with `DEPLOYER` = `corvid.algo`, and `ARCRON_ALLOW_MAINNET=1` |
 
 Each one rebuilds from source, deploys, funds the app account's base minimum
 balance, and then verifies the deployed bytecode against a clean build before
@@ -239,23 +239,30 @@ people exporting mnemonics into a shell for every governance action, and
 `freeze` is what makes a single key defensible because it retires that key
 permanently.
 
-Use `govern create`. Everything an application-create sets is permanent: the
-creator cannot be changed, the state schema cannot be resized, and extra
-program pages can be neither added nor removed. `update` replaces code and
-nothing else, so none of it has a way back.
+**The create command is `fledge run deploy-mainnet`.** It rebuilds, creates
+from `DEPLOYER`, funds the app account's 0.1 ALGO floor, and `verify_build`s
+before it prints an id. It refuses unless `ARCRON_ALLOW_MAINNET=1` and
+`DEPLOYER` is exactly `corvid.algo`. Copy `.env.mainnet.template` to
+`.env.mainnet` first.
 
 ```sh
-poetry run python -m scripts.govern create --network mainnet \
-  --expect-creator WGSHC4TYKYBS6EX5V5E377BQDLKWIIPBCFOLZQZIXCKHFIEKRPBFOMW25A
+ARCRON_ALLOW_MAINNET=1 fledge run deploy-mainnet -- --with-pulse
 ```
 
-It refuses unless the signer hashes to exactly the address
-you typed, refuses an uncommitted working tree, rebuilds from source, reads
-the state schema out of the compiled spec rather than trusting a hand-typed
-number, computes the extra pages from the real program sizes, prints the
-whole permanent checklist, and asks you to type the creator address back
-before it writes anything. Then it writes an unsigned transaction, which
-carries app id 0, so holders sign it with `--app-id 0`.
+Everything an application-create sets is permanent: the creator cannot be
+changed, the state schema cannot be resized, and extra program pages can be
+neither added nor removed. `update` replaces code and nothing else, so none
+of it has a way back.
+
+Do not put the app id in README, status, the hosted console, or a public
+post. The console has no MainNet entry on purpose. `corvid.algo` creating an
+app is still visible on an explorer; unpublished is social, not cryptographic.
+Leave it unfrozen until you actually ask someone else to escrow. Freeze is
+one way.
+
+`govern create` is the unsigned-multisig path, kept for if a wallet ever
+ships multisig signing. It does not fund the app account. Do not use it for
+this create.
 
 **Do not use `scripts/multisig_e2e.py` to create anything you intend to keep.**
 It is a LocalNet proof, and it generates three throwaway keys, funds them, and

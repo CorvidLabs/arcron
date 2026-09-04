@@ -28,7 +28,7 @@ services:
       dockerfile: deploy/Dockerfile
     image: arcron-keeper
     env_file: keeper.env
-    command: ["--network", "testnet", "--log-format", "json"]
+    command: ["--log-format", "json"]
     # A missing or half-filled keeper.env is a configuration mistake, and
     # `restart: unless-stopped` turns that into a crash loop that scrolls the
     # real error off the screen. Stop after a few tries so the message is the
@@ -53,7 +53,7 @@ services:
     restart: unless-stopped
     env_file: notifier.env
     entrypoint: ["python", "-m", "scripts.notifier"]
-    command: ["--network", "testnet"]
+    command: []
     stop_signal: SIGTERM
     stop_grace_period: 15s
     volumes:

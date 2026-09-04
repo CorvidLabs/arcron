@@ -104,7 +104,8 @@ On TestNet that key is `DEPLOYER_MNEMONIC`, a throwaway. **On MainNet it is
 `corvid.algo`**, `WGSHC4TYKYBS6EX5V5E377BQDLKWIIPBCFOLZQZIXCKHFIEKRPBFOMW25A`,
 a single account held in a wallet. An app's creator cannot be changed
 afterwards, so deploying from anything else is unfixable; `require_mainnet_creator`
-refuses `--network mainnet` for any other signer.
+refuses a MainNet *create* from any other signer. Talking to MainNet (the
+bot, health, the notifier) only needs `ARCRON_ALLOW_MAINNET=1`.
 
 **This was a 2-of-3 multisig until 2026-08-29, and giving that up is a real
 loss.** One key can replace the programs governing every upkeep's escrow while

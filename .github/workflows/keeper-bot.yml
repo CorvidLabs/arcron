@@ -22,6 +22,9 @@
 #   * The mnemonic lives in repository secrets, readable by any workflow here.
 #
 # A long-lived process avoids all four. deploy/vps/install.sh sets one up.
+# Do not retarget this workflow at MainNet. The mnemonic would live in
+# repository secrets, the schedule still skips, and the wrappers below are
+# TestNet on purpose. MainNet is a VPS.
 #
 # There was a second keeper here, `.github/workflows/keeper-bot-2.yml`, on the
 # same cron so the two would actually collide. Its secret was never set, so it

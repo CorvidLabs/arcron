@@ -19,7 +19,7 @@ Type=simple
 User=keeper
 WorkingDirectory=/opt/arcron
 EnvironmentFile=/etc/arcron/keeper.env
-ExecStart=/opt/arcron/.venv/bin/python -m scripts.keeper_bot --network testnet --log-format json
+ExecStart=/opt/arcron/.venv/bin/python -m scripts.keeper_bot --log-format json
 # Finish the scan in flight, then exit.
 KillSignal=SIGTERM
 TimeoutStopSec=30

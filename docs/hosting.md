@@ -49,7 +49,8 @@ alone. The contracts are not compiled on the far end, because
 calls a generated client.
 
 Nothing in the tarball is specific to our deployment. `KEEPER_APP_ID` names
-the app to service.
+the app to service. `ARCRON_NETWORK` names the chain; the unit file does not
+pin TestNet, so a MainNet env is a MainNet bot. GitHub Actions stays TestNet.
 
 ### B. GitHub Actions on a schedule
 
