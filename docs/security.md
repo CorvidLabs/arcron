@@ -420,8 +420,8 @@ secret in the project, not as a funding account.
 - **For MainNet it is one account, held in a wallet, and that is a deliberate
   step down from a multisig.** The creator is `corvid.algo`,
   `WGSHC4TYKYBS6EX5V5E377BQDLKWIIPBCFOLZQZIXCKHFIEKRPBFOMW25A`. Talking to
-  MainNet needs `ARCRON_ALLOW_MAINNET=1` and nothing more — a keeper is a
-  hot key. Creating (and updating, and freezing) additionally requires
+  MainNet needs `ARCRON_ALLOW_MAINNET=1` and nothing more (a keeper is a
+  hot key). Creating (and updating, and freezing) additionally requires
   `DEPLOYER` to be that account; `require_mainnet_creator` is the check, and
   `fledge run deploy-mainnet` is the command. A creator is fixed at creation,
   so deploying from the wrong account is the one mistake with no way back.
