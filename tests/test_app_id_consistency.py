@@ -69,11 +69,6 @@ HISTORICAL = {
     # two places that still offer them as defaults. Caught by this test within
     # a minute of being written, which is the test working.
     "docs/design/split.md",
-    # The buyback design cites two superseded keeper deployments as the reason
-    # its authorization has a stale grace: a target that only the keeper may
-    # open is stranded if the keeper is replaced, and this project has already
-    # replaced one twice. That is the warning working, not a stale pointer.
-    "docs/design/buyback.md",
     "SECURITY.md",
     "tests/test_app_id_consistency.py",
     # Acceptance criteria and the console plan name the dead deployments as

@@ -9,7 +9,7 @@ the compiled TEAL. Reading is not measuring, so this runs them.
      with transactions of its own. The inner call is its own group, so the
      target sees `group_size` 1 however large the outer group was, and cannot
      identify the keeper either. Any defence has to live in the target's own
-     state. This is the sandwich in `docs/design/buyback.md`.
+     state. This is the sandwich: the target cannot see the outer group.
 
   2. **A failing target costs the keeper nothing.** A target that exhausts the
      opcode budget or simply refuses takes the whole group down with it. A
@@ -218,7 +218,7 @@ def measure_bracket(algorand, keeper, probe, creator, attacker) -> list[str]:
     if seen != 1:
         escapes.append(
             f"a bracketed target saw group_size {seen}; if a target can see the outer "
-            "group, docs/design/buyback.md is wrong about where the defence has to live"
+            "group, the sandwich defence cannot live in the target"
         )
     _cancel(keeper, creator, upkeep_id)
     return escapes

@@ -94,8 +94,7 @@ from a plain one.
 
 **Who profits.** Whoever runs the keeper, by whatever the target's state
 change is worth when bracketed: for a buyback, the price impact of the buy.
-`docs/design/buyback.md` reaches the right conclusion: this is a target-side
-property. A group scan in `execute` (no other app call in the outer group may
+The defence is a target-side property. A group scan in `execute` (no other app call in the outer group may
 name `target_app`) would stop the naive shape and not the routed one, at the
 cost of opcode budget on every execution, and is not recommended.
 
