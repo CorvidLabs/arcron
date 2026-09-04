@@ -553,16 +553,46 @@ def test_an_honest_update_sets_neither_and_passes(configured, tmp_path) -> None:
     assert _refusals(path) == [], _refusals(path)
 
 
-def test_load_network_itself_enforces_the_mainnet_gate(monkeypatch) -> None:
-    """Pinned at the call site, not just on the helper.
+def test_load_network_still_needs_the_allow_flag(monkeypatch) -> None:
+    """A mistyped `--network mainnet` must not reach real money."""
+    from scripts import network as net
 
-    The helper had a test and the call site did not, so deleting the one line
-    in `load_network` that invokes it would have kept the suite green.
+    monkeypatch.delenv("ARCRON_ALLOW_MAINNET", raising=False)
+    with pytest.raises(RuntimeError, match="ARCRON_ALLOW_MAINNET"):
+        net.load_network(net.MAINNET)
+
+
+def test_load_network_does_not_require_the_creator_to_talk_to_mainnet(
+    monkeypatch,
+) -> None:
+    """A keeper is a hot key, not `corvid.algo`.
+
+    Putting `require_mainnet_creator` inside `load_network` made every MainNet
+    connection — the bot, health, the notifier — refuse unless the machine
+    held the admin key. The typo gate is `ARCRON_ALLOW_MAINNET=1`. The creator
+    check belongs on create.
     """
     from scripts import network as net
 
     monkeypatch.setenv("ARCRON_ALLOW_MAINNET", "1")
+    monkeypatch.setenv("ALGOD_SERVER", "https://example.invalid")
     monkeypatch.delenv(ms.ADDRESSES_VAR, raising=False)
     monkeypatch.delenv(ms.THRESHOLD_VAR, raising=False)
-    with pytest.raises(RuntimeError, match="without knowing which account"):
+    assert net.load_network(net.MAINNET) == net.MAINNET
+
+
+def test_load_network_itself_enforces_the_mainnet_gate(monkeypatch) -> None:
+    """Pinned at the call site, not just on the helper.
+
+    The helper had a test and the call site did not, so deleting the one line
+    in `load_network` that invokes the *allow flag* would have kept the suite
+    green. The creator check is no longer this call site; see
+    `test_load_network_does_not_require_the_creator_to_talk_to_mainnet`.
+    """
+    from scripts import network as net
+
+    monkeypatch.delenv("ARCRON_ALLOW_MAINNET", raising=False)
+    monkeypatch.delenv(ms.ADDRESSES_VAR, raising=False)
+    monkeypatch.delenv(ms.THRESHOLD_VAR, raising=False)
+    with pytest.raises(RuntimeError, match="ARCRON_ALLOW_MAINNET"):
         net.load_network(net.MAINNET)

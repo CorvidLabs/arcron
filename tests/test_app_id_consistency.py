@@ -234,3 +234,25 @@ def test_no_stranger_facing_file_names_a_superseded_stage_as_current() -> None:
         f"Stale release stage in files a stranger reads (live is {current}):\n  "
         + "\n  ".join(offenders)
     )
+
+
+def test_production_wrappers_take_network_from_the_environment() -> None:
+    """CLI `--network testnet` overrides `ARCRON_NETWORK`.
+
+    A MainNet env file on a stock unit then looks healthy while it services
+    TestNet. The units pass no `--network`; `deploy/keeper.env` /
+    `notifier.env` set `ARCRON_NETWORK`. GitHub Actions stays TestNet on
+    purpose — it is the soak stopgap, not the MainNet host.
+    """
+    service = (ROOT / "deploy" / "keeper-bot.service").read_text()
+    assert "--network testnet" not in service
+    notifier = (ROOT / "deploy" / "notifier.service").read_text()
+    assert "--network testnet" not in notifier
+    compose = (ROOT / "deploy" / "compose.yaml").read_text()
+    assert '"--network", "testnet"' not in compose
+    dockerfile = (ROOT / "deploy" / "Dockerfile").read_text()
+    assert "--network\", \"testnet\"" not in dockerfile
+    assert 'CMD ["--network", "testnet"]' not in dockerfile
+    example = (ROOT / "deploy" / "keeper.env.example").read_text()
+    assert "ARCRON_NETWORK=testnet" in example
+

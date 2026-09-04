@@ -24,7 +24,7 @@ EnvironmentFile=/etc/arcron/notifier.env
 # which is right on a shared TestNet app and wrong on a MainNet one. The
 # addresses go in notifier.env as ARCRON_OURS.
 ExecStart=/opt/arcron/.venv/bin/python -m scripts.notifier \
-    --network testnet --ours ${ARCRON_OURS}
+    --ours ${ARCRON_OURS}
 KillSignal=SIGTERM
 TimeoutStopSec=30
 Restart=always

@@ -28,7 +28,7 @@ other is a broken target, which no amount of funding fixes.
 The fifth came out of the 2026-09-01 audit. The contract charges every box
 its exact minimum balance and every asset opt-in its exact deposit, and
 charges nobody for the 0.1 ALGO the app account itself needs to exist.
-`deploy_config` sends that; the MainNet path, `govern create`, only says to.
+`deploy_config` sends that; `govern create` (the unused multisig path) only says to.
 On a keeper where nobody did, a box read 120,000 with 57,900 spendable behind
 it, and the ledger refused the fifteenth execution and then the creator's
 `cancel` until a stranger paid the 0.1 ALGO in. Nothing in the contract can

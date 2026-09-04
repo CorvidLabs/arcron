@@ -2047,7 +2047,7 @@ Deployment is deliberate on every network. Nothing is automated.
 ```bash
 fledge run deploy-localnet     # LocalNet only
 fledge run deploy-testnet      # needs .env.testnet with DEPLOYER_MNEMONIC
-fledge run deploy-mainnet      # needs .env.mainnet AND ARCRON_ALLOW_MAINNET=1
+fledge run deploy-mainnet      # needs .env.mainnet, ARCRON_ALLOW_MAINNET=1, DEPLOYER=corvid.algo
 ```
 
 **Two program pages.** The contract compiles to just over 2,048 bytes, so it
@@ -2101,8 +2101,10 @@ fledge run govern -- submit --file update.json --app-id <id>
 ```
 
 MainNet doesn't work that way any more. The creator is one account, `corvid.algo`
-(`WGSHC4TYKYBS6EX5V5E377BQDLKWIIPBCFOLZQZIXCKHFIEKRPBFOMW25A`), and
-`require_mainnet_creator` refuses `--network mainnet` for any other signer. It was
+(`WGSHC4TYKYBS6EX5V5E377BQDLKWIIPBCFOLZQZIXCKHFIEKRPBFOMW25A`). Talking to
+MainNet needs `ARCRON_ALLOW_MAINNET=1` so a keeper hot key can connect.
+Creating needs `DEPLOYER` to be that account; `fledge run deploy-mainnet` is
+the command, and `require_mainnet_creator` is the check. It was
 three keys with a threshold of two until 2026-08-29, and what retired that is that
 no wallet will sign for a multisig sender: asked through Pera's own SDK, on
 TestNet, with an account that's genuinely a member, the answer is `multisig

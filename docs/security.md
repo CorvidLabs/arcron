@@ -419,10 +419,12 @@ secret in the project, not as a funding account.
   is readable on-chain rather than promised in a document.
 - **For MainNet it is one account, held in a wallet, and that is a deliberate
   step down from a multisig.** The creator is `corvid.algo`,
-  `WGSHC4TYKYBS6EX5V5E377BQDLKWIIPBCFOLZQZIXCKHFIEKRPBFOMW25A`, and
-  `require_mainnet_creator` refuses `--network mainnet` for any other signer.
-  A creator is fixed at creation, so deploying from the wrong account is the
-  one mistake with no way back.
+  `WGSHC4TYKYBS6EX5V5E377BQDLKWIIPBCFOLZQZIXCKHFIEKRPBFOMW25A`. Talking to
+  MainNet needs `ARCRON_ALLOW_MAINNET=1` and nothing more (a keeper is a
+  hot key). Creating (and updating, and freezing) additionally requires
+  `DEPLOYER` to be that account; `require_mainnet_creator` is the check, and
+  `fledge run deploy-mainnet` is the command. A creator is fixed at creation,
+  so deploying from the wrong account is the one mistake with no way back.
 
   **Why not a multisig.** Because no wallet will sign for one. Asked directly
   through Pera's own SDK with ARC-1 `msig` metadata, on TestNet, with an

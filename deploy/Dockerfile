@@ -41,4 +41,4 @@ RUN mkdir -p /home/keeper/.local/state/arcron \
 USER keeper
 
 ENTRYPOINT ["python", "-m", "scripts.keeper_bot"]
-CMD ["--network", "testnet"]
+CMD []

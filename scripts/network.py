@@ -197,8 +197,11 @@ def load_network(network: str) -> str:
         )
     env_file = f".env.{network}"
     loaded = load_dotenv(env_file)
-    if network == MAINNET:
-        require_mainnet_multisig()
+    # Creator check is *not* here. A keeper is a hot key, not `corvid.algo`.
+    # Health, notifier, and `keeper_bot --network mainnet` have to connect
+    # without holding the admin key. `require_mainnet_creator` belongs on
+    # create (and on update/freeze that sign as DEPLOYER), which is
+    # `scripts/deploy.py` and `smart_contracts/keeper/deploy_config.py`.
     if not loaded and network != LOCALNET and not os.environ.get("ALGOD_SERVER"):
         # Two audiences, and the old message only served one. From a checkout
         # the answer is a file; from a container or a systemd unit there is no

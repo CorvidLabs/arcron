@@ -209,7 +209,7 @@ class TestRegistrySolvency:
     box MBR to get past that got a box saying 120,000 with 57,900 spendable
     behind it; the 15th execution and then `cancel` were refused by the ledger
     ("balance 37900 below min 100000"), until a stranger donated 0.1 ALGO.
-    `deploy_config` funds it; `govern create`, the MainNet path, only says to.
+    `deploy_config` funds it; `govern create` (the unused multisig path) only says to.
     This report is where an operator would look, and it did not look.
     """
 
