@@ -63,6 +63,7 @@ from scripts.keeper_bot import (
     EXECUTION_COST_MICROALGO,
     effective_fee,
     scan_upkeeps,
+    resolve_app_id,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -467,13 +468,16 @@ def read_keepers(algod, indexer, app_id: int, current_round: int) -> list[tuple[
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     net.add_network_argument(parser)
-    parser.add_argument("--app-id", type=int, required=True)
+    parser.add_argument("--app-id", type=int, default=None, help="the keeper app (default: KEEPER_APP_ID from the environment or .env.<network>)")
     parser.add_argument("--no-simulate", action="store_true",
                         help="skip asking the chain why an overdue upkeep is overdue")
     args = parser.parse_args(argv)
 
     net.load_network(args.network)
     algorand = net.connect(args.network)
+    # After connect, so `.env.<network>` has been read: the MainNet id lives
+    # there rather than in fledge.toml, on purpose.
+    args.app_id = resolve_app_id(parser, args.app_id, args.network)
     algod, indexer = algorand.client.algod, algorand.client.indexer
     spr = net.seconds_per_round(args.network)
     current = int(algod.status()["last-round"])

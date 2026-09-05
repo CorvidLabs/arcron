@@ -407,6 +407,17 @@ def main(argv: list[str] | None = None) -> None:
                         help="sweep this many seconds after the last one")
     args = parser.parse_args(argv)
 
+    if args.network == net.MAINNET:
+        # A laptop is where the TestNet keeper has lived, and it is being
+        # throttled and going to sleep there. MainNet is a VPS (deploy/vps),
+        # with the keeper's hot key in /etc/arcron/keeper.env and nowhere near
+        # `.env.mainnet`, which is what this job would read. Refused here,
+        # before the darwin check, so the answer is the same on every OS.
+        parser.error(
+            "MainNet is not run from a laptop under launchd. Use deploy/vps/install.sh "
+            "(systemd) or deploy/compose.yaml; see docs/hosting.md."
+        )
+
     if sys.platform != "darwin":
         raise SystemExit("launchd is macOS only. On Linux use a systemd unit.")
 

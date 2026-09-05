@@ -892,6 +892,37 @@ def resolve_app_id(parser: argparse.ArgumentParser, app_id: int | None, network:
     )
 
 
+def require_keeper_app(algod, app_id: int, network: str) -> None:
+    """Refuse an app id that does not exist here, or exists and is not a keeper.
+
+    algod answers a box listing for a nonexistent app with an empty list and
+    HTTP 200, so a mistyped `KEEPER_APP_ID` in an env file produced a bot, and
+    a notifier, that ran clean forever and watched nothing. Measured against
+    ids 1 and 999999999999 on MainNet: both scanned, both exited zero. The app
+    itself is asked for once at startup instead; a 404 or a global state with
+    no `next_upkeep_id` is a configuration mistake, and the process says so
+    and stops rather than reporting a quiet registry.
+    """
+    try:
+        info = algod.application_info(app_id)
+    except Exception as error:
+        raise UnrecoverableError(
+            f"App {app_id} does not exist on {network} ({error}). Check KEEPER_APP_ID: "
+            "a wrong id scans an empty box list and looks like a quiet registry."
+        ) from error
+    keys = set()
+    for entry in info.get("params", {}).get("global-state", []) or []:
+        try:
+            keys.add(base64.b64decode(entry["key"]))
+        except Exception:
+            continue
+    if b"next_upkeep_id" not in keys:
+        raise UnrecoverableError(
+            f"App {app_id} on {network} is not a keeper: its global state has no "
+            "next_upkeep_id. Check KEEPER_APP_ID."
+        )
+
+
 def is_frozen(algod, app_id: int) -> bool:
     """Whether this app's creator has given up the power to replace its programs.
 
@@ -1383,6 +1414,7 @@ def main(argv: list[str] | None = None) -> None:
     algorand = net.connect(args.network)
     app_id = resolve_app_id(parser, args.app_id, args.network)
     algod = algorand.client.algod
+    require_keeper_app(algod, app_id, args.network)
 
     if args.check:
         # Nothing below this line needs an account, and a probe should not

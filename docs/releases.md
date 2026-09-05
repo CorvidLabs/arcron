@@ -129,6 +129,11 @@ clock can be argued down is not a gate.
 
 - [ ] The rc bytecode, unchanged, hash recorded and published
 - [ ] A **fresh deployer**, never used on TestNet, its key handling documented
+- [ ] The **create ceremony rehearsed** end to end on TestNet from a clean
+      checkout with a throwaway creator, including `govern update` and
+      `freeze` on the result, and the record kept in
+      [design/mainnet-rollout.md](design/mainnet-rollout.md). A create that
+      has never been run is a create that has never been checked.
 - [ ] The app account funded for its base minimum balance, **confirmed by
       `govern status` showing spendable at or above escrow** rather than by
       remembering to do it

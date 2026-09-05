@@ -13,6 +13,8 @@ Description=Arcron keeper bot
 Documentation=https://github.com/CorvidLabs/arcron/blob/main/docs/arcron.md
 After=network-online.target
 Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -23,7 +25,11 @@ ExecStart=/opt/arcron/.venv/bin/python -m scripts.keeper_bot --log-format json
 # Finish the scan in flight, then exit.
 KillSignal=SIGTERM
 TimeoutStopSec=30
-Restart=always
+# on-failure with the [Unit] start limit: a missing flag or a bad mnemonic
+# exits at startup, and five of those in five minutes stops the unit with the
+# error at the bottom of the journal. compose.yaml chose on-failure:3 for the
+# same reason; this unit used to say always, and flapped every ten seconds.
+Restart=on-failure
 RestartSec=10
 # It only needs to talk to algod and read its own directory.
 NoNewPrivileges=true

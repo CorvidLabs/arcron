@@ -33,7 +33,7 @@ from collections import Counter
 from dataclasses import dataclass
 
 from scripts import network as net
-from scripts.keeper_bot import EXECUTION_COST_MICROALGO, effective_fee, scan_upkeeps
+from scripts.keeper_bot import EXECUTION_COST_MICROALGO, effective_fee, resolve_app_id, scan_upkeeps
 from scripts.registry_health import (
     LOOKBACK_ROUNDS,
     UpkeepHealth,
@@ -176,11 +176,12 @@ def read_opportunities(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     net.add_network_argument(parser)
-    parser.add_argument("--app-id", type=int, required=True)
+    parser.add_argument("--app-id", type=int, default=None, help="the keeper app (default: KEEPER_APP_ID from the environment or .env.<network>)")
     parser.add_argument("--lookback", type=int, default=LOOKBACK_ROUNDS)
     args = parser.parse_args(argv)
 
     algorand = net.connect(args.network)
+    args.app_id = resolve_app_id(parser, args.app_id, args.network)
     algod, indexer = algorand.client.algod, algorand.client.indexer
     spr = net.seconds_per_round(args.network)
     current = int(algod.status()["last-round"])

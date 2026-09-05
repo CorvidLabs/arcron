@@ -12,6 +12,7 @@ import argparse
 import logging
 import os
 import pathlib
+import re
 
 import algokit_utils
 from dotenv import load_dotenv
@@ -122,9 +123,10 @@ def add_network_argument(parser: argparse.ArgumentParser) -> None:
 # home for such a key. What makes it defensible is that `freeze` is one way and
 # retires the key permanently: a single-key deployment frozen early is a smaller
 # exposure than a 2-of-3 left upgradeable because signing is too painful to
-# actually do. The commitment that goes with this decision is to freeze
-# promptly, and the console discloses upgradeable status on every page until
-# then.
+# actually do. The commitment that goes with this decision is to freeze before
+# anyone who is not us escrows, and in any case before the deployment is
+# announced (docs/design/mainnet-rollout.md); the console discloses
+# upgradeable status on every page until then.
 #
 # `scripts/multisig.py` is kept and still works. If a wallet ever ships multisig
 # signing, this is one constant away from going back.
@@ -177,6 +179,46 @@ def require_mainnet_creator(signer_address: str | None = None) -> None:
 require_mainnet_multisig = require_mainnet_creator
 
 
+#: The shape of a line that puts the creator key on disk. Tolerates the forms
+#: python-dotenv accepts (spaces around `=`, `export`, quotes, a BOM), because
+#: what matters is whether dotenv would load it, not how it was typed.
+_MNEMONIC_LINE = re.compile(r"^[\s\ufeff]*(?:export\s+)?DEPLOYER_MNEMONIC\s*=\s*\S")
+
+
+def mnemonic_written_to(env_file: "pathlib.Path | str") -> bool:
+    """Whether a creator mnemonic sits in an env file.
+
+    Reads the file for the shape of the line only; the value is never logged.
+    `.env.mainnet` is meant to carry the node and the app id, both of which are
+    public, so the file can stay on the machine that runs `health`. The
+    mnemonic is exported for a ceremony and is gone when the shell is.
+    """
+    path = pathlib.Path(env_file)
+    if not path.exists():
+        return False
+    return any(_MNEMONIC_LINE.match(line) for line in path.read_text().splitlines())
+
+
+def refuse_algokit_create_on_mainnet(genesis: str, contract: str) -> None:
+    """Keep the algokit deploy path off MainNet, now that a checked one exists.
+
+    `smart_contracts/<contract>/deploy_config.py` is `factory.deploy(...)` with
+    `AppendApp`: it finds an existing app through the indexer and creates a
+    second one when the indexer is behind, checks none of the fields a create
+    fixes forever, and asks nobody. It is reachable from `algokit project
+    deploy`, `python -m smart_contracts deploy` and the soak script, none of
+    which pass through `scripts/deploy.py`. So it refuses MainNet by genesis
+    id, which is what the node says rather than what an argument claims.
+    """
+    if genesis in _GENESIS_IDS[MAINNET]:
+        raise RuntimeError(
+            f"Refusing to create {contract} on MainNet from the algokit deploy path. "
+            "It cannot check what a create fixes forever and can create a second app "
+            "when the indexer is behind. MainNet is created by `fledge run "
+            "deploy-mainnet` (scripts/deploy.py); see docs/deploying.md."
+        )
+
+
 def load_network(network: str) -> str:
     """Load `.env.<network>`; returns the network name.
 
@@ -196,6 +238,16 @@ def load_network(network: str) -> str:
             "nothing here should reach it by accident."
         )
     env_file = f".env.{network}"
+    if network == MAINNET and mnemonic_written_to(env_file):
+        # Before dotenv reads it, so the key never even enters this process's
+        # environment. Every script reaches MainNet through here, which is what
+        # makes this the one place the rule has to be said.
+        raise RuntimeError(
+            "Refusing MainNet: .env.mainnet carries a DEPLOYER_MNEMONIC line. That "
+            "file stays on the machine that runs `health`, so the creator key is "
+            "exported into the shell that needs it (read -rs DEPLOYER_MNEMONIC; export "
+            "DEPLOYER_MNEMONIC) and never written there. Remove the line."
+        )
     loaded = load_dotenv(env_file)
     # Creator check is *not* here. A keeper is a hot key, not `corvid.algo`.
     # Health, notifier, and `keeper_bot --network mainnet` have to connect
@@ -214,7 +266,7 @@ def load_network(network: str) -> str:
             "deploy/keeper.env, which deploy/keeper.env.example shows in full; "
             "check it exists and that ALGOD_SERVER is not blank"
             if in_container
-            else f"copy .env.testnet.template to {env_file} and fill it in, "
+            else f"copy {env_file}.template to {env_file} and fill it in, "
             f"or set ALGOD_SERVER in the environment"
         )
         raise FileNotFoundError(

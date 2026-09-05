@@ -2,10 +2,14 @@
 
 Two of these cannot be undone, and they are not the same two.
 
-    poetry run python -m scripts.govern create --network mainnet --expect-creator ADDR
+    poetry run python -m scripts.govern status --network testnet --app-id N
     poetry run python -m scripts.govern update --network testnet --app-id N
     poetry run python -m scripts.govern freeze --network testnet --app-id N
-    poetry run python -m scripts.govern status --network testnet --app-id N
+    poetry run python -m scripts.govern create --network mainnet --expect-creator ADDR
+
+`create` here is the unsigned-multisig variant, kept for if a wallet ever ships
+multisig signing. The MainNet ceremony is `scripts/deploy.py`
+(`fledge run deploy-mainnet`); see docs/deploying.md.
 
 `create` writes an unsigned application-create for a multisig to sign. Every
 field it sets is permanent: the creator, the state schema, and the number of

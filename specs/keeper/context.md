@@ -24,6 +24,8 @@ spec: keeper.spec.md
 - The mock AVM records but does not execute inner app calls, and does not enforce minimum balances. Both gaps are covered by `scripts/keeper_e2e.py` on LocalNet.
 - **Live on TestNet**: the alpha-3 deployment is Keeper app `769891898`, Pulse app `769891902` (deployer `E5M2OH5XNDMNABJ6VOFOUVR2IKRPCGQH43PVC5P3DWQQ2LV2VJV2FJZQ3E`), combined sha256 `c94c6e0c…`, and it is unfrozen so the creator can still replace its programs. alpha-3 is an **update in place** of the alpha-2 app, not a new app id: the `Upkeep` struct and the ABI were unchanged, so every box survived and no creator had to cancel and re-register. It carries the payer binding at all four payment sites, which alpha-2 was deployed without. Three deployments are superseded and must not be used: `769823086` (alpha-1) predates governance and is immutable, `769802474` predates the 1.0 struct, and `769772891` predates the box-MBR fix and has 243,000 µALGO stranded in it permanently.
 
+- **MainNet**: not created yet. The plan is a quiet rollout of this same bytecode, unfrozen, with the app id kept out of the tree and the notifier as the control; `docs/design/mainnet-rollout.md` has the ceremony and the dated goal, and `specs/keeper/tasks.md` tracks it.
+
 ## Notes
 
 - Keepers cover inner txn fees via group fee pooling (~2,000 µALGO on top of the outer 1,000), which is why MIN_UPKEEP_FEE is 4,000.

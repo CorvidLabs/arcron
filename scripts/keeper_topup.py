@@ -40,7 +40,7 @@ import logging
 from dataclasses import dataclass
 
 from scripts import network as net
-from scripts.keeper_bot import Upkeep, scan_upkeeps
+from scripts.keeper_bot import Upkeep, resolve_app_id, scan_upkeeps
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -198,7 +198,7 @@ def send_top_up(algorand, app_id: int, sender, top_up: TopUp) -> str:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     net.add_network_argument(parser)
-    parser.add_argument("--app-id", type=int, required=True)
+    parser.add_argument("--app-id", type=int, default=None, help="the keeper app (default: KEEPER_APP_ID from the environment or .env.<network>)")
     parser.add_argument("--target-days", type=float, default=DEFAULT_TARGET_DAYS)
     parser.add_argument("--max-per-upkeep", type=int, default=DEFAULT_MAX_PER_UPKEEP_MICROALGO,
                         help="microALGO; above this an upkeep is reported, not funded")
@@ -213,6 +213,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     algorand = net.connect(args.network)
+    args.app_id = resolve_app_id(parser, args.app_id, args.network)
     algod = algorand.client.algod
     spr = net.seconds_per_round(args.network)
 

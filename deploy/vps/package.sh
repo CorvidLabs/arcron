@@ -18,8 +18,12 @@ ARCHIVE="${1:-/tmp/arcron-keeper.tar.gz}"
 
 cd "$REPO"
 
-# Only what the bot imports at runtime. No web/, no tests/, no .env.* — the
-# env file is written on the host, so a mnemonic never rides in the archive.
+# Only what the bot imports at runtime, plus every file install.sh installs.
+# The notifier unit and both env examples were missing from this list while
+# install.sh `install`ed them, so a packaged install died at that line under
+# `set -e`; the path had never been run end to end. No web/, no tests/, no
+# .env.*: the env file is written on the host, so a mnemonic never rides in
+# the archive.
 tar -czf "$ARCHIVE" \
     --exclude='__pycache__' \
     --exclude='*.pyc' \
@@ -29,7 +33,11 @@ tar -czf "$ARCHIVE" \
     pyproject.toml \
     poetry.lock \
     deploy/keeper-bot.service \
-    deploy/vps/install.sh
+    deploy/keeper.env.example \
+    deploy/notifier.service \
+    deploy/notifier.env.example \
+    deploy/vps/install.sh \
+    deploy/vps/algod.compose.yaml
 
 printf 'Packaged %s (%s)\n' "$ARCHIVE" "$(du -h "$ARCHIVE" | cut -f1)"
 printf '\nNext:\n'

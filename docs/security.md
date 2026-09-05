@@ -417,14 +417,24 @@ secret in the project, not as a funding account.
   could replace `execute` with something that pays them and drain every
   escrow. That is the cost of keeping an update path, and it is why `frozen`
   is readable on-chain rather than promised in a document.
-- **For MainNet it is one account, held in a wallet, and that is a deliberate
-  step down from a multisig.** The creator is `corvid.algo`,
+- **For MainNet it is one account, held in a wallet at rest, and that is a
+  deliberate step down from a multisig.** The creator is `corvid.algo`,
   `WGSHC4TYKYBS6EX5V5E377BQDLKWIIPBCFOLZQZIXCKHFIEKRPBFOMW25A`. Talking to
   MainNet needs `ARCRON_ALLOW_MAINNET=1` and nothing more (a keeper is a
   hot key). Creating (and updating, and freezing) additionally requires
   `DEPLOYER` to be that account; `require_mainnet_creator` is the check, and
   `fledge run deploy-mainnet` is the command. A creator is fixed at creation,
   so deploying from the wrong account is the one mistake with no way back.
+
+  **"Held in a wallet" is true between ceremonies and not during one.** The
+  create signs in process, from a mnemonic exported into that shell for the
+  duration and unset afterwards; `deploy-mainnet` refuses if it finds the
+  mnemonic written into `.env.mainnet`, and that file is meant to hold the
+  node and the app id and nothing secret, because it stays on the machine
+  that later runs `health`. `freeze` has a wallet path: `web-govern` is a
+  local page that signs a freeze with Pera, and it is the answer to a stranger
+  appearing. `update` does not, yet, so alpha-4 is another shell export.
+  Both are written down in [`design/mainnet-rollout.md`](design/mainnet-rollout.md).
 
   **Why not a multisig.** Because no wallet will sign for one. Asked directly
   through Pera's own SDK with ARC-1 `msig` metadata, on TestNet, with an
@@ -445,9 +455,11 @@ secret in the project, not as a funding account.
   can never replace the programs again, so the key stops mattering. A
   single-key deployment frozen early is a smaller exposure than a multisig left
   upgradeable indefinitely because signing it is too painful to do, and the
-  commitment attached to this decision is to freeze promptly rather than keep
-  the option open. Until then the state is readable on chain and the console
-  says so on every page.
+  commitment attached to this decision is to freeze before anyone who is not
+  us escrows, and in any case before the deployment is announced
+  ([`design/mainnet-rollout.md`](design/mainnet-rollout.md)), rather than
+  keep the option open indefinitely. Until then the state is readable on chain
+  and the console says so on every page.
 
   `scripts/multisig.py` is kept, `fledge run smoke-multisig` still proves one
   holder of three cannot update and two can, and a test proves a multisig would

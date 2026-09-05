@@ -2047,7 +2047,7 @@ Deployment is deliberate on every network. Nothing is automated.
 ```bash
 fledge run deploy-localnet     # LocalNet only
 fledge run deploy-testnet      # needs .env.testnet with DEPLOYER_MNEMONIC
-fledge run deploy-mainnet      # needs .env.mainnet, ARCRON_ALLOW_MAINNET=1, DEPLOYER=corvid.algo
+fledge run deploy-mainnet      # .env.mainnet (node, no secret); DEPLOYER_MNEMONIC and ARCRON_ALLOW_MAINNET=1 exported; a tag on HEAD
 ```
 
 **Two program pages.** The contract compiles to just over 2,048 bytes, so it

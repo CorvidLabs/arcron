@@ -14,20 +14,25 @@
 Description=Arcron notifier
 After=network-online.target
 Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
 
 [Service]
 Type=simple
 User=keeper
 WorkingDirectory=/opt/arcron
 EnvironmentFile=/etc/arcron/notifier.env
-# --ours is what makes a stranger detectable. Without it nobody is a stranger,
-# which is right on a shared TestNet app and wrong on a MainNet one. The
-# addresses go in notifier.env as ARCRON_OURS.
-ExecStart=/opt/arcron/.venv/bin/python -m scripts.notifier \
-    --ours ${ARCRON_OURS}
+# ARCRON_OURS in notifier.env is what makes a stranger detectable; the
+# notifier reads it from its environment, so no flag is passed here. Without
+# it nobody is a stranger, which is right on a shared TestNet app and refused
+# on MainNet.
+ExecStart=/opt/arcron/.venv/bin/python -m scripts.notifier
 KillSignal=SIGTERM
 TimeoutStopSec=30
-Restart=always
+# A configuration mistake exits non-zero at startup; five of those in five
+# minutes and the unit stops, so the error is the last thing in the journal
+# rather than the ten thousandth. The [Unit] section carries the limit.
+Restart=on-failure
 RestartSec=30
 
 # It reads chain state and posts to a webhook. It signs nothing, and there is
