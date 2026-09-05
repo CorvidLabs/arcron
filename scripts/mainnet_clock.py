@@ -36,6 +36,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from scripts import network as net
+from scripts.keeper_bot import resolve_app_id
 from scripts import verify_build
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -149,7 +150,7 @@ def report(clock: Clock, hold_days: int) -> None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     net.add_network_argument(parser)
-    parser.add_argument("--app-id", type=int, required=True)
+    parser.add_argument("--app-id", type=int, default=None, help="the keeper app (default: KEEPER_APP_ID from the environment or .env.<network>)")
     parser.add_argument("--contract", default="keeper", choices=verify_build.CONTRACTS)
     parser.add_argument("--hold-days", type=int, default=DEFAULT_HOLD_DAYS)
     parser.add_argument(
@@ -161,6 +162,7 @@ def main(argv: list[str] | None = None) -> int:
 
     net.load_network(args.network)
     algorand = net.connect(args.network)
+    args.app_id = resolve_app_id(parser, args.app_id, args.network)
     clock = measure(
         algorand.client.algod,
         algorand.client.indexer,

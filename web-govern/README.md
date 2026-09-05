@@ -9,7 +9,8 @@ fledge run govern-ui      # http://localhost:4302
 ## Local only, and that is the point
 
 This is **never served from corvidlabs.xyz**, and it is the one app here that
-can reach MainNet.
+reaches MainNet with a wallet signature; the create and `update` are shell
+ceremonies (`docs/deploying.md`).
 
 The console's address is a security property: Arcron's contract is
 permissionless, so anyone can deploy a look-alike, and the canonical address is
@@ -28,7 +29,9 @@ Reads a deployment's real state from a public node: creator, program sizes, the
 combined sha256, and whether the freeze flag is set, absent, or already 1. Then
 offers **freeze**, signed by Pera.
 
-Nothing here needs a mnemonic. The creator is a single account held in a wallet,
+Nothing here needs a mnemonic. The creator is a single account held in a wallet
+at rest (the create and `update` export its mnemonic into a shell for the
+duration of a ceremony, never into a file),
 decided 2026-08-29 after establishing that no wallet will sign for a multisig
 sender: asked directly through Pera's own SDK with ARC-1 `msig` metadata, Pera
 answers `multisig signing is not supported`. See

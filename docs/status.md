@@ -216,8 +216,10 @@ order:
    only evidence that accrues while nobody is looking, and it no longer
    depends on any one upkeep continuing to be interesting.
 3. Answer the three unknowns above through the alpha tasks.
-4. MainNet, deployed from `corvid.algo` and frozen promptly, with the app id unpublished
-   until it is frozen.
+4. MainNet, deployed from `corvid.algo`, unfrozen and used only by us until
+   the notifier has a record worth pointing at, then the announce and freeze
+   decisions on that evidence. The plan, the ceremony and the dated goal are
+   [design/mainnet-rollout.md](design/mainnet-rollout.md).
 
 ### Why 90 to 95 and not 100
 
@@ -238,9 +240,11 @@ The honest counterpart, said plainly so nobody has to work it out: **that
 allowance is ours and does not transfer.** The reason we can accept 90 rather
 than 100 is that the creator can still reach every escrow, and while that is
 true, anyone escrowing here is trusting a keyholder rather than bytecode.
-Which is exactly why the app id stays unpublished until freeze, and why an
-unexpected upkeep before then is a person to freeze for rather than a schedule
-to finish.
+Which is why the notifier will run against MainNet with `--ours` set and
+announces any other creator, and why an unexpected upkeep before freeze is a
+person to freeze for rather than a schedule to finish. Not publishing the app
+id helps and is done; it is not the protection, because the creator is a
+named address and an app id is one indexer query away from it.
 
 The one rule held throughout: **do not freeze, and do not invite outside
 escrow until it has run unattended for a while.** Not for a calendar, but
@@ -252,10 +256,13 @@ With one correction, which an outside review made and which matters:
 permissionless, so anyone who learns the app id can escrow into it during
 that window, and an explorer listing, a bot log, a README or a status post is
 the invitation. The protection during the unattended period is not the
-calendar and not our intent: it is that the MainNet app id is not published
-anywhere. If an upkeep we did not create appears before freeze, that is a
-real person who has trusted us, and the answer is to freeze then rather than
-to wait out the remaining time.
+calendar, not our intent, and not secrecy either: `corvid.algo` creating an
+app is visible on any explorer. The protection is `scripts/notifier.py`
+watching the deployment with every address of ours named, announcing any
+other creator within a scan, and the answer that announcement gets. If an
+upkeep we did not create appears before freeze, that is a real person who has
+trusted us, and the answer is to freeze then rather than to wait out the
+remaining time.
 
 ## How to help
 

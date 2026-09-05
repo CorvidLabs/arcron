@@ -48,9 +48,50 @@ alone. The contracts are not compiled on the far end, because
 `smart_contracts/artifacts/` is committed and the bot only reads boxes and
 calls a generated client.
 
-Nothing in the tarball is specific to our deployment. `KEEPER_APP_ID` names
-the app to service. `ARCRON_NETWORK` names the chain; the unit file does not
-pin TestNet, so a MainNet env is a MainNet bot. GitHub Actions stays TestNet.
+The tarball's only deployment-specific values are the TestNet defaults in the
+two env examples, which the installer copies into `/etc/arcron` for you to
+edit. `KEEPER_APP_ID` names the app to service, and both the bot and the
+notifier refuse an id that is not a keeper. `ARCRON_NETWORK` names the chain;
+the unit file does not pin TestNet, so a MainNet env is a MainNet bot. GitHub
+Actions stays TestNet. A stock Ubuntu image has no `pip`; the installer adds
+`python3-pip` and `python3-venv` when `apt-get` is there to do so.
+
+### A1. MainNet, on the same server, with a node of our own
+
+The same install, and three things change together in `/etc/arcron/keeper.env`
+and `notifier.env`, which both carry a commented block for it:
+`ARCRON_ALLOW_MAINNET=1`, `ARCRON_NETWORK=mainnet`, and the app id from the
+create ceremony. The bot refuses to start on MainNet without the flag, and the
+notifier refuses without `ARCRON_OURS` and a webhook.
+
+The fourth thing is the node. The free public endpoint sheds requests once a
+daily quota is crossed, and the laptop keeper on TestNet was refused 4,949
+times in one log by it (`scripts/node_retry.py` has the measurement). A keeper
+that cannot read the registry misses executions; a notifier that cannot read
+it misses a stranger, and on an unfrozen MainNet deployment a stranger is the
+event everything turns on. So run a node:
+
+```bash
+export ALGOD_TOKEN="$(openssl rand -hex 32)"
+docker compose -f /etc/arcron/algod.compose.yaml up -d      # the installer put it there
+docker compose -f /etc/arcron/algod.compose.yaml logs -f    # fast catch-up, about an hour
+```
+
+The node dials out to relays and listens for nothing, so no inbound port is
+needed. Then `ALGOD_SERVER=http://127.0.0.1:8080` and that token in both env
+files, each value on a line of its own with no trailing comment, because
+systemd keeps a trailing `# ...` as part of the value. Keep
+`ALGOD_SERVER_FALLBACK=https://mainnet-api.algonode.cloud` beside it with
+`ALGOD_TOKEN_FALLBACK` empty: `scripts/node_retry.py` alternates to the
+fallback on a refusal, swapping the token with the address so the node's
+secret never reaches the public edge, and returns to the primary once a
+request succeeds, so a node restart costs a few retried requests rather than
+a blackout or a month on somebody else's quota. The whole sequence, with what
+comes before and after, is [`design/mainnet-rollout.md`](design/mainnet-rollout.md).
+
+Not from a laptop. `fledge run keeper-daemon-install` refuses `--network
+mainnet`: the job would read `.env.mainnet`, and the keeper's hot key has no
+business in the same environment the create ceremony uses.
 
 ### B. GitHub Actions on a schedule
 
@@ -354,6 +395,16 @@ logged and retried on the next heartbeat.
 `scripts/notifier.py` posts to a Discord webhook when the registry changes or
 a keeper falls behind. It holds no account and cannot sign, so it is safe to
 run anywhere. `deploy/notifier.env.example` is its configuration.
+
+It scans every thirty seconds (`--poll-seconds` to change that; it was five,
+which on a registry of hourly cadences was seventeen thousand scans a day
+against a quota a keeper was already being refused over), credits an
+execution only to a call that carries the `execute` selector, and reads
+`ARCRON_OURS` from the environment when no `--ours` is passed, which is how
+the container and the systemd unit tell it who counts as us. On MainNet it
+refuses to start without that list and without a webhook, because a watcher
+that cannot name a stranger, or that tells nobody, is the failure it exists to
+prevent.
 
 ```bash
 poetry run python -m scripts.keeper_bot --check --network testnet --app-id <id>

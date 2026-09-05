@@ -163,6 +163,7 @@ that talks to a public node gets it without anyone remembering to ask.
 import base64
 import functools
 import logging
+import os
 import time
 from collections.abc import Callable
 from typing import Any
@@ -402,6 +403,7 @@ def retrying(
     attempts: int = MAX_ATTEMPTS,
     sleep: Callable[[float], Any] = time.sleep,
     describe: Callable[..., str] | None = None,
+    rotate: "Rotation | None" = None,
 ) -> Callable[..., Any]:
     """Wrap a callable so a refusal is asked again instead of raised.
 
@@ -409,6 +411,11 @@ def retrying(
     which is the honest outcome: an endpoint blocking every request is a real
     failure, and a helper that hid it behind an unbounded loop would turn a
     five second failure into a report that never returns.
+
+    `rotate`, when given, is flipped before each retry so the next attempt
+    goes to the other endpoint, and reset to the primary once an attempt
+    succeeds. Only a refusal or a read's 5xx gets this far, so a submission is
+    never re-pointed on the strength of a logic error.
     """
     name = describe or (lambda *a, **k: getattr(function, "__name__", "request"))
 
@@ -424,7 +431,10 @@ def retrying(
         while True:
             attempt += 1
             try:
-                return function(*args, **kwargs)
+                result = function(*args, **kwargs)
+                if rotate is not None and attempt > 1:
+                    rotate.reset()
+                return result
             except Exception as error:
                 if (
                     replayed
@@ -461,9 +471,63 @@ def retrying(
                     f"attempt {attempt} of {attempts}, retrying in {pause:.1f}s"
                 )
                 replayed = True
+                if rotate is not None:
+                    rotate.rotate()
                 sleep(pause)
 
     return wrapper
+
+
+#: A second algod to rotate to when the first is shedding. Read from the
+#: environment by `install`, so `.env.<network>` and the systemd env file are
+#: where it is set; nothing else has to know. The free endpoint refused a
+#: laptop keeper 4,949 times in one log, and a keeper whose every retry goes
+#: back to the same edge that just shed it is asking the same coin to land
+#: differently. Two providers is the cheap version of running our own node,
+#: which docs/hosting.md describes and is the real fix.
+FALLBACK_VAR = "ALGOD_SERVER_FALLBACK"
+#: The fallback's token, empty by default because public endpoints take none.
+#: It is swapped together with the address, because algosdk sends
+#: `X-Algo-API-Token` on every request, and the recommended shape is our own
+#: node (with a token) in front and a public endpoint behind: a rotation that
+#: kept the token would hand the node's secret to the public edge.
+FALLBACK_TOKEN_VAR = "ALGOD_TOKEN_FALLBACK"
+
+
+class Rotation:
+    """Swaps `client` between its endpoint and a fallback, and back.
+
+    algosdk builds every URL from `algod_address` and every auth header from
+    `algod_token` at request time, so swapping the two attributes redirects
+    the next attempt and nothing else. `rotate` flips for a retry; `reset`
+    returns to the primary once a request has succeeded, so one refusal from
+    our own node during a restart costs the next request a failed attempt and
+    a short wait rather than parking the keeper on the public edge, with its
+    quota, until that edge refuses too.
+    """
+
+    def __init__(self, client: Any, fallback: str, fallback_token: str = "") -> None:
+        self.client = client
+        self.primary = getattr(client, "algod_address", None)
+        self.primary_token = getattr(client, "algod_token", "")
+        self.fallback = fallback
+        self.fallback_token = fallback_token
+
+    def rotate(self) -> None:
+        to_fallback = getattr(self.client, "algod_address", None) == self.primary
+        self.client.algod_address = self.fallback if to_fallback else self.primary
+        self.client.algod_token = self.fallback_token if to_fallback else self.primary_token
+        logger.warning(f"Switching to {self.client.algod_address} for the next attempt")
+
+    def reset(self) -> None:
+        if getattr(self.client, "algod_address", None) != self.primary:
+            self.client.algod_address = self.primary
+            self.client.algod_token = self.primary_token
+
+
+def rotating(client: Any, fallback: str, fallback_token: str = "") -> Rotation:
+    """The rotation for `client`; see `Rotation`."""
+    return Rotation(client, fallback, fallback_token)
 
 
 #: The single method every request from an algosdk client goes through.
@@ -484,23 +548,43 @@ def install(
     *,
     attempts: int = MAX_ATTEMPTS,
     sleep: Callable[[float], Any] = time.sleep,
+    fallback: str | None = None,
+    fallback_token: str | None = None,
 ) -> Any:
     """Make every request `client` sends survive a refusal; returns `client`.
 
     Patches the instance rather than the class, so a test or a script holding
     a client of its own is unaffected, and accepts None so callers can pass
     `indexer_if_present` without checking first.
+
+    `fallback` (default: `ALGOD_SERVER_FALLBACK` from the environment) is a
+    second algod to alternate with on every retry, with `fallback_token`
+    (default: `ALGOD_TOKEN_FALLBACK`, else empty). It applies to the algod
+    funnel only; an indexer has its own address and its own quota.
     """
     if client is None or getattr(client, _INSTALLED, False):
         return client
+    if fallback is None:
+        fallback = os.environ.get(FALLBACK_VAR) or None
+    if fallback_token is None:
+        fallback_token = os.environ.get(FALLBACK_TOKEN_VAR, "")
     for funnel in FUNNELS:
         original = getattr(client, funnel, None)
         if original is None:
             continue
+        rotate = None
+        if fallback and funnel == "algod_request" and hasattr(client, "algod_address"):
+            rotate = rotating(client, fallback, fallback_token)
         setattr(
             client,
             funnel,
-            retrying(original, attempts=attempts, sleep=sleep, describe=describe_request),
+            retrying(
+                original,
+                attempts=attempts,
+                sleep=sleep,
+                describe=describe_request,
+                rotate=rotate,
+            ),
         )
         setattr(client, _INSTALLED, True)
     return client

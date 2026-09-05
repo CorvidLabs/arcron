@@ -34,6 +34,19 @@ case "$PY_VERSION" in
 esac
 echo "    python3 $PY_VERSION"
 
+# A stock Ubuntu server image has python3 and no pip; both pip invocations
+# below then fail with "No module named pip" and set -e stops the install at
+# the least informative point. Install it when apt is there to do so.
+if ! python3 -m pip --version >/dev/null 2>&1; then
+    if command -v apt-get >/dev/null; then
+        echo "==> Installing python3-pip and python3-venv"
+        apt-get install -y -qq python3-pip python3-venv
+    else
+        echo "python3 has no pip and this host has no apt-get; install pip for python3 first." >&2
+        exit 1
+    fi
+fi
+
 if ! command -v poetry >/dev/null; then
     echo "==> Installing Poetry"
     python3 -m pip install --quiet --break-system-packages "poetry>=2.0,<3.0" \
@@ -78,25 +91,12 @@ mkdir -p "$ENV_DIR"
 if [[ -f "$ENV_FILE" ]]; then
     echo "    ${ENV_FILE} exists, leaving it alone"
 else
-    cat > "$ENV_FILE" <<'ENV'
-# The account that signs executions and receives the fees. A throwaway is fine
-# on TestNet; it needs enough ALGO to pay 3,000 microAlgos per execution until
-# the fees it collects cover that.
-KEEPER_MNEMONIC=
-
-# Which app to service. Required: the bot has no default, because an older
-# deployment's boxes are a different shape and it would rather refuse than
-# misread them.
-KEEPER_APP_ID=769891898
-
-# systemd takes the network from this file, not from the unit.
-ARCRON_NETWORK=testnet
-
-ALGOD_SERVER=https://testnet-api.algonode.cloud
-ALGOD_PORT=
-ALGOD_TOKEN=
-ENV
-    echo "    wrote ${ENV_FILE} — add KEEPER_MNEMONIC before starting"
+    # The example file is the one copy of what goes in here. This used to be
+    # a heredoc that duplicated it, and the two had already drifted: the
+    # example grew a MainNet block and a fallback endpoint the heredoc never
+    # saw. One file, installed, cannot disagree with itself.
+    install -m 640 "${SOURCE}/deploy/keeper.env.example" "$ENV_FILE"
+    echo "    wrote ${ENV_FILE} from deploy/keeper.env.example; add KEEPER_MNEMONIC before starting"
 fi
 chown root:"$RUN_USER" "$ENV_FILE"
 chmod 640 "$ENV_FILE"
@@ -116,6 +116,11 @@ if [ ! -f "$NOTIFIER_ENV" ]; then
     chown root:"$RUN_USER" "$NOTIFIER_ENV"
 fi
 
+# The node's compose file, beside the env files it is configured from, so it
+# is on the host after /tmp/arcron-install is gone. Never started here: it is
+# a MainNet decision, and docs/hosting.md A1 says when.
+install -m 644 "${SOURCE}/deploy/vps/algod.compose.yaml" "${ENV_DIR}/algod.compose.yaml"
+
 systemctl daemon-reload
 systemctl enable "$SERVICE" >/dev/null
 
@@ -134,6 +139,19 @@ Then the watcher, which is the other half of the thirty-day gate:
   sudo -e /etc/arcron/notifier.env   # webhook, and ARCRON_OURS
   sudo systemctl enable --now arcron-notifier
   sudo journalctl -u arcron-notifier -f
+
+For MainNet, both env files carry a commented block that changes together:
+ARCRON_ALLOW_MAINNET=1, ARCRON_NETWORK=mainnet, the app id from the create
+ceremony, and a node. Run our own rather than the free public endpoint, which
+sheds requests past a daily quota:
+
+  export ALGOD_TOKEN="$(openssl rand -hex 32)"
+  docker compose -f /etc/arcron/algod.compose.yaml up -d
+
+The bot refuses to start on MainNet without the allow flag, and both refuse an
+app id that does not exist or is not a keeper; the notifier also refuses
+without ARCRON_OURS and a webhook. docs/design/mainnet-rollout.md has the
+order of operations.
 
 DONE
 else

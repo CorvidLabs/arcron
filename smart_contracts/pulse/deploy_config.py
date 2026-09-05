@@ -12,7 +12,13 @@ def deploy() -> "PulseClient":
         PulseFactory,
     )
 
+    from scripts import network as net
+
     algorand = algokit_utils.AlgorandClient.from_environment()
+    # Same rule as the keeper's deploy_config: the algokit path creates through
+    # the indexer and checks nothing permanent, so it stays off MainNet.
+    # `scripts/deploy.py --with-pulse` creates Pulse there, directly.
+    net.refuse_algokit_create_on_mainnet(algorand.client.algod.suggested_params().gen, "pulse")
     # Public TestNet endpoints are slow; never let transactions be built from
     # stale cached suggested params (they expire before simulate/broadcast).
     algorand.set_suggested_params_cache_timeout(0)

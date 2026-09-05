@@ -102,7 +102,10 @@ rewrite the rules and reach every escrow.
 
 On TestNet that key is `DEPLOYER_MNEMONIC`, a throwaway. **On MainNet it is
 `corvid.algo`**, `WGSHC4TYKYBS6EX5V5E377BQDLKWIIPBCFOLZQZIXCKHFIEKRPBFOMW25A`,
-a single account held in a wallet. An app's creator cannot be changed
+a single account held in a wallet at rest; the create and `update` sign from a
+mnemonic exported into a shell for the duration of a ceremony, never from a
+file, and every MainNet script refuses an `.env.mainnet` that carries one. An
+app's creator cannot be changed
 afterwards, so deploying from anything else is unfixable; `require_mainnet_creator`
 refuses a MainNet *create* from any other signer. Talking to MainNet (the
 bot, health, the notifier) only needs `ARCRON_ALLOW_MAINNET=1`.
@@ -122,7 +125,9 @@ has to happen.
 creator can never replace the programs again, so the key stops mattering. A
 single-key deployment frozen early is a smaller exposure than a multisig left
 upgradeable because signing is too painful to actually do. The commitment that
-comes with this decision is to freeze promptly. Until then
+comes with this decision is to freeze before anyone who is not us escrows, and
+in any case before the deployment is announced
+(`docs/design/mainnet-rollout.md`). Until then
 `poetry run python -m scripts.govern status` reports the deployment as
 upgradeable and the console says so on every page.
 
