@@ -81,7 +81,10 @@ before it and what moves the number next.
 and while the deployment is unfrozen they are trusting a single key that could
 replace `execute` with something that pays itself. Nothing in this plan
 removes that; the plan is to make sure nobody is in that position without us
-knowing within a scan.
+knowing on the next successful notifier scan. A snapshot watcher cannot
+promise to see a register/cancel pair that both happen entirely between
+scans; that coverage boundary is accepted unless we later consume
+registration history.
 
 So: the app id goes in no README, no status page, no console build, no post.
 It lives in `.env.mainnet` on the machines that need it and in
@@ -89,24 +92,47 @@ It lives in `.env.mainnet` on the machines that need it and in
 any explorer regardless, which is why the notifier and not the secrecy is the
 control.
 
-If a stranger appears: a durable Discord alert, stranger-priority, pending
-until delivery is acknowledged, and an **operator decision**. None of
-automatic freeze, automatic unsoaked alpha-4, or cancel/ignore is the
-safety rule. `cancel` is creator-only on the upkeep, so we cannot remove
-somebody else's box. Freeze only bytecode already accepted for permanence.
-Otherwise execute only an already-approved update/verification sequence, or
-explicitly accept the temporary unfrozen exposure while responding. Record
-who decided, how fast, and on what evidence. `fledge run govern-ui` (Pera
+If a stranger appears: a durable Discord alert, stranger-priority, and an
+**operator decision**. None of automatic freeze, automatic unsoaked
+alpha-4, or cancel/ignore is the safety rule. `cancel` is creator-only on
+the upkeep, so we cannot remove somebody else's box. Freeze only bytecode
+already accepted for permanence. Otherwise execute only an
+already-approved update/verification sequence, or explicitly accept the
+temporary unfrozen exposure while responding. `fledge run govern-ui` (Pera
 as `corvid.algo`) remains the wallet-signing freeze surface; create and
 alpha-4's `update` still sign from a shell export. That page is never
 published.
 
-Decided 2026-09-05 against [#250](https://github.com/CorvidLabs/arcron/issues/250)
-(Astra / Kyntrin). Quiet create waits on F01, F02 (this policy), F04, F05
-in the keeper/notifier/health reader, ceremony-path F14, and F10/F11
-evidence, including a real code-changing TestNet update. F06, F07, F08 at
-`fee_cap 0`, F09 public copy, F12 and F13 summaries are not G2 blockers.
-F13 numbers are not gate evidence until they are faithful. If even
+**Who, and how fast.** The responsible operator is the holder of
+`corvid.algo`. During the quiet month they check Discord at least once
+every 24 hours. A stranger alert is decided (freeze / approved-update /
+accept-unfrozen-exposure) within 24 hours of first seeing it; the
+decision, the evidence, and the time of first sighting are recorded. A
+missing daily notifier summary is treated as a dead watcher within those
+same 24 hours — that is a human response budget, not the 30-second scan
+interval. On create day the operator is at the keyboard and the budget is
+minutes. F02 stays open until the notifier's stranger wording matches this
+paragraph.
+
+**F01 delivery.** Persist the pending stranger payload until Discord
+returns 2xx, keyed by network/app/upkeep, even if the box is later
+cancelled. A delivered-id set that only re-reads live boxes will drop an
+alert that failed, then vanished. At-least-once; duplicates beat silence.
+
+**F05** is “readers request real pages and do not fail closed at the
+listing cap.” It is not flood resistance and not a promise that the first
+stranger box alerts before the rest of the scan finishes: today's notifier
+builds a full snapshot first. Do not claim bounded alert latency from
+priority-sorting a completed list.
+
+Policy recorded 2026-09-05 by Leif, taking the recommendation in
+[#250](https://github.com/CorvidLabs/arcron/issues/250) (Astra / Kyntrin
+comment 5553940330, corrections 5554020272). Quiet create waits on F01,
+F02 (this policy plus matching notifier text), F04, F05 as scoped above,
+ceremony-path F14, and F10/F11 evidence, including a real code-changing
+TestNet update. F06, F07, F08 at `fee_cap 0`, F09 public copy, F12 and
+F13 summaries are not G2 blockers. F13 numbers are estimates unless they
+come from actual execution payments; they are not gate evidence. If even
 temporary outsider escrow were unacceptable, the create would wait until
 freeze-ready; that stricter path is not this experiment.
 
