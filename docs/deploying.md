@@ -261,6 +261,7 @@ before the file loads, so it has to be exported too.
 
 ```sh
 git checkout mainnet-1 && git status --porcelain     # prints nothing
+poetry install
 read -rs DEPLOYER_MNEMONIC; export DEPLOYER_MNEMONIC
 ARCRON_ALLOW_MAINNET=1 fledge run deploy-mainnet -- --with-pulse
 unset DEPLOYER_MNEMONIC

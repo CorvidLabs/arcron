@@ -26,6 +26,7 @@ call, or on the app account's spendable balance, belongs in `keeper_e2e.py`.
 - [ ] `poetry run python -m scripts.keeper_e2e --network testnet` (same flow against TestNet)
 - [ ] `poetry run python -m scripts.keeper_bot --once --network localnet --app-id <id>` (one bot scan)
 - [ ] `poetry run python -m scripts.reference_boundary --network localnet` (six references served, seven refused)
+- [ ] `fledge run deploy-localnet -- --with-pulse` from a clean worktree (the create ceremony against a real chain: expect the second-keeper refusal, then `--another`; then `govern status`, `verify_build`, `govern update`, `govern freeze` on the result). `tests/test_deploy.py` covers the decisions; this covers the chain.
 
 ## Edge Cases & Boundary Conditions
 

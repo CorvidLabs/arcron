@@ -100,11 +100,15 @@ across the keeper's two pages, its two globals and Pulse, plus 0.1 ALGO sent to
 the app account and fees.
 
 **The machine.** A clean checkout at the tag, on a machine that will not keep
-the key. `.env.mainnet` copied from the template, carrying the node and an
-empty `KEEPER_APP_ID` and nothing else.
+the key, with the Python environment installed: the rebuild shells out to
+`algokit generate client`, which needs `algokitgen-py` from the virtualenv, so
+run it through `fledge run` (or `poetry run`), which puts that on `PATH`.
+`.env.mainnet` copied from the template, carrying the node and an empty
+`KEEPER_APP_ID` and nothing else.
 
 ```sh
 git checkout mainnet-1 && git status --porcelain   # prints nothing
+poetry install
 read -rs DEPLOYER_MNEMONIC; export DEPLOYER_MNEMONIC
 ARCRON_ALLOW_MAINNET=1 fledge run deploy-mainnet -- --with-pulse
 ```
@@ -128,9 +132,18 @@ ARCRON_ALLOW_MAINNET=1 fledge run govern -- status --network mainnet --app-id <i
 ARCRON_ALLOW_MAINNET=1 poetry run python -m scripts.verify_build --network mainnet --app-id <id>
 ```
 
-`status` must show `frozen 0` and spendable at or above escrow (0 owed, 0.1
-spendable). `verify_build` must say byte for byte. Record both outputs, the
-id and the sha256, privately.
+`status` must show `frozen 0` and spendable at or above escrow. Straight
+after the create that reads `0.000 ALGO owed, 0.000 ALGO spendable`: the
+0.1 ALGO floor is exactly the account minimum, so nothing is spendable until
+the first registration brings its own box minimum balance and escrow with it.
+The LocalNet rehearsal below printed exactly that, and an earlier draft of
+this sentence said 0.1. `verify_build` must say byte for byte. Record both
+outputs, the id and the sha256, privately.
+
+`--with-pulse` creates Pulse through algokit's deploy, which looks the app up
+through the indexer by name before creating it, so `INDEXER_SERVER` has to be
+set in `.env.mainnet` (the template sets it). The keeper itself is created
+directly and needs no indexer.
 
 Then the keeper and the notifier on the VPS, pointed at the new id, with a
 separate hot key holding one or two ALGO, before anything is registered. An
@@ -174,8 +187,50 @@ fifteen ALGO of escrow and half an ALGO locked. It is not a budget question.
 
 ## Rehearsal record
 
-_Filled in from the TestNet rehearsal; a plan that has not been rehearsed is a
-hope._
+A plan that has not been rehearsed is a hope. Two rehearsals, on real chains,
+from a clean detached worktree at the commit under review, with no `.env.*`
+file present and the tooling's virtualenv on `PATH`.
+
+**LocalNet, 2026-09-05, commit `1ea6045`.** Creator is the KMD dispenser
+account, which had made three keepers before, so the first run was the
+refusal it should be:
+
+```
+Refusing to create:
+  - 6AG5ECWI… has already created keeper app(s) 1002, 1065, 1499 on localnet.
+    Pass --another to create a second one on purpose, which a rehearsal may well want.
+```
+
+The second run, `--with-pulse --another`, with the creator address typed
+back: the checklist printed `2219 + 4 bytes`, combined
+`c94c6e0cc561c028eeb3ccdd8c462c509ee106a28ba2e1d61469adbb62ffe124`, extra
+pages 1, global 2 uints / 0 byte slices, local 0 / 0; simulate passed; the
+create landed as app `205070`; the floor was funded with 100,000 µALGO; the
+read-back reported `Verified: creator, pages, schema and programs read back as
+described`. Then, in order:
+
+| step | result |
+|---|---|
+| `govern status` | `frozen 0`, `0.000 ALGO owed, 0.000 ALGO spendable` |
+| `verify_build --app-id 205070` | `The deployed app is this source, byte for byte.` |
+| a create with `yes` typed instead of the address | `Not created.`, nothing sent |
+| `govern update` | `Deployed programs already match this tree. Nothing to do.` |
+| `govern freeze`, app id typed back | `Frozen. App 205070 is now permanently c94c6e0c…` |
+| `govern status` | `frozen 1: the programs can never be replaced` |
+| `govern update` after freeze | `Refusing: this app is frozen, or has no freeze flag at all.` |
+
+The worktree was clean before and after both rebuilds, so the committed
+artifacts are what the compiler produces. One thing the rehearsal found and
+this page did not know: without the virtualenv on `PATH` the rebuild fails at
+`algokit generate client` (`Command not found: algokitgen-py`), which is why
+the ceremony above says `poetry install` and `fledge run`.
+
+**TestNet.** Pending: the throwaway creator
+`CVM4NOTWQYDRAUVF3EYHLZJXWERUI33GLFCNAV4MR4YVNOT6Z3XJMDGKNE` is generated and
+the script is staged; it needs about two TestNet ALGO, and the TestNet deployer
+has half of one spendable. What TestNet adds over LocalNet is the public node
+in the loop (retries, the 403 shedding) and a creator that has never made an
+app; the decisions being rehearsed are the same.
 
 ## What this plan changed in the repository
 
