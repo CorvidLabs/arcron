@@ -48,9 +48,13 @@ alone. The contracts are not compiled on the far end, because
 `smart_contracts/artifacts/` is committed and the bot only reads boxes and
 calls a generated client.
 
-Nothing in the tarball is specific to our deployment. `KEEPER_APP_ID` names
-the app to service. `ARCRON_NETWORK` names the chain; the unit file does not
-pin TestNet, so a MainNet env is a MainNet bot. GitHub Actions stays TestNet.
+The tarball's only deployment-specific values are the TestNet defaults in the
+two env examples, which the installer copies into `/etc/arcron` for you to
+edit. `KEEPER_APP_ID` names the app to service, and both the bot and the
+notifier refuse an id that is not a keeper. `ARCRON_NETWORK` names the chain;
+the unit file does not pin TestNet, so a MainNet env is a MainNet bot. GitHub
+Actions stays TestNet. A stock Ubuntu image has no `pip`; the installer adds
+`python3-pip` and `python3-venv` when `apt-get` is there to do so.
 
 ### A1. MainNet, on the same server, with a node of our own
 
@@ -69,16 +73,21 @@ event everything turns on. So run a node:
 
 ```bash
 export ALGOD_TOKEN="$(openssl rand -hex 32)"
-docker compose -f deploy/vps/algod.compose.yaml up -d
-docker compose -f deploy/vps/algod.compose.yaml logs -f   # fast catch-up, about an hour
+docker compose -f /etc/arcron/algod.compose.yaml up -d      # the installer put it there
+docker compose -f /etc/arcron/algod.compose.yaml logs -f    # fast catch-up, about an hour
 ```
 
-Then `ALGOD_SERVER=http://127.0.0.1:8080` and that token in both env files.
-Keep `ALGOD_SERVER_FALLBACK=https://mainnet-api.algonode.cloud` beside it:
-`scripts/node_retry.py` alternates to the fallback on a refusal, so a node
-restart costs a few retried requests rather than a blackout. The whole
-sequence, with what comes before and after, is
-[`design/mainnet-rollout.md`](design/mainnet-rollout.md).
+The node dials out to relays and listens for nothing, so no inbound port is
+needed. Then `ALGOD_SERVER=http://127.0.0.1:8080` and that token in both env
+files, each value on a line of its own with no trailing comment, because
+systemd keeps a trailing `# ...` as part of the value. Keep
+`ALGOD_SERVER_FALLBACK=https://mainnet-api.algonode.cloud` beside it with
+`ALGOD_TOKEN_FALLBACK` empty: `scripts/node_retry.py` alternates to the
+fallback on a refusal, swapping the token with the address so the node's
+secret never reaches the public edge, and returns to the primary once a
+request succeeds, so a node restart costs a few retried requests rather than
+a blackout or a month on somebody else's quota. The whole sequence, with what
+comes before and after, is [`design/mainnet-rollout.md`](design/mainnet-rollout.md).
 
 Not from a laptop. `fledge run keeper-daemon-install` refuses `--network
 mainnet`: the job would read `.env.mainnet`, and the keeper's hot key has no

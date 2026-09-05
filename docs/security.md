@@ -455,9 +455,11 @@ secret in the project, not as a funding account.
   can never replace the programs again, so the key stops mattering. A
   single-key deployment frozen early is a smaller exposure than a multisig left
   upgradeable indefinitely because signing it is too painful to do, and the
-  commitment attached to this decision is to freeze promptly rather than keep
-  the option open. Until then the state is readable on chain and the console
-  says so on every page.
+  commitment attached to this decision is to freeze before anyone who is not
+  us escrows, and in any case before the deployment is announced
+  ([`design/mainnet-rollout.md`](design/mainnet-rollout.md)), rather than
+  keep the option open indefinitely. Until then the state is readable on chain
+  and the console says so on every page.
 
   `scripts/multisig.py` is kept, `fledge run smoke-multisig` still proves one
   holder of three cannot update and two can, and a test proves a multisig would

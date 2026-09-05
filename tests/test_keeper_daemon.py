@@ -242,5 +242,8 @@ def test_the_app_id_reaches_the_command() -> None:
 
 def test_mainnet_is_not_a_laptop_job() -> None:
     """The keeper's hot key on MainNet lives in /etc/arcron on a VPS, not beside .env.mainnet."""
-    with pytest.raises(SystemExit):
+    with pytest.raises(SystemExit) as refused:
         keeper_daemon.main(["--network", "mainnet", "--status"])
+    # argparse's error exits 2. The macOS-only check exits with a message, so
+    # on Linux CI this used to pass whether or not the MainNet refusal existed.
+    assert refused.value.code == 2

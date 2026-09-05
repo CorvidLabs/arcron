@@ -628,13 +628,17 @@ def test_every_script_gets_this_by_connecting() -> None:
 class _Switching:
     """An algod whose primary edge sheds everything and whose fallback answers."""
 
-    def __init__(self) -> None:
+    def __init__(self, primary_fails: bool = True) -> None:
         self.algod_address = "https://primary.invalid"
+        self.algod_token = "our-node-token"
         self.asked: list[str] = []
+        self.tokens: list[str] = []
+        self.primary_fails = primary_fails
 
     def algod_request(self, method: str, requrl: str, **kwargs: object) -> object:
         self.asked.append(self.algod_address)
-        if self.algod_address == "https://primary.invalid":
+        self.tokens.append(self.algod_token)
+        if self.algod_address == "https://primary.invalid" and self.primary_fails:
             raise algod_error(LIVE_403, 403)
         return {"last-round": 1}
 
@@ -683,3 +687,24 @@ def test_rotation_alternates_rather_than_abandoning_the_primary() -> None:
         "https://primary.invalid", "https://fallback.invalid",
         "https://primary.invalid",
     ]
+
+
+def test_the_primary_token_is_never_sent_to_the_fallback() -> None:
+    """algosdk sends X-Algo-API-Token on every request; our node's token must
+    not travel to the public edge when the address flips."""
+    client = _Switching()
+    install(client, sleep=_Clock(), fallback="https://fallback.invalid")
+    client.algod_request("GET", "/v2/status")
+    assert client.tokens == ["our-node-token", ""]
+
+
+def test_a_success_on_the_fallback_returns_the_next_request_to_the_primary() -> None:
+    """One refusal during a node restart must not park the keeper on the public edge."""
+    client = _Switching()
+    install(client, sleep=_Clock(), fallback="https://fallback.invalid")
+    client.algod_request("GET", "/v2/status")
+    assert client.algod_address == "https://primary.invalid"
+    assert client.algod_token == "our-node-token"
+    client.primary_fails = False
+    client.algod_request("GET", "/v2/status")
+    assert client.asked[-1] == "https://primary.invalid"

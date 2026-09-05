@@ -56,8 +56,14 @@ The refusals, all reported at once: a working tree with uncommitted changes
 on MainNet any creator but `corvid.algo`; on MainNet a `DEPLOYER_MNEMONIC`
 line in `.env.mainnet`; and a creator that already has a keeper on this
 network (`--another` on LocalNet and TestNet only, which a rehearsal wants).
-`--yes` skips the typed confirmation off MainNet; on MainNet it is ignored.
-`tests/test_deploy.py` pins each of those at the decision.
+With `--with-pulse` the same applies to an existing Pulse, and both apps are
+created directly from their specs rather than through algokit's indexer
+lookup, which `smart_contracts/*/deploy_config.py` still uses and which now
+refuses MainNet outright. `--yes` skips the typed confirmation off MainNet; on
+MainNet it is ignored. `tests/test_deploy.py` pins each of those at the
+decision. The `.env.mainnet` rule is also enforced by `scripts/network.py`
+for every script that reaches MainNet, so `govern`, `seed_registry` and
+`health` refuse the file too.
 
 **MainNet needs a second, deliberate act.** `ARCRON_ALLOW_MAINNET=1` is set
 nowhere in this repository, so a mistyped `--network` cannot reach real money.

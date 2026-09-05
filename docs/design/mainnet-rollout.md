@@ -61,8 +61,8 @@ check rather than something somebody remembers.
 
 ## Where confidence stands
 
-Measured on 2026-09-05, before this plan's pull request; the last column says
-what moves each number.
+As of 2026-09-05, after this plan's pull request. Each row says what was true
+before it and what moves the number next.
 
 | question | now | what moves it |
 |---|---|---|
@@ -86,7 +86,8 @@ any explorer regardless, which is why the notifier and not the secrecy is the
 control.
 
 If a stranger appears: `fledge run govern-ui`, connect Pera as `corvid.algo`,
-freeze. That page is the one signing surface that reaches MainNet, it is never
+freeze. That page is the one wallet-signing surface that reaches MainNet (the
+create and alpha-4's `update` sign from a shell export instead), it is never
 published, and freezing is the answer even if the plan said another month.
 
 ## The ceremony
@@ -123,10 +124,12 @@ same signed bytes, funds the 0.1 ALGO floor, and reads creator, pages, schema,
 programs and `frozen` back from the chain. A mismatch there is shouted, because
 the app exists.
 
-**After, in this order.**
+**After, in this order, in the same shell.** The key stays exported until
+the first upkeep is registered, because that registration signs as the
+creator too, and the alternative is writing the key into a file that every
+MainNet script now refuses to load.
 
 ```sh
-unset DEPLOYER_MNEMONIC                                    # and close the shell
 # put the printed id in .env.mainnet as KEEPER_APP_ID, and in the VPS env files
 ARCRON_ALLOW_MAINNET=1 fledge run govern -- status --network mainnet --app-id <id>
 ARCRON_ALLOW_MAINNET=1 poetry run python -m scripts.verify_build --network mainnet --app-id <id>
@@ -140,23 +143,33 @@ The LocalNet rehearsal below printed exactly that, and an earlier draft of
 this sentence said 0.1. `verify_build` must say byte for byte. Record both
 outputs, the id and the sha256, privately.
 
-`--with-pulse` creates Pulse through algokit's deploy, which looks the app up
-through the indexer by name before creating it, so `INDEXER_SERVER` has to be
-set in `.env.mainnet` (the template sets it). The keeper itself is created
-directly and needs no indexer.
+Both apps are created directly, from their own specs, with the same checks
+and the same read-back; no indexer is consulted for either. `INDEXER_SERVER`
+in `.env.mainnet` is for `health` and `keeper-preview`, which read executions
+from it.
 
 Then the keeper and the notifier on the VPS, pointed at the new id, with a
 separate hot key holding one or two ALGO, before anything is registered. An
-empty registry with no watcher is worse than no deployment.
+empty registry with no watcher is worse than no deployment. Both refuse an id
+that does not exist or is not a keeper, so a typo in either env file stops the
+unit rather than watching an empty box list.
 
-Then the first upkeep, Pulse `tick`, from `corvid.algo`, fee 10,000 µALGO,
-`fee_cap 0`:
+Then the first upkeep: Pulse `tick` every twelve hours, `SKIP_AHEAD`, at the
+4,000 µALGO floor with `fee_cap 0`, funded for thirty runs. That is the
+`skip-ahead` seed in `scripts/seed_registry.py`, the same shape as TestNet
+upkeeps 20 to 22, and `--only` selects it alone. The script's other seeds
+include a 25-round burn-in and one with a fee ceiling, neither of which
+belongs on MainNet, and an earlier draft of this page ran the script without
+`--only` and would have registered all six.
 
 ```sh
-ARCRON_ALLOW_MAINNET=1 poetry run python -m scripts.seed_registry --network mainnet --app-id <id> --target <pulse id>
+ARCRON_ALLOW_MAINNET=1 poetry run python -m scripts.seed_registry --network mainnet --app-id <id> --target <pulse id> --only skip-ahead
+ARCRON_ALLOW_MAINNET=1 poetry run python -m scripts.seed_registry --network mainnet --app-id <id> --target <pulse id> --only skip-ahead --commit
+unset DEPLOYER_MNEMONIC                                    # and close the shell
 ```
 
-Watch it execute. Watch the notifier say so, and name the keeper.
+The first line prices it and signs nothing; the second registers. Watch it
+execute. Watch the notifier say so, and name the keeper.
 
 ## Reading it during the month
 
@@ -182,14 +195,16 @@ MainNet at the measured 2.752 seconds a round.
 | daily upkeep for 30 days at 10,000 per run | 300,000 | escrow |
 | keeper account | 1,000,000 to 2,000,000 | a hot key; it earns 7,000 net per hourly run |
 
-A quiet month with Pulse hourly, rain hourly and two daily targets is about
-fifteen ALGO of escrow and half an ALGO locked. It is not a budget question.
+A quiet month with Pulse twice daily, rain hourly and two daily targets is
+about eight ALGO of escrow, half an ALGO of permanent creator minimum balance,
+and a quarter of an ALGO of box minimum balance that comes back on cancel. It
+is not a budget question.
 
 ## Rehearsal record
 
-A plan that has not been rehearsed is a hope. Two rehearsals, on real chains,
-from a clean detached worktree at the commit under review, with no `.env.*`
-file present and the tooling's virtualenv on `PATH`.
+A plan that has not been rehearsed is a hope. Two rehearsals are planned, on
+real chains, from a clean detached worktree at the commit under review, with
+no `.env.*` file present and the tooling's virtualenv on `PATH`. One has run.
 
 **LocalNet, 2026-09-05, commit `1ea6045`.** Creator is the KMD dispenser
 account, which had made three keepers before, so the first run was the
@@ -250,3 +265,25 @@ app; the decisions being rehearsed are the same.
   keeper env from `deploy/keeper.env.example` instead of a second copy, and
   `deploy/vps/algod.compose.yaml` runs a MainNet node of our own.
 - `scripts/keeper_daemon.py` refuses `--network mainnet`: MainNet is a VPS.
+
+And after three independent reviews of that, the same day:
+
+- `--with-pulse` creates Pulse directly too, and `smart_contracts/*/deploy_config.py`
+  (algokit's deploy, reachable from `algokit project deploy` and the soak)
+  refuses MainNet by genesis id whoever the deployer is.
+- The mnemonic-on-disk rule moved into `scripts/network.py`, so `govern`,
+  `seed_registry`, `health` and everything else that reaches MainNet refuses
+  a `.env.mainnet` carrying the key, not only the create.
+- A create that is sent and does not confirm is reported with its txid and
+  "it may well have landed", instead of a traceback that implies it did not.
+- The bot and the notifier refuse an app id that does not exist or is not a
+  keeper at startup; a wrong id used to scan an empty box list and exit clean.
+- The endpoint rotation swaps the token with the address and returns to the
+  primary after a success, so our node's token never reaches the public edge
+  and one refusal during a restart does not park a keeper there.
+- `deploy/keeper.env.example` carries no comment on a value line: systemd's
+  `EnvironmentFile` keeps a trailing `# ...` as part of the value, and an
+  `ALGOD_SERVER` with one glued on answered every request with 405.
+- `install.sh` installs `python3-pip` on a stock image and copies the algod
+  compose file to `/etc/arcron/`; both units restart on failure with a limit
+  rather than flapping forever.

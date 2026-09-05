@@ -14,13 +14,21 @@
 #
 # What it costs. A non-archival MainNet node with fast catch-up is a few tens
 # of GB of disk and about an hour to catch up from a fresh start; it keeps up
-# on a small VPS after that. It needs port 4160 reachable for gossip.
+# on a small VPS after that. It dials out to relays and listens for nothing:
+# GOSSIP_PORT is not set, so no inbound port is needed and none is published.
 #
 # The image is the Algorand Foundation's; its environment variables are
 # documented at https://github.com/algorand/go-algorand/tree/master/docker.
 # Check there before changing anything below. Generate TOKEN once with
 # `openssl rand -hex 32` and put the same value in /etc/arcron/keeper.env and
 # notifier.env as ALGOD_TOKEN, with ALGOD_SERVER=http://127.0.0.1:8080.
+#
+# install.sh copies this file to /etc/arcron/algod.compose.yaml. The project
+# name is fixed below so the data volume is `arcron-algod_algod-data` wherever
+# the file is run from; without it compose names the volume after the
+# directory, and moving the file means a fresh volume and a full catch-up.
+name: arcron-algod
+
 services:
   algod:
     image: algorand/algod:stable
@@ -33,8 +41,6 @@ services:
     ports:
       # The REST API, bound to loopback: only processes on this host may ask.
       - "127.0.0.1:8080:8080"
-      # Gossip, which peers need to reach.
-      - "4160:4160"
     volumes:
       - algod-data:/algod/data
     logging:

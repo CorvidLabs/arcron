@@ -420,6 +420,14 @@ class _Stop(Exception):
 
 
 class _StoppingAlgod:
+    def application_info(self, app_id: int) -> dict:
+        import base64
+
+        # A keeper, so the startup check passes and the first scan is reached.
+        return {"params": {"global-state": [
+            {"key": base64.b64encode(b"next_upkeep_id").decode(), "value": {"uint": 0, "type": 2}},
+        ]}}
+
     def status(self) -> dict:
         raise _Stop()
 
@@ -479,4 +487,62 @@ def test_testnet_still_starts_with_nobody_counted_as_ours(monkeypatch) -> None:
 
     _connected(monkeypatch)
     with pytest.raises(_Stop):
+        notifier.main(["--network", "testnet", "--app-id", "1", "--once", "--no-state"])
+
+
+# --- a wrong app id is refused rather than watched -----------------------
+
+def test_a_nonexistent_app_is_refused_at_startup() -> None:
+    """algod answers a box listing for a nonexistent app with 200 and [], so a
+    typo in KEEPER_APP_ID used to produce a watcher that watched nothing."""
+    from scripts.keeper_bot import UnrecoverableError, require_keeper_app
+
+    class Missing:
+        def application_info(self, app_id: int) -> dict:
+            raise Exception("application does not exist")
+
+    with pytest.raises(UnrecoverableError, match="does not exist"):
+        require_keeper_app(Missing(), 999_999_999_999, "mainnet")
+
+
+def test_an_app_that_is_not_a_keeper_is_refused_at_startup() -> None:
+    import base64
+
+    from scripts.keeper_bot import UnrecoverableError, require_keeper_app
+
+    class Pulse:
+        def application_info(self, app_id: int) -> dict:
+            return {"params": {"global-state": [{"key": base64.b64encode(b"beats").decode(), "value": {"uint": 3, "type": 2}}]}}
+
+    with pytest.raises(UnrecoverableError, match="not a keeper"):
+        require_keeper_app(Pulse(), 1004, "localnet")
+
+
+def test_a_keeper_passes_the_startup_check() -> None:
+    import base64
+
+    from scripts.keeper_bot import require_keeper_app
+
+    class Keeper:
+        def application_info(self, app_id: int) -> dict:
+            return {"params": {"global-state": [
+                {"key": base64.b64encode(b"next_upkeep_id").decode(), "value": {"uint": 0, "type": 2}},
+                {"key": base64.b64encode(b"frozen").decode(), "value": {"uint": 0, "type": 2}},
+            ]}}
+
+    require_keeper_app(Keeper(), 769891898, "testnet")
+
+
+def test_main_refuses_an_app_that_is_not_a_keeper(monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    from scripts import notifier
+
+    class NotAKeeper(_StoppingAlgod):
+        def application_info(self, app_id: int) -> dict:
+            return {"params": {"global-state": []}}
+
+    monkeypatch.setattr(notifier.net, "connect",
+                        lambda network: SimpleNamespace(client=SimpleNamespace(algod=NotAKeeper())))
+    with pytest.raises(SystemExit):
         notifier.main(["--network", "testnet", "--app-id", "1", "--once", "--no-state"])

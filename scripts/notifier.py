@@ -33,7 +33,13 @@ from algosdk import encoding
 
 from scripts import network as net
 # One decoder, not a third copy: this is the same one the bot uses.
-from scripts.keeper_bot import Upkeep, effective_fee, resolve_app_id, scan_upkeeps
+from scripts.keeper_bot import (
+    Upkeep,
+    effective_fee,
+    require_keeper_app,
+    resolve_app_id,
+    scan_upkeeps,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -452,6 +458,15 @@ def main(argv: list[str] | None = None) -> None:
     algorand = net.connect(args.network)
     app_id = resolve_app_id(parser, args.app_id, args.network)
     algod = algorand.client.algod
+    try:
+        # A watcher pointed at an id that is not a keeper watches an empty box
+        # list forever and reports a quiet registry. Refused at startup.
+        require_keeper_app(algod, app_id, args.network)
+    except RuntimeError as wrong:
+        # `UnrecoverableError` is a RuntimeError; caught by the base class so a
+        # test suite that reloads `scripts.keeper_bot` cannot leave this clause
+        # holding a stale class object and let the refusal fall through.
+        parser.error(str(wrong))
     webhook = os.environ.get("DISCORD_WEBHOOK_URL")
     path = None if args.no_state else (args.state_file or state_path(args.network, app_id))
 

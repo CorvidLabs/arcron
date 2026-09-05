@@ -78,7 +78,9 @@ keeper-preview = "poetry run python -m scripts.keeper_preview --network testnet 
 # The same three against MainNet. No app id here on purpose: the MainNet id
 # stays out of the tree until the deployment is frozen, so these read it from
 # KEEPER_APP_ID in .env.mainnet, and each needs ARCRON_ALLOW_MAINNET=1
-# exported in the shell (a file cannot set it; see .env.mainnet.template).
+# exported in the shell: dotenv loads after the check, so .env.mainnet cannot
+# set it (a systemd or compose env file is real environment and can). See
+# .env.mainnet.template.
 health-mainnet = "poetry run python -m scripts.registry_health --network mainnet"
 clock-mainnet = "poetry run python -m scripts.mainnet_clock --network mainnet"
 keeper-preview-mainnet = "poetry run python -m scripts.keeper_preview --network mainnet"

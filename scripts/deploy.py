@@ -19,7 +19,10 @@ In order:
    `docs/releases.md` names a tag, and a create is what earns one.
 3. On MainNet, refuse any creator but `corvid.algo`, and refuse if the creator
    mnemonic has been written into `.env.mainnet`. It is exported into the
-   ceremony's shell and never lands on disk.
+   ceremony's shell and never lands on disk. `scripts.network.load_network`
+   enforces the same rule for every script that reaches MainNet, so the
+   refusal here is the ceremony saying it in its own list rather than the only
+   place it is said.
 4. Refuse if this creator already has a keeper on this network. An earlier
    version of this script used algokit's deploy, which finds an existing app
    through the indexer and quietly creates a second one when the indexer is
@@ -33,9 +36,14 @@ In order:
    schema, programs and `frozen` back from the chain and compare each to what
    was promised. A mismatch at that point is shouted, because the app exists.
 
-`smart_contracts/keeper/deploy_config.py` is the algokit path and still serves
-the LocalNet end-to-end; this is the ceremony. `govern create` is the unsigned
-multisig variant, kept for if a wallet ever ships multisig signing.
+`--with-pulse` creates the demo target the same way: directly, checked against
+its own spec, refused if the creator already has one, read back afterwards. No
+indexer is consulted for either app.
+
+`smart_contracts/keeper/deploy_config.py` is the algokit path and serves the
+LocalNet end-to-end; it refuses MainNet outright now that this exists.
+`govern create` is the unsigned multisig variant, kept for if a wallet ever
+ships multisig signing.
 
 A new deployment starts **unfrozen**: its creator can still replace the
 programs. That is deliberate while nobody depends on it, and it is given up
@@ -48,7 +56,6 @@ import argparse
 import base64
 import logging
 import pathlib
-import re
 import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -68,13 +75,36 @@ logger = logging.getLogger(__name__)
 # What an app account needs before it can hold anything at all.
 BASE_MBR = 100_000
 
-#: The global-state key every keeper writes in `__init__`. An app whose global
-#: state carries it is a keeper whatever its bytecode, which is how a creator's
-#: existing deployments are recognised without depending on the indexer.
-KEEPER_MARKER = b"next_upkeep_id"
+#: A global-state key each contract writes in `__init__`. An app whose global
+#: state carries it is that contract whatever its bytecode, which is how a
+#: creator's existing deployments are recognised without the indexer.
+MARKERS: dict[str, bytes] = {"keeper": b"next_upkeep_id", "pulse": b"beats"}
+KEEPER_MARKER = MARKERS["keeper"]
 
-#: Rounds to wait for the create to confirm before giving up on the read-back.
+#: Contracts that carry the `frozen` flag, and so are expected to read 0 on a
+#: fresh create. Pulse has no governance and no such key.
+GOVERNED = frozenset({"keeper"})
+
+#: Rounds to wait for a create to confirm before giving up on the read-back.
 CONFIRMATION_ROUNDS = 6
+
+#: The check every MainNet script applies; here so the ceremony can list it
+#: among its own refusals and a test can exercise the wiring.
+mnemonic_written_to = net.mnemonic_written_to
+
+
+class Unconfirmed(RuntimeError):
+    """A create was sent and its confirmation did not arrive in time.
+
+    Carries the transaction id, because the app may well exist: a slow public
+    node is the usual reason, and the operator's next move is to look rather
+    than to run the create again.
+    """
+
+    def __init__(self, txid: str, contract: str) -> None:
+        super().__init__(txid)
+        self.txid = txid
+        self.contract = contract
 
 
 @dataclass(frozen=True)
@@ -103,20 +133,6 @@ def tree_state(repo: pathlib.Path = REPO) -> TreeState:
     return TreeState(commit=commit, tag=tag, dirty=dirty)
 
 
-def mnemonic_written_to(env_file: pathlib.Path) -> bool:
-    """Whether a creator mnemonic sits in the network's env file.
-
-    Reads the file for the shape of the line only; the value is never logged.
-    `.env.mainnet` is meant to carry the node and the app id, both of which
-    are public, so the file can stay on the machine that runs `health`. The
-    mnemonic is exported for the ceremony and is gone when the shell is.
-    """
-    if not env_file.exists():
-        return False
-    pattern = re.compile(r"^\s*(?:export\s+)?DEPLOYER_MNEMONIC\s*=\s*\S")
-    return any(pattern.match(line) for line in env_file.read_text().splitlines())
-
-
 @dataclass(frozen=True)
 class Plan:
     """Everything a create fixes forever, resolved before anything is sent."""
@@ -128,6 +144,7 @@ class Plan:
     clear: bytes
     shape: dict
     tree: TreeState
+    contract: str = "keeper"
 
     @property
     def digest(self) -> str:
@@ -136,6 +153,14 @@ class Plan:
     @property
     def extra_pages(self) -> int:
         return int(self.shape["extra pages"])
+
+    @property
+    def marker(self) -> bytes:
+        return MARKERS[self.contract]
+
+    @property
+    def has_freeze(self) -> bool:
+        return self.contract in GOVERNED
 
     @property
     def global_schema(self) -> transaction.StateSchema:
@@ -150,9 +175,11 @@ class Plan:
         )
 
 
-def plan_for(network: str, genesis: str, creator: str, tree: TreeState) -> Plan:
+def plan_for(
+    network: str, genesis: str, creator: str, tree: TreeState, contract: str = "keeper"
+) -> Plan:
     """Derive the plan from the committed build, the same way `govern create` does."""
-    spec = _spec("keeper")
+    spec = _spec(contract)
     approval, clear = _programs(spec)
     return Plan(
         network=network,
@@ -162,6 +189,7 @@ def plan_for(network: str, genesis: str, creator: str, tree: TreeState) -> Plan:
         clear=clear,
         shape=_create_shape(spec, approval, clear),
         tree=tree,
+        contract=contract,
     )
 
 
@@ -170,35 +198,38 @@ def _global_keys(app: dict) -> set[bytes]:
     for entry in app.get("params", {}).get("global-state", []) or []:
         try:
             keys.add(base64.b64decode(entry["key"]))
-        except Exception:  # a malformed entry is not a keeper marker
+        except Exception:  # a malformed entry is not a marker
             continue
     return keys
 
 
-def find_keepers(algod, creator: str, digest: str | None = None) -> list[int]:
-    """App ids this creator has already made that are keepers.
+def find_keepers(
+    algod, creator: str, digest: str | None = None, marker: bytes = KEEPER_MARKER
+) -> list[int]:
+    """App ids this creator has already made that carry `marker`, or these programs.
 
     Read from algod's view of the account rather than from the indexer, so a
     create that confirmed seconds ago is already counted. An app counts if its
-    global state carries `next_upkeep_id`, or if its programs are the ones
-    this tree builds; the second catches a keeper whose `__init__` has not
-    been observed for any reason.
+    global state carries the marker, or if its programs are the ones this tree
+    builds; the second catches an app whose `__init__` has not been observed
+    for any reason. Named for the keeper, which is what it was written for;
+    `marker` makes it serve Pulse too.
     """
     info = algod.account_info(creator)
     found: list[int] = []
     for app in info.get("created-apps", []) or []:
         params = app.get("params", {})
-        is_keeper = KEEPER_MARKER in _global_keys(app)
-        if not is_keeper and digest is not None:
+        is_match = marker in _global_keys(app)
+        if not is_match and digest is not None:
             try:
                 live = _digest(
                     base64.b64decode(params["approval-program"]),
                     base64.b64decode(params["clear-state-program"]),
                 )
-                is_keeper = live == digest
+                is_match = live == digest
             except Exception:
-                is_keeper = False
-        if is_keeper:
+                is_match = False
+        if is_match:
             found.append(int(app["id"]))
     return sorted(found)
 
@@ -251,13 +282,14 @@ def refusals(
         ids = ", ".join(str(i) for i in existing_keepers)
         if mainnet:
             reasons.append(
-                f"{plan.creator[:8]}… has already created keeper app(s) {ids} on MainNet. "
-                "There is one MainNet keeper. If this is a replacement, that is a "
-                "migration and not a create: see docs/security.md, 'If a bug is found'."
+                f"{plan.creator[:8]}… has already created {plan.contract} app(s) {ids} on "
+                f"MainNet. There is one MainNet {plan.contract}. If this is a replacement, "
+                "that is a migration and not a create: see docs/security.md, 'If a bug is "
+                "found'."
             )
         elif not allow_another:
             reasons.append(
-                f"{plan.creator[:8]}… has already created keeper app(s) {ids} on "
+                f"{plan.creator[:8]}… has already created {plan.contract} app(s) {ids} on "
                 f"{plan.network}. Pass --another to create a second one on purpose, "
                 "which a rehearsal may well want."
             )
@@ -274,7 +306,7 @@ def describe(plan: Plan) -> list[str]:
     tag = tree.tag or "(untagged)"
     dirty = " (DIRTY)" if tree.dirty else ""
     return [
-        "This create is permanent in every field below.",
+        f"This {plan.contract} create is permanent in every field below.",
         f"  network       {plan.network} ({plan.genesis})",
         f"  creator       {plan.creator}",
         f"  programs      {len(plan.approval)} + {len(plan.clear)} bytes",
@@ -338,6 +370,26 @@ def simulate(algod, signed: transaction.SignedTransaction) -> None:
         raise RuntimeError(f"the create would fail: {failure}")
 
 
+def create(algod, deployer, plan: Plan) -> tuple[int, str]:
+    """Sign, simulate, send, confirm. Returns the new app id and the txid.
+
+    Raises `RuntimeError` from `simulate` before anything is sent, and
+    `Unconfirmed` if the send went out and the confirmation did not come back
+    within `CONFIRMATION_ROUNDS`: on a slow public node that is a create that
+    probably landed, and the caller must say so rather than let a traceback
+    imply nothing happened.
+    """
+    params = algod.suggested_params()
+    signed = build_create(plan, params).sign(deployer.private_key)
+    simulate(algod, signed)
+    txid = algod.send_transaction(signed)
+    try:
+        confirmed = transaction.wait_for_confirmation(algod, txid, CONFIRMATION_ROUNDS)
+    except Exception as error:  # timeout, or a node that stopped answering
+        raise Unconfirmed(txid, plan.contract) from error
+    return int(confirmed["application-index"]), txid
+
+
 def postflight(algod, app_id: int, plan: Plan) -> list[str]:
     """Read every permanent field back from the chain and name each mismatch.
 
@@ -372,9 +424,10 @@ def postflight(algod, app_id: int, plan: Plan) -> list[str]:
     if _digest(live_approval, live_clear) != plan.digest:
         mismatches.append("the deployed programs are not the ones this tree builds")
 
-    frozen = _frozen(algod, app_id)
-    if frozen != 0:
-        mismatches.append(f"frozen is {frozen}, expected 0 on a fresh deployment")
+    if plan.has_freeze:
+        frozen = _frozen(algod, app_id)
+        if frozen != 0:
+            mismatches.append(f"frozen is {frozen}, expected 0 on a fresh deployment")
 
     return mismatches
 
@@ -397,6 +450,26 @@ def fund_floor(algorand, deployer, app_address: str) -> int:
     return short
 
 
+def _shout_mismatches(app_id: int, contract: str, mismatches: list[str]) -> None:
+    logger.error(f"{contract.upper()} APP {app_id} EXISTS AND IS NOT WHAT WAS DESCRIBED:")
+    for mismatch in mismatches:
+        logger.error(f"  - {mismatch}")
+    logger.error("Do not use it. Do not put its id anywhere. See docs/security.md.")
+
+
+def _unconfirmed(error: Unconfirmed, network: str) -> None:
+    logger.error(
+        f"The {error.contract} create was SENT as {error.txid} and did not confirm within "
+        f"{CONFIRMATION_ROUNDS} rounds. It may well have landed. Do not run this again "
+        "until you know."
+    )
+    logger.error(
+        f"  Look it up: the creator's account on an explorer, or "
+        f"`govern status --network {network} --app-id <id>` once the id is known. "
+        "The app account floor has NOT been funded and nothing has been read back."
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -412,7 +485,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--another",
         action="store_true",
-        help="create even though this creator already has a keeper here (never on MainNet)",
+        help="create even though this creator already has one here (never on MainNet)",
     )
     parser.add_argument(
         "--yes",
@@ -441,22 +514,35 @@ def main(argv: list[str] | None = None) -> int:
     algod = algorand.client.algod
     deployer = algorand.account.from_environment("DEPLOYER")
     genesis = algod.suggested_params().gen
-    plan = plan_for(args.network, genesis, deployer.address, tree_state())
+    tree = tree_state()
+    plan = plan_for(args.network, genesis, deployer.address, tree)
 
     for line in describe(plan):
         logger.info(line)
 
-    existing = find_keepers(algod, plan.creator, plan.digest)
+    mnemonic_on_disk = mnemonic_written_to(REPO / f".env.{args.network}")
     reasons = refusals(
         plan,
-        existing_keepers=existing,
+        existing_keepers=find_keepers(algod, plan.creator, plan.digest),
         allow_dirty=args.allow_dirty,
         allow_another=args.another,
-        mnemonic_on_disk=mnemonic_written_to(REPO / f".env.{args.network}"),
+        mnemonic_on_disk=mnemonic_on_disk,
     )
+    pulse_plan = None
+    if args.with_pulse:
+        pulse_plan = plan_for(args.network, genesis, deployer.address, tree, contract="pulse")
+        reasons += refusals(
+            pulse_plan,
+            existing_keepers=find_keepers(
+                algod, plan.creator, pulse_plan.digest, marker=pulse_plan.marker
+            ),
+            allow_dirty=args.allow_dirty,
+            allow_another=args.another,
+            mnemonic_on_disk=mnemonic_on_disk,
+        )
     if reasons:
         logger.error("Refusing to create:")
-        for reason in reasons:
+        for reason in dict.fromkeys(reasons):  # each once, in order
             logger.error(f"  - {reason}")
         return 1
 
@@ -464,36 +550,43 @@ def main(argv: list[str] | None = None) -> int:
         logger.info("Not created.")
         return 1
 
-    params = algod.suggested_params()
-    signed = build_create(plan, params).sign(deployer.private_key)
     try:
-        simulate(algod, signed)
+        app_id, txid = create(algod, deployer, plan)
+    except Unconfirmed as error:
+        _unconfirmed(error, args.network)
+        return 1
     except RuntimeError as refusal:
         logger.error(f"Refusing to create: {refusal}")
         return 1
-
-    txid = algod.send_transaction(signed)
-    confirmed = transaction.wait_for_confirmation(algod, txid, CONFIRMATION_ROUNDS)
-    app_id = int(confirmed["application-index"])
     app_address = logic.get_application_address(app_id)
-    logger.info(f"Created app {app_id} in {txid}")
+    logger.info(f"Created keeper app {app_id} in {txid}")
 
     fund_floor(algorand, deployer, app_address)
 
     mismatches = postflight(algod, app_id, plan)
     if mismatches:
-        logger.error(f"APP {app_id} EXISTS AND IS NOT WHAT WAS DESCRIBED:")
-        for mismatch in mismatches:
-            logger.error(f"  - {mismatch}")
-        logger.error("Do not use it. Do not put its id anywhere. See docs/security.md.")
+        _shout_mismatches(app_id, "keeper", mismatches)
         return 1
 
     solvency = read_solvency(algod, app_id, 0)
-    pulse_id = None
-    if args.with_pulse:
-        from smart_contracts.pulse.deploy_config import deploy as deploy_pulse
 
-        pulse_id = deploy_pulse().app_id
+    pulse_id = None
+    if pulse_plan is not None:
+        try:
+            pulse_id, pulse_txid = create(algod, deployer, pulse_plan)
+        except Unconfirmed as error:
+            _unconfirmed(error, args.network)
+            logger.error(f"The keeper, app {app_id}, is created, funded and verified regardless.")
+            return 1
+        except RuntimeError as refusal:
+            logger.error(f"Refusing to create Pulse: {refusal}")
+            logger.error(f"The keeper, app {app_id}, is created, funded and verified regardless.")
+            return 1
+        logger.info(f"Created pulse app {pulse_id} in {pulse_txid}")
+        pulse_mismatches = postflight(algod, pulse_id, pulse_plan)
+        if pulse_mismatches:
+            _shout_mismatches(pulse_id, "pulse", pulse_mismatches)
+            return 1
 
     logger.info("")
     logger.info(f"Keeper app {app_id} on {args.network}")

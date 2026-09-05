@@ -78,7 +78,7 @@ Around them:
 |---|---|
 | [`web/`](web/) | The console: registry dashboard plus keeper controls. Published at [`corvidlabs.xyz/arcron/console/`](https://corvidlabs.xyz/arcron/console/) |
 | [`web-keeper/`](web-keeper/) | A local dashboard for somebody running a keeper. Never published; `tests/test_keeper_ui_stays_local.py` keeps it that way |
-| [`web-govern/`](web-govern/) | A local page for the creator account. Never published: it is the one surface that can reach MainNet |
+| [`web-govern/`](web-govern/) | A local page for the creator account. Never published: it is the one wallet-signing surface that can reach MainNet (the create and `update` sign from a shell export) |
 | [`js/`](js/) | `@corvidlabs/arcron`: box decoder, ABI, transaction builders, the keeper's view of the board |
 
 **Rain, the first thing built on this, is no longer here.** It moved to
@@ -484,7 +484,7 @@ specs/               # spec-sync specs, one per contract, strict mode
 js/                  # @corvidlabs/arcron: box decoder, ABI, transaction builders
 web/                 # the console, the one page that is published
 web-keeper/          # local keeper dashboard (localhost:4300, never published)
-web-govern/          # local governance page (never published; can reach MainNet)
+web-govern/          # local governance page (never published; the wallet-signing path to MainNet)
 docs/
   arcron.md          # hand-off reference: API, box encoding, economics, operations
   integrating.md     # how to point Arcron at a contract you wrote

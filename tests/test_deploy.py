@@ -382,3 +382,132 @@ def test_a_simulate_failure_stops_the_create(quiet) -> None:
     quiet.setattr(deploy, "tree_state", lambda: CLEAN)
     assert deploy.main(["--network", "testnet", "--no-rebuild", "--yes"]) == 1
     assert algod.sent == []
+
+
+# --- what the reviewers found ----------------------------------------------
+
+
+def test_postflight_compares_the_clear_program_too() -> None:
+    """A hostile clear program beside an honest approval must not read back clean."""
+    p = plan()
+    lying = _live(p)
+    lying["params"]["clear-state-program"] = _b64(b"\x0a\x81\x00")
+    mismatches = deploy.postflight(FakeAlgod(app=lying), 1, p)
+    assert mismatches == ["the deployed programs are not the ones this tree builds"]
+
+
+def test_main_reads_the_mnemonic_rule_from_the_networks_env_file(monkeypatch, tmp_path: Path) -> None:
+    """The wiring, not the helper: main must look at REPO/.env.<network>."""
+    (tmp_path / ".env.mainnet").write_text("ALGOD_SERVER=https://x\nDEPLOYER_MNEMONIC=\"abandon abandon\"\n")
+    monkeypatch.setattr(deploy, "REPO", tmp_path)
+    monkeypatch.setattr(deploy.ms, "configured", lambda: False)
+    algod = FakeAlgod(gen="mainnet-v1.0")
+    monkeypatch.setattr(deploy.net, "connect", lambda network: _algorand(algod, CORVID, "unused"))
+    monkeypatch.setattr(deploy, "tree_state", lambda: CLEAN)
+    assert deploy.main(["--network", "mainnet", "--no-rebuild"]) == 1
+    assert algod.sent == []
+
+
+def test_the_network_funnel_refuses_a_mainnet_env_file_carrying_the_key(monkeypatch, tmp_path: Path) -> None:
+    """Every MainNet script passes through load_network, so the rule lives there.
+
+    deploy.py used to be the only place that checked, and the ceremony's own
+    sequence (create, then register the first upkeep as DEPLOYER) invited the
+    shortcut of writing the key into .env.mainnet for the scripts that did not.
+    """
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("ARCRON_ALLOW_MAINNET", "1")
+    monkeypatch.delenv("DEPLOYER_MNEMONIC", raising=False)
+    (tmp_path / ".env.mainnet").write_text("ALGOD_SERVER=https://x\nDEPLOYER_MNEMONIC=abandon abandon\n")
+    with pytest.raises(RuntimeError, match="DEPLOYER_MNEMONIC"):
+        net.load_network(net.MAINNET)
+    assert "DEPLOYER_MNEMONIC" not in __import__("os").environ, "refused before dotenv loaded it"
+    # The same file without the line is fine.
+    (tmp_path / ".env.mainnet").write_text("ALGOD_SERVER=https://x\nKEEPER_APP_ID=\n")
+    assert net.load_network(net.MAINNET) == net.MAINNET
+
+
+def test_a_bom_does_not_hide_the_mnemonic_line(tmp_path: Path) -> None:
+    env = tmp_path / ".env.mainnet"
+    env.write_bytes("﻿DEPLOYER_MNEMONIC=abandon\n".encode("utf-8"))
+    assert deploy.mnemonic_written_to(env)
+
+
+def test_the_algokit_deploy_path_refuses_mainnet_for_any_deployer() -> None:
+    with pytest.raises(RuntimeError, match="deploy-mainnet"):
+        net.refuse_algokit_create_on_mainnet("mainnet-v1.0", "keeper")
+    net.refuse_algokit_create_on_mainnet("testnet-v1.0", "keeper")
+    net.refuse_algokit_create_on_mainnet("dockernet-v1", "pulse")
+
+
+def test_pulse_is_planned_from_its_own_spec_and_has_no_freeze_flag() -> None:
+    p = plan(net.TESTNET, STRANGER)
+    pulse = deploy.plan_for(net.TESTNET, "testnet-v1.0", STRANGER, CLEAN, contract="pulse")
+    assert pulse.shape == {"extra pages": 0, "global uints": 2, "global byte slices": 1,
+                           "local uints": 0, "local byte slices": 0}
+    assert pulse.marker == b"beats" and not pulse.has_freeze and p.has_freeze
+    # No frozen key on chain is exactly right for Pulse.
+    live = _live(pulse, pages=0, g=(2, 1), frozen=None)
+    assert deploy.postflight(FakeAlgod(app=live), 1, pulse) == []
+
+
+class _TwoAppAlgod(FakeAlgod):
+    """Serves application_info per id, so a keeper and a Pulse can be read back."""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.apps: dict[int, dict] = {}
+        self.next_id = 4242
+
+    def application_info(self, app_id: int) -> dict:
+        return self.apps[app_id]
+
+
+def test_main_creates_pulse_directly_and_reads_it_back(quiet) -> None:
+    private_key, address = account.generate_account()
+    algod = _TwoAppAlgod()
+    algorand = _algorand(algod, address, private_key)
+    quiet.setattr(deploy.net, "connect", lambda network: algorand)
+    quiet.setattr(deploy, "tree_state", lambda: CLEAN)
+
+    def confirmed(client, txid, rounds):
+        app_id = algod.next_id
+        algod.next_id += 1
+        which = algod.sent[-1].transaction
+        contract = "keeper" if which.extra_pages else "pulse"
+        p = deploy.plan_for(net.TESTNET, "testnet-v1.0", address, CLEAN, contract=contract)
+        algod.apps[app_id] = _live(p, pages=p.extra_pages,
+                                   g=(p.shape["global uints"], p.shape["global byte slices"]),
+                                   frozen=0 if p.has_freeze else None)
+        return {"application-index": app_id}
+
+    quiet.setattr(deploy.transaction, "wait_for_confirmation", confirmed)
+    assert deploy.main(["--network", "testnet", "--no-rebuild", "--yes", "--with-pulse"]) == 0
+    assert len(algod.sent) == 2, "one keeper create, one pulse create, no indexer"
+    assert [t.transaction.extra_pages for t in algod.sent] == [1, 0]
+
+
+def test_an_existing_pulse_is_refused_before_the_keeper_is_created(quiet) -> None:
+    private_key, address = account.generate_account()
+    algod = FakeAlgod(created=[_created(77, keys=(b"beats",))])
+    quiet.setattr(deploy.net, "connect", lambda network: _algorand(algod, address, private_key))
+    quiet.setattr(deploy, "tree_state", lambda: CLEAN)
+    assert deploy.main(["--network", "testnet", "--no-rebuild", "--yes", "--with-pulse"]) == 1
+    assert algod.sent == [], "the keeper must not be created if the whole request cannot be"
+
+
+def test_a_create_that_does_not_confirm_is_reported_with_its_txid(quiet, caplog) -> None:
+    """The app may exist. A traceback would imply it does not."""
+    private_key, address = account.generate_account()
+    algod = FakeAlgod()
+    quiet.setattr(deploy.net, "connect", lambda network: _algorand(algod, address, private_key))
+    quiet.setattr(deploy, "tree_state", lambda: CLEAN)
+
+    def timeout(client, txid, rounds):
+        raise Exception("Wait for transaction id TXID timed out")
+
+    quiet.setattr(deploy.transaction, "wait_for_confirmation", timeout)
+    with caplog.at_level("ERROR"):
+        assert deploy.main(["--network", "testnet", "--no-rebuild", "--yes"]) == 1
+    assert "SENT as TXID" in caplog.text and "may well have landed" in caplog.text
+    assert len(algod.sent) == 1

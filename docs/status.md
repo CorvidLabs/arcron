@@ -240,7 +240,7 @@ The honest counterpart, said plainly so nobody has to work it out: **that
 allowance is ours and does not transfer.** The reason we can accept 90 rather
 than 100 is that the creator can still reach every escrow, and while that is
 true, anyone escrowing here is trusting a keyholder rather than bytecode.
-Which is why the notifier runs against MainNet with `--ours` set and
+Which is why the notifier will run against MainNet with `--ours` set and
 announces any other creator, and why an unexpected upkeep before freeze is a
 person to freeze for rather than a schedule to finish. Not publishing the app
 id helps and is done; it is not the protection, because the creator is a

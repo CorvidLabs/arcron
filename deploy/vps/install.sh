@@ -34,6 +34,19 @@ case "$PY_VERSION" in
 esac
 echo "    python3 $PY_VERSION"
 
+# A stock Ubuntu server image has python3 and no pip; both pip invocations
+# below then fail with "No module named pip" and set -e stops the install at
+# the least informative point. Install it when apt is there to do so.
+if ! python3 -m pip --version >/dev/null 2>&1; then
+    if command -v apt-get >/dev/null; then
+        echo "==> Installing python3-pip and python3-venv"
+        apt-get install -y -qq python3-pip python3-venv
+    else
+        echo "python3 has no pip and this host has no apt-get; install pip for python3 first." >&2
+        exit 1
+    fi
+fi
+
 if ! command -v poetry >/dev/null; then
     echo "==> Installing Poetry"
     python3 -m pip install --quiet --break-system-packages "poetry>=2.0,<3.0" \
@@ -103,6 +116,11 @@ if [ ! -f "$NOTIFIER_ENV" ]; then
     chown root:"$RUN_USER" "$NOTIFIER_ENV"
 fi
 
+# The node's compose file, beside the env files it is configured from, so it
+# is on the host after /tmp/arcron-install is gone. Never started here: it is
+# a MainNet decision, and docs/hosting.md A1 says when.
+install -m 644 "${SOURCE}/deploy/vps/algod.compose.yaml" "${ENV_DIR}/algod.compose.yaml"
+
 systemctl daemon-reload
 systemctl enable "$SERVICE" >/dev/null
 
@@ -124,9 +142,14 @@ Then the watcher, which is the other half of the thirty-day gate:
 
 For MainNet, both env files carry a commented block that changes together:
 ARCRON_ALLOW_MAINNET=1, ARCRON_NETWORK=mainnet, the app id from the create
-ceremony, and a node. Run our own (deploy/vps/algod.compose.yaml) rather than
-the free public endpoint, which sheds requests past a daily quota. The bot
-refuses to start on MainNet without the allow flag, and the notifier refuses
+ceremony, and a node. Run our own rather than the free public endpoint, which
+sheds requests past a daily quota:
+
+  export ALGOD_TOKEN="$(openssl rand -hex 32)"
+  docker compose -f /etc/arcron/algod.compose.yaml up -d
+
+The bot refuses to start on MainNet without the allow flag, and both refuse an
+app id that does not exist or is not a keeper; the notifier also refuses
 without ARCRON_OURS and a webhook. docs/design/mainnet-rollout.md has the
 order of operations.
 

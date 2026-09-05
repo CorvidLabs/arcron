@@ -7,25 +7,20 @@ logger = logging.getLogger(__name__)
 
 # define deployment behaviour based on supplied app spec
 def _refuse_unguarded_mainnet(algorand: "algokit_utils.AlgorandClient") -> None:
-    """Refuse to create a keeper on MainNet from anyone but the recorded creator.
+    """Refuse MainNet from this path, whoever the deployer is.
 
     Asks the node which chain it speaks for rather than trusting an argument,
-    because this function takes none. An app's creator cannot be changed
-    afterwards, so a MainNet app made from the TestNet throwaway — or from
-    any other key — is the admin-key problem, permanently.
-
-    Talking to MainNet (a keeper bot, health, the notifier) is a different
-    gate: `ARCRON_ALLOW_MAINNET=1` in `scripts.network.load_network`. Creating
-    is this check. The recorded creator is `corvid.algo`; see
-    `scripts.network.MAINNET_CREATOR`.
+    because this function takes none. This used to admit `corvid.algo`; it no
+    longer admits anyone, because `factory.deploy` with `AppendApp` finds an
+    existing app through the indexer and creates a second one when the indexer
+    is behind, and checks none of the fields a create fixes forever. MainNet is
+    created by `scripts/deploy.py` (`fledge run deploy-mainnet`), which does.
+    LocalNet and TestNet keep this path for the end-to-end and the rehearsals.
     """
     from scripts import network as net
 
     genesis = algorand.client.algod.suggested_params().gen
-    if genesis not in net.genesis_ids(net.MAINNET):
-        return
-    deployer = algorand.account.from_environment("DEPLOYER")
-    net.require_mainnet_creator(deployer.address)
+    net.refuse_algokit_create_on_mainnet(genesis, "keeper")
 
 
 def deploy() -> "KeeperClient":
@@ -36,9 +31,9 @@ def deploy() -> "KeeperClient":
 
     algorand = algokit_utils.AlgorandClient.from_environment()
     # Reachable without `scripts.network.load_network`: anyone pointing
-    # ALGOD_SERVER at MainNet and calling this factory creates a keeper from
-    # DEPLOYER. That is the intended create path *when* DEPLOYER is
-    # `corvid.algo`. `_refuse_unguarded_mainnet` is the check.
+    # ALGOD_SERVER at MainNet and calling this factory would create a keeper
+    # from DEPLOYER, unchecked. `_refuse_unguarded_mainnet` is the check, and
+    # the answer on MainNet is no.
     _refuse_unguarded_mainnet(algorand)
     # Public TestNet endpoints are slow; never let transactions be built from
     # stale cached suggested params (they expire before simulate/broadcast).
