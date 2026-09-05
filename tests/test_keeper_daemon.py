@@ -238,3 +238,9 @@ def test_an_explicit_app_id_wins(monkeypatch) -> None:
 def test_the_app_id_reaches_the_command() -> None:
     argv = _plan().arguments()
     assert argv[argv.index("--app-id") + 1] == "769891898"
+
+
+def test_mainnet_is_not_a_laptop_job() -> None:
+    """The keeper's hot key on MainNet lives in /etc/arcron on a VPS, not beside .env.mainnet."""
+    with pytest.raises(SystemExit):
+        keeper_daemon.main(["--network", "mainnet", "--status"])

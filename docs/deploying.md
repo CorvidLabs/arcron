@@ -41,12 +41,23 @@ fledge lanes run local          # the above plus the e2e and every demo
 |------|---------|-------|
 | `fledge run deploy-localnet` | LocalNet | `algokit localnet start`, nothing else |
 | `fledge run deploy-testnet` | TestNet | `.env.testnet` with `DEPLOYER_MNEMONIC` |
-| `fledge run deploy-mainnet` | MainNet | `.env.mainnet` with `DEPLOYER` = `corvid.algo`, and `ARCRON_ALLOW_MAINNET=1` |
+| `fledge run deploy-mainnet` | MainNet | `.env.mainnet` (node and app id, no secret), `DEPLOYER_MNEMONIC` for `corvid.algo` exported into the shell, `ARCRON_ALLOW_MAINNET=1` exported too, and a tag on HEAD |
 
-Each one rebuilds from source, deploys, funds the app account's base minimum
-balance, and then verifies the deployed bytecode against a clean build before
-telling you it worked. It prints the app id and the combined `sha256` in the
-shape [`releases.md`](releases.md) wants recorded.
+Each one rebuilds from source, prints every field a create fixes forever
+(creator, extra pages, both schemas, the combined `sha256`, the commit and
+tag), refuses on any of several grounds, asks for the creator address to be
+typed back, simulates, creates, funds the app account's base minimum balance,
+and then reads creator, pages, schema, programs and `frozen` back from the
+chain and compares each to what it printed. It prints the app id and the
+combined `sha256` in the shape [`releases.md`](releases.md) wants recorded.
+
+The refusals, all reported at once: a working tree with uncommitted changes
+(`--allow-dirty` on LocalNet and TestNet only); on MainNet an untagged commit;
+on MainNet any creator but `corvid.algo`; on MainNet a `DEPLOYER_MNEMONIC`
+line in `.env.mainnet`; and a creator that already has a keeper on this
+network (`--another` on LocalNet and TestNet only, which a rehearsal wants).
+`--yes` skips the typed confirmation off MainNet; on MainNet it is ignored.
+`tests/test_deploy.py` pins each of those at the decision.
 
 **MainNet needs a second, deliberate act.** `ARCRON_ALLOW_MAINNET=1` is set
 nowhere in this repository, so a mistyped `--network` cannot reach real money.
@@ -239,15 +250,28 @@ people exporting mnemonics into a shell for every governance action, and
 `freeze` is what makes a single key defensible because it retires that key
 permanently.
 
-**The create command is `fledge run deploy-mainnet`.** It rebuilds, creates
-from `DEPLOYER`, funds the app account's 0.1 ALGO floor, and `verify_build`s
-before it prints an id. It refuses unless `ARCRON_ALLOW_MAINNET=1` and
-`DEPLOYER` is exactly `corvid.algo`. Copy `.env.mainnet.template` to
-`.env.mainnet` first.
+**The create command is `fledge run deploy-mainnet`**, and the whole
+ceremony, with what comes before and after it, is
+[`design/mainnet-rollout.md`](design/mainnet-rollout.md). Copy
+`.env.mainnet.template` to `.env.mainnet` first: it carries the node and,
+later, the app id, and deliberately no secret. The creator mnemonic is
+exported into the shell that runs the create and is gone with it; the script
+refuses if it finds the line in the file. `ARCRON_ALLOW_MAINNET=1` is read
+before the file loads, so it has to be exported too.
 
 ```sh
+git checkout mainnet-1 && git status --porcelain     # prints nothing
+read -rs DEPLOYER_MNEMONIC; export DEPLOYER_MNEMONIC
 ARCRON_ALLOW_MAINNET=1 fledge run deploy-mainnet -- --with-pulse
+unset DEPLOYER_MNEMONIC
 ```
+
+It prints the network and genesis, the creator, the programs and their
+combined `sha256`, the commit and tag, the extra pages and both schemas,
+refuses on the grounds listed under [Deploying](#deploying), asks for the
+creator address to be typed back, simulates the create, sends it, funds the
+0.1 ALGO floor, and reads every permanent field back from the chain. The
+read-back is the check that an earlier version of this page only described.
 
 Everything an application-create sets is permanent: the creator cannot be
 changed, the state schema cannot be resized, and extra program pages can be

@@ -18,6 +18,8 @@ Run:  poetry run python -m scripts.notifier [--once] [--network N] [--app-id N]
 """
 
 import argparse
+import base64
+import hashlib
 import json
 import logging
 import os
@@ -46,7 +48,23 @@ POST_INTERVAL_SECONDS = 1.0
 # How far back to look for the transaction behind an execution. Bounded so a
 # notifier restarted after a long gap does not crawl the chain.
 MAX_ATTRIBUTION_BLOCKS = 24
-POLL_SECONDS = 5
+# Between scans. This was 5 seconds, which on a registry whose shortest live
+# cadence is an hour is 17,000 scans a day of a few dozen requests each, and
+# the public endpoint's daily quota is what a keeper on the same address was
+# already being refused over (scripts/node_retry.py, "Whose quota this is").
+# Thirty seconds is about eleven rounds: an execution is announced within a
+# scan of landing, and a stranger within a scan of registering, at a fortieth
+# of the requests. `--poll-seconds` for anything else.
+DEFAULT_POLL_SECONDS = 30
+# Discord's `Retry-After` is honoured up to this. It is a header a hostile or
+# misconfigured proxy could set to anything, and a notifier asleep for a day
+# on somebody else's say-so is the watcher not watching.
+MAX_RETRY_AFTER_SECONDS = 30
+# The ARC-4 selector of `execute(uint64)uint64`, so attribution only credits
+# an execution to the account that actually executed. Every other call to the
+# app (a `register`, a `cancel`, a `top_up`) is an application call too, and
+# reading the first one in a block as the execution named the wrong keeper.
+EXECUTE_SELECTOR = hashlib.new("sha512_256", b"execute(uint64)uint64").digest()[:4]
 
 
 @dataclass
@@ -281,6 +299,22 @@ def _as_address(sender: object) -> str | None:
     return None
 
 
+def _is_execute(inner: dict) -> bool:
+    """Whether an application call's first argument is the execute selector."""
+    args = inner.get("apaa") or []
+    if not args:
+        return False
+    first = args[0]
+    if isinstance(first, str):
+        try:
+            first = base64.b64decode(first)
+        except Exception:
+            return False
+    if not isinstance(first, (bytes, bytearray)):
+        return False
+    return bytes(first)[:4] == EXECUTE_SELECTOR
+
+
 def attribute(algod, app_id: int, since_round: int, until_round: int) -> str | None:
     """Which account executed, read from the blocks that can say.
 
@@ -302,7 +336,11 @@ def attribute(algod, app_id: int, since_round: int, until_round: int) -> str | N
             return None
         for txn in block.get("block", {}).get("txns") or []:
             inner = txn.get("txn", {})
-            if inner.get("type") == "appl" and inner.get("apid") == app_id:
+            if (
+                inner.get("type") == "appl"
+                and inner.get("apid") == app_id
+                and _is_execute(inner)
+            ):
                 sender = inner.get("snd")
                 if sender:
                     return _as_address(sender)
@@ -333,7 +371,11 @@ def post(webhook: str | None, message: str) -> None:
         if exc.code == 429:
             # Rate limited: wait what Discord asks for, then move on. Missing an
             # announcement is better than a stuck notifier.
-            retry_after = float(exc.headers.get("Retry-After", "2"))
+            try:
+                asked = float(exc.headers.get("Retry-After", "2"))
+            except (TypeError, ValueError):
+                asked = 2.0
+            retry_after = min(max(asked, 0.0), MAX_RETRY_AFTER_SECONDS)
             logger.warning(f"Rate limited; sleeping {retry_after}s")
             time.sleep(retry_after)
         else:
@@ -384,13 +426,25 @@ def main(argv: list[str] | None = None) -> None:
     )
     parser.add_argument(
         "--ours",
-        default="",
+        default=None,
         help=(
             "comma-separated addresses whose upkeeps are expected. Any other creator is "
             "announced as a stranger. Empty means announce nobody as a stranger, which "
             "is right on a shared TestNet app and wrong on a MainNet one whose id is "
-            "supposed to be unpublished."
+            "supposed to be unpublished. Defaults to ARCRON_OURS in the environment, "
+            "which is how the container and the systemd unit pass it."
         ),
+    )
+    parser.add_argument(
+        "--poll-seconds",
+        type=float,
+        default=DEFAULT_POLL_SECONDS,
+        help="seconds between scans (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--stdout",
+        action="store_true",
+        help="on MainNet, mean it when there is no webhook and print announcements instead",
     )
     parser.add_argument("--no-state", action="store_true", help="announce from scratch each run")
     args = parser.parse_args(argv)
@@ -401,11 +455,29 @@ def main(argv: list[str] | None = None) -> None:
     webhook = os.environ.get("DISCORD_WEBHOOK_URL")
     path = None if args.no_state else (args.state_file or state_path(args.network, app_id))
 
+    ours = args.ours if args.ours is not None else os.environ.get("ARCRON_OURS", "")
+    known_creators = frozenset(a.strip() for a in ours.split(",") if a.strip())
+    if args.network == net.MAINNET:
+        # On MainNet a watcher that cannot tell a stranger, or that tells nobody,
+        # is the failure it exists to prevent, so both are refused at startup
+        # rather than logged past. The plan for an unfrozen deployment is to
+        # freeze the moment somebody who is not us escrows, and that plan is
+        # this process noticing and somebody reading it.
+        if not known_creators:
+            parser.error(
+                "--ours (or ARCRON_OURS) is required on MainNet: without it no creator "
+                "is a stranger, and a stranger is the one event this watcher exists for"
+            )
+        if not webhook and not args.stdout:
+            parser.error(
+                "DISCORD_WEBHOOK_URL is unset on MainNet, so announcements would go to a "
+                "log nobody reads. Set it, or pass --stdout to mean that"
+            )
+
     logger.info(
-        f"Watching app {app_id} on {args.network}; "
+        f"Watching app {app_id} on {args.network} every {args.poll_seconds:g}s; "
         f"{'posting to Discord' if webhook else 'printing here (set DISCORD_WEBHOOK_URL to post)'}"
     )
-    known_creators = frozenset(a.strip() for a in args.ours.split(",") if a.strip())
     if known_creators:
         logger.info(f"  {len(known_creators)} creator(s) expected; any other is a stranger")
     else:
@@ -444,7 +516,7 @@ def main(argv: list[str] | None = None) -> None:
 
             if args.once:
                 return
-            time.sleep(POLL_SECONDS)
+            time.sleep(args.poll_seconds)
         except KeyboardInterrupt:
             logger.info("Stopping")
             return
@@ -452,7 +524,7 @@ def main(argv: list[str] | None = None) -> None:
             if args.once:
                 raise
             logger.warning(f"{exc}; retrying")
-            time.sleep(POLL_SECONDS)
+            time.sleep(args.poll_seconds)
 
 
 if __name__ == "__main__":

@@ -53,6 +53,10 @@ services:
     restart: unless-stopped
     env_file: notifier.env
     entrypoint: ["python", "-m", "scripts.notifier"]
+    # No --ours here: compose cannot interpolate a value from env_file into a
+    # command, so the notifier reads ARCRON_OURS from its own environment.
+    # Without it this container watched MainNet with nobody counted as a
+    # stranger, which the systemd unit never did.
     command: []
     stop_signal: SIGTERM
     stop_grace_period: 15s

@@ -305,3 +305,178 @@ def test_no_allowlist_means_nobody_is_a_stranger() -> None:
         snapshot([upkeep(upkeep_id=2, creator=STRANGER), upkeep()]),
     )
     assert [e.kind for e in events] == ["registered"]
+
+
+# --- attribution names the executor, not the first caller ------------------
+
+def _block(*txns: dict) -> dict:
+    return {"block": {"txns": [{"txn": t} for t in txns]}}
+
+
+class _BlockAlgod:
+    def __init__(self, blocks: dict[int, dict]) -> None:
+        self.blocks = blocks
+
+    def block_info(self, round_number: int) -> dict:
+        return self.blocks[round_number]
+
+
+def test_attribution_requires_the_execute_selector() -> None:
+    """A `cancel` in the same block used to be credited as the execution.
+
+    Every call to the app is an application call. The first one in a block
+    was read as the keeper, so a creator cancelling in the round an execution
+    landed was named as having executed it.
+    """
+    from scripts.notifier import EXECUTE_SELECTOR, attribute
+
+    creator = "FIYLSRRXA22FZ4FXV7NJUGFESVIEHIT4M23A4NRZTSR4NCTRSCDMXO4LGA"
+    keeper = "NUGVPQGZCURNU4CBHQ2IMXCY4UO2VI3VYCBWKCATL4OAKBJAT4MUTQMBVU"
+    cancel_selector = b"\x01\x02\x03\x04"
+    algod = _BlockAlgod({
+        10: _block(
+            {"type": "appl", "apid": 7, "snd": creator, "apaa": [cancel_selector, b"\x00" * 8]},
+            {"type": "appl", "apid": 7, "snd": keeper, "apaa": [EXECUTE_SELECTOR, b"\x00" * 8]},
+        ),
+    })
+    assert attribute(algod, 7, since_round=9, until_round=10) == keeper
+
+
+def test_attribution_finds_nobody_when_only_other_calls_landed() -> None:
+    from scripts.notifier import attribute
+
+    creator = "FIYLSRRXA22FZ4FXV7NJUGFESVIEHIT4M23A4NRZTSR4NCTRSCDMXO4LGA"
+    algod = _BlockAlgod({
+        10: _block({"type": "appl", "apid": 7, "snd": creator, "apaa": [b"\x01\x02\x03\x04"]}),
+    })
+    assert attribute(algod, 7, since_round=9, until_round=10) is None
+
+
+def test_attribution_reads_a_base64_selector_too() -> None:
+    import base64
+
+    from scripts.notifier import EXECUTE_SELECTOR, attribute
+
+    keeper = "NUGVPQGZCURNU4CBHQ2IMXCY4UO2VI3VYCBWKCATL4OAKBJAT4MUTQMBVU"
+    algod = _BlockAlgod({
+        10: _block({"type": "appl", "apid": 7, "snd": keeper,
+                    "apaa": [base64.b64encode(EXECUTE_SELECTOR).decode()]}),
+    })
+    assert attribute(algod, 7, since_round=9, until_round=10) == keeper
+
+
+def test_the_execute_selector_is_the_contracts() -> None:
+    """Pinned against the ARC-56 spec, so a renamed method cannot silently un-attribute everything."""
+    import hashlib
+
+    from scripts.notifier import EXECUTE_SELECTOR
+
+    spec = json.loads(next((Path(__file__).resolve().parent.parent / "smart_contracts" / "artifacts" / "keeper").glob("*.arc56.json")).read_text())
+    execute = next(m for m in spec["methods"] if m["name"] == "execute")
+    signature = f"execute({','.join(a['type'] for a in execute['args'])}){execute['returns']['type']}"
+    assert EXECUTE_SELECTOR == hashlib.new("sha512_256", signature.encode()).digest()[:4]
+
+
+# --- Discord cannot park the watcher --------------------------------------
+
+def test_retry_after_is_honoured_only_up_to_a_ceiling(monkeypatch) -> None:
+    import urllib.error
+
+    from scripts import notifier
+
+    slept: list[float] = []
+
+    def refuse(request, timeout):
+        raise urllib.error.HTTPError(request.full_url, 429, "Too Many Requests",
+                                     {"Retry-After": "86400"}, None)
+
+    monkeypatch.setattr(notifier.urllib.request, "urlopen", refuse)
+    monkeypatch.setattr(notifier.time, "sleep", slept.append)
+    notifier.post("https://discord.invalid/webhook", "hello")
+    assert slept == [notifier.MAX_RETRY_AFTER_SECONDS]
+
+
+def test_a_garbage_retry_after_falls_back_rather_than_crashing(monkeypatch) -> None:
+    import urllib.error
+
+    from scripts import notifier
+
+    slept: list[float] = []
+
+    def refuse(request, timeout):
+        raise urllib.error.HTTPError(request.full_url, 429, "Too Many Requests",
+                                     {"Retry-After": "soon"}, None)
+
+    monkeypatch.setattr(notifier.urllib.request, "urlopen", refuse)
+    monkeypatch.setattr(notifier.time, "sleep", slept.append)
+    notifier.post("https://discord.invalid/webhook", "hello")
+    assert slept == [2.0]
+
+
+# --- MainNet refuses to watch blindly -------------------------------------
+
+class _Stop(Exception):
+    pass
+
+
+class _StoppingAlgod:
+    def status(self) -> dict:
+        raise _Stop()
+
+
+def _connected(monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    from scripts import notifier
+
+    monkeypatch.setattr(notifier.net, "connect",
+                        lambda network: SimpleNamespace(client=SimpleNamespace(algod=_StoppingAlgod())))
+    monkeypatch.delenv("ARCRON_OURS", raising=False)
+    monkeypatch.delenv("DISCORD_WEBHOOK_URL", raising=False)
+
+
+def test_mainnet_refuses_to_start_with_nobody_counted_as_ours(monkeypatch) -> None:
+    from scripts import notifier
+
+    _connected(monkeypatch)
+    with pytest.raises(SystemExit):
+        notifier.main(["--network", "mainnet", "--app-id", "1", "--once", "--no-state"])
+
+
+def test_mainnet_refuses_to_start_without_a_webhook(monkeypatch) -> None:
+    from scripts import notifier
+
+    _connected(monkeypatch)
+    ours = "WGSHC4TYKYBS6EX5V5E377BQDLKWIIPBCFOLZQZIXCKHFIEKRPBFOMW25A"
+    with pytest.raises(SystemExit):
+        notifier.main(["--network", "mainnet", "--app-id", "1", "--once", "--no-state", "--ours", ours])
+
+
+def test_mainnet_starts_with_ours_and_an_explicit_stdout(monkeypatch) -> None:
+    from scripts import notifier
+
+    _connected(monkeypatch)
+    ours = "WGSHC4TYKYBS6EX5V5E377BQDLKWIIPBCFOLZQZIXCKHFIEKRPBFOMW25A"
+    # Past the guards means it reached the first scan, which the fake stops.
+    with pytest.raises(_Stop):
+        notifier.main(["--network", "mainnet", "--app-id", "1", "--once", "--no-state",
+                       "--ours", ours, "--stdout"])
+
+
+def test_ours_is_read_from_the_environment_when_no_flag_is_given(monkeypatch) -> None:
+    """compose cannot pass a value from env_file into a command; the process reads it itself."""
+    from scripts import notifier
+
+    _connected(monkeypatch)
+    monkeypatch.setenv("ARCRON_OURS", "WGSHC4TYKYBS6EX5V5E377BQDLKWIIPBCFOLZQZIXCKHFIEKRPBFOMW25A")
+    monkeypatch.setenv("DISCORD_WEBHOOK_URL", "https://discord.invalid/webhook")
+    with pytest.raises(_Stop):
+        notifier.main(["--network", "mainnet", "--app-id", "1", "--once", "--no-state"])
+
+
+def test_testnet_still_starts_with_nobody_counted_as_ours(monkeypatch) -> None:
+    from scripts import notifier
+
+    _connected(monkeypatch)
+    with pytest.raises(_Stop):
+        notifier.main(["--network", "testnet", "--app-id", "1", "--once", "--no-state"])

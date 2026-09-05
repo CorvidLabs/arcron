@@ -78,6 +78,15 @@ because these are easy to get wrong from memory:
 - **MainNet gate** is self-review plus sustained TestNet time across the live
   registry. No paid audit. Any struct change restarts that clock, and no other
   repository can stall it.
+- **The rollout is quiet**, and the plan is [`docs/design/mainnet-rollout.md`](docs/design/mainnet-rollout.md):
+  create on MainNet from the soaked bytecode, unfrozen, app id unpublished,
+  our own upkeeps only at `fee_cap 0`, watched by the notifier with `--ours`
+  set, for at least thirty days; escalation and the three open asserts are
+  alpha-4, by `govern update`, TestNet first. The ceremony is
+  `fledge run deploy-mainnet`, which refuses a dirty or untagged tree, any
+  creator but `corvid.algo`, a mnemonic written into `.env.mainnet`, and a
+  second keeper, and reads every permanent field back after the create. The
+  MainNet app id goes in no file in this tree.
 - **Public release** waits until the deployment is one we are not about to
   replace; the licence and docs (#50) land before visibility does.
 

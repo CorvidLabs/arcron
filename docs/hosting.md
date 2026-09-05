@@ -52,6 +52,38 @@ Nothing in the tarball is specific to our deployment. `KEEPER_APP_ID` names
 the app to service. `ARCRON_NETWORK` names the chain; the unit file does not
 pin TestNet, so a MainNet env is a MainNet bot. GitHub Actions stays TestNet.
 
+### A1. MainNet, on the same server, with a node of our own
+
+The same install, and three things change together in `/etc/arcron/keeper.env`
+and `notifier.env`, which both carry a commented block for it:
+`ARCRON_ALLOW_MAINNET=1`, `ARCRON_NETWORK=mainnet`, and the app id from the
+create ceremony. The bot refuses to start on MainNet without the flag, and the
+notifier refuses without `ARCRON_OURS` and a webhook.
+
+The fourth thing is the node. The free public endpoint sheds requests once a
+daily quota is crossed, and the laptop keeper on TestNet was refused 4,949
+times in one log by it (`scripts/node_retry.py` has the measurement). A keeper
+that cannot read the registry misses executions; a notifier that cannot read
+it misses a stranger, and on an unfrozen MainNet deployment a stranger is the
+event everything turns on. So run a node:
+
+```bash
+export ALGOD_TOKEN="$(openssl rand -hex 32)"
+docker compose -f deploy/vps/algod.compose.yaml up -d
+docker compose -f deploy/vps/algod.compose.yaml logs -f   # fast catch-up, about an hour
+```
+
+Then `ALGOD_SERVER=http://127.0.0.1:8080` and that token in both env files.
+Keep `ALGOD_SERVER_FALLBACK=https://mainnet-api.algonode.cloud` beside it:
+`scripts/node_retry.py` alternates to the fallback on a refusal, so a node
+restart costs a few retried requests rather than a blackout. The whole
+sequence, with what comes before and after, is
+[`design/mainnet-rollout.md`](design/mainnet-rollout.md).
+
+Not from a laptop. `fledge run keeper-daemon-install` refuses `--network
+mainnet`: the job would read `.env.mainnet`, and the keeper's hot key has no
+business in the same environment the create ceremony uses.
+
 ### B. GitHub Actions on a schedule
 
 `.github/workflows/keeper-bot.yml` does this, and the schedule is live at
@@ -354,6 +386,16 @@ logged and retried on the next heartbeat.
 `scripts/notifier.py` posts to a Discord webhook when the registry changes or
 a keeper falls behind. It holds no account and cannot sign, so it is safe to
 run anywhere. `deploy/notifier.env.example` is its configuration.
+
+It scans every thirty seconds (`--poll-seconds` to change that; it was five,
+which on a registry of hourly cadences was seventeen thousand scans a day
+against a quota a keeper was already being refused over), credits an
+execution only to a call that carries the `execute` selector, and reads
+`ARCRON_OURS` from the environment when no `--ours` is passed, which is how
+the container and the systemd unit tell it who counts as us. On MainNet it
+refuses to start without that list and without a webhook, because a watcher
+that cannot name a stranger, or that tells nobody, is the failure it exists to
+prevent.
 
 ```bash
 poetry run python -m scripts.keeper_bot --check --network testnet --app-id <id>
