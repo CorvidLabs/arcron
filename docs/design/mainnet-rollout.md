@@ -240,6 +240,17 @@ this page did not know: without the virtualenv on `PATH` the rebuild fails at
 `algokit generate client` (`Command not found: algokitgen-py`), which is why
 the ceremony above says `poetry install` and `fledge run`.
 
+**LocalNet again, 2026-09-05, commit `4078b17`**, after three independent
+reviews changed the script. `--with-pulse` without `--another` refused both
+apps in one list (`keeper app(s) 1002, 1065, 1499, 205070` and
+`pulse app(s) 1004`). With `--another` and the creator typed back: keeper
+`205073` and Pulse `205075`, both created directly, both read back
+(`Verified: creator, pages, schema and programs read back as described`).
+Pulse on chain: 0 extra pages, global 2 uints / 1 byte slice, local 0 / 0.
+The startup check accepted `205073`, refused `205075` (`not a keeper: its
+global state has no next_upkeep_id`) and refused `999999999` (`does not
+exist`). `notifier --once` against `205073` ran clean. Worktree clean.
+
 **TestNet.** Pending: the throwaway creator
 `CVM4NOTWQYDRAUVF3EYHLZJXWERUI33GLFCNAV4MR4YVNOT6Z3XJMDGKNE` is generated and
 the script is staged; it needs about two TestNet ALGO, and the TestNet deployer

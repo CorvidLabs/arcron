@@ -17,6 +17,7 @@ bytecode already on TestNet (`c94c6e0c…`).
 
 - [x] The create ceremony (`scripts/deploy.py`) refuses what a create cannot take back and reads every permanent field back, pinned by `tests/test_deploy.py`, done 2026-09-05
 - [x] Ceremony rehearsed on LocalNet from a clean detached worktree: second-keeper refusal, then create with `--another`, `govern status`, `verify_build`, wrong typed confirmation refused, `govern update`, `govern freeze`, update refused after freeze, done 2026-09-05
+- [x] Rehearsed again after three independent reviews changed the script: keeper and Pulse both refused in one list, then both created directly and read back; the bot's startup check accepts the keeper and refuses Pulse and a nonexistent id, done 2026-09-05
 - [ ] Ceremony rehearsed on TestNet with a fresh throwaway creator and the record kept in the rollout doc (blocked on funding the throwaway; the TestNet deployer has 0.5 ALGO spendable)
 - [ ] G1, by 2026-09-12: a VPS runs the keeper and the notifier against TestNet from `main`, with a node of our own or a fallback, and the notifier has posted to Discord for seven days
 - [ ] G2, by 2026-09-19: `git tag mainnet-1`, `fledge run deploy-mainnet -- --with-pulse`, `govern status` and `verify_build` recorded privately, keeper and notifier watching the new id before the first upkeep, Pulse `tick` registered at `fee_cap 0` and executed
