@@ -37,15 +37,19 @@ Four things follow from that, and each was chosen against an alternative:
    who scored both scored the frozen deployment lower, for the same reason:
    this repository has produced about one new true finding per review round,
    and freeze turns the next one from a patch into a migration. Freeze is the
-   rc gate. It is triggered by "somebody who is not us is about to escrow", or
-   by the notifier saying somebody already has, and not by a calendar.
+   rc gate, and a calendar does not call it. A stranger registering is also
+   not an automatic freeze: that would let an outsider choose the moment
+   known defects become permanent, before alpha-4 has landed. The policy is
+   below.
 4. **Own upkeeps only, and the notifier is the control.** Not publishing the
    app id is a courtesy and not a protection: the creator is a named address
    and the id is one indexer query away from it. The protection is
-   `scripts/notifier.py` running against MainNet with `--ours` set, announcing
-   any other creator, and the agreed answer to that announcement, which is to
-   freeze. The notifier refuses to start on MainNet without `--ours` and a
-   webhook for exactly this reason.
+   `scripts/notifier.py` running against MainNet with `--ours` set to the
+   58-character `corvid.algo` address (it does not resolve NFD names),
+   announcing any other creator as a durable, prioritized alert. The agreed
+   answer to that announcement is an operator release-readiness decision,
+   not a scripted freeze, update, or cancel. The notifier refuses to start
+   on MainNet without `--ours` and a webhook for exactly this reason.
 
 ## The goal
 
@@ -55,7 +59,7 @@ check rather than something somebody remembers.
 | | by | done when |
 |---|---|---|
 | **G1 · operations exist** | 2026-09-12 | A VPS runs the keeper and the notifier against TestNet from `main`, not from a laptop, not from a feature branch. The notifier posts to Discord and has done so for seven days. The node in front of them is our own or has a fallback, and `health` shows executions without a 403 storm behind them. |
-| **G2 · the create** | 2026-09-19 | The ceremony below has been rehearsed on TestNet from a clean checkout with a fresh throwaway, including `update` and `freeze` on the result, and the record is in this file. `git tag mainnet-1`. `fledge run deploy-mainnet -- --with-pulse` runs, reads back clean, and `govern status` shows spendable at or above escrow. A keeper and the notifier are running against the new id before the first upkeep is registered. Pulse `tick` is registered from `corvid.algo` at `fee_cap 0` and has executed. |
+| **G2 · the create** | 2026-09-19 | The ceremony below has been rehearsed on TestNet from a clean checkout with a fresh throwaway, including a **code-changing** `update` (not a no-op “already matches”) and `freeze` on the result, and the record is in this file. [#250](https://github.com/CorvidLabs/arcron/issues/250) F01, F02, F04, F05 and ceremony-path F14 are merged; F10/F11 evidence is recorded against that candidate. `git tag mainnet-1`. `fledge run deploy-mainnet -- --with-pulse` runs, reads back clean, and `govern status` shows spendable at or above escrow. A keeper and the notifier are running against the new id before the first upkeep is registered. Pulse `tick` is registered from `corvid.algo` at `fee_cap 0` and has executed. Soak claims at this step are bytecode equality plus install history, not app age plus the current hash (F03). |
 | **G3 · the quiet month** | 2026-10-19 | `arcron-rain` has a MainNet path and its hub's `draw()` is an upkeep. At least one other CorvidLabs target is registered. Alpha-4 has landed on TestNet, soaked, and gone to MainNet by `govern update`. `fledge run health-mainnet` and `clock-mainnet` have been read weekly and say nothing surprising. The notifier has announced every execution and no stranger. |
 | **G4 · the decision** | after G3 | Announce, or do not. Freeze, or do not. Both written into [`../releases.md`](../releases.md) as the rc row asks, with the notifier's record as the evidence. |
 
@@ -77,7 +81,10 @@ before it and what moves the number next.
 and while the deployment is unfrozen they are trusting a single key that could
 replace `execute` with something that pays itself. Nothing in this plan
 removes that; the plan is to make sure nobody is in that position without us
-knowing within a scan.
+knowing on the next successful notifier scan. A snapshot watcher cannot
+promise to see a register/cancel pair that both happen entirely between
+scans; that coverage boundary is accepted unless we later consume
+registration history.
 
 So: the app id goes in no README, no status page, no console build, no post.
 It lives in `.env.mainnet` on the machines that need it and in
@@ -85,10 +92,49 @@ It lives in `.env.mainnet` on the machines that need it and in
 any explorer regardless, which is why the notifier and not the secrecy is the
 control.
 
-If a stranger appears: `fledge run govern-ui`, connect Pera as `corvid.algo`,
-freeze. That page is the one wallet-signing surface that reaches MainNet (the
-create and alpha-4's `update` sign from a shell export instead), it is never
-published, and freezing is the answer even if the plan said another month.
+If a stranger appears: a durable Discord alert, stranger-priority, and an
+**operator decision**. None of automatic freeze, automatic unsoaked
+alpha-4, or cancel/ignore is the safety rule. `cancel` is creator-only on
+the upkeep, so we cannot remove somebody else's box. Freeze only bytecode
+already accepted for permanence. Otherwise execute only an
+already-approved update/verification sequence, or explicitly accept the
+temporary unfrozen exposure while responding. `fledge run govern-ui` (Pera
+as `corvid.algo`) remains the wallet-signing freeze surface; create and
+alpha-4's `update` still sign from a shell export. That page is never
+published.
+
+**Who, and how fast.** The responsible operator is the holder of
+`corvid.algo`. During the quiet month they check Discord at least once
+every 24 hours. A stranger alert is decided (freeze / approved-update /
+accept-unfrozen-exposure) within 24 hours of first seeing it; the
+decision, the evidence, and the time of first sighting are recorded. A
+missing daily notifier summary is treated as a dead watcher within those
+same 24 hours — that is a human response budget, not the 30-second scan
+interval. On create day the operator is at the keyboard and the budget is
+minutes. F02 stays open until the notifier's stranger wording matches this
+paragraph.
+
+**F01 delivery.** Persist the pending stranger payload until Discord
+returns 2xx, keyed by network/app/upkeep, even if the box is later
+cancelled. A delivered-id set that only re-reads live boxes will drop an
+alert that failed, then vanished. At-least-once; duplicates beat silence.
+
+**F05** is “readers request real pages and do not fail closed at the
+listing cap.” It is not flood resistance and not a promise that the first
+stranger box alerts before the rest of the scan finishes: today's notifier
+builds a full snapshot first. Do not claim bounded alert latency from
+priority-sorting a completed list.
+
+Policy recorded 2026-09-05 by Leif, taking the recommendation in
+[#250](https://github.com/CorvidLabs/arcron/issues/250) (Astra / Kyntrin
+comment 5553940330, corrections 5554020272). Quiet create waits on F01,
+F02 (this policy plus matching notifier text), F04, F05 as scoped above,
+ceremony-path F14, and F10/F11 evidence, including a real code-changing
+TestNet update. F06, F07, F08 at `fee_cap 0`, F09 public copy, F12 and
+F13 summaries are not G2 blockers. F13 numbers are estimates unless they
+come from actual execution payments; they are not gate evidence. If even
+temporary outsider escrow were unacceptable, the create would wait until
+freeze-ready; that stricter path is not this experiment.
 
 ## The ceremony
 
@@ -256,7 +302,11 @@ exist`). `notifier --once` against `205073` ran clean. Worktree clean.
 the script is staged; it needs about two TestNet ALGO, and the TestNet deployer
 has half of one spendable. What TestNet adds over LocalNet is the public node
 in the loop (retries, the 403 shedding) and a creator that has never made an
-app; the decisions being rehearsed are the same.
+app; the decisions being rehearsed are the same. The LocalNet `govern update`
+was a no-op (“already match”); [#250](https://github.com/CorvidLabs/arcron/issues/250)
+F10 requires the TestNet rehearsal to also send a **code-changing** update
+before freeze, so the path that will carry alpha-4 has been exercised on a
+public node, not only refused as identical.
 
 ## What this plan changed in the repository
 
