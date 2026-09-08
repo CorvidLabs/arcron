@@ -1,8 +1,62 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 
-import { ArcronService } from '../core/arcron.service';
+import { ArcronService, type EscrowRead } from '../core/arcron.service';
 import { algos, duration } from '@corvidlabs/arcron/format';
 import { isExecutable } from '@corvidlabs/arcron/upkeep';
+
+/**
+ * What the App spendable tile says under its number.
+ *
+ * Exported so the test binds to the copy the console actually renders. The
+ * first version said "covers every escrow" whenever `solvent` was true, and
+ * `solvent` was true whenever the balance covered the boxes that had been
+ * read, so a node refusing half the boxes made the tile *more* confident.
+ * The tile now claims coverage only over a complete read, and says the read
+ * was incomplete when it was, which is a statement about the console and not
+ * about the app.
+ */
+export function solvencyHintFor(state: {
+  appId: number | null;
+  read: EscrowRead;
+  solvent: boolean | null;
+  unreadableBoxes: number;
+  listedBoxes: number;
+}): string {
+  if (state.appId === null) return 'no app selected';
+  switch (state.read) {
+    case 'unread':
+      return 'not read yet';
+    case 'incomplete':
+      return (
+        `${state.unreadableBoxes} of ${state.listedBoxes} boxes unreadable; ` +
+        `solvency unknown, not in doubt`
+      );
+    case 'torn':
+      return 'balance moved during the read; solvency unknown, retrying';
+    case 'complete':
+      return state.solvent === true ? 'covers every escrow' : 'below total escrow';
+  }
+}
+
+/**
+ * What the Escrowed tile's total is spread across, and what it leaves out.
+ *
+ * A total summed over the boxes the node agreed to serve is a lower bound,
+ * and a hint reading "across 20 upkeeps" under it presents the bound as the
+ * total. When some boxes went unread the hint says so.
+ */
+export function escrowedHintFor(state: {
+  upkeeps: number;
+  unreadableBoxes: number;
+}): string {
+  const { upkeeps: count, unreadableBoxes: unread } = state;
+  if (unread > 0) {
+    const read = count === 1 ? '1 upkeep read' : `${count} upkeeps read`;
+    return `across ${read}; ${unread} unreadable, so this is a lower bound`;
+  }
+  if (count === 0) return 'nothing registered yet';
+  return count === 1 ? 'across 1 upkeep' : `across ${count} upkeeps`;
+}
 
 @Component({
   selector: 'arcron-stat-tiles',
@@ -102,11 +156,12 @@ export class StatTiles {
    * Side by side with App spendable, which can hold the same number, it made
    * the whole row look like it had failed to compute.
    */
-  protected readonly escrowedHint = computed(() => {
-    const count = this.arcron.upkeeps().length;
-    if (count === 0) return 'nothing registered yet';
-    return count === 1 ? 'across 1 upkeep' : `across ${count} upkeeps`;
-  });
+  protected readonly escrowedHint = computed(() =>
+    escrowedHintFor({
+      upkeeps: this.arcron.upkeeps().length,
+      unreadableBoxes: this.arcron.unreadableBoxes(),
+    }),
+  );
 
   protected readonly spendable = computed(() => {
     const account = this.arcron.appAccount();
@@ -153,9 +208,13 @@ export class StatTiles {
       : 'executable by anyone, right now';
   });
 
-  protected readonly solvencyHint = computed(() => {
-    const solvent = this.arcron.solvent();
-    if (solvent === null) return 'no app selected';
-    return solvent ? 'covers every escrow' : 'below total escrow';
-  });
+  protected readonly solvencyHint = computed(() =>
+    solvencyHintFor({
+      appId: this.arcron.appId(),
+      read: this.arcron.escrowRead(),
+      solvent: this.arcron.solvent(),
+      unreadableBoxes: this.arcron.unreadableBoxes(),
+      listedBoxes: this.arcron.listedBoxes(),
+    }),
+  );
 }

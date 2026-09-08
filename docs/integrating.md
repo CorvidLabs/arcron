@@ -350,9 +350,18 @@ it pulls, or from the round. Arcron will not supply it, by design.
 ## An ASA bonus
 
 An upkeep can pay a bonus in any asset on top of its ALGO fee, never
-instead of it. That is deliberate: a keeper's real costs are ALGO, so keeping
-the ALGO fee mandatory is what lets the contract guarantee profitability
-without anyone having to price your token.
+instead of it. That is deliberate: a keeper's on-chain costs are ALGO, so
+keeping the ALGO fee mandatory is what lets the contract guarantee that what it
+pays out is never below the transaction fees an execution burns, without anyone
+having to price your token. An earlier version of this sentence said
+"guarantee profitability", and the paragraphs below it then explained that at
+the floor the ALGO only reimburses transaction cost; both cannot be true, and
+it is the second one that is. The guarantee covers transaction fees and
+nothing else: a keeper's host, its node access and its attention are not paid
+for by a floor-fee upkeep, and the 4,000 µALGO floor is a contract constant,
+so it does not follow the network's minimum fee if that ever moves. Whether an
+upkeep is *profitable* to run is a claim the creator makes by setting a fee
+above the floor, not one the contract makes for them.
 
 ```
 register(..., fee_asset=<asset id>, asset_fee=<base units>)
@@ -378,8 +387,9 @@ guarantee on-chain and costs about 1.5 ALGO a year for a daily upkeep.
 Three things to know:
 
 - **An asset upkeep at the minimum ALGO fee only attracts keepers who want
-  your asset.** They break exactly even in ALGO, so the token has to be worth
-  their while. If you want generic keepers to take it too, pay more ALGO.
+  your asset.** They break exactly even in ALGO on transaction fees, with
+  nothing towards a host, so the token has to be worth their while. If you
+  want generic keepers to take it too, pay more ALGO.
 - **The app must opt in before it can hold the asset**, which costs 0.1 ALGO
   of minimum balance permanently. There is no opt-out, so the deposit does not
   come back.

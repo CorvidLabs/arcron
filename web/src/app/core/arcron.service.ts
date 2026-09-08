@@ -37,6 +37,26 @@ const POLL_INTERVAL_MS = 2_500;
  * immediately regardless, so anything you do yourself still appears at once.
  */
 const FULL_READ_EVERY = 8;
+/**
+ * How many box names one listing request asks for.
+ *
+ * The listing used to be a single unbounded request, which is whatever the
+ * node's default page happens to be, and a registry past that size would have
+ * been read as complete while the tail of it was silently missing. algosdk
+ * 3.7.0 exposes `limit` and `next`, and algod answers with `next-token` while
+ * there is more, so the listing follows the token until there is not.
+ */
+export const BOX_PAGE_SIZE = 100;
+/**
+ * How many box reads are in flight at once.
+ *
+ * A full read used to fire one request per box in a single burst, which is
+ * exactly the shape a public node rate-limits: at thirty-six boxes that is
+ * thirty-six simultaneous requests, and the node's answer to a burst is 403
+ * for every one of them, which then read as thirty-six unreadable boxes. Eight
+ * at a time keeps the read short without looking like an attack.
+ */
+export const BOX_READ_CONCURRENCY = 8;
 /** Round-rate samples kept; at the poll interval this is ~2 minutes of chain. */
 const RATE_SAMPLES = 48;
 /** Below this the sample window is too short to divide by. */
@@ -103,6 +123,234 @@ export function isFrozen(
   return BigInt(found.value.uint ?? 0) !== 0n;
 }
 
+/** One page of a box listing, as algod returns it. */
+export interface BoxPage {
+  readonly boxes: readonly { readonly name: Uint8Array }[];
+  /** Present while there is another page; algod's `next-token`. */
+  readonly nextToken?: string;
+}
+
+/**
+ * The three reads a registry snapshot is made of, narrowed to what
+ * `readRegistry` uses so a test can stand a fake node in for algod and drive
+ * the code the console actually runs through a failed box, a torn read and a
+ * recovery. `algodRegistryReader` is the real one.
+ */
+export interface RegistryReader {
+  /** The app account's balance and its locked minimum. */
+  account(): Promise<{ amount: bigint; minBalance: bigint }>;
+  /** One page of box names, continuing from `next` when it is given. */
+  boxPage(next: string | undefined): Promise<BoxPage>;
+  /** One box's value. Rejects when the node will not hand it over. */
+  box(name: Uint8Array): Promise<Uint8Array>;
+}
+
+/**
+ * Everything one full read of the registry learned, set on the service in one
+ * go so the account and the boxes on screen always come from the same read.
+ */
+export interface RegistrySnapshot {
+  readonly account: AppAccount;
+  readonly upkeeps: readonly Upkeep[];
+  /** Box names the listing returned, readable or not. */
+  readonly listedBoxes: number;
+  readonly undecodableBoxes: number;
+  readonly unreadableBoxes: number;
+  /**
+   * Whether the app's balance stood still from before the listing to after
+   * the last box read. Every escrow mutation moves it: register and top-up
+   * pay in, execute and cancel pay out. A balance that moved means some box
+   * was read before or after the account it is being compared against, and
+   * the two cannot be summed against each other.
+   */
+  readonly consistent: boolean;
+}
+
+/**
+ * What the console knows about the escrow it is displaying.
+ *
+ * - `unread`: no account has been read yet, or there is no app.
+ * - `incomplete`: the node refused at least one box, so the escrow total is a
+ *   lower bound and nothing can be said about solvency.
+ * - `torn`: every box was read, but the balance moved while they were being
+ *   read, so the total and the balance are from different moments.
+ * - `complete`: the balance and every box come from one still moment, and
+ *   the comparison between them means something.
+ */
+export type EscrowRead = 'unread' | 'incomplete' | 'torn' | 'complete';
+
+export function escrowReadOf(state: {
+  account: AppAccount | null;
+  unreadableBoxes: number;
+  consistent: boolean | null;
+}): EscrowRead {
+  if (state.account === null) return 'unread';
+  if (state.unreadableBoxes > 0) return 'incomplete';
+  if (state.consistent !== true) return 'torn';
+  return 'complete';
+}
+
+/**
+ * Whether the app can pay out every µALGO it holds in escrow, or `null` when
+ * the read does not support an answer either way.
+ *
+ * The first version compared the balance against whatever boxes had been
+ * read, so a node that refused half the boxes produced a smaller total, the
+ * comparison passed, and the tile said the balance "covers every escrow" of a
+ * registry it had only half seen. `null` here is not a verdict: it says the
+ * console does not know, which is a different thing from the app being short.
+ */
+export function solvencyOf(state: {
+  account: AppAccount | null;
+  totalEscrowed: bigint;
+  unreadableBoxes: number;
+  consistent: boolean | null;
+}): boolean | null {
+  if (state.account === null || escrowReadOf(state) !== 'complete') return null;
+  return state.account.spendable >= state.totalEscrowed;
+}
+
+/**
+ * `Promise.all` with at most `limit` calls in flight.
+ *
+ * Results keep the order of `items`, and a rejection rejects the whole map,
+ * exactly like `Promise.all`; callers that want per-item failures catch inside
+ * `fn`, which is what `readRegistry` does.
+ */
+export async function mapPooled<T, R>(
+  items: readonly T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  if (!Number.isInteger(limit) || limit < 1) throw new Error(`pool limit must be >= 1, got ${limit}`);
+  const results: R[] = new Array(items.length);
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    while (next < items.length) {
+      const index = next;
+      next += 1;
+      results[index] = await fn(items[index], index);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
+
+/**
+ * Every box name the node lists, following `next-token` until it stops.
+ *
+ * A token that repeats would loop forever against a misbehaving node, so it
+ * is a failure rather than a retry.
+ */
+export async function listBoxes(
+  page: (next: string | undefined) => Promise<BoxPage>,
+): Promise<{ readonly name: Uint8Array }[]> {
+  const names: { readonly name: Uint8Array }[] = [];
+  let next: string | undefined;
+  do {
+    const result = await page(next);
+    names.push(...result.boxes);
+    if (result.nextToken !== undefined && result.nextToken === next) {
+      throw new Error('box listing repeated a next-token; refusing to loop');
+    }
+    next = result.nextToken;
+  } while (next !== undefined);
+  return names;
+}
+
+/** `RegistryReader` over a real node. */
+export function algodRegistryReader(algod: algosdk.Algodv2, appId: number): RegistryReader {
+  const address = algosdk.getApplicationAddress(appId);
+  return {
+    async account() {
+      const account = await algod.accountInformation(address).do();
+      return { amount: account.amount, minBalance: account.minBalance };
+    },
+    async boxPage(next) {
+      let request = algod.getApplicationBoxes(appId).limit(BOX_PAGE_SIZE);
+      // Not `.next(undefined)`: the builder writes whatever it is given into
+      // the query string, and a literal "next=undefined" is a token algod
+      // rejects.
+      if (next !== undefined) request = request.next(next);
+      const result = await request.do();
+      return { boxes: result.boxes, nextToken: result.nextToken };
+    },
+    async box(name) {
+      return (await algod.getApplicationBoxByName(appId, name).do()).value;
+    },
+  };
+}
+
+/**
+ * One full read of the registry: balance, every box, balance again.
+ *
+ * The two balance reads bracket the box reads, which is how `consistent` is
+ * decided. The account is reported from the second read, because when the two
+ * disagree neither matches the boxes and the later one is at least current.
+ */
+export async function readRegistry(
+  reader: RegistryReader,
+  address: string,
+  concurrency = BOX_READ_CONCURRENCY,
+): Promise<RegistrySnapshot> {
+  const before = await reader.account();
+  const listed = await listBoxes((next) => reader.boxPage(next));
+  let undecodable = 0;
+  let unreadable = 0;
+  const read = await mapPooled(listed, concurrency, async (box) => {
+    const id = upkeepIdFromBoxName(box.name);
+    if (id === null) return null;
+
+    // Fetching and decoding fail for entirely different reasons and must
+    // not share a catch. An earlier version wrapped both, so a 403 from a
+    // rate-limited node, a timeout, or a box deleted between the listing
+    // and the read all counted as "does not decode", and the banner then
+    // told the visitor this app "is a different contract wearing these box
+    // names". Cancelling an upkeep reliably produced that accusation
+    // against an honest deployment, because the delete raced the read.
+    let value: Uint8Array;
+    try {
+      value = await reader.box(box.name);
+    } catch {
+      // A box that cannot be fetched says nothing about the app. It is
+      // either gone, which is what cancel does, or the node did not
+      // answer. It does say something about this read: the escrow total is
+      // now a lower bound, and `solvencyOf` refuses to compare it.
+      unreadable += 1;
+      return null;
+    }
+
+    try {
+      return decodeUpkeep(id, value);
+    } catch {
+      // This one IS the signal. Box contents belong to whoever owns the
+      // app, and a decoder throw inside a bare Promise.all rejects the
+      // whole read. That pinned the connection at 'error' for one
+      // malformed box, which cost an attacker about 0.058 ALGO and
+      // switched off every warning on the page while the register button
+      // stayed live. One bad box now drops one row.
+      undecodable += 1;
+      return null;
+    }
+  });
+  const after = await reader.account();
+  return {
+    account: {
+      address,
+      amount: after.amount,
+      minBalance: after.minBalance,
+      spendable: after.amount - after.minBalance,
+    },
+    upkeeps: read
+      .filter((upkeep): upkeep is Upkeep => upkeep !== null)
+      .sort((left, right) => (left.id < right.id ? -1 : 1)),
+    listedBoxes: listed.length,
+    undecodableBoxes: undecodable,
+    unreadableBoxes: unreadable,
+    consistent: before.amount === after.amount && before.minBalance === after.minBalance,
+  };
+}
+
 @Injectable({ providedIn: 'root' })
 export class ArcronService {
   private timer: ReturnType<typeof setInterval> | null = null;
@@ -148,9 +396,18 @@ export class ArcronService {
   /**
    * Boxes the node would not hand over. Not a claim about the app: a
    * cancelled upkeep's box is deleted, so a read racing a cancel finds
-   * nothing, and a rate-limited node answers nothing for anything.
+   * nothing, and a rate-limited node answers nothing for anything. It is a
+   * claim about the read: while this is non-zero the escrow total is a lower
+   * bound and `solvent` is unknown.
    */
   readonly unreadableBoxes = signal(0);
+  /** Box names the last full read listed, so "N of M unreadable" has an M. */
+  readonly listedBoxes = signal(0);
+  /**
+   * Whether the last full read's balance and boxes come from one still
+   * moment. Null until a read has completed. See `RegistrySnapshot`.
+   */
+  readonly snapshotConsistent = signal<boolean | null>(null);
 
   /** Which refresh is allowed to write. See `refresh`. */
   private generation = 0;
@@ -247,11 +504,29 @@ export class ArcronService {
   readonly totalEscrowed = computed(() =>
     this.upkeeps().reduce((total, upkeep) => total + upkeep.balance, 0n),
   );
-  /** The app must be able to pay out every µALGO it holds in escrow. */
-  readonly solvent = computed(() => {
-    const account = this.appAccount();
-    return account === null ? null : account.spendable >= this.totalEscrowed();
-  });
+  /** How much of the escrow the console has actually seen. */
+  readonly escrowRead = computed<EscrowRead>(() =>
+    escrowReadOf({
+      account: this.appAccount(),
+      unreadableBoxes: this.unreadableBoxes(),
+      consistent: this.snapshotConsistent(),
+    }),
+  );
+  /**
+   * The app must be able to pay out every µALGO it holds in escrow. Null
+   * while there is no app, and also while the read that would decide it is
+   * incomplete or torn: a total summed over the boxes the node agreed to
+   * serve is not the total, and comparing the balance against it proves
+   * nothing in either direction.
+   */
+  readonly solvent = computed(() =>
+    solvencyOf({
+      account: this.appAccount(),
+      totalEscrowed: this.totalEscrowed(),
+      unreadableBoxes: this.unreadableBoxes(),
+      consistent: this.snapshotConsistent(),
+    }),
+  );
 
   constructor() {
     effect(() => {
@@ -372,6 +647,10 @@ export class ArcronService {
         this.appAccount.set(null);
         this.nextUpkeepId.set(null);
         this.frozen.set(null);
+        this.listedBoxes.set(0);
+        this.undecodableBoxes.set(0);
+        this.unreadableBoxes.set(0);
+        this.snapshotConsistent.set(null);
       } else if (full || this.upkeeps().length === 0) {
         // The second condition matters on first load and after a network
         // switch, where waiting up to eight polls to show anything would read
@@ -406,73 +685,26 @@ export class ArcronService {
 
     this.frozen.set(isFrozen(application.params?.globalState ?? []));
 
-    const address = algosdk.getApplicationAddress(appId);
-    const account = await algod.accountInformation(address).do();
-    if (!current()) return;
-    this.appAccount.set({
-      address: address.toString(),
-      amount: account.amount,
-      minBalance: account.minBalance,
-      spendable: account.amount - account.minBalance,
-    });
-
-    const upkeeps = await this.readUpkeeps(algod, appId, current);
-    if (!current()) return;
-    this.upkeeps.set(upkeeps);
-  }
-
-  private async readUpkeeps(
-    algod: algosdk.Algodv2,
-    appId: number,
-    current: () => boolean,
-  ): Promise<Upkeep[]> {
-    const { boxes } = await algod.getApplicationBoxes(appId).do();
-    let undecodable = 0;
-    let unreadable = 0;
-    const upkeeps = await Promise.all(
-      boxes.map(async (box) => {
-        const id = upkeepIdFromBoxName(box.name);
-        if (id === null) return null;
-
-        // Fetching and decoding fail for entirely different reasons and must
-        // not share a catch. An earlier version wrapped both, so a 403 from a
-        // rate-limited node, a timeout, or a box deleted between the listing
-        // and the read all counted as "does not decode", and the banner then
-        // told the visitor this app "is a different contract wearing these box
-        // names". Cancelling an upkeep reliably produced that accusation
-        // against an honest deployment, because the delete raced the read.
-        let value: { value: Uint8Array };
-        try {
-          value = await algod.getApplicationBoxByName(appId, box.name).do();
-        } catch {
-          // A box that cannot be fetched says nothing about the app. It is
-          // either gone, which is what cancel does, or the node did not
-          // answer, which `status` already reports honestly.
-          unreadable += 1;
-          return null;
-        }
-
-        try {
-          return decodeUpkeep(id, value.value);
-        } catch {
-          // This one IS the signal. Box contents belong to whoever owns the
-          // app, and a decoder throw inside a bare Promise.all rejects the
-          // whole read. That pinned the connection at 'error' for one
-          // malformed box, which cost an attacker about 0.058 ALGO and
-          // switched off every warning on the page while the register button
-          // stayed live. One bad box now drops one row.
-          undecodable += 1;
-          return null;
-        }
-      }),
-    );
-    if (current()) {
-      this.undecodableBoxes.set(undecodable);
-      this.unreadableBoxes.set(unreadable);
+    const reader = algodRegistryReader(algod, appId);
+    const address = algosdk.getApplicationAddress(appId).toString();
+    let snapshot = await readRegistry(reader, address);
+    if (!snapshot.consistent && current()) {
+      // Something moved the balance mid-read: an execution landing on a busy
+      // registry, most often. One more pass costs the same as the first and
+      // usually lands in a quiet window; if it does not, the tile says so
+      // and the next scheduled full read tries again.
+      snapshot = await readRegistry(reader, address);
     }
-    return upkeeps
-      .filter((upkeep): upkeep is Upkeep => upkeep !== null)
-      .sort((left, right) => (left.id < right.id ? -1 : 1));
+    if (!current()) return;
+    // Set together: the account and the boxes on screen are always from the
+    // same read, so the tile never compares one read's balance to another's
+    // escrow.
+    this.appAccount.set(snapshot.account);
+    this.upkeeps.set(snapshot.upkeeps);
+    this.listedBoxes.set(snapshot.listedBoxes);
+    this.undecodableBoxes.set(snapshot.undecodableBoxes);
+    this.unreadableBoxes.set(snapshot.unreadableBoxes);
+    this.snapshotConsistent.set(snapshot.consistent);
   }
 
   /** Keep a rolling window of (time, round) pairs to derive the round rate. */
@@ -491,6 +723,8 @@ export class ArcronService {
     this.frozen.set(null);
     this.undecodableBoxes.set(0);
     this.unreadableBoxes.set(0);
+    this.listedBoxes.set(0);
+    this.snapshotConsistent.set(null);
     this.genesisId.set(null);
     this.rateSamples.set([]);
   }
