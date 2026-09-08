@@ -82,28 +82,59 @@ class FeeRefused(RuntimeError):
 def bounded_params(algod) -> transaction.SuggestedParams:
     """Suggested params with the fee pinned to the network minimum, or a refusal.
 
-    The paths in this repository that sign in a shell, in process, and what
-    bounds each of them (issue #250 F14; the inventory was taken 2026-09-08 and
-    a new signing path belongs on this list):
+    Every path in this repository that signs with a real key, and what bounds
+    each (issue #250 F14; the inventory was taken 2026-09-08, corrected twice
+    in review the same day, and a new signing path belongs on this list):
 
-    * `scripts/deploy.py`: the create, and the 0.1 ALGO floor payment after it.
-      Both through this function.
+    Bounded:
+
+    * `scripts/deploy.py`: the create, and the 0.1 ALGO floor payment after
+      it. Both through this function.
     * `scripts/govern.py`: `update` and `freeze` when a single key signs, and
       the unsigned create/update/freeze files written for a multisig, whose
       holders' `sign` then checks the fee a second time from the file. All
       through this function.
+    * `scripts/seed_registry.py --commit`: step three of the MainNet ceremony.
+      Two payments and the `register` call per seed, `static_fee` on all
+      three from this function; `register` issues no inner transaction.
     * `scripts/keeper_topup.py --send`: the funding payment and the `top_up`
-      call, as `static_fee` on both, from this function.
+      call, `static_fee` on both, from this function.
+    * `scripts/keeper_sweep.py`: the payment that moves a keeper's earnings
+      out, `static_fee` from this function; a refusal is an error-level
+      `sweep_refused` event and no payment, because the bot is unattended.
     * `scripts/reclaim.py`: `cancel`, bounded with `max_fee` rather than a
       flat fee because `cancel` sends inner transactions that pooling has to
       cover; the ceiling is the same number.
-    * `scripts/keeper_bot.py`: `execute`, which already carried `max_fee` for
-      the same reason, and is a daemon rather than a shell.
+    * `scripts/keeper_bot.py`: `execute`, `max_fee` for the same reason
+      (`KEEPER_MAX_OUTER_FEE`, default the same 10,000), a daemon rather
+      than a shell.
 
-    Until 2026-09-08 all but the last took `algod.suggested_params()` exactly
-    as the node handed them over, and `MAX_SIGNABLE_FEE` applied only to a
-    file a multisig holder was about to sign (`multisig.refusals`), which is
-    to say to the one path where a human also reads the fee. The number a node
+    Not bounded, by design, because they are rehearsal instruments and not
+    ceremonies, and every key they hold is a throwaway:
+
+    * `scripts/keeper_e2e.py`: LocalNet by default, and `--network testnet`
+      is a rehearsal against a public node with a throwaway key from
+      `.env.testnet`, which is exactly the account a wrong fee is allowed to
+      cost. It also runs `keeper_bot --once`, which is bounded.
+    * `scripts/subscription_demo.py`, `scripts/govern_e2e.py`,
+      `scripts/multisig_e2e.py`: LocalNet; `multisig_e2e` generates its
+      three keys and drops them on exit.
+
+    All four take `--network` from `network.add_network_argument`, whose
+    choices include `mainnet`, so none refuses MainNet in its own code. What
+    stands between them and it is `load_network`: `ARCRON_ALLOW_MAINNET=1`,
+    which nothing in this repository sets, and the refusal of a mnemonic in
+    `.env.mainnet`, so a MainNet run of any of them is a deliberate export of
+    both the flag and the creator key into the same shell. That is the same
+    two acts the ceremony itself requires, and a rehearsal script is not made
+    safer against them by a fee bound; it is made safer by not being run
+    there, which `docs/design/mainnet-rollout.md` says.
+
+    Until 2026-09-08 everything in the bounded list except `execute` took
+    `algod.suggested_params()` exactly as the node handed them over, and
+    `MAX_SIGNABLE_FEE` applied only to a file a multisig holder was about to
+    sign (`multisig.refusals`), which is to say to the one path where a human
+    also reads the fee. The number a node
     returns in `fee` is *per byte*, and algosdk and algokit's composer both
     multiply it by the transaction's size unless the params are flat. A keeper
     create is about 2,400 bytes, measured with `estimate_size()` on this
@@ -113,8 +144,8 @@ def bounded_params(algod) -> transaction.SuggestedParams:
 
     None of the transactions that come through here needs fee pooling.
     `update()` and `freeze()` each write state and send nothing; a create runs
-    `__init__`, which does the same; `top_up` moves a payment into a box; a
-    payment is a payment. Each has no inner transaction to cover, so the
+    `__init__`, which does the same; `register` and `top_up` move payments
+    into a box; a payment is a payment. Each has no inner transaction to cover, so the
     network minimum is the right fee, and a higher suggestion is advice this
     repository has no reason to take. The fee is therefore set, flat, to the
     node's `min_fee`, and both figures the node sent are checked against the

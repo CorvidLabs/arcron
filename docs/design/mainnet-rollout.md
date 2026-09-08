@@ -380,10 +380,18 @@ G2 bar finding by finding:
 - **F13.** The notifier's summary counts every run a burst made and labels
   its payment total an estimate; an execution nobody could be attributed to
   says so.
-- **F14.** `deploy`, `govern update`, `govern freeze` and the unsigned
-  `govern create` sign a flat fee at the network minimum and refuse a node
-  whose advice is above the ceiling the multisig path already used, before
-  anything is signed. No override on these paths.
+- **F14.** Every in-process shell signer that can reach MainNet pays a flat
+  fee at the network minimum and refuses, before anything is signed, a node
+  whose advice is above the ceiling the multisig path already used: `deploy`
+  (the create and the floor payment), `govern update`, `govern freeze`, the
+  unsigned `govern create`, `seed_registry --commit` (the ceremony's third
+  step, three transactions per seed, which a second review round found still
+  unbounded), `keeper_topup --send`, and the unattended `keeper_sweep`;
+  `reclaim`'s cancel carries `max_fee` above its inner budget instead, because
+  it pays for an inner payment. No override on any of them. The e2e and demo
+  scripts are not bounded and are kept off MainNet by `ARCRON_ALLOW_MAINNET`
+  and the mnemonic rule rather than by a fee bound; `bounded_params`'
+  docstring is the inventory.
 - **F07, F09.** The console reports solvency as unknown while any box is
   unreadable, bounds its per-box reads, and pages its listing; the README's
   settlement guarantee, the example target's authorization comment, the

@@ -25,6 +25,11 @@ destination every function here returns "send nothing".
 An ASA sweep additionally needs the destination opted in to that asset. This
 checks and declines rather than broadcasting a transfer the network will
 reject, because a rejected transfer still costs the fee.
+
+The fee itself is the network minimum, flat, and not the node's advice
+(`govern.bounded_params`, issue #250 F14). A sweep is periodic and unattended,
+so a node advising above `govern.MAX_SIGNABLE_FEE` is refused with an
+error-level event rather than paid, and the surplus stays where it was.
 """
 
 from __future__ import annotations
@@ -157,11 +162,36 @@ def send(algorand, sender: str, destination: str, amount: int, *, dry_run: bool)
 
     import algokit_utils
 
+    from scripts.govern import FeeRefused, bounded_params
+
+    # Flat at the minimum, or nothing. Until 2026-09-08 this took the node's
+    # params as they came, and algokit's composer multiplies a non-flat
+    # per-byte figure by the payment's size just as algosdk does, so the one
+    # transaction that moves a keeper's earnings out was the one whose fee the
+    # node chose. A refusal returns None, which is this function's "nothing
+    # was sent", rather than raising: `keeper_bot._maybe_sweep` catches any
+    # exception and logs it as a sweep that *failed*, at WARNING, and a
+    # refusal is not a failure. It is emitted here at ERROR under its own
+    # name so a notifier can match it, and the bot goes on executing, where
+    # `execute`'s own `max_fee` is refusing the same advice.
+    try:
+        fee = bounded_params(algorand.client.algod).fee
+    except FeeRefused as refusal:
+        emit(
+            "sweep_refused",
+            f"Refusing to sweep {amount} µALGO to {destination}: {refusal}",
+            level=logging.ERROR,
+            amount=amount,
+            destination=destination,
+        )
+        return None
+
     result = algorand.send.payment(
         algokit_utils.PaymentParams(
             sender=sender,
             receiver=destination,
             amount=algokit_utils.AlgoAmount(micro_algo=amount),
+            static_fee=algokit_utils.AlgoAmount(micro_algo=fee),
         )
     )
     txid = result.tx_ids[0]
