@@ -14,6 +14,24 @@ No indexer is needed. Box state gives everything except *which* keeper earned
 an execution, and for that the watcher already knows the exact round to look
 at, so it fetches that one block.
 
+**What it can and cannot see.** It compares snapshots of the box list, so it
+sees every state that lasts at least one scan interval and nothing else. A
+register/cancel pair that both land entirely between two scans is not seen,
+and no amount of priority-sorting a finished scan makes the first stranger
+alert arrive before the rest of the scan has been read: the snapshot is built
+first, then diffed. That coverage boundary is accepted in
+`docs/design/mainnet-rollout.md` ("What quiet protects, and what it does
+not") until registration history is consumed instead.
+
+**Two kinds of announcement.** Ordinary events (executed, registered,
+cancelled, dormant, revived, stalled) are best-effort: a post that fails after
+its retries is logged and dropped, because the next scan will say something
+newer. A *stranger* is different: it is the one event the unfrozen MainNet
+window exists to catch, so it is written to a pending file before the
+snapshot advances, posted before anything else on every scan, and forgotten
+only when Discord has answered 2xx. At-least-once, so a crash between the
+answer and the acknowledgement yields a duplicate rather than a silence.
+
 Run:  poetry run python -m scripts.notifier [--once] [--network N] [--app-id N]
 """
 
@@ -27,6 +45,7 @@ import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 
 from algosdk import encoding
@@ -66,6 +85,23 @@ DEFAULT_POLL_SECONDS = 30
 # misconfigured proxy could set to anything, and a notifier asleep for a day
 # on somebody else's say-so is the watcher not watching.
 MAX_RETRY_AFTER_SECONDS = 30
+# How many times one `post` tries before giving the message back to its
+# caller as undelivered. Three is enough to ride out a blip and a single 429
+# without holding the scan loop for long: the worst case is two ceilings of
+# sleep, about a minute, and everything longer than that is an outage the
+# pending-stranger file exists for rather than something a retry loop should
+# sit through.
+POST_ATTEMPTS = 3
+# The wait after a 5xx or a network error, doubled per attempt and never
+# above MAX_RETRY_AFTER_SECONDS. A 429 uses what Discord asked for instead.
+POST_BACKOFF_SECONDS = 2.0
+# How often an undelivered stranger alert is re-posted. Every scan would be
+# thirty seconds, which against a Discord outage is a hundred wasted attempts
+# an hour and, against a rate limit, the cause of the next one. Five minutes
+# keeps the alert pressing without becoming the flood; on a webhook that has
+# come back it lands within one window of the recovery. The first attempt for
+# a fresh sighting is immediate; this only paces the retries.
+STRANGER_RETRY_SECONDS = 300
 # The ARC-4 selector of `execute(uint64)uint64`, so attribution only credits
 # an execution to the account that actually executed. Every other call to the
 # app (a `register`, a `cancel`, a `top_up`) is an application call too, and
@@ -80,6 +116,12 @@ class Event:
     kind: str
     upkeep_id: int
     text: str
+    # For an `executed` event: how many runs this one announcement covers, and
+    # what they are estimated to have cost. The summary used to count every
+    # event as one run at the base fee, which undercounted a burst and ignored
+    # escalation; `diff` already knew both numbers and threw them away.
+    runs: int = 0
+    paid: int = 0
 
 
 @dataclass
@@ -169,23 +211,38 @@ def diff(
             creator = now.get("creator", "")
             ours = not known_creators or creator in known_creators
             if not ours:
-                # The one event that must never be suppressed. The plan for an
-                # unfrozen MainNet deployment is to freeze the moment somebody
-                # who is not us escrows into it, and that plan is worth nothing
-                # if nothing notices. Announced on a first run too, unlike an
-                # ordinary registration: on an app that is supposed to be empty,
-                # a stranger already present is exactly the thing being watched
-                # for, and the flood this suppression avoids does not exist.
+                # The one event that must never be suppressed. An unfrozen
+                # MainNet deployment whose id is unpublished is supposed to
+                # hold nobody's escrow but ours, and the moment it holds
+                # somebody else's the operator owes a decision within 24
+                # hours (`docs/design/mainnet-rollout.md`, "If a stranger
+                # appears"). The decision is not made here and it is not an
+                # automatic freeze: freezing is right only for bytecode
+                # already accepted for permanence, and the alternatives are an
+                # already-approved update sequence or an explicit, recorded
+                # acceptance of the exposure. What this process owes is the
+                # sighting, durably. Announced on a first run too, unlike an
+                # ordinary registration: on an app that is supposed to be
+                # empty, a stranger already present is exactly the thing being
+                # watched for, and the flood this suppression avoids does not
+                # exist.
                 events.append(
                     Event(
                         "stranger",
                         upkeep_id,
-                        f"**Upkeep {upkeep_id} was registered by {creator}, who is not "
-                        f"one of us.** Somebody has escrowed real value here. If this "
-                        f"deployment is unfrozen, the agreed answer is to freeze now "
-                        f"rather than to wait out the schedule: they are trusting a "
-                        f"keyholder, and they did not agree to that. Targets app "
-                        f"{now['target_app']}, every {now['interval_rounds']} rounds.",
+                        f"🚨 **Upkeep {upkeep_id} was registered by {creator}, who is "
+                        f"not one of us.** Somebody has escrowed real value into a "
+                        f"deployment whose id was never published, and while it is "
+                        f"unfrozen they are trusting a keyholder they did not agree to. "
+                        f"This needs an **operator decision within 24 hours** of first "
+                        f"sighting, recorded with who decided and on what evidence: "
+                        f"freeze, only if the running bytecode is already accepted for "
+                        f"permanence; or run an already-approved update sequence; or "
+                        f"explicitly accept the temporary unfrozen exposure while "
+                        f"responding. Not an automatic freeze, not an unsoaked update, "
+                        f"and not cancel: `cancel` is creator-only, so their box cannot "
+                        f"be removed by us. Targets app {now['target_app']}, every "
+                        f"{now['interval_rounds']} rounds.",
                     )
                 )
             elif previous.upkeeps:  # a first run is not a flood of "new upkeep"
@@ -202,14 +259,17 @@ def diff(
 
         runs = now["times_executed"] - before["times_executed"]
         if runs > 0:
+            paid = _burst_cost(before, now, runs)
             events.append(
                 Event(
                     "executed",
                     upkeep_id,
                     f"**Upkeep {upkeep_id} executed**"
                     + (f" ×{runs}" if runs > 1 else "")
-                    + f", {_algos(_burst_cost(before, now, runs))} paid, "
+                    + f", {_algos(paid)} paid, "
                     f"next due at round {now['next_execution_round']}",
+                    runs=runs,
+                    paid=paid,
                 )
             )
 
@@ -276,13 +336,16 @@ def _fee_now(state: dict, current_round: int) -> int:
 
 
 def _burst_cost(before: dict, now: dict, runs: int) -> int:
-    """What a run of `runs` executions took out of the escrow.
+    """What a run of `runs` executions is estimated to have taken out of escrow.
 
-    The exact answer is the balance delta, and it is sitting in the two
-    snapshots. No model of the fee curve can beat it, and a model would be
-    wrong for a burst whose runs were not all priced the same. Falls back to
-    the curve only when a top-up landed in the same window and made the delta
-    meaningless.
+    The balance delta is sitting in the two snapshots and beats any model of
+    the fee curve, which would be wrong for a burst whose runs were not all
+    priced the same. It is still an estimate: a positive drop is read as the
+    whole cost, and a top-up that landed in the same window hides part of it
+    (a top-up larger than the payments makes the delta meaningless, and only
+    then does this fall back to the curve). The summary says so. The exact
+    figure is the inner payment `execute` sends, which `keeper-preview` reads
+    from the indexer and this watcher does not.
     """
     drawdown = before["balance"] - now["balance"]
     if drawdown > 0:
@@ -353,47 +416,113 @@ def attribute(algod, app_id: int, since_round: int, until_round: int) -> str | N
     return None
 
 
+def _attribution_line(keeper: str | None) -> str:
+    """The keeper line under an execution, honest about not knowing.
+
+    Silently omitting the line when no block named a keeper made an
+    unattributed execution read like a formatting choice. The summary's
+    numbers are already estimates; the per-event text should not add a quiet
+    gap of its own.
+    """
+    if keeper:
+        return f"\n↳ keeper `{keeper[:8]}…{keeper[-6:]}`"
+    return (
+        f"\n↳ keeper: attribution unknown (no `execute` call found in the last "
+        f"{MAX_ATTRIBUTION_BLOCKS} blocks, or the block is no longer available)"
+    )
+
+
 def summarise(snapshot: Snapshot, executions: int, paid: int) -> str:
+    """The periodic line, which doubles as the watcher's pulse.
+
+    Under the MainNet runbook this is the liveness signal: a day without it
+    is read as a dead watcher and acted on within the same 24-hour budget as a
+    stranger alert. The payment figure is labelled an estimate because it is
+    one: `_burst_cost` reads escrow drawdown, and a top-up in the same window
+    hides part of what was paid. The exact figure comes from the indexer via
+    `keeper-preview`; neither number is gate evidence.
+    """
     dormant = len(snapshot.dormant)
     return (
         f"📊 **Registry**: {len(snapshot.upkeeps)} upkeeps, {executions} executions "
-        f"since the last summary, {_algos(paid)} paid to keepers"
+        f"since the last summary, ≈ {_algos(paid)} paid to keepers (estimated from "
+        f"escrow drawdown)"
         + (f", {dormant} out of funds" if dormant else "")
     )
 
 
-def post(webhook: str | None, message: str) -> None:
-    """Send to Discord, or to the terminal when no webhook is configured."""
+def _retry_after(exc: urllib.error.HTTPError) -> float:
+    try:
+        asked = float(exc.headers.get("Retry-After", "2"))
+    except (TypeError, ValueError):
+        asked = 2.0
+    return min(max(asked, 0.0), MAX_RETRY_AFTER_SECONDS)
+
+
+def post(webhook: str | None, message: str) -> bool:
+    """Send to Discord, or to the terminal when no webhook is configured.
+
+    True only when the message was accepted (a 2xx, or printed because there
+    is nowhere else for it to go). Never raises: the loop that calls this has
+    a scan to finish. Retries are bounded, because a stranger alert that could
+    not be delivered has a file to wait in (`PendingStrangers`) and an
+    ordinary announcement is not worth stalling the watcher over.
+
+    A 429 used to sleep what Discord asked for and then *not retry*, so the
+    one message Discord had just said it would accept in a moment was dropped
+    anyway; and every other failure was swallowed with a warning the caller
+    could not see. Both are why this returns something now.
+    """
     if not webhook:
         logger.info(message)
-        return
+        return True
     body = json.dumps({"content": message[:MAX_MESSAGE_CHARS]}).encode()
-    request = urllib.request.Request(
-        webhook, data=body, headers={"Content-Type": "application/json"}
-    )
-    try:
-        urllib.request.urlopen(request, timeout=15)
-    except urllib.error.HTTPError as exc:
-        if exc.code == 429:
-            # Rate limited: wait what Discord asks for, then move on. Missing an
-            # announcement is better than a stuck notifier.
-            try:
-                asked = float(exc.headers.get("Retry-After", "2"))
-            except (TypeError, ValueError):
-                asked = 2.0
-            retry_after = min(max(asked, 0.0), MAX_RETRY_AFTER_SECONDS)
-            logger.warning(f"Rate limited; sleeping {retry_after}s")
-            time.sleep(retry_after)
-        else:
-            logger.warning(f"Discord rejected the post ({exc.code})")
-    except Exception as exc:
-        logger.warning(f"Could not post: {exc}")
+    for attempt in range(1, POST_ATTEMPTS + 1):
+        request = urllib.request.Request(
+            webhook, data=body, headers={"Content-Type": "application/json"}
+        )
+        try:
+            urllib.request.urlopen(request, timeout=15).close()
+            return True
+        except urllib.error.HTTPError as exc:
+            if exc.code == 429:
+                wait = _retry_after(exc)
+                logger.warning(f"Rate limited; retrying in {wait}s")
+            elif exc.code >= 500:
+                wait = min(POST_BACKOFF_SECONDS * 2 ** (attempt - 1), MAX_RETRY_AFTER_SECONDS)
+                logger.warning(f"Discord answered {exc.code}; retrying in {wait}s")
+            else:
+                # A 4xx other than 429 is our mistake (a deleted webhook, a
+                # malformed body) and will not change by asking again.
+                logger.warning(f"Discord rejected the post ({exc.code}); not retrying")
+                return False
+        except Exception as exc:  # timeouts, DNS, a reset connection
+            wait = min(POST_BACKOFF_SECONDS * 2 ** (attempt - 1), MAX_RETRY_AFTER_SECONDS)
+            logger.warning(f"Could not post ({exc}); retrying in {wait}s")
+        if attempt < POST_ATTEMPTS:
+            time.sleep(wait)
+    logger.warning(f"Gave up posting after {POST_ATTEMPTS} attempts")
+    return False
 
 
 def state_path(network: str, app_id: int) -> Path:
     base = os.environ.get("XDG_STATE_HOME")
     root = Path(base) if base else Path.home() / ".local" / "state"
     return root / "arcron" / f"notifier-{network}-{app_id}.json"
+
+
+def pending_path(snapshot_path: Path | None) -> Path | None:
+    """Where undelivered stranger alerts wait, beside the snapshot.
+
+    A separate file, not a field in the snapshot, because the two have
+    different lifetimes: the snapshot is replaced every scan, and a stranger
+    record must survive any number of them until Discord answers.
+    `--no-state` leaves both in memory, which is fine for `--once` and for
+    tests and is not how the VPS runs.
+    """
+    if snapshot_path is None:
+        return None
+    return snapshot_path.with_name(f"{snapshot_path.stem}-pending.json")
 
 
 def load(path: Path | None) -> Snapshot:
@@ -407,13 +536,131 @@ def load(path: Path | None) -> Snapshot:
         return Snapshot()
 
 
+def _write_json(path: Path, payload: object) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(json.dumps(payload, indent=2))
+    temporary.replace(path)
+
+
 def save(path: Path | None, snapshot: Snapshot) -> None:
     if path is None:
         return
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(".tmp")
-    temporary.write_text(json.dumps(snapshot.to_json(), indent=2))
-    temporary.replace(path)
+    _write_json(path, snapshot.to_json())
+
+
+class PendingStrangers:
+    """Stranger alerts that have not yet been acknowledged by the webhook.
+
+    The failure this exists for was found in review (#250, F01): a stranger
+    was announced once, best-effort, and a 5xx or a rate limit at that moment
+    lost the only alert the unfrozen window depends on. Worse, a "delivered
+    id" set that re-read the live boxes would drop an alert whose box was
+    cancelled before the retry, which is exactly what a careful stranger
+    might do. So the record carries its payload: the text is fixed at the
+    sighting and nothing is re-derived from the chain.
+
+    The file is a map keyed `network/app/upkeep`, one entry per sighting:
+
+        {"mainnet/123/7": {"upkeep_id": 7,
+                           "first_seen_round": 51234567,
+                           "first_seen_at": "2026-09-08T10:15:00+00:00",
+                           "text": "..."}}
+
+    Written before the snapshot advances, so a crash between the two leaves
+    the sighting on disk and not merely in a snapshot that now thinks the
+    upkeep is old news. Removed only after `post` returns True; a crash
+    between the 2xx and that removal replays the alert on the next start.
+    Duplicates beat silence.
+    """
+
+    def __init__(self, path: Path | None, records: dict[str, dict] | None = None) -> None:
+        self.path = path
+        self.records: dict[str, dict] = records or {}
+        # When each record was last attempted, by `time.monotonic()`. Kept in
+        # memory on purpose: a restart is allowed to re-post immediately, and
+        # the pacing exists to keep the retry from becoming a flood, not to
+        # rate-limit the operator's own restarts.
+        self._last_attempt: dict[str, float] = {}
+
+    @classmethod
+    def load(cls, path: Path | None) -> "PendingStrangers":
+        if path is None or not path.exists():
+            return cls(path)
+        try:
+            payload = json.loads(path.read_text())
+            records = {key: dict(value) for key, value in payload.items() if "text" in value}
+        except Exception as exc:
+            # Unlike the snapshot, this is not something to ignore quietly:
+            # a pending file that cannot be read may hold the alert. Say so,
+            # keep the file where it is, and carry on with what is legible.
+            logger.error(f"Cannot read pending stranger alerts at {path}: {exc}")
+            return cls(path)
+        return cls(path, records)
+
+    def __len__(self) -> int:
+        return len(self.records)
+
+    def save(self) -> None:
+        if self.path is None:
+            return
+        _write_json(self.path, self.records)
+
+    @staticmethod
+    def key(network: str, app_id: int, upkeep_id: int) -> str:
+        return f"{network}/{app_id}/{upkeep_id}"
+
+    def add(self, network: str, app_id: int, event: Event, current_round: int) -> bool:
+        """Record a sighting, durably, before anything else happens to it.
+
+        False when the same sighting is already pending, which keeps its
+        original first-seen time: the 24-hour budget runs from the first
+        sighting, not from the most recent scan that noticed it again.
+        """
+        key = self.key(network, app_id, event.upkeep_id)
+        if key in self.records:
+            return False
+        seen_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        self.records[key] = {
+            "upkeep_id": event.upkeep_id,
+            "first_seen_round": current_round,
+            "first_seen_at": seen_at,
+            # The sighting time travels with the alert, so an operator reading
+            # it after an outage knows when the budget actually started.
+            "text": (
+                f"{event.text}\nFirst sighted at round {current_round}, {seen_at}; "
+                f"the 24-hour decision budget runs from then."
+            ),
+        }
+        self.save()
+        return True
+
+    def deliver(self, webhook: str | None, now: float | None = None) -> None:
+        """Post every pending alert whose retry window has passed, oldest first.
+
+        Called before any ordinary event on every scan, so a registry busy
+        with executions cannot starve the one alert that matters. Paced by
+        STRANGER_RETRY_SECONDS per record; the first attempt is immediate.
+        """
+        now = time.monotonic() if now is None else now
+        for key in sorted(self.records, key=lambda k: (self.records[k]["first_seen_round"], k)):
+            last = self._last_attempt.get(key)
+            if last is not None and now - last < STRANGER_RETRY_SECONDS:
+                continue
+            self._last_attempt[key] = now
+            record = self.records[key]
+            if post(webhook, record["text"]):
+                # Acknowledged only after the answer. The order of these two
+                # lines is the at-least-once guarantee: a crash between them
+                # re-posts on the next start rather than losing the alert.
+                del self.records[key]
+                self.save()
+            else:
+                logger.warning(
+                    f"Stranger alert for upkeep {record['upkeep_id']} is still undelivered; "
+                    f"kept in {self.path or 'memory'}, next attempt in {STRANGER_RETRY_SECONDS}s"
+                )
+            time.sleep(POST_INTERVAL_SECONDS)
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -425,7 +672,16 @@ def main(argv: list[str] | None = None) -> None:
         "--summary-every",
         type=int,
         default=240,
-        help="scans between registry summaries (default: %(default)s)",
+        # 240 scans at the default 30 seconds is two hours. On MainNet the
+        # summary is the liveness signal: the runbook treats a day without
+        # one as a dead watcher, to be acted on within the same 24-hour budget
+        # as a stranger alert. Its presence is routine; its absence is the
+        # alarm, so do not turn it off there.
+        help=(
+            "scans between registry summaries (default: %(default)s). The summary is the "
+            "watcher's liveness signal: under the MainNet runbook a day without one is a "
+            "dead watcher, acted on within the 24-hour response budget. 0 disables it"
+        ),
     )
     parser.add_argument(
         "--state-file", type=Path, default=None, help="where to remember what was announced"
@@ -434,11 +690,12 @@ def main(argv: list[str] | None = None) -> None:
         "--ours",
         default=None,
         help=(
-            "comma-separated addresses whose upkeeps are expected. Any other creator is "
-            "announced as a stranger. Empty means announce nobody as a stranger, which "
-            "is right on a shared TestNet app and wrong on a MainNet one whose id is "
-            "supposed to be unpublished. Defaults to ARCRON_OURS in the environment, "
-            "which is how the container and the systemd unit pass it."
+            "comma-separated 58-character addresses whose upkeeps are expected. Any other "
+            "creator is announced as a stranger. NFD names are not resolved (corvid.algo is "
+            "refused). Empty means announce nobody as a stranger, which is right on a "
+            "shared TestNet app and wrong on a MainNet one whose id is supposed to be "
+            "unpublished. Defaults to ARCRON_OURS in the environment, which is how the "
+            "container and the systemd unit pass it."
         ),
     )
     parser.add_argument(
@@ -472,12 +729,27 @@ def main(argv: list[str] | None = None) -> None:
 
     ours = args.ours if args.ours is not None else os.environ.get("ARCRON_OURS", "")
     known_creators = frozenset(a.strip() for a in ours.split(",") if a.strip())
+    for entry in sorted(known_creators):
+        # Syntax only, and it is worth knowing which way that fails. A
+        # mistyped address, or `corvid.algo` written where the address was
+        # meant, makes our own creator look like a stranger: loud, wrong, and
+        # noticed on the first registration. The failure this cannot catch is
+        # the quiet one, an allowlist that includes a real outsider, which
+        # suppresses exactly the alert this exists for and looks like nothing
+        # at all. No check on the string can tell those apart; the list is
+        # short and should be read by a person.
+        if not encoding.is_valid_address(entry):
+            parser.error(
+                f"--ours entry {entry!r} is not an Algorand address. NFD names are not "
+                f"resolved here (corvid.algo is refused); use the 58-character address"
+            )
     if args.network == net.MAINNET:
         # On MainNet a watcher that cannot tell a stranger, or that tells nobody,
         # is the failure it exists to prevent, so both are refused at startup
-        # rather than logged past. The plan for an unfrozen deployment is to
-        # freeze the moment somebody who is not us escrows, and that plan is
-        # this process noticing and somebody reading it.
+        # rather than logged past. A stranger on the unfrozen deployment starts
+        # a 24-hour clock for an operator decision (freeze, approved update, or
+        # recorded acceptance of the exposure), and that clock starts only if
+        # this process notices and somebody reads it.
         if not known_creators:
             parser.error(
                 "--ours (or ARCRON_OURS) is required on MainNet: without it no creator "
@@ -501,6 +773,12 @@ def main(argv: list[str] | None = None) -> None:
             "whose id is meant to be unpublished, pass it."
         )
     previous = load(path)
+    pending = PendingStrangers.load(pending_path(path))
+    if pending:
+        logger.warning(
+            f"  {len(pending)} stranger alert(s) left undelivered by a previous run; "
+            f"posting them first"
+        )
     executions_since_summary = 0
     paid_since_summary = 0
     scans = 0
@@ -509,23 +787,43 @@ def main(argv: list[str] | None = None) -> None:
         try:
             current_round = algod.status()["last-round"]
             snapshot = Snapshot.of(scan_upkeeps(algod, app_id), current_round)
-            for event in diff(previous, snapshot, known_creators):
+            events = diff(previous, snapshot, known_creators)
+
+            # Strangers to disk first, then to Discord first. The snapshot is
+            # not advanced until the end of the scan, so a crash anywhere in
+            # here re-diffs and re-records the same sighting rather than
+            # forgetting it. Everything else waits behind them.
+            for event in events:
+                if event.kind == "stranger":
+                    pending.add(args.network, app_id, event, current_round)
+            pending.deliver(webhook)
+
+            for event in events:
+                if event.kind == "stranger":
+                    continue
                 text = event.text
                 if event.kind == "executed":
-                    keeper = attribute(algod, app_id, previous.last_round, current_round)
-                    if keeper:
-                        text += f"\n↳ keeper `{keeper[:8]}…{keeper[-6:]}`"
-                    state = snapshot.upkeeps[event.upkeep_id]
-                    executions_since_summary += 1
-                    paid_since_summary += state["fee_per_execution"]
-                post(webhook, text)
+                    text += _attribution_line(
+                        attribute(algod, app_id, previous.last_round, current_round)
+                    )
+                    executions_since_summary += event.runs
+                    paid_since_summary += event.paid
+                if not post(webhook, text):
+                    # Best-effort by design: the next scan has newer news, and
+                    # the registry's own state is the record. Logged so an
+                    # outage is visible in the journal rather than only as a
+                    # gap in the channel.
+                    logger.warning(
+                        f"Dropped the '{event.kind}' announcement for upkeep {event.upkeep_id}"
+                    )
                 time.sleep(POST_INTERVAL_SECONDS)
 
             previous = snapshot
             save(path, snapshot)
             scans += 1
             if args.summary_every > 0 and scans % args.summary_every == 0:
-                post(webhook, summarise(snapshot, executions_since_summary, paid_since_summary))
+                if not post(webhook, summarise(snapshot, executions_since_summary, paid_since_summary)):
+                    logger.warning("Dropped the registry summary")
                 executions_since_summary = 0
                 paid_since_summary = 0
 

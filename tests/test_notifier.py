@@ -252,13 +252,14 @@ def test_a_snapshot_from_before_escalation_does_not_report_the_ceiling() -> None
     assert _burst_cost(legacy, current, 2) == 8_000
 
 
-# --- the detector the pre-freeze window depends on ---------------------
+# --- the detector the unfrozen window depends on -----------------------
 #
-# The plan for an unfrozen MainNet deployment is to freeze the moment somebody
-# who is not us escrows into it. A reviewer pointed out that the plan was worth
-# nothing because nothing could tell one creator's upkeep from another's: the
-# box always carried the creator and the decoder dropped it, and the snapshot
-# had no field for it.
+# An unfrozen MainNet deployment whose id is unpublished is supposed to hold
+# nobody's escrow but ours, and a stranger's box starts a 24-hour clock for an
+# operator decision (docs/design/mainnet-rollout.md, "If a stranger appears").
+# A reviewer pointed out that the plan was worth nothing because nothing could
+# tell one creator's upkeep from another's: the box always carried the creator
+# and the decoder dropped it, and the snapshot had no field for it.
 
 OURS = "E5M2OH5XNDMNABJ6VOFOUVR2IKRPCGQH43PVC5P3DWQQ2LV2VJV2FJZQ3E"
 STRANGER = "WOX2O7LDLN74QDQYDJRUHGBLAH3JBEUYAFJO6FQL4P2EXV33VYAR536BBY"
@@ -392,8 +393,10 @@ def test_retry_after_is_honoured_only_up_to_a_ceiling(monkeypatch) -> None:
 
     monkeypatch.setattr(notifier.urllib.request, "urlopen", refuse)
     monkeypatch.setattr(notifier.time, "sleep", slept.append)
-    notifier.post("https://discord.invalid/webhook", "hello")
-    assert slept == [notifier.MAX_RETRY_AFTER_SECONDS]
+    assert notifier.post("https://discord.invalid/webhook", "hello") is False
+    # One sleep between each pair of attempts, none after the last; every one
+    # of them the ceiling rather than the day Discord asked for.
+    assert slept == [notifier.MAX_RETRY_AFTER_SECONDS] * (notifier.POST_ATTEMPTS - 1)
 
 
 def test_a_garbage_retry_after_falls_back_rather_than_crashing(monkeypatch) -> None:
@@ -409,8 +412,8 @@ def test_a_garbage_retry_after_falls_back_rather_than_crashing(monkeypatch) -> N
 
     monkeypatch.setattr(notifier.urllib.request, "urlopen", refuse)
     monkeypatch.setattr(notifier.time, "sleep", slept.append)
-    notifier.post("https://discord.invalid/webhook", "hello")
-    assert slept == [2.0]
+    assert notifier.post("https://discord.invalid/webhook", "hello") is False
+    assert slept == [2.0] * (notifier.POST_ATTEMPTS - 1)
 
 
 # --- MainNet refuses to watch blindly -------------------------------------
@@ -546,3 +549,483 @@ def test_main_refuses_an_app_that_is_not_a_keeper(monkeypatch) -> None:
                         lambda network: SimpleNamespace(client=SimpleNamespace(algod=NotAKeeper())))
     with pytest.raises(SystemExit):
         notifier.main(["--network", "testnet", "--app-id", "1", "--once", "--no-state"])
+
+
+# --- posting is honest about whether it worked (F01) ------------------------
+#
+# `post` used to return None whatever happened: a 429 slept and then did not
+# retry, a 5xx was logged and forgotten. Nothing upstream could tell a
+# delivered stranger alert from a dropped one, which for that one event is
+# the whole difference.
+
+def _ok():
+    from types import SimpleNamespace
+
+    return SimpleNamespace(status=204, close=lambda: None)
+
+
+def _http_error(request, code: int, headers: dict | None = None):
+    import urllib.error
+
+    return urllib.error.HTTPError(request.full_url, code, "error", headers or {}, None)
+
+
+def _scripted_urlopen(script: list):
+    """Each entry is either an int status to refuse with, an exception to
+    raise, or "ok". Records how many times it was called."""
+    calls: list[str] = []
+
+    def urlopen(request, timeout):
+        step = script.pop(0) if script else "ok"
+        calls.append(json.loads(request.data)["content"] if step == "ok" else str(step))
+        if step == "ok":
+            return _ok()
+        if isinstance(step, int):
+            raise _http_error(request, step)
+        raise step
+
+    urlopen.calls = calls  # type: ignore[attr-defined]
+    return urlopen
+
+
+def test_post_returns_true_only_on_a_2xx(monkeypatch) -> None:
+    from scripts import notifier
+
+    monkeypatch.setattr(notifier.time, "sleep", lambda s: None)
+    monkeypatch.setattr(notifier.urllib.request, "urlopen", _scripted_urlopen(["ok"]))
+    assert notifier.post("https://discord.invalid/webhook", "hello") is True
+
+    monkeypatch.setattr(notifier.urllib.request, "urlopen", _scripted_urlopen([404]))
+    assert notifier.post("https://discord.invalid/webhook", "hello") is False
+
+
+def test_post_retries_a_server_error_and_delivers_on_recovery(monkeypatch) -> None:
+    from scripts import notifier
+
+    slept: list[float] = []
+    urlopen = _scripted_urlopen([500, 503, "ok"])
+    monkeypatch.setattr(notifier.time, "sleep", slept.append)
+    monkeypatch.setattr(notifier.urllib.request, "urlopen", urlopen)
+
+    assert notifier.post("https://discord.invalid/webhook", "hello") is True
+    assert len(urlopen.calls) == 3
+    # Bounded backoff, doubling, never past the ceiling.
+    assert slept == [notifier.POST_BACKOFF_SECONDS, notifier.POST_BACKOFF_SECONDS * 2]
+    assert all(s <= notifier.MAX_RETRY_AFTER_SECONDS for s in slept)
+
+
+def test_post_gives_up_after_bounded_attempts_and_never_raises(monkeypatch) -> None:
+    import socket
+    import urllib.error
+
+    from scripts import notifier
+
+    monkeypatch.setattr(notifier.time, "sleep", lambda s: None)
+    for failure in ([500] * 10, [urllib.error.URLError("dns")] * 10, [socket.timeout()] * 10,
+                    [RuntimeError("reset by peer")] * 10):
+        urlopen = _scripted_urlopen(list(failure))
+        monkeypatch.setattr(notifier.urllib.request, "urlopen", urlopen)
+        assert notifier.post("https://discord.invalid/webhook", "hello") is False
+        assert len(urlopen.calls) == notifier.POST_ATTEMPTS
+
+
+def test_a_rate_limited_post_waits_what_discord_asked_and_then_delivers(monkeypatch) -> None:
+    """The old branch slept the Retry-After and then dropped the message
+    anyway, which is the one message Discord had just promised to accept."""
+    from scripts import notifier
+
+    slept: list[float] = []
+    script: list = ["429"]
+
+    def urlopen(request, timeout):
+        if script:
+            script.pop()
+            raise _http_error(request, 429, {"Retry-After": "1.5"})
+        return _ok()
+
+    monkeypatch.setattr(notifier.time, "sleep", slept.append)
+    monkeypatch.setattr(notifier.urllib.request, "urlopen", urlopen)
+    assert notifier.post("https://discord.invalid/webhook", "hello") is True
+    assert slept == [1.5]
+
+
+def test_a_client_error_is_not_retried(monkeypatch) -> None:
+    # A deleted webhook will not come back by asking three times.
+    from scripts import notifier
+
+    urlopen = _scripted_urlopen([400, 400, 400])
+    monkeypatch.setattr(notifier.time, "sleep", lambda s: None)
+    monkeypatch.setattr(notifier.urllib.request, "urlopen", urlopen)
+    assert notifier.post("https://discord.invalid/webhook", "hello") is False
+    assert len(urlopen.calls) == 1
+
+
+# --- a stranger alert is durable (F01) -------------------------------------
+
+def _stranger_event(upkeep_id: int = 7):
+    from scripts.notifier import diff
+
+    [event] = diff(
+        Snapshot(),
+        snapshot([upkeep(upkeep_id=upkeep_id, creator=STRANGER)]),
+        known_creators=frozenset({OURS}),
+    )
+    return event
+
+
+def test_a_stranger_survives_an_outage_and_is_delivered_on_recovery(monkeypatch, tmp_path) -> None:
+    from scripts import notifier
+
+    pending = notifier.PendingStrangers(tmp_path / "pending.json")
+    pending.add("testnet", 1, _stranger_event(), current_round=500)
+    monkeypatch.setattr(notifier.time, "sleep", lambda s: None)
+
+    # Discord is down for the whole first attempt.
+    down = _scripted_urlopen([500] * notifier.POST_ATTEMPTS)
+    monkeypatch.setattr(notifier.urllib.request, "urlopen", down)
+    pending.deliver("https://discord.invalid/webhook", now=0.0)
+    assert len(pending) == 1, "an undelivered stranger stays pending"
+    assert (tmp_path / "pending.json").exists()
+
+    # Back, one retry window later: delivered and forgotten.
+    up = _scripted_urlopen(["ok"])
+    monkeypatch.setattr(notifier.urllib.request, "urlopen", up)
+    pending.deliver("https://discord.invalid/webhook", now=notifier.STRANGER_RETRY_SECONDS)
+    assert len(pending) == 0
+    assert "who is not one of us" in up.calls[0]
+    assert json.loads((tmp_path / "pending.json").read_text()) == {}
+
+
+def test_a_pending_stranger_round_trips_through_the_file(tmp_path, monkeypatch) -> None:
+    """A restart must find the alert where the previous process left it,
+    payload included, and not need the chain to rebuild it."""
+    from scripts import notifier
+
+    path = tmp_path / "pending.json"
+    notifier.PendingStrangers(path).add("mainnet", 123, _stranger_event(7), current_round=51_234_567)
+
+    restored = notifier.PendingStrangers.load(path)
+    assert set(restored.records) == {"mainnet/123/7"}
+    record = restored.records["mainnet/123/7"]
+    assert record["upkeep_id"] == 7
+    assert record["first_seen_round"] == 51_234_567
+    assert "who is not one of us" in record["text"]
+    assert "round 51234567" in record["text"]
+
+    up = _scripted_urlopen(["ok"])
+    monkeypatch.setattr(notifier.time, "sleep", lambda s: None)
+    monkeypatch.setattr(notifier.urllib.request, "urlopen", up)
+    restored.deliver("https://discord.invalid/webhook", now=0.0)
+    assert up.calls == [record["text"]]
+    assert notifier.PendingStrangers.load(path).records == {}
+
+
+def test_a_repeat_sighting_keeps_the_first_seen_time(tmp_path) -> None:
+    from scripts import notifier
+
+    pending = notifier.PendingStrangers(tmp_path / "pending.json")
+    assert pending.add("testnet", 1, _stranger_event(), current_round=500) is True
+    assert pending.add("testnet", 1, _stranger_event(), current_round=900) is False
+    assert pending.records["testnet/1/7"]["first_seen_round"] == 500
+
+
+def test_a_crash_between_the_2xx_and_the_acknowledgement_yields_a_duplicate_not_a_loss(
+    monkeypatch, tmp_path
+) -> None:
+    from scripts import notifier
+
+    path = tmp_path / "pending.json"
+    pending = notifier.PendingStrangers(path)
+    pending.add("testnet", 1, _stranger_event(), current_round=500)
+
+    class _Crash(BaseException):
+        pass
+
+    def crash_on_save(self) -> None:
+        raise _Crash()
+
+    delivered = _scripted_urlopen(["ok", "ok"])
+    monkeypatch.setattr(notifier.time, "sleep", lambda s: None)
+    monkeypatch.setattr(notifier.urllib.request, "urlopen", delivered)
+    monkeypatch.setattr(notifier.PendingStrangers, "save", crash_on_save)
+    with pytest.raises(_Crash):
+        pending.deliver("https://discord.invalid/webhook", now=0.0)
+    assert len(delivered.calls) == 1, "Discord answered 2xx before the crash"
+
+    # The process restarts and reads the file the crash left behind.
+    monkeypatch.undo()
+    monkeypatch.setattr(notifier.time, "sleep", lambda s: None)
+    monkeypatch.setattr(notifier.urllib.request, "urlopen", delivered)
+    restarted = notifier.PendingStrangers.load(path)
+    assert len(restarted) == 1
+    restarted.deliver("https://discord.invalid/webhook", now=0.0)
+    assert len(delivered.calls) == 2, "posted twice; never zero times"
+    assert len(restarted) == 0
+
+
+def test_pending_strangers_are_retried_no_more_than_once_per_window(monkeypatch, tmp_path) -> None:
+    from scripts import notifier
+
+    pending = notifier.PendingStrangers(tmp_path / "pending.json")
+    pending.add("testnet", 1, _stranger_event(), current_round=500)
+    down = _scripted_urlopen([500] * 100)
+    monkeypatch.setattr(notifier.time, "sleep", lambda s: None)
+    monkeypatch.setattr(notifier.urllib.request, "urlopen", down)
+
+    pending.deliver("https://discord.invalid/webhook", now=0.0)
+    pending.deliver("https://discord.invalid/webhook", now=30.0)
+    pending.deliver("https://discord.invalid/webhook", now=notifier.STRANGER_RETRY_SECONDS - 1)
+    assert len(down.calls) == notifier.POST_ATTEMPTS, "one attempt inside the window"
+    pending.deliver("https://discord.invalid/webhook", now=notifier.STRANGER_RETRY_SECONDS)
+    assert len(down.calls) == 2 * notifier.POST_ATTEMPTS
+
+
+def test_the_pending_file_sits_beside_the_snapshot() -> None:
+    from scripts import notifier
+
+    assert notifier.pending_path(Path("/var/lib/arcron/notifier-mainnet-123.json")) == Path(
+        "/var/lib/arcron/notifier-mainnet-123-pending.json"
+    )
+    assert notifier.pending_path(None) is None
+
+
+# --- the main loop, end to end against a scripted registry -----------------
+
+class _Halt(KeyboardInterrupt):
+    """Stops `main` cleanly after the scripted scans; `Exception` would be
+    caught by the loop's retry clause and never end the test."""
+
+
+class _Clock:
+    """`time.sleep` advances `time.monotonic`, so a test can walk the notifier
+    through retry windows without waiting through them."""
+
+    def __init__(self) -> None:
+        self.now = 0.0
+
+    def sleep(self, seconds: float) -> None:
+        self.now += seconds
+
+    def monotonic(self) -> float:
+        return self.now
+
+
+class _ScriptedAlgod(_StoppingAlgod):
+    def __init__(self, scans: int) -> None:
+        self.scans = scans
+        self.round = 1_000
+
+    def status(self) -> dict:
+        if self.scans == 0:
+            raise _Halt()
+        self.scans -= 1
+        self.round += 100
+        return {"last-round": self.round}
+
+
+def _run_main(monkeypatch, tmp_path, registries: list[list], urlopen, clock: _Clock) -> None:
+    from types import SimpleNamespace
+
+    from scripts import notifier
+
+    algod = _ScriptedAlgod(scans=len(registries))
+    script = list(registries)
+    monkeypatch.setattr(notifier.net, "connect",
+                        lambda network: SimpleNamespace(client=SimpleNamespace(algod=algod)))
+    monkeypatch.setattr(notifier, "scan_upkeeps", lambda algod, app_id: script.pop(0))
+    monkeypatch.setattr(notifier, "attribute", lambda *a: None)
+    monkeypatch.setattr(notifier.urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(notifier.time, "sleep", clock.sleep)
+    monkeypatch.setattr(notifier.time, "monotonic", clock.monotonic)
+    monkeypatch.setenv("DISCORD_WEBHOOK_URL", "https://discord.invalid/webhook")
+    monkeypatch.delenv("ARCRON_OURS", raising=False)
+    notifier.main(["--network", "testnet", "--app-id", "1", "--ours", OURS,
+                   "--state-file", str(tmp_path / "notifier.json"),
+                   "--poll-seconds", str(notifier.STRANGER_RETRY_SECONDS)])
+
+
+def test_a_stranger_cancelled_before_delivery_is_still_delivered(monkeypatch, tmp_path) -> None:
+    """The record carries its payload, so a box that vanished before Discord
+    came back is announced anyway. A delivered-id set re-read from live boxes
+    would have dropped exactly this one."""
+    from scripts import notifier
+
+    # Every attempt during the first scan fails; everything after succeeds.
+    urlopen = _scripted_urlopen([500] * notifier.POST_ATTEMPTS)
+    _run_main(
+        monkeypatch, tmp_path,
+        registries=[[upkeep(upkeep_id=7, creator=STRANGER)], []],
+        urlopen=urlopen, clock=_Clock(),
+    )
+    posted = [c for c in urlopen.calls if c != "500"]
+    assert any("Upkeep 7 was registered by" in text for text in posted)
+    assert any("Upkeep 7 cancelled" in text for text in posted)
+    # And delivered means acknowledged: nothing is left waiting.
+    assert json.loads((tmp_path / "notifier-pending.json").read_text()) == {}
+
+
+def test_a_stranger_is_posted_before_a_flood_of_executions(monkeypatch, tmp_path) -> None:
+    from scripts import notifier
+
+    # A wide interval, so none of the forty is also "stalled" at the scripted
+    # rounds and the count below is executions only.
+    before = [upkeep(upkeep_id=i, balance=1_000_000, interval_rounds=1_000) for i in range(1, 41)]
+    after = [upkeep(upkeep_id=i, balance=996_000, times_executed=1, interval_rounds=1_000,
+                    next_execution_round=2_200) for i in range(1, 41)]
+    after.append(upkeep(upkeep_id=99, creator=STRANGER, interval_rounds=1_000))
+    urlopen = _scripted_urlopen([])
+    _run_main(monkeypatch, tmp_path, registries=[before, after], urlopen=urlopen, clock=_Clock())
+
+    assert len(urlopen.calls) == 41
+    assert "Upkeep 99 was registered by" in urlopen.calls[0]
+    assert all("executed" in text for text in urlopen.calls[1:])
+    assert not notifier.PendingStrangers.load(tmp_path / "notifier-pending.json").records
+
+
+def test_the_pending_file_is_written_before_the_snapshot_advances(monkeypatch, tmp_path) -> None:
+    """A crash between recording the sighting and saving the snapshot must
+    leave the sighting on disk; the other order would leave a snapshot that
+    thinks the stranger is old news and nothing to say so."""
+    from scripts import notifier
+
+    seen: list[str] = []
+    real_save = notifier.save
+
+    def save_and_record(path, snap) -> None:
+        seen.append("snapshot")
+        real_save(path, snap)
+
+    real_pending_save = notifier.PendingStrangers.save
+
+    def pending_save(self) -> None:
+        seen.append("pending")
+        real_pending_save(self)
+
+    monkeypatch.setattr(notifier, "save", save_and_record)
+    monkeypatch.setattr(notifier.PendingStrangers, "save", pending_save)
+    _run_main(monkeypatch, tmp_path, registries=[[upkeep(upkeep_id=7, creator=STRANGER)]],
+              urlopen=_scripted_urlopen([500] * 10), clock=_Clock())
+    assert seen.index("pending") < seen.index("snapshot")
+    assert "testnet/1/7" in json.loads((tmp_path / "notifier-pending.json").read_text())
+
+
+def test_an_undeliverable_ordinary_event_is_logged_and_dropped(monkeypatch, tmp_path, caplog) -> None:
+    import logging
+
+    from scripts import notifier
+
+    before = [upkeep()]
+    after = [upkeep(times_executed=1, balance=8_000, next_execution_round=1_010)]
+    with caplog.at_level(logging.WARNING, logger=notifier.logger.name):
+        _run_main(monkeypatch, tmp_path, registries=[before, after],
+                  urlopen=_scripted_urlopen([500] * 10), clock=_Clock())
+    assert any("Dropped the 'executed' announcement" in r.message for r in caplog.records)
+    # Nothing ordinary is queued for later; only strangers are, and there
+    # were none, so the pending file was never even created.
+    assert not (tmp_path / "notifier-pending.json").exists()
+
+
+# --- the stranger text matches the accepted policy (F02) --------------------
+
+def test_the_stranger_text_asks_for_an_operator_decision_not_a_freeze() -> None:
+    """docs/design/mainnet-rollout.md, "If a stranger appears": a durable alert
+    and an operator decision within 24 hours, never an automatic freeze."""
+    text = _stranger_event().text.lower()
+    assert "freeze now" not in text
+    assert "the agreed answer is to freeze" not in text
+    assert "operator decision" in text
+    assert "24 hours" in text
+    # The three permitted outcomes, and the two forbidden ones named as such.
+    assert "accepted for permanence" in text
+    assert "already-approved update" in text
+    assert "accept the temporary unfrozen exposure" in text
+    assert "not an automatic freeze" in text
+    assert "creator-only" in text  # why cancel is not an option for us
+
+
+# --- honest counts in the summary (F13) -------------------------------------
+
+def test_a_burst_carries_its_run_count_and_estimated_cost() -> None:
+    [event] = diff(
+        snapshot([upkeep()]),
+        snapshot([upkeep(times_executed=4, balance=8_000, next_execution_round=1_040)]),
+    )
+    assert event.kind == "executed"
+    assert event.runs == 4
+    assert event.paid == 4_000  # the drawdown, not 4 × the base fee
+
+
+def test_two_upkeeps_executed_in_one_scan_are_counted_separately() -> None:
+    before = snapshot([upkeep(upkeep_id=1), upkeep(upkeep_id=2, fee_per_execution=6_000)])
+    after = snapshot([
+        upkeep(upkeep_id=1, times_executed=2, balance=4_000, next_execution_round=1_020),
+        upkeep(upkeep_id=2, fee_per_execution=6_000, times_executed=1, balance=6_000,
+               next_execution_round=1_010),
+    ])
+    events = [e for e in diff(before, after) if e.kind == "executed"]
+    assert [(e.upkeep_id, e.runs, e.paid) for e in events] == [(1, 2, 8_000), (2, 1, 6_000)]
+    # What main() adds up: three runs, 14,000 µALGO, not "two events at the base fee".
+    assert sum(e.runs for e in events) == 3
+    assert sum(e.paid for e in events) == 14_000
+
+
+def test_events_that_are_not_executions_count_no_runs() -> None:
+    for event in diff(snapshot([upkeep()]), snapshot([upkeep(balance=1)])):
+        assert (event.runs, event.paid) == (0, 0)
+
+
+def test_summary_labels_the_payment_total_as_an_estimate() -> None:
+    text = summarise(snapshot([upkeep()]), executions=3, paid=12_000)
+    assert "≈ 0.012 ALGO paid to keepers" in text
+    assert "estimated from escrow drawdown" in text
+
+
+def test_an_unattributed_execution_says_so() -> None:
+    from scripts.notifier import _attribution_line
+
+    assert "attribution unknown" in _attribution_line(None)
+    keeper = "NUGVPQGZCURNU4CBHQ2IMXCY4UO2VI3VYCBWKCATL4OAKBJAT4MUTQMBVU"
+    assert "NUGVPQGZ" in _attribution_line(keeper)
+    assert "unknown" not in _attribution_line(keeper)
+
+
+# --- --ours takes addresses, not names --------------------------------------
+
+def test_an_nfd_name_in_ours_is_refused_at_startup(monkeypatch, capsys) -> None:
+    """`corvid.algo` in --ours would make our own creator look like a stranger
+    on the first registration: loud and wrong, but at least visible. The
+    check names the entry so the fix is obvious."""
+    from scripts import notifier
+
+    _connected(monkeypatch)
+    with pytest.raises(SystemExit):
+        notifier.main(["--network", "testnet", "--app-id", "1", "--once", "--no-state",
+                       "--ours", f"{OURS},corvid.algo"])
+    err = capsys.readouterr().err
+    assert "corvid.algo" in err
+    assert "not resolved" in err
+
+
+def test_a_mistyped_address_in_ours_is_refused_at_startup(monkeypatch, capsys) -> None:
+    from scripts import notifier
+
+    _connected(monkeypatch)
+    with pytest.raises(SystemExit):
+        notifier.main(["--network", "testnet", "--app-id", "1", "--once", "--no-state",
+                       "--ours", OURS[:-1] + "A"])
+    assert "not an Algorand address" in capsys.readouterr().err
+
+
+def test_valid_addresses_in_ours_are_accepted(monkeypatch) -> None:
+    from scripts import notifier
+
+    _connected(monkeypatch)
+    with pytest.raises(_Stop):  # past the guards, into the first scan
+        notifier.main(["--network", "testnet", "--app-id", "1", "--once", "--no-state",
+                       "--ours", f"{OURS}, {STRANGER}"])
+
+
+def test_the_summary_help_names_it_as_the_liveness_signal() -> None:
+    source = NOTIFIER_SOURCE.read_text()
+    assert "liveness signal" in source
+    assert "24-hour" in source
