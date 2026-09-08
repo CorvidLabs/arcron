@@ -604,25 +604,33 @@ def test_main_asks_testnet_on_mainnet_only_and_refuses_when_it_disagrees(quiet, 
     assert deploy.main(["--network", "testnet", "--no-rebuild", "--yes"]) == 0
     assert asked == []
 
-    # MainNet, everything else right: asked, with the id from the flag, and refused.
+    # MainNet, everything else right: asked about the constant, and refused.
     algod = FakeAlgod(gen="mainnet-v1.0")
     quiet.setattr(deploy.net, "connect", lambda network: _algorand(algod, CORVID, "unused"))
     quiet.setattr("builtins.input", lambda prompt: pytest.fail("asked for confirmation after refusing"))
     with caplog.at_level("ERROR"):
-        assert deploy.main(["--network", "mainnet", "--no-rebuild", "--soaked-app-id", "770000001"]) == 1
-    assert asked == [770000001]
+        assert deploy.main(["--network", "mainnet", "--no-rebuild"]) == 1
+    assert asked == [deploy.SOAKED_APP_ID]
     assert algod.sent == []
     assert "f" * 64 in caplog.text and plan().digest in caplog.text
 
 
-def test_main_defaults_the_soaked_app_id_to_the_testnet_keeper(quiet) -> None:
-    asked: list[int] = []
-    quiet.setattr(deploy, "soaked_digest", lambda app_id=None, algod=None: asked.append(app_id) or None)
+def test_there_is_no_flag_to_point_the_soak_check_at_another_app(quiet) -> None:
+    """A `--soaked-app-id` would let an app created minutes ago from this tree pass.
+
+    The reviewer's point, and the reason the id is a constant changed by
+    commit: the check is only worth anything if the operator cannot choose
+    what it is compared with.
+    """
+    quiet.setattr(deploy, "soaked_digest", lambda app_id=None, algod=None: pytest.fail("parsed the flag"))
     quiet.setattr(deploy, "tree_state", lambda: CLEAN)
     algod = FakeAlgod(gen="mainnet-v1.0")
     quiet.setattr(deploy.net, "connect", lambda network: _algorand(algod, CORVID, "unused"))
-    assert deploy.main(["--network", "mainnet", "--no-rebuild"]) == 1
-    assert asked == [deploy.SOAKED_APP_ID] and algod.sent == []
+    with pytest.raises(SystemExit) as refused:
+        deploy.main(["--network", "mainnet", "--no-rebuild", "--soaked-app-id", "770000001"])
+    assert refused.value.code == 2, "argparse rejects the unknown flag"
+    assert algod.sent == []
+    assert "--soaked-app-id" not in deploy.__doc__, "the docstring is the --help text"
 
 
 # --- #250 F14: the node advises a fee; it does not set one --------------------
@@ -650,7 +658,7 @@ def test_a_network_minimum_above_the_ceiling_is_refused_too(quiet) -> None:
 
 
 def test_the_create_and_the_floor_pay_the_minimum_whatever_the_node_suggests(quiet) -> None:
-    """1,000 per byte would be about five ALGO on a create. It pays 1,000, flat."""
+    """1,000 per byte is about 2.4 ALGO on a create of about 2,400 bytes (`estimate_size()`). It pays 1,000, flat."""
     private_key, address = account.generate_account()
     algod = FakeAlgod(fee=1000, min_fee=1000)
     algorand = _algorand(algod, address, private_key)

@@ -27,7 +27,11 @@ rather than draining an account into it.
 caller, so anybody may fund anybody's upkeep as long as they pay for it
 themselves. This does not need the creator's key, only its own.
 
-Signs transactions, but only with `--send`. The default is a plan.
+Signs transactions, but only with `--send`. The default is a plan. What it
+signs pays the network minimum fee, flat, on both transactions of the group:
+the node's fee advice is checked against `govern.MAX_SIGNABLE_FEE` and not
+taken (issue #250 F14), because neither the payment nor `top_up` sends an
+inner transaction that pooling would have to cover.
 
 Run:  poetry run python -m scripts.keeper_topup [--network N] --app-id N
       poetry run python -m scripts.keeper_topup --app-id N --send
@@ -40,6 +44,7 @@ import logging
 from dataclasses import dataclass
 
 from scripts import network as net
+from scripts.govern import FeeRefused, bounded_params
 from scripts.keeper_bot import Upkeep, resolve_app_id, scan_upkeeps
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -175,23 +180,37 @@ def affordable(funding: list[TopUp], spendable: int, reserve: int) -> tuple[list
     return sorted(taken, key=lambda t: t.upkeep_id), budget
 
 
-def send_top_up(algorand, app_id: int, sender, top_up: TopUp) -> str:
-    """One `top_up` group: the payment and the call, signed by `sender`."""
+def send_top_up(algorand, app_id: int, sender, top_up: TopUp, fee: int) -> str:
+    """One `top_up` group: the payment and the call, signed by `sender`, each at `fee`.
+
+    `fee` is `bounded_params(...).fee`, fetched once by the caller before the
+    first group is signed. Without it algokit's composer takes the node's
+    per-byte figure and multiplies it by each transaction's size, exactly as
+    algosdk does, and until 2026-09-08 that is what this did. `static_fee` is
+    algokit's flat fee; it is set on both halves because `affordable` budgets
+    2,000 microAlgos of group fees per top-up, which is only true if both
+    halves cost the minimum.
+    """
     import algokit_utils
     from smart_contracts.artifacts.keeper.keeper_client import KeeperClient, TopUpArgs
 
+    flat = algokit_utils.AlgoAmount(micro_algo=fee)
     client = KeeperClient(
         algorand=algorand, app_id=app_id,
         default_sender=sender.address, default_signer=sender.signer,
     )
-    result = client.send.top_up(args=TopUpArgs(
-        upkeep_id=top_up.upkeep_id,
-        funding_payment=algorand.create_transaction.payment(algokit_utils.PaymentParams(
-            sender=sender.address,
-            receiver=client.app_address,
-            amount=algokit_utils.AlgoAmount(micro_algo=top_up.microalgo),
-        )),
-    ))
+    result = client.send.top_up(
+        args=TopUpArgs(
+            upkeep_id=top_up.upkeep_id,
+            funding_payment=algorand.create_transaction.payment(algokit_utils.PaymentParams(
+                sender=sender.address,
+                receiver=client.app_address,
+                amount=algokit_utils.AlgoAmount(micro_algo=top_up.microalgo),
+                static_fee=flat,
+            )),
+        ),
+        params=algokit_utils.CommonAppCallParams(static_fee=flat),
+    )
     return result.tx_ids[0]
 
 
@@ -264,9 +283,19 @@ def main(argv: list[str] | None = None) -> int:
         logger.info("  Plan only. Re-run with --send to fund it.")
         return 0
 
+    # Once, before the first signature, so a node whose fee advice is above
+    # the ceiling funds nothing rather than something. A refusal here is the
+    # node's and not the plan's, and it has no override: nobody reads a fee
+    # between the plan above and the signature below.
+    try:
+        fee = bounded_params(algod).fee
+    except FeeRefused as refusal:
+        logger.error(f"Refusing to send: {refusal}")
+        return 1
+
     logger.info("")
     for top_up in chosen:
-        txid = send_top_up(algorand, args.app_id, sender, top_up)
+        txid = send_top_up(algorand, args.app_id, sender, top_up, fee)
         logger.info(f"  #{top_up.upkeep_id} funded {top_up.microalgo / 1e6:.3f} ALGO   {txid}")
     return 0
 

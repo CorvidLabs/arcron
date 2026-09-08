@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import pytest
 
+from scripts import govern, keeper_topup
 from scripts.keeper_bot import Upkeep
 from scripts.keeper_topup import (
     DEFAULT_MAX_PER_UPKEEP_MICROALGO,
@@ -24,6 +25,7 @@ from scripts.keeper_topup import (
     plan,
     required_balance,
     runway_days,
+    send_top_up,
 )
 
 #: TestNet, from `scripts.network.seconds_per_round`.
@@ -212,3 +214,81 @@ class TestAffordable:
     def test_an_empty_account_buys_nothing_rather_than_failing(self) -> None:
         chosen, left = affordable([top_up(91, 2_840_000, 1.5)], spendable=0, reserve=500_000)
         assert chosen == [] and left == 0
+
+
+# --- what --send signs, #250 F14 --------------------------------------------
+#
+# The group is a payment and a `top_up` call, both built by algokit from the
+# node's suggested params. algokit's composer multiplies a non-flat per-byte
+# fee by each transaction's size exactly as algosdk does, so until 2026-09-08
+# a node advising a large per-byte figure would have had it paid twice per
+# top-up, from the funding account, on a command whose whole output is a
+# list of amounts. Neither half sends an inner transaction, so both are flat
+# at the minimum, and `affordable`'s 2,000 microAlgos of group fees per
+# top-up is true only because they are.
+
+
+class _RecordingClient:
+    """Stands in for the generated KeeperClient: records what it is told to send."""
+
+    calls: list = []
+
+    def __init__(self, **kwargs) -> None:
+        self.app_address = "APP" * 19
+        self.send = self
+
+    def top_up(self, *, args, params=None):
+        _RecordingClient.calls.append((args, params))
+        return type("Result", (), {"tx_ids": ["TXID"]})()
+
+
+def _algorand(fee: int, payments: list):
+    import algokit_utils
+    from algosdk import transaction
+
+    class Algod:
+        def suggested_params(self):
+            return transaction.SuggestedParams(fee=fee, first=1, last=1000, gh="", gen="testnet-v1.0",
+                                               flat_fee=False, min_fee=1000)
+
+    return type("Algorand", (), {
+        "client": type("Client", (), {"algod": Algod()})(),
+        "create_transaction": type("Create", (), {"payment": staticmethod(lambda p: payments.append(p) or p)})(),
+    })()
+
+
+def test_both_halves_of_the_group_are_flat_at_the_minimum(monkeypatch) -> None:
+    import smart_contracts.artifacts.keeper.keeper_client as generated
+
+    monkeypatch.setattr(generated, "KeeperClient", _RecordingClient)
+    _RecordingClient.calls = []
+    payments: list = []
+    sender = type("Sender", (), {"address": "A" * 58, "signer": None})()
+    fee = govern.bounded_params(_algorand(fee=1000, payments=payments).client.algod).fee
+
+    txid = send_top_up(_algorand(fee=1000, payments=payments), 769891898, sender, top_up(91, 2_840_000, 1.5), fee)
+
+    assert txid == "TXID"
+    assert payments[0].static_fee.micro_algo == 1000 and payments[0].amount.micro_algo == 2_840_000
+    (args, params), = _RecordingClient.calls
+    assert params.static_fee.micro_algo == 1000
+    assert args.upkeep_id == 91 and args.funding_payment is payments[0]
+
+
+def test_send_refuses_the_node_before_signing_anything(monkeypatch, caplog) -> None:
+    """A per-byte 50,000 funds nothing: the refusal is before the first group, not after the last."""
+    import smart_contracts.artifacts.keeper.keeper_client as generated
+
+    monkeypatch.setattr(generated, "KeeperClient", _RecordingClient)
+    _RecordingClient.calls = []
+    algorand = _algorand(fee=50_000, payments=[])
+    sender = type("Sender", (), {"address": "A" * 58, "signer": None})()
+    algorand.account = type("Accounts", (), {"from_environment": staticmethod(lambda name: sender)})()
+    algorand.client.algod.account_info = lambda address: {"amount": 10_000_000, "min-balance": 100_000}
+    monkeypatch.setattr(keeper_topup.net, "connect", lambda network: algorand)
+    monkeypatch.setattr(keeper_topup, "scan_upkeeps", lambda algod, app_id: [upkeep()])
+
+    with caplog.at_level("ERROR"):
+        assert keeper_topup.main(["--network", "testnet", "--app-id", "769891898", "--send"]) == 1
+    assert _RecordingClient.calls == [], "nothing was built, let alone signed"
+    assert "Refusing to send" in caplog.text and str(govern.MAX_SIGNABLE_FEE) in caplog.text

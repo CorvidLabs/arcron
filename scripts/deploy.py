@@ -28,9 +28,9 @@ In order:
    through the indexer and quietly creates a second one when the indexer is
    behind. MainNet gets exactly one; a second is a mistake with a permanent
    minimum balance attached, so there it cannot be overridden at all.
-5. On MainNet, read the programs the TestNet keeper (`--soaked-app-id`,
-   default 769891898) is running right now and refuse bytecode whose digest is
-   not theirs. "Soaked" means two things, and only one of them is a fact a
+5. On MainNet, read the programs the TestNet keeper (`SOAKED_APP_ID`,
+   769891898, with no flag to point elsewhere) is running right now and refuse
+   bytecode whose digest is not theirs. "Soaked" means two things, and only one of them is a fact a
    script can check: that the bytes about to be created are the bytes that
    have been running, which this is, and that they have been running long
    enough, which stays a human sign-off against `docs/releases.md`. If TestNet
@@ -107,9 +107,12 @@ CONFIRMATION_ROUNDS = 6
 
 #: The TestNet keeper whose programs the MainNet bytecode has to match: app
 #: 769891898, alpha-2 in `docs/releases.md` and updated in place to alpha-3 on
-#: 2026-08-26, the registry every soak claim is about. `--soaked-app-id`
-#: overrides it for the day a struct change forces a new TestNet id, and for
-#: nothing else.
+#: 2026-08-26, the registry every soak claim is about. There is deliberately
+#: no flag to point this at another app: a `--soaked-app-id` would let any
+#: TestNet app satisfy the check, including one created minutes earlier from
+#: the same tree, which is the opposite of soaked. When a struct change forces
+#: a new TestNet id, this changes in a commit anyone can read, the same stance
+#: `govern.MAX_SIGNABLE_FEE` takes.
 SOAKED_APP_ID = 769891898
 
 #: Where the soaked programs are read from, whatever `.env.mainnet` says. See
@@ -355,7 +358,8 @@ def refusals(
                 f"the TestNet {plan.contract}'s programs could not be read, so nothing "
                 "proves this bytecode is the soaked bytecode. The check fails closed: "
                 "a MainNet create is not made on the assumption that TestNet would have "
-                "agreed. Check the TestNet node, or --soaked-app-id, and run this again."
+                f"agreed. Check that app {SOAKED_APP_ID} on TestNet can be read from "
+                f"{SOAKED_ALGOD}, and run this again."
             )
         elif soaked_digest != plan.digest:
             reasons.append(
@@ -589,14 +593,6 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="skip the typed confirmation on LocalNet and TestNet; MainNet always asks",
     )
-    parser.add_argument(
-        "--soaked-app-id",
-        type=int,
-        default=SOAKED_APP_ID,
-        metavar="N",
-        help="MainNet only: the TestNet keeper whose running programs this bytecode "
-        "must match (default: %(default)s, alpha-3 in docs/releases.md)",
-    )
     args = parser.parse_args(argv)
 
     if ms.configured():
@@ -629,8 +625,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.network == net.MAINNET:
         # One request to a TestNet node, made only on MainNet: a rehearsal on
         # LocalNet runs offline, and TestNet is where bytecode goes to become
-        # soaked in the first place, so neither can be held to this.
-        soaked = soaked_digest(args.soaked_app_id)
+        # soaked in the first place, so neither can be held to this. The app
+        # asked about is the constant, not an argument; see `SOAKED_APP_ID`.
+        soaked = soaked_digest(SOAKED_APP_ID)
     else:
         soaked = plan.digest
     reasons = refusals(

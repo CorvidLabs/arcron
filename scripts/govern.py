@@ -82,31 +82,48 @@ class FeeRefused(RuntimeError):
 def bounded_params(algod) -> transaction.SuggestedParams:
     """Suggested params with the fee pinned to the network minimum, or a refusal.
 
-    Until 2026-09-08 every transaction this repository signs in a shell took
-    `algod.suggested_params()` exactly as the node handed them over: the create
-    in `scripts/deploy.py`, `update` and `freeze` here when a single key signs,
-    and the unsigned export `create` writes for a multisig. `MAX_SIGNABLE_FEE`
-    existed, and it applied only to a file a multisig holder was about to sign
-    (`multisig.refusals`), which is to say to the one path where a human also
-    reads the fee. Issue #250 F14. The number a node returns in `fee` is *per
-    byte*, and algosdk multiplies it by the transaction's size unless the
-    params are flat; a create is about five kilobytes, so a node advising
-    10,000 per byte would have had fifty ALGO paid from the creator's account,
-    and the only symptom would have been the balance afterwards.
+    The paths in this repository that sign in a shell, in process, and what
+    bounds each of them (issue #250 F14; the inventory was taken 2026-09-08 and
+    a new signing path belongs on this list):
 
-    None of these transactions needs fee pooling. `update()` and `freeze()`
-    each write state and send nothing; a create runs `__init__`, which does
-    the same; a payment is a payment. Each is a single transaction with no
-    inner transaction to cover, so the network minimum is the right fee, and a
-    higher suggestion is advice this repository has no reason to take. The fee
-    is therefore set, flat, to the node's `min_fee`, and both figures the node
-    sent are checked against the ceiling: a minimum above it means the node is
-    describing a network these scripts do not know, and a per-byte figure
-    above it is above the ceiling for any transaction at all, since none is
-    shorter than a byte. Either one means stop and look, not pay. A per-byte
-    figure below the ceiling that would still have cost real money (say 100,
-    or half an ALGO on a create) is not paid either, because the fee is pinned
-    rather than merely capped.
+    * `scripts/deploy.py`: the create, and the 0.1 ALGO floor payment after it.
+      Both through this function.
+    * `scripts/govern.py`: `update` and `freeze` when a single key signs, and
+      the unsigned create/update/freeze files written for a multisig, whose
+      holders' `sign` then checks the fee a second time from the file. All
+      through this function.
+    * `scripts/keeper_topup.py --send`: the funding payment and the `top_up`
+      call, as `static_fee` on both, from this function.
+    * `scripts/reclaim.py`: `cancel`, bounded with `max_fee` rather than a
+      flat fee because `cancel` sends inner transactions that pooling has to
+      cover; the ceiling is the same number.
+    * `scripts/keeper_bot.py`: `execute`, which already carried `max_fee` for
+      the same reason, and is a daemon rather than a shell.
+
+    Until 2026-09-08 all but the last took `algod.suggested_params()` exactly
+    as the node handed them over, and `MAX_SIGNABLE_FEE` applied only to a
+    file a multisig holder was about to sign (`multisig.refusals`), which is
+    to say to the one path where a human also reads the fee. The number a node
+    returns in `fee` is *per byte*, and algosdk and algokit's composer both
+    multiply it by the transaction's size unless the params are flat. A keeper
+    create is about 2,400 bytes, measured with `estimate_size()` on this
+    tree's programs (2,406 on 2026-09-08), so a node advising 10,000 per byte
+    would have had about 24 ALGO paid from the creator's account, and the only
+    symptom would have been the balance afterwards.
+
+    None of the transactions that come through here needs fee pooling.
+    `update()` and `freeze()` each write state and send nothing; a create runs
+    `__init__`, which does the same; `top_up` moves a payment into a box; a
+    payment is a payment. Each has no inner transaction to cover, so the
+    network minimum is the right fee, and a higher suggestion is advice this
+    repository has no reason to take. The fee is therefore set, flat, to the
+    node's `min_fee`, and both figures the node sent are checked against the
+    ceiling: a minimum above it means the node is describing a network these
+    scripts do not know, and a per-byte figure above it is above the ceiling
+    for any transaction at all, since none is shorter than a byte. Either one
+    means stop and look, not pay. A per-byte figure below the ceiling that
+    would still have cost real money (say 100, or about 0.24 ALGO on a create)
+    is not paid either, because the fee is pinned rather than merely capped.
 
     There is deliberately no `--allow-high-fee` on these paths. `sign` has one
     because a holder sees the fee printed in the description before deciding;

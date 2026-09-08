@@ -93,7 +93,7 @@ def _tree() -> tuple[bytes, bytes]:
 
 
 def test_update_pays_the_minimum_flat_whatever_the_node_advises(single_key) -> None:
-    """1,000 per byte on a five-kilobyte update is about five ALGO. It pays 1,000."""
+    """1,000 per byte on an update of about 2,400 bytes (`estimate_size()`) is about 2.4 ALGO. It pays 1,000."""
     private_key, address = account.generate_account()
     approval, clear = _tree()
     algod = FakeAlgod(approval=b"\x0a\x81\x01", clear=clear, fee=1000, min_fee=1000)
