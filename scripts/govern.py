@@ -39,6 +39,11 @@ carries programs that are not the ones this tree compiles to. Then it asks for
 the sending account to be typed in full, with no flag to skip it: a signature
 produced without a human reading the description is the thing a multisig
 exists to prevent.
+
+Whatever signs, the fee is never the node's to set. Every transaction built
+here is flat at the network minimum (`bounded_params`), and a node whose
+advice is above `MAX_SIGNABLE_FEE` is refused before anything is signed, with
+no flag to override it on a path that signs in process.
 """
 
 import argparse
@@ -50,7 +55,7 @@ import subprocess
 import sys
 
 import algokit_utils
-from algosdk import transaction
+from algosdk import constants, transaction
 
 from scripts import multisig as ms, network as net
 from scripts.registry_health import read_escrowed, read_solvency
@@ -58,6 +63,84 @@ from scripts.verify_build import _digest, _programs, _spec, rebuild
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
+
+# A fee is spent whether or not the transaction accomplishes anything, so an
+# inflated one is a way to drain the account it is signed from without ever
+# looking like theft. Ten times the minimum leaves room for real congestion.
+MAX_SIGNABLE_FEE = 10_000
+
+
+class FeeRefused(RuntimeError):
+    """A node's fee advice was above the ceiling, and nothing was signed.
+
+    Its own class so `main` can catch the one refusal that comes from the node
+    rather than from the operator, and print it as a refusal instead of a
+    traceback, without swallowing anything else.
+    """
+
+
+def bounded_params(algod) -> transaction.SuggestedParams:
+    """Suggested params with the fee pinned to the network minimum, or a refusal.
+
+    Until 2026-09-08 every transaction this repository signs in a shell took
+    `algod.suggested_params()` exactly as the node handed them over: the create
+    in `scripts/deploy.py`, `update` and `freeze` here when a single key signs,
+    and the unsigned export `create` writes for a multisig. `MAX_SIGNABLE_FEE`
+    existed, and it applied only to a file a multisig holder was about to sign
+    (`multisig.refusals`), which is to say to the one path where a human also
+    reads the fee. Issue #250 F14. The number a node returns in `fee` is *per
+    byte*, and algosdk multiplies it by the transaction's size unless the
+    params are flat; a create is about five kilobytes, so a node advising
+    10,000 per byte would have had fifty ALGO paid from the creator's account,
+    and the only symptom would have been the balance afterwards.
+
+    None of these transactions needs fee pooling. `update()` and `freeze()`
+    each write state and send nothing; a create runs `__init__`, which does
+    the same; a payment is a payment. Each is a single transaction with no
+    inner transaction to cover, so the network minimum is the right fee, and a
+    higher suggestion is advice this repository has no reason to take. The fee
+    is therefore set, flat, to the node's `min_fee`, and both figures the node
+    sent are checked against the ceiling: a minimum above it means the node is
+    describing a network these scripts do not know, and a per-byte figure
+    above it is above the ceiling for any transaction at all, since none is
+    shorter than a byte. Either one means stop and look, not pay. A per-byte
+    figure below the ceiling that would still have cost real money (say 100,
+    or half an ALGO on a create) is not paid either, because the fee is pinned
+    rather than merely capped.
+
+    There is deliberately no `--allow-high-fee` on these paths. `sign` has one
+    because a holder sees the fee printed in the description before deciding;
+    here the transaction is built and signed in one process, and nobody reads
+    a fee before it is paid. If the network minimum ever genuinely rises past
+    the ceiling, the constant changes in a commit anyone can read.
+
+    The node-trust boundary, said once: a ceremony trusts the node for the
+    genesis id check and for the read-back, and for nothing that costs money.
+    A node's fee advice is not authorization to spend. The operator is trusted
+    for the `.env` that names the node, and the node is trusted to describe
+    the chain, which is a claim the read-back can catch it lying about; a fee
+    is spent before anything can be checked, which is why it is not the
+    node's to set.
+    """
+    params = algod.suggested_params()
+    # algosdk leaves `min_fee` None when a fake or an old node did not send
+    # one; the protocol constant is then the only honest figure. It is never
+    # read from `fee`, which is the per-byte suggestion and normally 0.
+    minimum = int(params.min_fee) if params.min_fee is not None else constants.MIN_TXN_FEE
+    per_byte = int(params.fee)
+    if minimum > MAX_SIGNABLE_FEE or per_byte > MAX_SIGNABLE_FEE:
+        raise FeeRefused(
+            f"the node suggests a fee of {per_byte} microAlgos per byte with a minimum "
+            f"of {minimum}, and this repository signs nothing above {MAX_SIGNABLE_FEE}. "
+            "A fee is spent whether or not the transaction does anything, and a node's "
+            "fee advice is not authorization to spend from this account. There is no "
+            "flag to override this on a path that signs in process; if the network "
+            "minimum has genuinely moved, change MAX_SIGNABLE_FEE in a commit, and if "
+            "it has not, find out what node ALGOD_SERVER is pointing at."
+        )
+    params.fee = minimum
+    params.flat_fee = True
+    return params
 
 
 def _frozen(algod, app_id: int) -> int:
@@ -141,7 +224,10 @@ def update(algorand, app_id: int, no_rebuild: bool, out: 'pathlib.Path | None' =
     logger.info(f"  deployed  sha256 {_digest(live_approval, live_clear)}  {len(live_approval)} bytes")
     logger.info(f"  this tree sha256 {_digest(approval, clear)}  {len(approval)} bytes")
 
-    params = algod.suggested_params()
+    # Bounded on both branches. Under a multisig the holders' `sign` checks the
+    # fee again from the file, which is the one place a human reads it; the
+    # single-key branch below signs what it builds, so this is its only check.
+    params = bounded_params(algod)
     if ms.configured():
         # No single machine should be able to rewrite a live contract, so the
         # transaction is written out for the holders to sign wherever their
@@ -290,7 +376,11 @@ def create(algorand, expect_creator: str, assume_yes: bool, allow_dirty: bool,
 
     unsigned = transaction.ApplicationCreateTxn(
         sender=ms.address(),
-        sp=algod.suggested_params(),
+        # Flat, at the minimum. The holders' `sign` would refuse a fee above
+        # the ceiling anyway, but a file that carries one is a file somebody
+        # has to explain, and the node's per-byte advice is not what a create
+        # should cost.
+        sp=bounded_params(algod),
         on_complete=transaction.OnComplete.NoOpOC,
         approval_program=approval,
         clear_program=clear,
@@ -322,6 +412,9 @@ def freeze(algorand, app_id: int, assume_yes: bool, out: 'pathlib.Path | None' =
 
     approval, clear = _deployed(algod, app_id)
     digest = _digest(approval, clear)
+    # Fetched before the operator is asked to type anything, so a node whose
+    # fee advice is refused is refused before the confirmation, not after it.
+    params = bounded_params(algod)
     logger.info(f"About to freeze app {app_id} permanently.")
     logger.info(f"  It will be stuck with sha256 {digest} forever.")
     logger.info("  A bug in these programs could then only be answered by telling")
@@ -335,7 +428,7 @@ def freeze(algorand, app_id: int, assume_yes: bool, out: 'pathlib.Path | None' =
     if ms.configured():
         selector = bytes.fromhex(hashlib.new("sha512_256", b"freeze()void").hexdigest()[:8])
         unsigned = transaction.ApplicationCallTxn(
-            sender=ms.address(), sp=algod.suggested_params(), index=app_id,
+            sender=ms.address(), sp=params, index=app_id,
             on_complete=transaction.OnComplete.NoOpOC, app_args=[selector],
         )
         target = out or pathlib.Path(f"arcron-freeze-{app_id}.json")
@@ -348,7 +441,15 @@ def freeze(algorand, app_id: int, assume_yes: bool, out: 'pathlib.Path | None' =
     client = algorand.client.get_app_client_by_id(
         app_spec=_spec_json(), app_id=app_id, default_sender=deployer.address
     )
-    client.send.call(algokit_utils.AppClientMethodCallParams(method="freeze"))
+    # The app client computes a fee of its own from the node's params, so it
+    # is told the fee instead: `static_fee` is algokit's spelling of a flat
+    # fee, and `freeze()` sends no inner transaction for pooling to cover.
+    client.send.call(
+        algokit_utils.AppClientMethodCallParams(
+            method="freeze",
+            static_fee=algokit_utils.AlgoAmount(micro_algo=params.fee),
+        )
+    )
     if _frozen(algod, app_id) != 1:
         logger.error("freeze did not take. Investigate before announcing anything.")
         return 1
@@ -360,12 +461,6 @@ def _spec_json():
     import json
 
     return algokit_utils.Arc56Contract.from_json(json.dumps(_spec("keeper")))
-
-
-# A fee is spent whether or not the transaction accomplishes anything, so an
-# inflated one is a way to drain the account it is signed from without ever
-# looking like theft. Ten times the minimum leaves room for real congestion.
-MAX_SIGNABLE_FEE = 10_000
 
 
 def _refuse(args, verb: str) -> bool:
@@ -455,6 +550,17 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     algorand = net.connect(args.network)
+    try:
+        return _dispatch(args, algorand)
+    except FeeRefused as refusal:
+        # The one refusal that comes from the node rather than the operator.
+        # Nothing has been signed when it is raised, so it is a refusal and
+        # not a failure, and it is printed as one.
+        logger.error(f"Refusing: {refusal}")
+        return 1
+
+
+def _dispatch(args, algorand) -> int:
     if args.command == "create":
         if not args.expect_creator:
             logger.error(
