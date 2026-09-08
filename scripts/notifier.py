@@ -76,7 +76,12 @@ MAX_MESSAGE_CHARS = 1_900
 # Between posts, to stay well inside Discord's rate limits.
 POST_INTERVAL_SECONDS = 1.0
 # How far back to look for the transaction behind an execution. Bounded so a
-# notifier restarted after a long gap does not crawl the chain.
+# notifier restarted after a long gap does not crawl the chain. Each block is
+# fetched whole, and a MainNet block is megabytes where a TestNet one is
+# kilobytes; the public edge meters by bytes, so a scan with executions can
+# spend more quota on these 24 fetches than on the box reads. That is why the
+# runbook points the MainNet notifier at our own node (ALGOD_SERVER in
+# `deploy/notifier.env.example`), not at the public endpoint.
 MAX_ATTRIBUTION_BLOCKS = 24
 # Between scans. This was 5 seconds, which on a registry whose shortest live
 # cadence is an hour is 17,000 scans a day of a few dozen requests each, and
@@ -585,7 +590,7 @@ def pending_path(snapshot_path: Path | None) -> Path | None:
     different lifetimes: the snapshot is replaced every scan, and a stranger
     record must survive any number of them until Discord answers.
     `--no-state` leaves both in memory, which is fine for `--once` and for
-    tests and is not how the VPS runs.
+    tests, is not how the VPS runs, and is refused on MainNet.
     """
     if snapshot_path is None:
         return None
@@ -614,6 +619,32 @@ def save(path: Path | None, snapshot: Snapshot) -> None:
     if path is None:
         return
     _write_json(path, snapshot.to_json())
+
+
+def _log_write_failure(path: Path | None, what: str, exc: OSError) -> None:
+    """The one line said when the disk will not have a state file.
+
+    A permission mistake in the state directory is a real deployment failure
+    this repository has already had once (`deploy/Dockerfile`, the root-owned
+    volume). It must not become "no stranger ever delivered and no execution
+    ever announced", which is what an unguarded pending-file save did, nor
+    "no summary ever posted", which is what an unguarded snapshot save did:
+    the save sat before the scan counter and the summary block, so every scan
+    ended in the retry clause and the runbook's liveness signal never fired.
+    Logged at error on every failure, because a state directory that stays
+    unwritable is worth a line per scan in the journal.
+    """
+    logger.error(
+        f"Could not write {path} ({what}): {exc}. Continuing from memory; a restart "
+        f"will replay what was announced since the last successful write."
+    )
+
+
+def save_or_log(path: Path | None, snapshot: Snapshot) -> None:
+    try:
+        save(path, snapshot)
+    except OSError as exc:
+        _log_write_failure(path, "saving the snapshot", exc)
 
 
 class PendingStrangers:
@@ -699,27 +730,54 @@ class PendingStrangers:
         key. Logged, so the operator knows the text is a reconstruction.
         """
         record = dict(value) if isinstance(value, dict) else {}
-        try:
-            upkeep_id = int(record.get("upkeep_id", key.rsplit("/", 1)[-1]))
-        except (TypeError, ValueError):
-            upkeep_id = -1
         missing = [f for f in ("upkeep_id", "first_seen_round", "first_seen_at", "text") if f not in record]
         if missing:
             logger.warning(
                 f"Pending stranger record {key} is missing {missing}; keeping it and "
                 f"delivering what is known"
             )
-        record.setdefault("upkeep_id", upkeep_id)
-        record.setdefault("first_seen_round", 0)
-        record.setdefault("first_seen_at", "unknown")
-        record.setdefault(
-            "text",
-            f"🚨 **Upkeep {upkeep_id} was registered by somebody who is not one of us** "
-            f"(pending record {key}; its stored text was lost, details were not). This "
-            f"needs an operator decision within 24 hours of first sighting, which the "
-            f"record put at round {record['first_seen_round']}, {record['first_seen_at']}.",
+
+        # Types as well as presence. `deliver` sorts on `first_seen_round` and
+        # subtracts `last_attempt` from the clock, and a hand-edited file with
+        # `"last_attempt": "yesterday"` (or a "5" beside a 5) raised TypeError
+        # as the first statement of the scan loop, which the retry clause then
+        # slept through forever: zero scans, logged as "retrying". Every field
+        # is coerced to what the code reads, or replaced, and each repair is
+        # said out loud so the operator knows the record was not as written.
+        def coerce(name: str, kind, fallback, allow_none: bool = False):
+            present = record.get(name, fallback)
+            if present is None and allow_none:
+                return None
+            try:
+                if kind is int and isinstance(present, float) and present != int(present):
+                    raise ValueError(present)
+                if kind is str and not isinstance(present, str):
+                    # `str()` would happily render a list; a text that is not
+                    # a string is not the stored text, whatever it prints as.
+                    raise TypeError(present)
+                return kind(present)
+            except (TypeError, ValueError, OverflowError):
+                logger.warning(
+                    f"Pending stranger record {key} has {name}={present!r}, which is not "
+                    f"{kind.__name__}; using {fallback!r}"
+                )
+                return fallback
+
+        try:
+            id_from_key = int(key.rsplit("/", 1)[-1])
+        except ValueError:
+            id_from_key = -1
+        record["upkeep_id"] = coerce("upkeep_id", int, id_from_key)
+        record["first_seen_round"] = coerce("first_seen_round", int, 0)
+        record["first_seen_at"] = coerce("first_seen_at", str, "unknown")
+        record["last_attempt"] = coerce("last_attempt", float, None, allow_none=True)
+        text = coerce("text", str, "")
+        record["text"] = text or (
+            f"🚨 **Upkeep {record['upkeep_id']} was registered by somebody who is not one "
+            f"of us** (pending record {key}; its stored text was lost, details were not). "
+            f"This needs an operator decision within 24 hours of first sighting, which the "
+            f"record put at round {record['first_seen_round']}, {record['first_seen_at']}."
         )
-        record.setdefault("last_attempt", None)
         return record
 
     def __len__(self) -> int:
@@ -731,20 +789,10 @@ class PendingStrangers:
         _write_json(self.path, self.records)
 
     def _save_or_log(self, what: str) -> None:
-        """Persist, and on a disk that will not have it, say so and carry on.
-
-        A permission mistake in the state directory is a real deployment
-        failure this repository has already had once (`deploy/Dockerfile`, the
-        root-owned volume). It must not become "no stranger ever delivered and
-        no execution ever announced", which is what an unguarded save did.
-        """
         try:
             self.save()
         except OSError as exc:
-            logger.error(
-                f"Could not write {self.path} ({what}): {exc}. Delivery continues from "
-                f"memory; a restart will forget or replay what is in flight."
-            )
+            _log_write_failure(self.path, what, exc)
 
     @staticmethod
     def key(network: str, app_id: int, upkeep_id: int) -> str:
@@ -869,7 +917,14 @@ def main(argv: list[str] | None = None) -> None:
         action="store_true",
         help="on MainNet, mean it when there is no webhook and print announcements instead",
     )
-    parser.add_argument("--no-state", action="store_true", help="announce from scratch each run")
+    parser.add_argument(
+        "--no-state",
+        action="store_true",
+        help=(
+            "announce from scratch each run, and keep the pending stranger file in memory "
+            "only, so an undelivered alert dies with the process. Refused on MainNet"
+        ),
+    )
     args = parser.parse_args(argv)
 
     algorand = net.connect(args.network)
@@ -928,6 +983,14 @@ def main(argv: list[str] | None = None) -> None:
                 "DISCORD_WEBHOOK_URL is unset on MainNet, so announcements would go to a "
                 "log nobody reads. Set it, or pass --stdout to mean that"
             )
+        if args.no_state:
+            # The durable stranger alert is the whole of F01, and it is durable
+            # only because it is a file. In memory it dies with the process,
+            # and systemd restarting the process is the ordinary case.
+            parser.error(
+                "--no-state is refused on MainNet: it keeps undelivered stranger alerts in "
+                "memory only, which is no delivery guarantee at all. Use --state-file"
+            )
 
     logger.info(
         f"Watching app {app_id} on {args.network} every {args.poll_seconds:g}s; "
@@ -957,8 +1020,13 @@ def main(argv: list[str] | None = None) -> None:
             # asked a single question. Delivery used to sit after the scan,
             # so a node outage or a 403 storm held back an alert that Discord
             # was ready to take; the two failures are independent and the
-            # watcher should not couple them.
-            pending.deliver(webhook)
+            # watcher should not couple them. Nor the other way round: a fault
+            # in delivery (a record this code cannot read, a bug) must never
+            # stop observation, so it is logged here and the scan goes ahead.
+            try:
+                pending.deliver(webhook)
+            except Exception as exc:
+                logger.error(f"Delivering pending stranger alerts failed ({exc!r}); scanning anyway")
 
             current_round = algod.status()["last-round"]
             snapshot = Snapshot.of(scan_upkeeps(algod, app_id), current_round)
@@ -1001,7 +1069,7 @@ def main(argv: list[str] | None = None) -> None:
                 time.sleep(POST_INTERVAL_SECONDS)
 
             previous = snapshot
-            save(path, snapshot)
+            save_or_log(path, snapshot)
             scans += 1
             if args.summary_every > 0 and scans % args.summary_every == 0:
                 if not post(webhook, summarise(snapshot, executions_since_summary, paid_since_summary)):

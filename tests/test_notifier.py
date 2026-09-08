@@ -465,18 +465,19 @@ def test_mainnet_refuses_to_start_without_a_webhook(monkeypatch) -> None:
         notifier.main(["--network", "mainnet", "--app-id", "1", "--once", "--no-state", "--ours", ours])
 
 
-def test_mainnet_starts_with_ours_and_an_explicit_stdout(monkeypatch) -> None:
+def test_mainnet_starts_with_ours_and_an_explicit_stdout(monkeypatch, tmp_path) -> None:
     from scripts import notifier
 
     _connected(monkeypatch)
     ours = "WGSHC4TYKYBS6EX5V5E377BQDLKWIIPBCFOLZQZIXCKHFIEKRPBFOMW25A"
     # Past the guards means it reached the first scan, which the fake stops.
+    # A state file, because --no-state is one of the guards on MainNet.
     with pytest.raises(_Stop):
-        notifier.main(["--network", "mainnet", "--app-id", "1", "--once", "--no-state",
-                       "--ours", ours, "--stdout"])
+        notifier.main(["--network", "mainnet", "--app-id", "1", "--once",
+                       "--state-file", str(tmp_path / "n.json"), "--ours", ours, "--stdout"])
 
 
-def test_ours_is_read_from_the_environment_when_no_flag_is_given(monkeypatch) -> None:
+def test_ours_is_read_from_the_environment_when_no_flag_is_given(monkeypatch, tmp_path) -> None:
     """compose cannot pass a value from env_file into a command; the process reads it itself."""
     from scripts import notifier
 
@@ -484,7 +485,8 @@ def test_ours_is_read_from_the_environment_when_no_flag_is_given(monkeypatch) ->
     monkeypatch.setenv("ARCRON_OURS", "WGSHC4TYKYBS6EX5V5E377BQDLKWIIPBCFOLZQZIXCKHFIEKRPBFOMW25A")
     monkeypatch.setenv("DISCORD_WEBHOOK_URL", "https://discord.invalid/webhook")
     with pytest.raises(_Stop):
-        notifier.main(["--network", "mainnet", "--app-id", "1", "--once", "--no-state"])
+        notifier.main(["--network", "mainnet", "--app-id", "1", "--once",
+                       "--state-file", str(tmp_path / "n.json")])
 
 
 def test_testnet_still_starts_with_nobody_counted_as_ours(monkeypatch) -> None:
@@ -836,7 +838,7 @@ class _ScriptedAlgod(_StoppingAlgod):
 
 
 def _run_main(monkeypatch, tmp_path, registries: list[list], urlopen, clock: _Clock,
-              executors=lambda *a: {}) -> None:
+              executors=lambda *a: {}, extra: tuple[str, ...] = ()) -> None:
     from types import SimpleNamespace
 
     from scripts import notifier
@@ -854,7 +856,7 @@ def _run_main(monkeypatch, tmp_path, registries: list[list], urlopen, clock: _Cl
     monkeypatch.delenv("ARCRON_OURS", raising=False)
     notifier.main(["--network", "testnet", "--app-id", "1", "--ours", OURS,
                    "--state-file", str(tmp_path / "notifier.json"),
-                   "--poll-seconds", str(notifier.STRANGER_RETRY_SECONDS)])
+                   "--poll-seconds", str(notifier.STRANGER_RETRY_SECONDS), *extra])
 
 
 def test_a_stranger_cancelled_before_delivery_is_still_delivered(monkeypatch, tmp_path) -> None:
@@ -1354,3 +1356,125 @@ def test_an_ordinary_node_error_is_still_retried(monkeypatch, tmp_path) -> None:
     monkeypatch.delenv("DISCORD_WEBHOOK_URL", raising=False)
     notifier.main(["--network", "testnet", "--app-id", "1", "--no-state", "--poll-seconds", "1"])
     assert algod.calls == 3
+
+
+# --- round three: delivery must never block observation ----------------------
+
+def test_a_malformed_pending_record_is_coerced_not_fatal(tmp_path, caplog) -> None:
+    """`"last_attempt": "yesterday"` raised TypeError as the first statement of
+    the scan loop, and the retry clause slept through it forever."""
+    import logging
+
+    from scripts import notifier
+
+    path = tmp_path / "pending.json"
+    path.write_text(json.dumps({
+        "testnet/1/7": {"upkeep_id": "7", "first_seen_round": "5", "first_seen_at": 12,
+                        "last_attempt": "yesterday", "text": "kept"},
+        "testnet/1/8": {"upkeep_id": 8.0, "first_seen_round": 5, "first_seen_at": "x",
+                        "last_attempt": 1_000, "text": ["not", "a", "string"]},
+    }))
+    with caplog.at_level(logging.WARNING, logger=notifier.logger.name):
+        records = notifier.PendingStrangers.load(path).records
+    seven, eight = records["testnet/1/7"], records["testnet/1/8"]
+    assert (seven["upkeep_id"], seven["first_seen_round"], seven["first_seen_at"]) == (7, 5, "unknown")
+    assert seven["last_attempt"] is None and seven["text"] == "kept"
+    assert (eight["upkeep_id"], eight["last_attempt"]) == (8, 1_000.0)
+    assert "Upkeep 8 was registered" in eight["text"], "an unreadable text is replaced, not kept"
+    repairs = [r.message for r in caplog.records if "is not" in r.message]
+    assert any("last_attempt='yesterday'" in m for m in repairs)
+    assert any("text=" in m for m in repairs)
+    # Sorting and the clock arithmetic now work on what was loaded.
+    sorted(records, key=lambda k: (records[k]["first_seen_round"], k))
+
+
+def test_a_malformed_pending_file_does_not_stop_scanning(monkeypatch, tmp_path) -> None:
+    from scripts import notifier
+
+    state = tmp_path / "notifier.json"
+    notifier.pending_path(state).write_text(json.dumps({
+        "testnet/1/7": {"upkeep_id": 7, "first_seen_round": "5", "first_seen_at": "then",
+                        "last_attempt": "yesterday", "text": "🚨 Upkeep 7 was registered by a stranger"},
+    }))
+    before = [upkeep()]
+    after = [upkeep(times_executed=1, balance=8_000, next_execution_round=1_010)]
+    urlopen = _scripted_urlopen([])
+    _run_main(monkeypatch, tmp_path, registries=[before, after], urlopen=urlopen, clock=_Clock())
+    assert "Upkeep 7 was registered" in urlopen.calls[0], "delivered, on the first loop"
+    assert any("Upkeep 1 executed" in c for c in urlopen.calls), "and the scans went ahead"
+    assert notifier.PendingStrangers.load(notifier.pending_path(state)).records == {}
+
+
+def test_a_fault_in_delivery_is_logged_and_the_scan_still_runs(monkeypatch, tmp_path, caplog) -> None:
+    """The belt to the coercion's braces: whatever `deliver` might raise, the
+    node is still asked what happened."""
+    import logging
+
+    from scripts import notifier
+
+    real_deliver = notifier.PendingStrangers.deliver
+    calls = {"n": 0}
+
+    def flaky_deliver(self, webhook, now=None):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise TypeError("unsupported operand")
+        return real_deliver(self, webhook, now)
+
+    monkeypatch.setattr(notifier.PendingStrangers, "deliver", flaky_deliver)
+    before = [upkeep()]
+    after = [upkeep(times_executed=1, balance=8_000, next_execution_round=1_010)]
+    urlopen = _scripted_urlopen([])
+    with caplog.at_level(logging.ERROR, logger=notifier.logger.name):
+        _run_main(monkeypatch, tmp_path, registries=[before, after], urlopen=urlopen, clock=_Clock())
+    assert any("Delivering pending stranger alerts failed" in r.message for r in caplog.records)
+    assert any("Upkeep 1 executed" in c for c in urlopen.calls)
+
+
+def test_an_unwritable_state_directory_does_not_kill_the_summary(monkeypatch, tmp_path, caplog) -> None:
+    """The snapshot save sat before the scan counter and the summary block, so
+    with EACCES every scan ended in the retry clause: executions announced,
+    zero summaries, and the summary is the runbook's liveness signal."""
+    import logging
+
+    from scripts import notifier
+
+    def refuse_to_write(path, payload) -> None:
+        raise OSError(13, "Permission denied", str(path))
+
+    monkeypatch.setattr(notifier, "_write_json", refuse_to_write)
+    registry = [upkeep()]
+    urlopen = _scripted_urlopen([])
+    with caplog.at_level(logging.ERROR, logger=notifier.logger.name):
+        _run_main(monkeypatch, tmp_path, registries=[registry, registry, registry],
+                  urlopen=urlopen, clock=_Clock(), extra=("--summary-every", "1"))
+    assert sum("**Registry**" in c for c in urlopen.calls) == 3
+    assert sum("saving the snapshot" in r.message for r in caplog.records) == 3, "said every time"
+
+
+def test_mainnet_refuses_no_state(monkeypatch, capsys) -> None:
+    """In memory, an undelivered stranger alert dies with the process, and
+    systemd restarting the process is the ordinary case: F01 made vacuous."""
+    from scripts import notifier
+
+    _connected(monkeypatch)
+    ours = "WGSHC4TYKYBS6EX5V5E377BQDLKWIIPBCFOLZQZIXCKHFIEKRPBFOMW25A"
+    with pytest.raises(SystemExit):
+        notifier.main(["--network", "mainnet", "--app-id", "1", "--once", "--no-state",
+                       "--ours", ours, "--stdout"])
+    assert "--no-state is refused on MainNet" in capsys.readouterr().err
+
+
+def test_mainnet_starts_with_a_state_file(monkeypatch, tmp_path) -> None:
+    from scripts import notifier
+
+    _connected(monkeypatch)
+    ours = "WGSHC4TYKYBS6EX5V5E377BQDLKWIIPBCFOLZQZIXCKHFIEKRPBFOMW25A"
+    with pytest.raises(_Stop):  # past every guard, into the first scan
+        notifier.main(["--network", "mainnet", "--app-id", "1", "--once", "--ours", ours,
+                       "--stdout", "--state-file", str(tmp_path / "notifier.json")])
+
+
+def test_the_attribution_comment_names_the_quota_cost() -> None:
+    source = NOTIFIER_SOURCE.read_text()
+    assert "meters by bytes" in source and "our own node" in source
