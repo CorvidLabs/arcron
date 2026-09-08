@@ -432,3 +432,18 @@ Angular CLI refuses 22.22.2 by one patch version). No chain was reachable.
 | `web-build`, `web-build-hosted`, `web-verify-hosted` | all exit 0; the hosted bundle's 404.html is byte for byte its index.html |
 | `web-render` | 40 passed, against Chromium build 1194 aliased into the revision Playwright 1.62 asks for (1234), because the download is refused from here. No CSS changed, so this is a regression check on layout and contrast rather than a review of a change. |
 | LocalNet lane (`smoke-keeper`, `smoke-govern`, `smoke-multisig`, `smoke-clawback`, `attacks`, `hostile-target`, `smoke-reference-boundary`) | **not run**, no Docker. Owed by whoever runs G1, as the review said. |
+| the live TestNet node's answer to a paged box listing | **not run.** The egress policy here refuses `testnet-api.algonode.cloud` and `testnet-idx.algonode.cloud` outright (HTTP 403 on CONNECT, from `curl` and from the fetch tool alike), so the F05 request shape and the F03 indexer query have only ever met fakes and the spec. |
+
+The two probes that close the last row take a minute from any machine that
+can reach TestNet, and belong in this table with their output before G2:
+
+```sh
+curl -s https://testnet-api.algonode.cloud/versions | jq .build          # major 4, minor >= 7, or 5
+curl -s 'https://testnet-api.algonode.cloud/v2/applications/769891898/boxes?limit=2' | jq 'keys'   # ["boxes","next-token","round"]
+fledge run health                                                          # the readers, against the real node
+fledge run clock                                                           # the indexer walk: expect the alpha-3 update round, not the create
+```
+
+A `/versions` below 4.7 or a listing without `round` means every reader on
+this branch refuses that node, loudly, which is the intended behaviour and
+also a reason not to merge until the node in front of G1 is newer.
