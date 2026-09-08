@@ -81,11 +81,16 @@ and re-registering by hand.
       is still a new app, but a fixable bug should be fixed
 - [ ] **30 days** of continuous TestNet uptime with a funded heartbeat, and the notifier running
 
-  `fledge run clock` measures this. It runs from the application's creation
-  round rather than from any commit date, and it refuses to count at all once
-  the local build stops matching what is deployed: time served by code that is
-  about to be replaced is not evidence about the code replacing it. Add
-  `--gate` to make it exit non-zero, which is what to hang a check on.
+  `fledge run clock` measures this. It runs from the round the installed
+  programs were installed, found in the indexer's record of the create and
+  every `update`, rather than from the app's creation or any commit date:
+  alpha-3 was an in-place update the day after the alpha-2 create, and a
+  clock that counted from the create credited it with that day. It refuses
+  to count at all once the local build stops matching what is deployed, and
+  when the indexer cannot produce the history, because time served by code
+  that is about to be replaced is not evidence about the code replacing it,
+  and unknown history is not a number. Add `--gate` to make it exit
+  non-zero, which is what to hang a check on.
 - [ ] A keeper running somewhere that is not a laptop
 - [ ] Documentation an integrator can follow without asking us anything
 - [ ] **At least one upkeep registered by somebody who is not us, which survived a redeploy.**

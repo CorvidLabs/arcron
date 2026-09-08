@@ -65,13 +65,15 @@ check rather than something somebody remembers.
 
 ## Where confidence stands
 
-As of 2026-09-05, after this plan's pull request. Each row says what was true
-before it and what moves the number next.
+As of 2026-09-08, after the [#250](https://github.com/CorvidLabs/arcron/issues/250)
+remediation landed. Each row says what was true before it and what moves the
+number next.
 
 | question | now | what moves it |
 |---|---|---|
 | The contract can hold our own money on MainNet, unfrozen | high | Already the strongest thing here. Five review rounds, an audit that said yes to the contract as written, no open finding that a create makes permanent, and a remedy (`update`) for the ones that remain. |
-| `fledge run deploy-mainnet` does exactly what it says | low, rising | The MainNet branch of `scripts/deploy.py` was a day old and had never run. It now refuses a dirty or untagged tree, any creator but `corvid.algo`, a mnemonic in `.env.mainnet`, and a second keeper; prints every permanent field; simulates; reads everything back. The rehearsal in G2 is what turns this from tested to done. |
+| `fledge run deploy-mainnet` does exactly what it says | medium | Refuses a dirty or untagged tree, any creator but `corvid.algo`, a mnemonic in `.env.mainnet`, a second keeper, a fee above the network minimum, and, since 2026-09-08, a digest that is not what TestNet app 769891898 is running (F10, F14). Rehearsed twice on LocalNet. The TestNet rehearsal with a code-changing `update` is what turns this into done; it is still blocked on funding the throwaway. |
+| The watcher sees a stranger and says so until somebody reads it | medium | The code half of F01, F02, F04 and F05 landed 2026-09-08 with tests against fakes. What it has never done is run against a real node for a day, which is G1, and the F05 request shape has not been answered by the live TestNet endpoint yet. |
 | We can operate it quietly | low | Nothing runs anywhere but a laptop and a best-effort cron, and the notifier has never run on any network. G1 is this row. |
 | We can announce it and invite escrow | not yet | Needs the escalation decision deployed, a notifier record, and the freeze decision. G4. |
 
@@ -111,19 +113,37 @@ decision, the evidence, and the time of first sighting are recorded. A
 missing daily notifier summary is treated as a dead watcher within those
 same 24 hours — that is a human response budget, not the 30-second scan
 interval. On create day the operator is at the keyboard and the budget is
-minutes. F02 stays open until the notifier's stranger wording matches this
-paragraph.
+minutes. The notifier's stranger text has said this since 2026-09-08: an
+operator decision within 24 hours of first sighting, the three permitted
+answers, and that cancel is not one of them. So has `deploy/notifier.service`
+and the env example, which used to promise the opposite.
 
 **F01 delivery.** Persist the pending stranger payload until Discord
 returns 2xx, keyed by network/app/upkeep, even if the box is later
 cancelled. A delivered-id set that only re-reads live boxes will drop an
 alert that failed, then vanished. At-least-once; duplicates beat silence.
+Landed 2026-09-08: the notifier writes each stranger to
+`notifier-<network>-<app>-pending.json`, beside its snapshot, before the
+snapshot advances; re-posts every pending record first on every scan, paced
+at five minutes per record; and deletes a record only after a 2xx. `post`
+retries 429, 5xx and network errors three times with bounded backoff and
+returns whether Discord accepted. The tests pin the outage, the restart, a
+cancel between discovery and delivery, a crash between the 2xx and the
+acknowledgement, and a flood of executions in the same scan.
 
 **F05** is “readers request real pages and do not fail closed at the
 listing cap.” It is not flood resistance and not a promise that the first
 stranger box alerts before the rest of the scan finishes: today's notifier
 builds a full snapshot first. Do not claim bounded alert latency from
-priority-sorting a completed list.
+priority-sorting a completed list. Landed 2026-09-08: every page, the first
+included, is `GET /v2/applications/{id}/boxes?limit=1000[&next=…]`, which
+algod's spec defines as pagination mode (sorted names, a `round` on the
+response, a `next-token` exactly when more remain; in algod since 4.7.0).
+A node that ignores `limit` answers without a `round` and is refused rather
+than read on. The pinned SDK's `application_boxes(limit=)` sends the legacy
+`max`, which is why the old continuation loop was reachable only from a
+fake. The live TestNet endpoint was not probed from the machine that wrote
+this; the first `fledge run health` after merge is that probe.
 
 Policy recorded 2026-09-05 by Leif, taking the recommendation in
 [#250](https://github.com/CorvidLabs/arcron/issues/250) (Astra / Kyntrin
@@ -221,7 +241,7 @@ execute. Watch the notifier say so, and name the keeper.
 
 ```sh
 ARCRON_ALLOW_MAINNET=1 fledge run health-mainnet   # what is wrong, and who is executing
-ARCRON_ALLOW_MAINNET=1 fledge run clock-mainnet    # days since the create; stops counting if the source moves
+ARCRON_ALLOW_MAINNET=1 fledge run clock-mainnet    # days since the programs were installed; unknown if the indexer cannot say
 ```
 
 Both read `KEEPER_APP_ID` from `.env.mainnet`. Neither signs. Both refuse to
@@ -327,7 +347,48 @@ public node, not only refused as identical.
   `deploy/vps/algod.compose.yaml` runs a MainNet node of our own.
 - `scripts/keeper_daemon.py` refuses `--network mainnet`: MainNet is a VPS.
 
-And after three independent reviews of that, the same day:
+And on 2026-09-08, taking the [#250](https://github.com/CorvidLabs/arcron/issues/250)
+G2 bar finding by finding:
+
+- **F01.** A stranger alert is a pending record on disk until Discord returns
+  a 2xx, re-posted first on every scan, and it carries its own payload so a
+  box cancelled before delivery is still announced. `post` retries and reports
+  whether it succeeded instead of swallowing 429 and 5xx.
+- **F02.** The stranger text, the systemd unit and the env example ask for the
+  operator decision above, within 24 hours, instead of a freeze. `--ours`
+  refuses anything that is not a 58-character address, so `corvid.algo`
+  typed literally is a startup error rather than every creator becoming a
+  stranger.
+- **F03.** `fledge run clock` dates the hold from the round the installed
+  programs were installed, found in indexer history (the create and every
+  `update`, paged to exhaustion), reports app age separately, and refuses
+  to count when history is unavailable or incomplete. A no-op update resets
+  it, because the indexer records the transaction and not the bytes.
+- **F04.** A box cancelled between the listing and the read is skipped; the
+  scan, and so the keeper, the notifier and `health`, carries on. A 403, a
+  5xx or a box that does not decode still fails it.
+- **F05.** Every page is requested as a page; see above.
+- **F10.** `deploy-mainnet` refuses a digest that differs from what the
+  TestNet keeper runs, or that it could not read (`--soaked-app-id`).
+- **F13.** The notifier's summary counts every run a burst made and labels
+  its payment total an estimate; an execution nobody could be attributed to
+  says so.
+- **F14.** `deploy`, `govern update`, `govern freeze` and the unsigned
+  `govern create` sign a flat fee at the network minimum and refuse a node
+  whose advice is above the ceiling the multisig path already used, before
+  anything is signed. No override on these paths.
+- **F07, F09.** The console reports solvency as unknown while any box is
+  unreadable, bounds its per-box reads, and pages its listing; the README's
+  settlement guarantee, the example target's authorization comment, the
+  integrator guide's profitability sentence and `why.md`'s break-even
+  arithmetic say what is true. Neither was a G2 blocker.
+
+Still open for G2 after that: the TestNet rehearsal with a code-changing
+`update` (F10), G1 itself, and the chain-facing half of F11, which no machine
+without Docker can run. What was run on 2026-09-08 is under
+[F11 evidence](#f11-evidence).
+
+And after three independent reviews of the 2026-09-05 script, the same day:
 
 - `--with-pulse` creates Pulse directly too, and `smart_contracts/*/deploy_config.py`
   (algokit's deploy, reachable from `algokit project deploy` and the soak)
@@ -348,3 +409,22 @@ And after three independent reviews of that, the same day:
 - `install.sh` installs `python3-pip` on a stock image and copies the algod
   compose file to `/etc/arcron/`; both units restart on failure with a limit
   rather than flapping forever.
+
+## F11 evidence
+
+Run on 2026-09-08 against the tree these changes were made in, Python
+3.13.12 in the Poetry venv, algokit 2.10.2, Bun 1.3.11, Node 24.15.0 (the
+Angular CLI refuses 22.22.2 by one patch version). No chain was reachable.
+
+| check | result |
+|---|---|
+| `poetry run python -m smart_contracts build` | exit 0, zero artifact drift under `smart_contracts/artifacts` |
+| `poetry run pytest tests/ -q` | green before and after every commit; the count is in the commit messages' test files and in the run that gates the merge |
+| `tests/test_verify_release.py` | 6 passed after `git fetch --unshallow` and tags; a shallow clone fails it for want of history, which CI avoids with `fetch-depth: 0` |
+| `specsync check --strict` | **not run.** The SpecSync binary is a private release the machine could not fetch. `tests/test_specs_match_contracts.py` covers the half of it that compares the specs to the contracts; the well-formedness half is CI's. |
+| `cd js && bun test` | 137 passed |
+| `cd web && bun test` | 227 passed (199 before F07's 28) |
+| `web-keeper`, `web-govern` `bun test` and `ng build` | 13 and 15 passed; both build |
+| `web-build`, `web-build-hosted`, `web-verify-hosted` | all exit 0; the hosted bundle's 404.html is byte for byte its index.html |
+| `web-render` | 40 passed, against Chromium build 1194 aliased into the revision Playwright 1.62 asks for (1234), because the download is refused from here. No CSS changed, so this is a regression check on layout and contrast rather than a review of a change. |
+| LocalNet lane (`smoke-keeper`, `smoke-govern`, `smoke-multisig`, `smoke-clawback`, `attacks`, `hostile-target`, `smoke-reference-boundary`) | **not run**, no Docker. Owed by whoever runs G1, as the review said. |
