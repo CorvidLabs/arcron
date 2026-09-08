@@ -21,12 +21,12 @@ Run:  poetry run python -m scripts.reclaim --network testnet --app-id N
 """
 
 import argparse
-import base64
 import logging
 
 import algokit_utils
 
 from scripts import keeper_bot, network as net
+from scripts.govern import MAX_SIGNABLE_FEE
 from smart_contracts.artifacts.keeper.keeper_client import CancelArgs, KeeperClient
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -54,6 +54,40 @@ def select(
     kept = [row for row in decoded if row[0] in wanted]
     missing = sorted(wanted - {row[0] for row in kept})
     return kept, missing
+
+
+def cancel_params(upkeep: keeper_bot.Upkeep) -> algokit_utils.CommonAppCallParams:
+    """The fee terms one `cancel` is signed under.
+
+    `cancel` refunds by inner payment, and an upkeep holding an ASA bonus
+    sends a second inner transfer. The group has to carry the fee for both,
+    since the app account pays neither, so `extra_fee` is one or two
+    minimum fees on top of whatever the node advises for the outer call.
+
+    `max_fee` is the bound #250 (F14) found missing: this script signs with a
+    key it holds in-process, and until 2026-09-08 it signed whatever fee the
+    composer computed from the node's suggested params. A node, or whatever
+    sits in front of one, that advises an inflated per-byte fee would have
+    been paid it, once per upkeep, and a fee is spent whether or not the
+    transaction does anything. The composer refuses to build a transaction
+    whose fee is above `max_fee`, so the refusal happens before the
+    signature does. It is `MAX_SIGNABLE_FEE`, the figure `govern` signs
+    nothing above, plus the inner budget this call genuinely needs.
+
+    `max_fee` rather than `static_fee`, because the two answer different
+    questions. A static fee replaces the node's advice outright: it would
+    have to be recomputed by hand for the inner transactions the extra fee
+    already covers, and it leaves no room for a node that is honestly
+    congested, so the cancel would fail on a real network for the sake of a
+    bound. A maximum keeps the node's advice and the inner budget as they
+    are and only refuses to go past the ceiling, which is the one thing we
+    actually want to say no to.
+    """
+    inner = 2_000 if upkeep.asset_balance else 1_000
+    return algokit_utils.CommonAppCallParams(
+        extra_fee=algokit_utils.AlgoAmount(micro_algo=inner),
+        max_fee=algokit_utils.AlgoAmount(micro_algo=MAX_SIGNABLE_FEE + inner),
+    )
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -92,7 +126,17 @@ def main(argv: list[str] | None = None) -> None:
     decoded = []
     for name in names:
         upkeep_id = int.from_bytes(name[1:9], "big")
-        raw = base64.b64decode(algod.application_box_by_name(args.app_id, name)["value"])
+        raw = keeper_bot._read_box(algod, args.app_id, name)
+        if raw is None:
+            # Listed a moment ago and gone now: its creator cancelled it
+            # between the two requests, and there is nothing left there to
+            # reclaim. Until 2026-09-08 the 404 aborted the whole run (#250,
+            # F04). Only a genuine "box not found" is skipped; a node that
+            # would not answer still stops the run, because a reclaim that
+            # read an outage as "already cancelled" would price a refund that
+            # is not coming.
+            logger.info(f"upkeep {upkeep_id} was cancelled while this ran; nothing to reclaim there.")
+            continue
         upkeep = keeper_bot._decode_upkeep(upkeep_id, raw)
         mbr = BOX_FLAT_COST + BOX_BYTE_COST * (len(name) + len(raw))
         decoded.append((upkeep_id, upkeep, mbr))
@@ -162,15 +206,7 @@ def main(argv: list[str] | None = None) -> None:
     for upkeep_id, upkeep, mbr in found:
         try:
             response = client.send.cancel(
-                args=CancelArgs(upkeep_id=upkeep_id),
-                # cancel refunds by inner payment, and an upkeep holding an ASA
-                # bonus sends a second inner transfer. The group has to carry
-                # the fee for both, since the app account pays neither.
-                params=algokit_utils.CommonAppCallParams(
-                    extra_fee=algokit_utils.AlgoAmount(
-                        micro_algo=2_000 if upkeep.asset_balance else 1_000
-                    )
-                ),
+                args=CancelArgs(upkeep_id=upkeep_id), params=cancel_params(upkeep)
             )
         except Exception as error:
             reason = str(error).splitlines()[0]

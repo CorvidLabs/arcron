@@ -550,17 +550,33 @@ def failure_text(exc: Exception) -> str:
     return f"{exc}" if not raw else f"{exc} | {raw}"
 
 
+#: What algod says when a box is not there: `errBoxDoesNotExist` in
+#: `daemon/algod/api/server/v2/errors.go`, returned with a 404. Read there on
+#: 2026-09-08; it is the one string this module treats as an answer.
+MISSING_BOX_BODY = "box not found"
+
+
 def _is_missing_box(exc: Exception) -> bool:
     """Is this algod saying the box does not exist, as opposed to anything else?
 
     algod answers a read of a box it does not hold with HTTP 404 and the body
-    `box not found`. Both are matched because algosdk carries the status on
-    `AlgodHTTPError.code` but a wrapper or an edge can hand back the words
-    without it. Nothing wider: a 403 is the edge shedding, a 5xx is the node
-    unwell, and a 400 is the request itself being wrong, and every one of them
-    has to keep reaching the caller as an error.
+    `box not found`, and both are required when a status is there to check:
+    a 404 alone is also what an edge returns for a path it does not serve, or
+    a node for an application that does not exist, and reading either as
+    "the upkeep was cancelled" would be the mistake `read_upkeep` describes
+    wearing a different status. Until 2026-09-08 any 404 was enough (#250).
+    The words alone still count when the exception carries no status at all,
+    because algosdk's `AlgodHTTPError` is not the only shape these arrive in:
+    a wrapper or a client that surfaces the body and drops the code has said
+    the same thing in the only way it can. Nothing wider than that: a 403 is
+    the edge shedding, a 5xx is the node unwell, a 400 is the request itself
+    being wrong, and every one of them has to keep reaching the caller.
     """
-    return getattr(exc, "code", None) == 404 or "box not found" in str(exc).lower()
+    said_missing = MISSING_BOX_BODY in str(exc).lower()
+    code = getattr(exc, "code", None)
+    if code is not None:
+        return code == 404 and said_missing
+    return said_missing
 
 
 def _read_box(algod, app_id: int, name: bytes) -> bytes | None:
@@ -734,12 +750,22 @@ def _box_page(algod, app_id: int, token: "str | None") -> dict:
       prefix   a name prefix in the same form; unused here.
       include  `values` returns box values with the names; unused here.
       round    pin every page to one round. Supported, and the spec advises
-               pinning to the first page's `round`, but not used here: a
-               public endpoint is a pool of nodes, and a round the first
-               node had reached is one a lagging node answers with 400
-               "given round is greater than the latest round". The picture
-               a scan builds is not consistent across pages either way,
-               because each name is then read in its own request, and
+               pinning to the first page's `round`, but not used here, and
+               not because a lagging node behind a public endpoint would
+               answer 400 to a round it has not reached, though it would.
+               The walk does not need it. The cursor is exclusive: a page
+               holds the names strictly greater than the token
+               (`ledger/acctupdates.go`, `keyInRound <= cursor` is skipped),
+               and the names are `u` + a big-endian id that only ever grows,
+               so a registration landing mid-walk sorts after every cursor
+               already passed and is picked up by a later page, and a
+               cancellation removes a name and can never make one repeat.
+               An unpinned walk therefore returns every box that existed
+               throughout it, possibly some that appeared during it, and
+               never a duplicate, which is what a pinned one would return
+               too, minus the arrivals. Consistency past that is not on
+               offer either way, because each name is then read in its own
+               request against whatever round the node has reached, and
                `_read_box` is what handles a box that vanishes in between.
 
     Any one of `limit`, `next`, `prefix`, `include` or `round` switches the

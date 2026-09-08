@@ -101,20 +101,28 @@ def _balance(algorand, address: str) -> int:
 
 
 def _read_upkeep(algorand, app_id: int, upkeep_id: int):
-    """Read one upkeep box, decoded with the keeper bot's own decoder."""
+    """Read one upkeep box, decoded with the keeper bot's own decoder.
+
+    Through `keeper_bot._read_box`, the one reader that tells a box that is
+    gone from a node that would not answer. Every stage here reads a box it
+    has just registered, so a missing one is a stage that failed rather than
+    a race to skip, and it is raised in those words instead of as a bare 404.
+    """
     name = b"u" + upkeep_id.to_bytes(8, "big")
-    raw = keeper_bot._as_bytes(
-        algorand.client.algod.application_box_by_name(app_id, name)["value"]
-    )
+    raw = keeper_bot._read_box(algorand.client.algod, app_id, name)
+    if raw is None:
+        raise AssertionError(f"upkeep {upkeep_id} has no box on app {app_id}")
     return keeper_bot._decode_upkeep(upkeep_id, raw), raw
 
 
 def _box_exists(algorand, app_id: int, upkeep_id: int) -> bool:
-    try:
-        _read_upkeep(algorand, app_id, upkeep_id)
-        return True
-    except Exception:
-        return False
+    # Asked after a cancel, to prove the box went with it. This used to catch
+    # every exception and answer False, so a node refusing the read would have
+    # passed the stage as "box gone", which is exactly the confusion
+    # `keeper_bot.read_upkeep` exists to prevent; now only algod's own "box not
+    # found" is False, and anything else fails the stage.
+    name = b"u" + upkeep_id.to_bytes(8, "big")
+    return keeper_bot._read_box(algorand.client.algod, app_id, name) is not None
 
 
 @contextlib.contextmanager

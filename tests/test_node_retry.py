@@ -576,15 +576,37 @@ def test_the_readers_own_listing_request_is_retried() -> None:
     """`keeper_bot._box_page` calls `algod_request` directly, because the typed
     `application_boxes` cannot page. The wrapper is installed on that same
     attribute, so the readers' listing gets the retry without going through a
-    typed method at all. Proved on the reader itself rather than on a request
-    shaped like it: a wrapper on the wrong attribute would pass the latter."""
+    typed method at all.
+
+    Proved on what the node was actually sent, not on the answer: a first
+    version of this asserted only the returned dict and two calls, which the
+    old reader satisfied too, since it also made two calls and returned the
+    same page. What has to be true is that both attempts, the refused one and
+    the replay, are the *paged* request: the boxes path, a page size, and the
+    continuation token, unchanged by the retry.
+    """
     from scripts import keeper_bot
+    from scripts.keeper_bot import BOX_PAGE_LIMIT
 
-    client = _FakeAlgod(algod_error(LIVE_403, 403), {"boxes": [], "round": 7})
+    class RecordingNode(_Node):
+        def __init__(self, *outcomes: object) -> None:
+            super().__init__(*outcomes)
+            self.sent: list[tuple[tuple, dict]] = []
+
+        def __call__(self, *args: object, **kwargs: object) -> object:
+            self.sent.append((args, kwargs))
+            return super().__call__(*args, **kwargs)
+
+    client = _FakeAlgod()
+    client.node = RecordingNode(algod_error(LIVE_403, 403), {"boxes": [], "round": 7})
     install(client, sleep=_Clock())
+    token = "b64:dQAAAAAAAABU"
 
-    assert keeper_bot._box_page(client, 769891898, None) == {"boxes": [], "round": 7}
+    assert keeper_bot._box_page(client, 769891898, token) == {"boxes": [], "round": 7}
     assert client.node.calls == 2
+    assert client.node.sent == [
+        (("GET", "/applications/769891898/boxes"), {"params": {"limit": BOX_PAGE_LIMIT, "next": token}}),
+    ] * 2, "the replay has to be the same paged request the edge refused"
 
 
 def test_installing_twice_does_not_nest_the_retries() -> None:
