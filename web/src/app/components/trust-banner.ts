@@ -92,7 +92,7 @@ export function noticesFor(state: {
       detail:
         `Something executed, registered, topped up or cancelled mid-read, which is what a ` +
         `busy registry does and is not evidence of anything about the app. The read is ` +
-        `retried on the next poll.`,
+        `repeated once straight away, then on the next full poll.`,
     });
   }
 

@@ -193,13 +193,13 @@ pushes data into an oracle contract, Arcron triggers `settle()` on a cadence,
 and settlement reads the stored value. Arcron does not supply the data. What
 it supplies is narrower than an earlier version of this paragraph claimed,
 which was that settlement "cannot be stalled, delayed or selectively timed".
-The promise is this: once the upkeep is due, *anyone* may execute the fixed,
-registered call, and is paid from escrow atomically when that call completes,
+The promise is this: once the upkeep is due and its escrow covers the fee,
+*anyone* may execute the fixed, registered call, and is paid from escrow atomically when that call completes,
 so no single party controls the timing. It is not a deadline. Settlement is
 still delayed if no keeper shows up, and a party who can influence whether the
 target is ready to settle can still influence when the call is able to go
 through. Arcron guarantees permissionless execution of a fixed call once it is
-due, with the reward on successful completion; it does not guarantee a
+due and funded, with the reward on successful completion; it does not guarantee a
 deadline, a useful business outcome, or that the keepers who show up are
 independent of one another. Today every keeper that has executed here is ours.
 

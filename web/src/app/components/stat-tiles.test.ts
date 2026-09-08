@@ -32,7 +32,7 @@ describe('the solvency hint', () => {
 
     test('an incomplete read says how incomplete, and does not claim coverage', () => {
         const text = hint({ read: 'incomplete', solvent: null, unreadableBoxes: 3 });
-        expect(text).toBe('3 of 36 boxes unreadable; solvency unknown, not in doubt');
+        expect(text).toBe('3 of 36 boxes unreadable; solvency unknown; this says nothing about the app');
         expect(text).not.toContain('covers');
     });
 
@@ -55,7 +55,7 @@ describe('the solvency hint', () => {
         // "solvency unknown" next to a red tile reads as "probably insolvent".
         // The copy has to close that reading off itself.
         expect(hint({ read: 'incomplete', solvent: null, unreadableBoxes: 1 })).toContain(
-            'not in doubt',
+            'says nothing about the app',
         );
     });
 

@@ -351,15 +351,16 @@ it pulls, or from the round. Arcron will not supply it, by design.
 
 An upkeep can pay a bonus in any asset on top of its ALGO fee, never
 instead of it. That is deliberate: a keeper's on-chain costs are ALGO, so
-keeping the ALGO fee mandatory is what lets the contract guarantee that what it
-pays out is never below the transaction fees an execution burns, without anyone
-having to price your token. An earlier version of this sentence said
-"guarantee profitability", and the paragraphs below it then explained that at
-the floor the ALGO only reimburses transaction cost; both cannot be true, and
-it is the second one that is. The guarantee covers transaction fees and
-nothing else: a keeper's host, its node access and its attention are not paid
-for by a floor-fee upkeep, and the 4,000 µALGO floor is a contract constant,
-so it does not follow the network's minimum fee if that ever moves. Whether an
+keeping the ALGO fee mandatory is what lets the contract hold the ALGO fee at
+or above a 4,000 µALGO floor without anyone having to price your token. An
+earlier version of this sentence said "guarantee profitability", and the
+paragraphs below it then explained that at the floor the ALGO only reimburses
+transaction cost; both cannot be true, and it is the second one that is. What
+the floor covers is the registry's own inner transactions at today's network
+minimum, and nothing else: not a target that issues inner transactions of its
+own, which the keeper has to pool fees for; not a keeper's host, node access or
+attention; and not a rise in the network minimum, because the floor is a
+contract constant and does not follow it. Whether an
 upkeep is *profitable* to run is a claim the creator makes by setting a fee
 above the floor, not one the contract makes for them.
 

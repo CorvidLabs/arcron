@@ -1824,8 +1824,8 @@ The supported answer for data-driven automation is **oracle pairing**. A reporte
 pushes values into an oracle, an Arcron upkeep triggers `settle()` on a cadence,
 and settlement reads the stored value. Arcron supplies the timing half, and it's
 narrower than "settlement can't be stalled", which an earlier draft said here:
-once the upkeep is due, anyone may execute the fixed registered call and is paid
-atomically when it completes, so no single party controls the timing. It's still
+once the upkeep is due and funded, anyone may execute the fixed registered call
+and is paid atomically when it completes, so no single party controls the timing. It's still
 delayed if no keeper shows up, and whoever can influence the target's readiness
 can still influence when the call goes through. No deadline, no business
 outcome, no independent-operator guarantee (every keeper so far is ours). It

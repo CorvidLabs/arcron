@@ -29,7 +29,7 @@ export function solvencyHintFor(state: {
     case 'incomplete':
       return (
         `${state.unreadableBoxes} of ${state.listedBoxes} boxes unreadable; ` +
-        `solvency unknown, not in doubt`
+        `solvency unknown; this says nothing about the app`
       );
     case 'torn':
       return 'balance moved during the read; solvency unknown, retrying';

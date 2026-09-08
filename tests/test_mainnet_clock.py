@@ -294,6 +294,13 @@ def test_an_indexer_that_cannot_be_reached_is_unknown() -> None:
         read_install_history(indexer, APP_ID)
 
 
+def test_no_indexer_at_all_is_unknown_not_a_traceback() -> None:
+    # `network.connect` hands back None for the indexer when INDEXER_SERVER is
+    # unset, which an operator's .env.mainnet may well leave out.
+    with pytest.raises(HistoryUnknown, match="INDEXER_SERVER"):
+        read_install_history(None, APP_ID)
+
+
 def test_an_indexer_that_repeats_a_page_token_is_unknown() -> None:
     class Looping(FakeIndexer):
         def search_transactions(self, **kwargs) -> dict:
@@ -378,12 +385,24 @@ def test_a_digest_mismatch_is_not_reported_when_history_is_unknown_too(caplog: p
 
 
 class _Algorand:
+    """The shape of algokit's client manager that `main` is allowed to touch.
+
+    `indexer` raises, as the real one does with no INDEXER_SERVER, so that a
+    `main` which reaches for it instead of `indexer_if_present` fails here.
+    """
+
     def __init__(self, algod, indexer) -> None:
         class _Client:
-            pass
+            @property
+            def indexer(self):
+                raise ValueError("Attempt to use Indexer client in AlgoKit instance with no Indexer configured")
+
+            @property
+            def indexer_if_present(self):
+                return indexer
+
         self.client = _Client()
         self.client.algod = algod
-        self.client.indexer = indexer
 
 
 @pytest.fixture
@@ -403,6 +422,16 @@ def test_the_gate_stays_shut_when_the_indexer_is_down(wired) -> None:
     assert mainnet_clock.main(["--network", "testnet", "--app-id", str(APP_ID), "--gate"]) == 1
     # Without --gate it is a report, and a report exits 0 whatever it finds.
     assert mainnet_clock.main(["--network", "testnet", "--app-id", str(APP_ID)]) == 0
+
+
+def test_no_indexer_configured_reports_why_and_shuts_the_gate(wired, caplog: pytest.LogCaptureFixture) -> None:
+    """An .env.mainnet with no INDEXER_SERVER is a report, not a traceback."""
+    caplog.set_level(logging.INFO, logger="scripts.mainnet_clock")
+    wired(FakeAlgod(CREATED + 400 * DAY_ROUNDS), None)
+    assert mainnet_clock.main(["--network", "mainnet", "--app-id", str(APP_ID)]) == 0
+    assert "no indexer configured (INDEXER_SERVER)" in caplog.text
+    assert "install round of the deployed programs is unknown" in caplog.text
+    assert mainnet_clock.main(["--network", "mainnet", "--app-id", str(APP_ID), "--gate"]) == 1
 
 
 def test_the_gate_opens_on_unchanged_code_past_the_hold(wired) -> None:

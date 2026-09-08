@@ -198,10 +198,13 @@ def _walk(txns: list[dict]):
     """Every transaction and, recursively, every inner transaction.
 
     The indexer returns the root of a group that touched the app, with anything
-    inner nested under it. An update from inside another contract would be
-    nested. The AVM does not let an inner call update an app today, and this
-    walks them anyway, because the cost is a loop and the alternative is a
-    reset that a future protocol version lets somebody hide.
+    inner nested under it. An update sent from inside another contract is
+    nested there, and the AVM permits one: `itxn_field OnCompletion` accepts
+    `UpdateApplication`, and the approval and clear program pages are inner
+    transaction fields (go-algorand `logic/eval.go`). Only the top level is
+    what a flat scan of the page sees, so a reader that stopped there would
+    miss an install that counts exactly as much as a top-level one. That is
+    why this walks.
     """
     for txn in txns:
         yield txn
@@ -217,7 +220,17 @@ def read_install_history(indexer, app_id: int) -> InstallHistory:
     only the latest update so far, and the clock would then be counting from
     the wrong one. So anything short of a complete walk raises rather than
     returns what it has.
+
+    `indexer` may be None, which is what `network.connect` yields when
+    `INDEXER_SERVER` is not set. That is not a chain that says nothing
+    happened; it is a reader with nothing to read, and it is unknown like the
+    rest.
     """
+    if indexer is None:
+        raise HistoryUnknown(
+            f"no indexer configured (INDEXER_SERVER), so app {app_id}'s history "
+            "cannot be read"
+        )
     txns: list[dict] = []
     token: str | None = None
     seen_tokens: set[str] = set()
@@ -413,9 +426,13 @@ def main(argv: list[str] | None = None) -> int:
     net.load_network(args.network)
     algorand = net.connect(args.network)
     args.app_id = resolve_app_id(parser, args.app_id, args.network)
+    # `indexer_if_present`, not `indexer`: the latter raises when no indexer is
+    # configured, and a traceback is neither the report this promises to
+    # print whatever it finds nor the reason `--gate` promises to give.
+    # `measure` turns None into "unknown history", which is what it is.
     clock = measure(
         algorand.client.algod,
-        algorand.client.indexer,
+        algorand.client.indexer_if_present,
         args.contract,
         args.app_id,
         net.seconds_per_round(args.network),

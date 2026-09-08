@@ -72,8 +72,8 @@ number next.
 | question | now | what moves it |
 |---|---|---|
 | The contract can hold our own money on MainNet, unfrozen | high | Already the strongest thing here. Five review rounds, an audit that said yes to the contract as written, no open finding that a create makes permanent, and a remedy (`update`) for the ones that remain. |
-| `fledge run deploy-mainnet` does exactly what it says | medium | Refuses a dirty or untagged tree, any creator but `corvid.algo`, a mnemonic in `.env.mainnet`, a second keeper, a fee above the network minimum, and, since 2026-09-08, a digest that is not what TestNet app 769891898 is running (F10, F14). Rehearsed twice on LocalNet. The TestNet rehearsal with a code-changing `update` is what turns this into done; it is still blocked on funding the throwaway. |
-| The watcher sees a stranger and says so until somebody reads it | medium | The code half of F01, F02, F04 and F05 landed 2026-09-08 with tests against fakes. What it has never done is run against a real node for a day, which is G1, and the F05 request shape has not been answered by the live TestNet endpoint yet. |
+| `fledge run deploy-mainnet` does exactly what it says | medium | Refuses a dirty or untagged tree, any creator but `corvid.algo`, a mnemonic in `.env.mainnet`, a second keeper, and a node advising a fee above 10,000 µALGO (it pays the network minimum flat whatever the node says), and, since 2026-09-08, a digest that is not what TestNet app 769891898 is running (F10, F14). Rehearsed twice on LocalNet. The TestNet rehearsal with a code-changing `update` is what turns this into done; it is still blocked on funding the throwaway. |
+| The watcher sees a stranger and says so until Discord has accepted it | medium | The code half of F01, F02, F04 and F05 landed 2026-09-08 with tests against fakes. What it has never done is run against a real node for a day, which is G1, and the F05 request shape has not been answered by the live TestNet endpoint yet. |
 | We can operate it quietly | low | Nothing runs anywhere but a laptop and a best-effort cron, and the notifier has never run on any network. G1 is this row. |
 | We can announce it and invite escrow | not yet | Needs the escalation decision deployed, a notifier record, and the freeze decision. G4. |
 
@@ -124,10 +124,13 @@ cancelled. A delivered-id set that only re-reads live boxes will drop an
 alert that failed, then vanished. At-least-once; duplicates beat silence.
 Landed 2026-09-08: the notifier writes each stranger to
 `notifier-<network>-<app>-pending.json`, beside its snapshot, before the
-snapshot advances; re-posts every pending record first on every scan, paced
-at five minutes per record; and deletes a record only after a 2xx. `post`
-retries 429, 5xx and network errors three times with bounded backoff and
-returns whether Discord accepted. The tests pin the outage, the restart, a
+snapshot advances; re-posts every pending record at the start of every loop,
+before the node is asked anything, so a node outage does not stall the retry,
+at least five minutes apart per record; and deletes a record only after a
+2xx. `post` makes up to three attempts on 429, 5xx and network errors with
+bounded backoff and returns whether Discord accepted. A 2xx is Discord
+accepting the message, not a person reading it; the reading is the 24-hour
+budget above. The tests pin the outage, the restart, a
 cancel between discovery and delivery, a crash between the 2xx and the
 acknowledgement, and a flood of executions in the same scan.
 
@@ -212,7 +215,8 @@ outputs, the id and the sha256, privately.
 Both apps are created directly, from their own specs, with the same checks
 and the same read-back; no indexer is consulted for either. `INDEXER_SERVER`
 in `.env.mainnet` is for `health` and `keeper-preview`, which read executions
-from it.
+from it, and for `clock-mainnet`, which reads the create and every `update`
+from it and reports the hold as unknown without it.
 
 Then the keeper and the notifier on the VPS, pointed at the new id, with a
 separate hot key holding one or two ALGO, before anything is registered. An

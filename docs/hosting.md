@@ -410,15 +410,17 @@ is the failure it exists to prevent.
 
 A stranger alert is the one announcement that is not best-effort. It is
 written to `notifier-<network>-<app>-pending.json`, beside the snapshot
-file, before the scan is recorded as seen; it is re-posted ahead of every
-other event on every scan, five minutes apart, until Discord answers 2xx;
+file, before the scan is recorded as seen; it is re-posted at the start of
+every loop, before the node is asked anything, at least five minutes apart
+per record, until Discord answers 2xx;
 and it carries its own text, so a stranger who cancels before the post
 lands is still announced. On restart the notifier says how many such alerts
 a previous run left undelivered. What the alert asks for is an operator
 decision within 24 hours, recorded with who decided and on what evidence
 (`docs/design/mainnet-rollout.md`, "If a stranger appears"); it does not
-ask for a freeze. The daily summary is the liveness signal: its absence for
-a day means the watcher is dead, on the same 24-hour budget.
+ask for a freeze. The periodic summary (two-hourly by default, `--summary-every`)
+is the liveness signal: its absence for a day means the watcher is dead, on
+the same 24-hour budget.
 
 ```bash
 poetry run python -m scripts.keeper_bot --check --network testnet --app-id <id>
