@@ -29,7 +29,9 @@ reject, because a rejected transfer still costs the fee.
 The fee itself is the network minimum, flat, and not the node's advice
 (`govern.bounded_params`, issue #250 F14). A sweep is periodic and unattended,
 so a node advising above `govern.MAX_SIGNABLE_FEE` is refused with an
-error-level event rather than paid, and the surplus stays where it was.
+error-level event rather than paid, the surplus stays where it was, and the
+refusal is raised so the bot retries on the next heartbeat rather than a
+period later.
 """
 
 from __future__ import annotations
@@ -37,7 +39,20 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
-from scripts.keeper_bot import EXECUTION_COST_MICROALGO, emit
+from scripts import keeper_bot
+from scripts.keeper_bot import EXECUTION_COST_MICROALGO
+
+
+def emit(event: str, message: str, level: int = logging.INFO, **fields) -> None:
+    """`keeper_bot.emit`, looked up at call time.
+
+    The bot rebinds its own `emit` to a JSON emitter under `--log-format json`,
+    and a name imported from it at module load keeps the original: every
+    event from here would then go out as plain text with no `event` key, on
+    the one logging mode that exists so a shipper can parse it. Read through
+    the module attribute instead, so the rebinding reaches this file too.
+    """
+    keeper_bot.emit(event, message, level, **fields)
 
 #: What a sweep costs to send. Sweeping less than this loses money.
 SWEEP_FEE_MICROALGO = 1_000
@@ -168,12 +183,14 @@ def send(algorand, sender: str, destination: str, amount: int, *, dry_run: bool)
     # params as they came, and algokit's composer multiplies a non-flat
     # per-byte figure by the payment's size just as algosdk does, so the one
     # transaction that moves a keeper's earnings out was the one whose fee the
-    # node chose. A refusal returns None, which is this function's "nothing
-    # was sent", rather than raising: `keeper_bot._maybe_sweep` catches any
-    # exception and logs it as a sweep that *failed*, at WARNING, and a
-    # refusal is not a failure. It is emitted here at ERROR under its own
-    # name so a notifier can match it, and the bot goes on executing, where
-    # `execute`'s own `max_fee` is refusing the same advice.
+    # node chose. A refusal is emitted here at ERROR under its own name, so a
+    # notifier can match it, and then *raised*: `keeper_bot._maybe_sweep`
+    # catches any exception, logs it as a sweep that failed, and leaves the
+    # period clock alone, so the next heartbeat tries again. Returning None
+    # instead, which a first version did, reads to the bot like a dry run and
+    # moves the clock, so a transient refusal on a daily sweep would have
+    # deferred the next attempt a full day. The bot goes on executing either
+    # way, where `execute`'s own `max_fee` is refusing the same advice.
     try:
         fee = bounded_params(algorand.client.algod).fee
     except FeeRefused as refusal:
@@ -184,7 +201,7 @@ def send(algorand, sender: str, destination: str, amount: int, *, dry_run: bool)
             amount=amount,
             destination=destination,
         )
-        return None
+        raise
 
     result = algorand.send.payment(
         algokit_utils.PaymentParams(

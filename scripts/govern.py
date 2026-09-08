@@ -82,9 +82,10 @@ class FeeRefused(RuntimeError):
 def bounded_params(algod) -> transaction.SuggestedParams:
     """Suggested params with the fee pinned to the network minimum, or a refusal.
 
-    Every path in this repository that signs with a real key, and what bounds
-    each (issue #250 F14; the inventory was taken 2026-09-08, corrected twice
-    in review the same day, and a new signing path belongs on this list):
+    What bounds each path in this repository that signs (issue #250 F14; the
+    inventory was taken 2026-09-08, corrected three times in review the same
+    day, and `tests/test_govern.py` now greps `scripts/` for signers and fails
+    if one is named in neither list below):
 
     Bounded:
 
@@ -109,26 +110,26 @@ def bounded_params(algod) -> transaction.SuggestedParams:
       (`KEEPER_MAX_OUTER_FEE`, default the same 10,000), a daemon rather
       than a shell.
 
-    Not bounded, by design, because they are rehearsal instruments and not
-    ceremonies, and every key they hold is a throwaway:
-
-    * `scripts/keeper_e2e.py`: LocalNet by default, and `--network testnet`
-      is a rehearsal against a public node with a throwaway key from
-      `.env.testnet`, which is exactly the account a wrong fee is allowed to
-      cost. It also runs `keeper_bot --once`, which is bounded.
-    * `scripts/subscription_demo.py`, `scripts/govern_e2e.py`,
-      `scripts/multisig_e2e.py`: LocalNet; `multisig_e2e` generates its
-      three keys and drops them on exit.
-
-    All four take `--network` from `network.add_network_argument`, whose
-    choices include `mainnet`, so none refuses MainNet in its own code. What
-    stands between them and it is `load_network`: `ARCRON_ALLOW_MAINNET=1`,
-    which nothing in this repository sets, and the refusal of a mnemonic in
-    `.env.mainnet`, so a MainNet run of any of them is a deliberate export of
-    both the flag and the creator key into the same shell. That is the same
-    two acts the ceremony itself requires, and a rehearsal script is not made
-    safer against them by a fee bound; it is made safer by not being run
-    there, which `docs/design/mainnet-rollout.md` says.
+    Every other script under `scripts/` that signs is a LocalNet instrument
+    and is unbounded by design: the end-to-ends (`keeper_e2e`, `govern_e2e`,
+    `multisig_e2e`, `clawback_e2e`, `subscription_demo`), the soak and the
+    race (`keeper_soak`, `keeper_race`), `scenario`, `attacks`,
+    `reference_boundary`, and the spikes (`spike_asa_fee`,
+    `spike_hostile_target`, `spike_js_execute_resources`, `spike_multiarg`,
+    `spike_quantum`, `spike_reentrancy`, `spike_resources`,
+    `spike_simulate_test_button`). Every key they hold is a throwaway;
+    `keeper_e2e` also accepts `--network testnet`, which is a rehearsal
+    against a public node with the throwaway key from `.env.testnet`, exactly
+    the account a wrong fee is allowed to cost, and it runs `keeper_bot
+    --once`, which is bounded. None of them refuses MainNet itself: they take
+    `--network` from `network.add_network_argument`, whose choices include
+    `mainnet`. What keeps them off it is `network.load_network`:
+    `ARCRON_ALLOW_MAINNET=1`, which nothing in this repository sets, and the
+    refusal of a mnemonic written into `.env.mainnet`, so running one there
+    is a deliberate export of both the flag and the creator key into the same
+    shell, the two acts the ceremony itself requires. A rehearsal script is
+    not made safer against that by a fee bound; it is made safer by not being
+    run there, which `docs/design/mainnet-rollout.md` says.
 
     Until 2026-09-08 everything in the bounded list except `execute` took
     `algod.suggested_params()` exactly as the node handed them over, and

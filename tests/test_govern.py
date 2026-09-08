@@ -12,6 +12,7 @@ nothing at all.
 from __future__ import annotations
 
 import base64
+import pathlib
 from types import SimpleNamespace
 
 import pytest
@@ -189,3 +190,45 @@ def test_the_ceiling_is_the_one_the_multisig_sign_path_already_used() -> None:
     """One constant, two paths: the file a holder signs and the shell that signs in process."""
     assert govern.MAX_SIGNABLE_FEE == 10_000
     assert issubclass(govern.FeeRefused, RuntimeError), "deploy.create's caller catches RuntimeError"
+
+
+# --- the inventory in bounded_params' docstring cannot drift silently ----------
+
+#: The signers the docstring says are bounded, and the LocalNet instruments it
+#: says are unbounded by design. A new script that signs has to be added to
+#: one of these lists and to the docstring, or this fails.
+BOUNDED = {"deploy", "govern", "seed_registry", "keeper_topup", "keeper_sweep", "reclaim", "keeper_bot"}
+INSTRUMENTS = {
+    "keeper_e2e", "govern_e2e", "multisig_e2e", "clawback_e2e", "subscription_demo",
+    "keeper_soak", "keeper_race", "scenario", "attacks", "reference_boundary",
+    "spike_asa_fee", "spike_hostile_target", "spike_js_execute_resources", "spike_multiarg",
+    "spike_quantum", "spike_reentrancy", "spike_resources", "spike_simulate_test_button",
+}
+
+
+def _signers() -> set[str]:
+    """Every script under scripts/ that takes a signing account from the environment.
+
+    `account.from_environment(` rather than `from_environment("DEPLOYER")`, so
+    `keeper_topup`'s `--account` and the bot's `KEEPER` are counted too;
+    `AlgorandClient.from_environment()` in network.py is a client, not a key,
+    and does not match.
+    """
+    root = pathlib.Path(govern.__file__).resolve().parent
+    return {path.stem for path in root.glob("*.py") if "account.from_environment(" in path.read_text()}
+
+
+def test_every_signing_script_is_in_the_inventory() -> None:
+    signers = _signers()
+    assert signers, "the grep found nothing, so it is looking in the wrong place"
+    unlisted = signers - BOUNDED - INSTRUMENTS
+    assert not unlisted, f"scripts that sign and are in neither list: {sorted(unlisted)}"
+    stale = (BOUNDED | INSTRUMENTS) - signers - {"keeper_sweep"}  # sweep is handed its account by the bot
+    assert not stale, f"listed but no longer signing: {sorted(stale)}"
+
+
+def test_the_docstring_names_every_script_in_both_lists() -> None:
+    doc = govern.bounded_params.__doc__
+    for name in BOUNDED | INSTRUMENTS:
+        assert name in doc, f"{name} signs and the inventory does not name it"
+    assert "ARCRON_ALLOW_MAINNET" in doc and ".env.mainnet" in doc and "load_network" in doc
