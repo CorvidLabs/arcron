@@ -55,7 +55,10 @@ verify what the scheduled call will do before it happens.
 
 Two choices, and most integrations should take the first.
 
-**Restrict to the keeper app.** Nobody else can drive your schedule:
+**Restrict to the keeper app.** Only Arcron's inner call reaches the hook.
+That proves who called, not when: anyone may register their own upkeep
+against your target, so the cadence is still yours to enforce (see
+"Authorization to the keeper app is not authorization of cadence" below):
 
 ```python
 assert Txn.sender == Application(self.keeper_app.value).address, "Only the keeper app"

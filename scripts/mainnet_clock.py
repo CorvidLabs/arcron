@@ -7,8 +7,9 @@ starts again.
 That rule is easy to state and easy to get wrong from memory, because what
 resets it is not "did anyone edit a file". Most work in this repository is
 scripts, docs and the console, and none of it touches the deployed programs.
-Since app 769891898 went live, 98 commits landed and 15 touched
-`smart_contracts/` at all; none of those 15 changed what is on chain.
+Since app 769891898 went live, most commits have touched scripts, docs and
+the console, and the handful that touched `smart_contracts/` at all did not
+change what is on chain.
 
 What resets the clock is new programs, and there are two ways to get them: a
 new app id, and an in-place `govern update` that keeps the id and replaces the

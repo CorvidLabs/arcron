@@ -74,7 +74,7 @@ number next.
 | The contract can hold our own money on MainNet, unfrozen | high | Already the strongest thing here. Five review rounds, an audit that said yes to the contract as written, no open finding that a create makes permanent, and a remedy (`update`) for the ones that remain. |
 | `fledge run deploy-mainnet` does exactly what it says | medium | Refuses a dirty or untagged tree, any creator but `corvid.algo`, a mnemonic in `.env.mainnet`, a second keeper, and a node advising a fee above 10,000 µALGO (it pays the network minimum flat whatever the node says), and, since 2026-09-08, a digest that is not what TestNet app 769891898 is running (F10, F14). Rehearsed twice on LocalNet. The TestNet rehearsal with a code-changing `update` is what turns this into done; it is still blocked on funding the throwaway. |
 | The watcher sees a stranger and says so until Discord has accepted it | medium | The code half of F01, F02, F04 and F05 landed 2026-09-08 with tests against fakes. What it has never done is run against a real node for a day, which is G1, and the F05 request shape has not been answered by the live TestNet endpoint yet. |
-| We can operate it quietly | low | Nothing runs anywhere but a laptop and a best-effort cron, and the notifier has never run on any network. G1 is this row. |
+| We can operate it quietly | low | Nothing runs anywhere but a laptop and a best-effort cron, and the notifier has never run continuously against any network; one `--once` scan on LocalNet during the 2026-09-05 rehearsal is the whole of its run history. G1 is this row. |
 | We can announce it and invite escrow | not yet | Needs the escalation decision deployed, a notifier record, and the freeze decision. G4. |
 
 ## What quiet protects, and what it does not
@@ -123,7 +123,7 @@ returns 2xx, keyed by network/app/upkeep, even if the box is later
 cancelled. A delivered-id set that only re-reads live boxes will drop an
 alert that failed, then vanished. At-least-once; duplicates beat silence.
 Landed 2026-09-08: the notifier writes each stranger to
-`notifier-<network>-<app>-pending.json`, beside its snapshot, before the
+`notifier-<network>-<app>-pending.json` (or `<state-file stem>-pending.json` under `--state-file`), beside its snapshot, before the
 snapshot advances; re-posts every pending record at the start of every loop,
 before the node is asked anything, so a node outage does not stall the retry,
 at least five minutes apart per record; and deletes a record only after a
@@ -373,7 +373,10 @@ G2 bar finding by finding:
   5xx or a box that does not decode still fails it.
 - **F05.** Every page is requested as a page; see above.
 - **F10.** `deploy-mainnet` refuses a digest that differs from what the
-  TestNet keeper runs, or that it could not read (`--soaked-app-id`).
+  TestNet keeper runs, or that it could not read. The TestNet id is the
+  constant `SOAKED_APP_ID` (769891898), changed only by commit; there is
+  deliberately no flag to point the check at another app, because any TestNet
+  app, including one created minutes ago from the same tree, would pass it.
 - **F13.** The notifier's summary counts every run a burst made and labels
   its payment total an estimate; an execution nobody could be attributed to
   says so.
