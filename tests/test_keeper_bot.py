@@ -249,9 +249,11 @@ def test_the_recorded_box_names_its_creator() -> None:
     """The box always carried the creator and the decoder dropped it.
 
     Nothing downstream could tell one creator's upkeep from another's, which
-    is the detector the pre-freeze MainNet window depends on: the plan is to
-    freeze the moment an upkeep appears that is not ours, and until now
-    nothing could say which those were.
+    is the detector the unfrozen MainNet window depends on: a stranger's
+    upkeep starts a 24-hour clock for an operator decision (freeze only
+    bytecode already accepted for permanence, an approved update, or a
+    recorded acceptance of the exposure; docs/design/mainnet-rollout.md),
+    and until now nothing could say which upkeeps those were.
 
     Pinned against the same recorded box as the rest of the decoder, so the
     offset is checked against real bytes rather than against the docstring.
@@ -293,6 +295,23 @@ def _http_error(code: int, message: str) -> Exception:
 
 def test_a_cancelled_upkeep_reads_as_gone() -> None:
     algod = _BoxAlgod(error=_http_error(404, "box not found"))
+    assert read_upkeep(algod, 1, 7) is None
+
+
+def test_a_404_that_does_not_say_box_not_found_is_not_a_cancelled_upkeep() -> None:
+    """A 404 alone is also an edge's answer for a path it does not serve, and a
+    node's for an application that does not exist. algod's own words for a
+    missing box are `box not found` (errBoxDoesNotExist), and when a status is
+    there to check, both are required before the upkeep is called gone."""
+    algod = _BoxAlgod(error=_http_error(404, "HTTP Error 404: Not Found"))
+    with pytest.raises(Exception, match="404"):
+        read_upkeep(algod, 1, 7)
+
+
+def test_a_missing_box_reported_without_a_status_is_still_gone() -> None:
+    """Not every client carries a code; one that hands back algod's body and
+    nothing else has said the same thing in the only way it can."""
+    algod = _BoxAlgod(error=RuntimeError("box not found"))
     assert read_upkeep(algod, 1, 7) is None
 
 
@@ -1005,6 +1024,34 @@ class TestTheListingIsPaged:
         algod = CountingAlgod(live_chain(), page_size=5)
         assert len(scan_upkeeps(algod, APP_ID)) == 33
         assert algod.counts["boxes"] == 7  # ceil(33 / 5)
+
+    def test_what_the_listing_request_looks_like_on_the_wire(self, monkeypatch) -> None:
+        """Through the real client down to `urlopen`, so the URL a node would
+        receive is what is asserted: the versioned path, the page size, and
+        the continuation token with its `b64:` colon percent-encoded and
+        decoding back to exactly the token the previous page handed out."""
+        import io
+        from urllib.parse import parse_qs, urlsplit
+
+        from algosdk.v2client import algod as algod_module
+
+        sent: list[str] = []
+
+        def urlopen(request, timeout=None):
+            sent.append(request.full_url)
+            return io.BytesIO(b'{"boxes": [], "round": 1}')
+
+        monkeypatch.setattr(algod_module, "urlopen", urlopen)
+        client = AlgodClient("", "http://node.test")
+        token = "b64:" + base64.b64encode(b"u" + (84).to_bytes(8, "big")).decode()
+        assert token == "b64:dQAAAAAAAABU"
+
+        keeper_bot._box_page(client, APP_ID, token)
+
+        assert sent == [
+            f"http://node.test/v2/applications/{APP_ID}/boxes?limit=1000&next=b64%3AdQAAAAAAAABU"
+        ]
+        assert parse_qs(urlsplit(sent[0]).query) == {"limit": ["1000"], "next": [token]}
 
     def test_a_node_that_ignores_the_page_size_is_refused(self) -> None:
         """An algod older than 4.7.0 does not reject `limit`; it ignores it

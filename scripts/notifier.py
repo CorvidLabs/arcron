@@ -28,9 +28,12 @@ cancelled, dormant, revived, stalled) are best-effort: a post that fails after
 its retries is logged and dropped, because the next scan will say something
 newer. A *stranger* is different: it is the one event the unfrozen MainNet
 window exists to catch, so it is written to a pending file before the
-snapshot advances, posted before anything else on every scan, and forgotten
-only when Discord has answered 2xx. At-least-once, so a crash between the
-answer and the acknowledgement yields a duplicate rather than a silence.
+snapshot advances, re-posted at the top of every loop before the node is
+asked anything (a node outage must not hold back an alert Discord can take),
+and forgotten only when Discord has answered 2xx. At-least-once, so a crash
+between the answer and the acknowledgement yields a duplicate rather than a
+silence. A node the bot would refuse to work with (`UnrecoverableError`) stops
+this process too, non-zero, after one more delivery attempt.
 
 Run:  poetry run python -m scripts.notifier [--once] [--network N] [--app-id N]
 """
@@ -43,6 +46,7 @@ import logging
 import os
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -53,6 +57,7 @@ from algosdk import encoding
 from scripts import network as net
 # One decoder, not a third copy: this is the same one the bot uses.
 from scripts.keeper_bot import (
+    UnrecoverableError,
     Upkeep,
     effective_fee,
     require_keeper_app,
@@ -86,21 +91,25 @@ DEFAULT_POLL_SECONDS = 30
 # on somebody else's say-so is the watcher not watching.
 MAX_RETRY_AFTER_SECONDS = 30
 # How many times one `post` tries before giving the message back to its
-# caller as undelivered. Three is enough to ride out a blip and a single 429
-# without holding the scan loop for long: the worst case is two ceilings of
-# sleep, about a minute, and everything longer than that is an outage the
-# pending-stranger file exists for rather than something a retry loop should
-# sit through.
+# caller as undelivered: three attempts, so two retries. Enough to ride out a
+# blip and a single 429 without holding the scan loop for long: the worst
+# case is two ceilings of sleep, about a minute, and everything longer than
+# that is an outage the pending-stranger file exists for rather than
+# something a retry loop should sit through.
 POST_ATTEMPTS = 3
 # The wait after a 5xx or a network error, doubled per attempt and never
 # above MAX_RETRY_AFTER_SECONDS. A 429 uses what Discord asked for instead.
 POST_BACKOFF_SECONDS = 2.0
-# How often an undelivered stranger alert is re-posted. Every scan would be
-# thirty seconds, which against a Discord outage is a hundred wasted attempts
-# an hour and, against a rate limit, the cause of the next one. Five minutes
+# The least time between two re-posts of one undelivered stranger alert.
+# Checked at loop boundaries, so the real gap is this rounded up to the next
+# scan (at least five minutes, not exactly five). Every scan would be thirty
+# seconds, which against a Discord outage is a hundred wasted attempts an
+# hour and, against a rate limit, the cause of the next one. Five minutes
 # keeps the alert pressing without becoming the flood; on a webhook that has
 # come back it lands within one window of the recovery. The first attempt for
-# a fresh sighting is immediate; this only paces the retries.
+# a fresh sighting is immediate; this only paces the retries, and the last
+# attempt is written into the record so a crash-looping unit cannot dodge it
+# by restarting.
 STRANGER_RETRY_SECONDS = 300
 # The ARC-4 selector of `execute(uint64)uint64`, so attribution only credits
 # an execution to the account that actually executed. Every other call to the
@@ -266,7 +275,10 @@ def diff(
                     upkeep_id,
                     f"**Upkeep {upkeep_id} executed**"
                     + (f" ×{runs}" if runs > 1 else "")
-                    + f", {_algos(paid)} paid, "
+                    # An estimate, marked as one here as well as in the
+                    # summary: `_burst_cost` reads the escrow drawdown, which a
+                    # top-up in the same window can hide part of.
+                    + f", ≈ {_algos(paid)} paid (escrow drawdown), "
                     f"next due at round {now['next_execution_round']}",
                     runs=runs,
                     paid=paid,
@@ -368,52 +380,87 @@ def _as_address(sender: object) -> str | None:
     return None
 
 
-def _is_execute(inner: dict) -> bool:
-    """Whether an application call's first argument is the execute selector."""
-    args = inner.get("apaa") or []
-    if not args:
-        return False
-    first = args[0]
-    if isinstance(first, str):
-        try:
-            first = base64.b64decode(first)
-        except Exception:
-            return False
-    if not isinstance(first, (bytes, bytearray)):
-        return False
-    return bytes(first)[:4] == EXECUTE_SELECTOR
+def _app_args(inner: dict) -> list[bytes]:
+    """An application call's arguments as bytes, however this algod spelt them.
+
+    algosdk hands back raw bytes; the REST shape is base64 strings. Anything
+    that is neither ends the list, because a call this cannot read is not one
+    it should attribute anything to.
+    """
+    out: list[bytes] = []
+    for arg in inner.get("apaa") or []:
+        if isinstance(arg, str):
+            try:
+                arg = base64.b64decode(arg)
+            except Exception:
+                break
+        if not isinstance(arg, (bytes, bytearray)):
+            break
+        out.append(bytes(arg))
+    return out
 
 
-def attribute(algod, app_id: int, since_round: int, until_round: int) -> str | None:
-    """Which account executed, read from the blocks that can say.
+def _executed_upkeep(inner: dict) -> int | None:
+    """The upkeep id an `execute` call names, or None for any other call.
+
+    The selector alone was checked before, so the first `execute` found in the
+    window was credited with every execution in it. Two upkeeps run by two
+    keepers in one window were both attributed to whichever keeper's block
+    was read first. The id is the second argument, an 8-byte big-endian
+    uint64, which is what `execute(uint64)uint64` says it is.
+    """
+    args = _app_args(inner)
+    if len(args) < 2 or args[0][:4] != EXECUTE_SELECTOR or len(args[1]) != 8:
+        return None
+    return int.from_bytes(args[1], "big")
+
+
+def executors(algod, app_id: int, since_round: int, until_round: int) -> dict[int, str]:
+    """Who executed which upkeep in the window between two scans.
 
     Box state records that an upkeep ran, never who ran it. An indexer would
     answer this, but so does algod: the execution happened between the last
-    scan and this one, which in normal operation is a couple of blocks.
+    scan and this one, which in normal operation is a couple of blocks. Read
+    once per scan and looked up per event, rather than once per event: a
+    burst of N executions used to cost N passes over the same blocks, against
+    the same public quota the keeper is already refused over.
 
     Deliberately not derived from the upkeep's schedule. An upkeep catching up
     after an outage runs in a round far ahead of the one it was *scheduled*
     for, and using the schedule would attribute it to the wrong block, or to
     a block that has since been pruned.
+
+    Newest block first, so an upkeep executed twice in the window is credited
+    to its latest keeper. A block that cannot be fetched ends the pass with
+    what was gathered so far; attribution is a nicety and the announcement
+    goes out either way, saying it does not know.
     """
+    found: dict[int, str] = {}
     newest = max(until_round, 0)
     oldest = max(since_round + 1, newest - MAX_ATTRIBUTION_BLOCKS + 1, 1)
     for round_number in range(newest, oldest - 1, -1):
         try:
             block = algod.block_info(round_number)
-        except Exception:  # pruned or unavailable; attribution is a nicety
-            return None
+        except Exception:  # pruned or unavailable
+            break
         for txn in block.get("block", {}).get("txns") or []:
             inner = txn.get("txn", {})
-            if (
-                inner.get("type") == "appl"
-                and inner.get("apid") == app_id
-                and _is_execute(inner)
-            ):
-                sender = inner.get("snd")
-                if sender:
-                    return _as_address(sender)
-    return None
+            if inner.get("type") != "appl" or inner.get("apid") != app_id:
+                continue
+            upkeep_id = _executed_upkeep(inner)
+            if upkeep_id is None or upkeep_id in found:
+                continue
+            sender = _as_address(inner.get("snd"))
+            if sender:
+                found[upkeep_id] = sender
+    return found
+
+
+def attribute(
+    algod, app_id: int, since_round: int, until_round: int, upkeep_id: int
+) -> str | None:
+    """Which account executed one upkeep in the window; `executors` for many."""
+    return executors(algod, app_id, since_round, until_round).get(upkeep_id)
 
 
 def _attribution_line(keeper: str | None) -> str:
@@ -427,20 +474,21 @@ def _attribution_line(keeper: str | None) -> str:
     if keeper:
         return f"\n↳ keeper `{keeper[:8]}…{keeper[-6:]}`"
     return (
-        f"\n↳ keeper: attribution unknown (no `execute` call found in the last "
-        f"{MAX_ATTRIBUTION_BLOCKS} blocks, or the block is no longer available)"
+        f"\n↳ keeper: attribution unknown (no `execute` call for this upkeep found in "
+        f"the last {MAX_ATTRIBUTION_BLOCKS} blocks, or a block is no longer available)"
     )
 
 
 def summarise(snapshot: Snapshot, executions: int, paid: int) -> str:
-    """The periodic line, which doubles as the watcher's pulse.
+    """The periodic summary, which doubles as the watcher's pulse.
 
-    Under the MainNet runbook this is the liveness signal: a day without it
-    is read as a dead watcher and acted on within the same 24-hour budget as a
-    stranger alert. The payment figure is labelled an estimate because it is
-    one: `_burst_cost` reads escrow drawdown, and a top-up in the same window
-    hides part of what was paid. The exact figure comes from the indexer via
-    `keeper-preview`; neither number is gate evidence.
+    Two-hourly by default (240 scans of 30 seconds). Under the MainNet runbook
+    it is the liveness signal: its absence for a day is read as a dead watcher
+    and acted on within the same 24-hour budget as a stranger alert. The
+    payment figure is labelled an estimate because it is one: `_burst_cost`
+    reads escrow drawdown, and a top-up in the same window hides part of what
+    was paid. The exact figure comes from the indexer via `keeper-preview`;
+    neither number is gate evidence.
     """
     dormant = len(snapshot.dormant)
     return (
@@ -459,14 +507,28 @@ def _retry_after(exc: urllib.error.HTTPError) -> float:
     return min(max(asked, 0.0), MAX_RETRY_AFTER_SECONDS)
 
 
+def valid_webhook(url: str) -> bool:
+    """Whether a webhook URL is one `urllib` can be asked to post to.
+
+    `urllib.request.Request` raises ValueError on a URL with no scheme, and
+    it did so from inside `post`, outside the `try`, on every call: a
+    DISCORD_WEBHOOK_URL pasted without its `https://` aborted every scan at
+    the first stranger re-post, before the snapshot ever advanced. Refused at
+    startup instead, where the fix is one line of an env file.
+    """
+    parsed = urllib.parse.urlparse(url)
+    return parsed.scheme in ("http", "https") and bool(parsed.netloc)
+
+
 def post(webhook: str | None, message: str) -> bool:
     """Send to Discord, or to the terminal when no webhook is configured.
 
     True only when the message was accepted (a 2xx, or printed because there
     is nowhere else for it to go). Never raises: the loop that calls this has
-    a scan to finish. Retries are bounded, because a stranger alert that could
-    not be delivered has a file to wait in (`PendingStrangers`) and an
-    ordinary announcement is not worth stalling the watcher over.
+    a scan to finish, so the request is built inside the `try` too, not only
+    sent there. Retries are bounded, because a stranger alert that could not
+    be delivered has a file to wait in (`PendingStrangers`) and an ordinary
+    announcement is not worth stalling the watcher over.
 
     A 429 used to sleep what Discord asked for and then *not retry*, so the
     one message Discord had just said it would accept in a moment was dropped
@@ -478,12 +540,17 @@ def post(webhook: str | None, message: str) -> bool:
         return True
     body = json.dumps({"content": message[:MAX_MESSAGE_CHARS]}).encode()
     for attempt in range(1, POST_ATTEMPTS + 1):
-        request = urllib.request.Request(
-            webhook, data=body, headers={"Content-Type": "application/json"}
-        )
         try:
+            request = urllib.request.Request(
+                webhook, data=body, headers={"Content-Type": "application/json"}
+            )
             urllib.request.urlopen(request, timeout=15).close()
             return True
+        except ValueError as exc:
+            # A URL urllib cannot even form a request for. Startup refuses
+            # these, so this is belt and braces, and asking again cannot help.
+            logger.error(f"Webhook URL is unusable ({exc}); not retrying")
+            return False
         except urllib.error.HTTPError as exc:
             if exc.code == 429:
                 wait = _retry_after(exc)
@@ -565,6 +632,7 @@ class PendingStrangers:
         {"mainnet/123/7": {"upkeep_id": 7,
                            "first_seen_round": 51234567,
                            "first_seen_at": "2026-09-08T10:15:00+00:00",
+                           "last_attempt": 1789000000.0,
                            "text": "..."}}
 
     Written before the snapshot advances, so a crash between the two leaves
@@ -572,16 +640,24 @@ class PendingStrangers:
     upkeep is old news. Removed only after `post` returns True; a crash
     between the 2xx and that removal replays the alert on the next start.
     Duplicates beat silence.
+
+    `last_attempt` is wall-clock time and lives in the record rather than in
+    memory, because a unit that crash-loops restarts more often than the
+    retry window and would otherwise re-post every record, three attempts
+    each, on every start. A restart waits out whatever is left of the window;
+    a record never attempted is still posted at once.
+
+    The disk is not allowed to stop delivery either way. A save that fails
+    after a 2xx is logged and the in-memory deletion stands, because the
+    alternative (reviewed, and reproduced) was a scan aborted by the save,
+    a snapshot that never advanced, the same stranger re-posted every window
+    and nothing ordinary announced at all. The cost of that choice is one
+    duplicate after the next restart, which is the side this file errs on.
     """
 
     def __init__(self, path: Path | None, records: dict[str, dict] | None = None) -> None:
         self.path = path
         self.records: dict[str, dict] = records or {}
-        # When each record was last attempted, by `time.monotonic()`. Kept in
-        # memory on purpose: a restart is allowed to re-post immediately, and
-        # the pacing exists to keep the retry from becoming a flood, not to
-        # rate-limit the operator's own restarts.
-        self._last_attempt: dict[str, float] = {}
 
     @classmethod
     def load(cls, path: Path | None) -> "PendingStrangers":
@@ -589,14 +665,62 @@ class PendingStrangers:
             return cls(path)
         try:
             payload = json.loads(path.read_text())
-            records = {key: dict(value) for key, value in payload.items() if "text" in value}
+            if not isinstance(payload, dict):
+                raise ValueError(f"expected a JSON object, found {type(payload).__name__}")
         except Exception as exc:
-            # Unlike the snapshot, this is not something to ignore quietly:
-            # a pending file that cannot be read may hold the alert. Say so,
-            # keep the file where it is, and carry on with what is legible.
-            logger.error(f"Cannot read pending stranger alerts at {path}: {exc}")
+            # Unlike the snapshot, this is not something to ignore quietly: a
+            # pending file that cannot be read may hold the alert. An earlier
+            # version said so and left the file in place, and the next `add`
+            # then overwrote it, so the evidence was lost anyway. Moved aside
+            # instead, under a name that says when, for a person to read.
+            aside = path.with_name(
+                f"{path.name}.corrupt-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
+            )
+            logger.error(
+                f"Cannot read pending stranger alerts at {path} ({exc}); moved to {aside}. "
+                f"Read it by hand: it may hold an undelivered stranger."
+            )
+            try:
+                path.replace(aside)
+            except OSError as move:
+                logger.error(f"Could not move the unreadable file aside either: {move}")
             return cls(path)
+        records = {key: cls._repaired(key, value) for key, value in payload.items()}
         return cls(path, records)
+
+    @staticmethod
+    def _repaired(key: str, value: object) -> dict:
+        """A record with every field this class reads, filled in where missing.
+
+        An entry without `text` used to be dropped on load and erased by the
+        next save. A record in this file is a sighting somebody has not yet
+        acted on, so a half-written one is kept and delivered as what it is: a
+        stranger alert whose details were lost, naming the upkeep from the
+        key. Logged, so the operator knows the text is a reconstruction.
+        """
+        record = dict(value) if isinstance(value, dict) else {}
+        try:
+            upkeep_id = int(record.get("upkeep_id", key.rsplit("/", 1)[-1]))
+        except (TypeError, ValueError):
+            upkeep_id = -1
+        missing = [f for f in ("upkeep_id", "first_seen_round", "first_seen_at", "text") if f not in record]
+        if missing:
+            logger.warning(
+                f"Pending stranger record {key} is missing {missing}; keeping it and "
+                f"delivering what is known"
+            )
+        record.setdefault("upkeep_id", upkeep_id)
+        record.setdefault("first_seen_round", 0)
+        record.setdefault("first_seen_at", "unknown")
+        record.setdefault(
+            "text",
+            f"🚨 **Upkeep {upkeep_id} was registered by somebody who is not one of us** "
+            f"(pending record {key}; its stored text was lost, details were not). This "
+            f"needs an operator decision within 24 hours of first sighting, which the "
+            f"record put at round {record['first_seen_round']}, {record['first_seen_at']}.",
+        )
+        record.setdefault("last_attempt", None)
+        return record
 
     def __len__(self) -> int:
         return len(self.records)
@@ -605,6 +729,22 @@ class PendingStrangers:
         if self.path is None:
             return
         _write_json(self.path, self.records)
+
+    def _save_or_log(self, what: str) -> None:
+        """Persist, and on a disk that will not have it, say so and carry on.
+
+        A permission mistake in the state directory is a real deployment
+        failure this repository has already had once (`deploy/Dockerfile`, the
+        root-owned volume). It must not become "no stranger ever delivered and
+        no execution ever announced", which is what an unguarded save did.
+        """
+        try:
+            self.save()
+        except OSError as exc:
+            logger.error(
+                f"Could not write {self.path} ({what}): {exc}. Delivery continues from "
+                f"memory; a restart will forget or replay what is in flight."
+            )
 
     @staticmethod
     def key(network: str, app_id: int, upkeep_id: int) -> str:
@@ -625,6 +765,7 @@ class PendingStrangers:
             "upkeep_id": event.upkeep_id,
             "first_seen_round": current_round,
             "first_seen_at": seen_at,
+            "last_attempt": None,
             # The sighting time travels with the alert, so an operator reading
             # it after an outage knows when the budget actually started.
             "text": (
@@ -632,35 +773,53 @@ class PendingStrangers:
                 f"the 24-hour decision budget runs from then."
             ),
         }
-        self.save()
+        self._save_or_log("recording a sighting")
         return True
 
     def deliver(self, webhook: str | None, now: float | None = None) -> None:
         """Post every pending alert whose retry window has passed, oldest first.
 
-        Called before any ordinary event on every scan, so a registry busy
-        with executions cannot starve the one alert that matters. Paced by
-        STRANGER_RETRY_SECONDS per record; the first attempt is immediate.
+        Called at the top of every loop, before the node is asked anything,
+        so a node outage cannot hold back an alert Discord is ready to take;
+        and again after a scan records new sightings, so a registry busy with
+        executions cannot starve the one alert that matters. Paced by
+        STRANGER_RETRY_SECONDS per record, on the wall clock, persisted; the
+        first attempt is immediate.
         """
-        now = time.monotonic() if now is None else now
+        now = time.time() if now is None else now
         for key in sorted(self.records, key=lambda k: (self.records[k]["first_seen_round"], k)):
-            last = self._last_attempt.get(key)
+            record = self.records[key]
+            last = record.get("last_attempt")
             if last is not None and now - last < STRANGER_RETRY_SECONDS:
                 continue
-            self._last_attempt[key] = now
-            record = self.records[key]
+            record["last_attempt"] = now
+            self._save_or_log("pacing a retry")
             if post(webhook, record["text"]):
                 # Acknowledged only after the answer. The order of these two
                 # lines is the at-least-once guarantee: a crash between them
                 # re-posts on the next start rather than losing the alert.
                 del self.records[key]
-                self.save()
+                self._save_or_log("acknowledging a delivery")
             else:
                 logger.warning(
                     f"Stranger alert for upkeep {record['upkeep_id']} is still undelivered; "
-                    f"kept in {self.path or 'memory'}, next attempt in {STRANGER_RETRY_SECONDS}s"
+                    f"kept in {self.path or 'memory'}, next attempt after {STRANGER_RETRY_SECONDS}s"
                 )
             time.sleep(POST_INTERVAL_SECONDS)
+
+
+def _is_unrecoverable(exc: BaseException) -> bool:
+    """Whether `scripts.keeper_bot` has said this node cannot be worked with.
+
+    `UnrecoverableError` is what `_box_page` raises when the node ignores
+    `limit` and answers in legacy mode, and what `require_keeper_app` raises
+    for a wrong id. The bot exits 2 on it; the notifier's retry clause used to
+    swallow it with a warning and spin, which is a watcher that looks alive
+    and watches nothing. Matched by name as well as by class because a test
+    suite that reloads `scripts.keeper_bot` leaves this module holding the
+    old class object, and an `isinstance` alone would then let it through.
+    """
+    return isinstance(exc, UnrecoverableError) or type(exc).__name__ == "UnrecoverableError"
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -672,15 +831,16 @@ def main(argv: list[str] | None = None) -> None:
         "--summary-every",
         type=int,
         default=240,
-        # 240 scans at the default 30 seconds is two hours. On MainNet the
-        # summary is the liveness signal: the runbook treats a day without
-        # one as a dead watcher, to be acted on within the same 24-hour budget
-        # as a stranger alert. Its presence is routine; its absence is the
-        # alarm, so do not turn it off there.
+        # 240 scans at the default 30 seconds is a two-hourly summary. On
+        # MainNet that periodic summary is the liveness signal: the runbook
+        # treats its absence for a day as a dead watcher, to be acted on
+        # within the same 24-hour budget as a stranger alert. Its presence is
+        # routine; its absence is the alarm, so do not turn it off there.
         help=(
-            "scans between registry summaries (default: %(default)s). The summary is the "
-            "watcher's liveness signal: under the MainNet runbook a day without one is a "
-            "dead watcher, acted on within the 24-hour response budget. 0 disables it"
+            "scans between registry summaries (default: %(default)s, two-hourly at the "
+            "default poll). The periodic summary is the watcher's liveness signal: under "
+            "the MainNet runbook its absence for a day is a dead watcher, acted on within "
+            "the 24-hour response budget. 0 disables it"
         ),
     )
     parser.add_argument(
@@ -724,7 +884,15 @@ def main(argv: list[str] | None = None) -> None:
         # test suite that reloads `scripts.keeper_bot` cannot leave this clause
         # holding a stale class object and let the refusal fall through.
         parser.error(str(wrong))
-    webhook = os.environ.get("DISCORD_WEBHOOK_URL")
+    webhook = os.environ.get("DISCORD_WEBHOOK_URL") or None
+    if webhook is not None and not valid_webhook(webhook):
+        # Refused here, not discovered on the first post: `post` would refuse
+        # it too, but every scan would then end with the stranger it could not
+        # deliver, and the fix is one line of an env file.
+        parser.error(
+            "DISCORD_WEBHOOK_URL is not an http(s) URL with a host (is the scheme "
+            "missing?). Fix it, or unset it to print announcements instead"
+        )
     path = None if args.no_state else (args.state_file or state_path(args.network, app_id))
 
     ours = args.ours if args.ours is not None else os.environ.get("ARCRON_OURS", "")
@@ -785,27 +953,41 @@ def main(argv: list[str] | None = None) -> None:
 
     while True:
         try:
+            # Anything still owed from earlier goes out before the node is
+            # asked a single question. Delivery used to sit after the scan,
+            # so a node outage or a 403 storm held back an alert that Discord
+            # was ready to take; the two failures are independent and the
+            # watcher should not couple them.
+            pending.deliver(webhook)
+
             current_round = algod.status()["last-round"]
             snapshot = Snapshot.of(scan_upkeeps(algod, app_id), current_round)
             events = diff(previous, snapshot, known_creators)
 
-            # Strangers to disk first, then to Discord first. The snapshot is
-            # not advanced until the end of the scan, so a crash anywhere in
+            # New strangers to disk first, then to Discord first. The snapshot
+            # is not advanced until the end of the scan, so a crash anywhere in
             # here re-diffs and re-records the same sighting rather than
-            # forgetting it. Everything else waits behind them.
+            # forgetting it. Everything else waits behind them. Records
+            # already attempted at the top of this loop are inside their
+            # window and skipped here, so this second call posts only the
+            # sightings this scan found.
             for event in events:
                 if event.kind == "stranger":
                     pending.add(args.network, app_id, event, current_round)
             pending.deliver(webhook)
 
+            # One pass over the window's blocks for the whole scan, however
+            # many upkeeps ran in it; read lazily, so a quiet scan costs no
+            # block fetches at all.
+            keepers: dict[int, str] | None = None
             for event in events:
                 if event.kind == "stranger":
                     continue
                 text = event.text
                 if event.kind == "executed":
-                    text += _attribution_line(
-                        attribute(algod, app_id, previous.last_round, current_round)
-                    )
+                    if keepers is None:
+                        keepers = executors(algod, app_id, previous.last_round, current_round)
+                    text += _attribution_line(keepers.get(event.upkeep_id))
                     executions_since_summary += event.runs
                     paid_since_summary += event.paid
                 if not post(webhook, text):
@@ -834,6 +1016,18 @@ def main(argv: list[str] | None = None) -> None:
             logger.info("Stopping")
             return
         except Exception as exc:
+            if _is_unrecoverable(exc):
+                # The node cannot be worked with (legacy box listing, wrong
+                # app id). Retrying is spinning, and spinning looks like
+                # watching. Stop loudly, as the bot does, so systemd's restart
+                # limit turns it into the last line of the journal. But first,
+                # once, whatever stranger alert is owed: the webhook may well
+                # be fine even though the node is not. Pacing still applies,
+                # and a record inside its window is picked up by the next
+                # start, which reads `last_attempt` back from the file.
+                logger.error(f"{exc}; the notifier cannot watch this node and is stopping")
+                pending.deliver(webhook)
+                raise SystemExit(2)
             if args.once:
                 raise
             logger.warning(f"{exc}; retrying")

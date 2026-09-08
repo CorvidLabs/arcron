@@ -340,7 +340,7 @@ def test_attribution_requires_the_execute_selector() -> None:
             {"type": "appl", "apid": 7, "snd": keeper, "apaa": [EXECUTE_SELECTOR, b"\x00" * 8]},
         ),
     })
-    assert attribute(algod, 7, since_round=9, until_round=10) == keeper
+    assert attribute(algod, 7, since_round=9, until_round=10, upkeep_id=0) == keeper
 
 
 def test_attribution_finds_nobody_when_only_other_calls_landed() -> None:
@@ -350,7 +350,7 @@ def test_attribution_finds_nobody_when_only_other_calls_landed() -> None:
     algod = _BlockAlgod({
         10: _block({"type": "appl", "apid": 7, "snd": creator, "apaa": [b"\x01\x02\x03\x04"]}),
     })
-    assert attribute(algod, 7, since_round=9, until_round=10) is None
+    assert attribute(algod, 7, since_round=9, until_round=10, upkeep_id=0) is None
 
 
 def test_attribution_reads_a_base64_selector_too() -> None:
@@ -359,11 +359,13 @@ def test_attribution_reads_a_base64_selector_too() -> None:
     from scripts.notifier import EXECUTE_SELECTOR, attribute
 
     keeper = "NUGVPQGZCURNU4CBHQ2IMXCY4UO2VI3VYCBWKCATL4OAKBJAT4MUTQMBVU"
+    # The REST shape: every argument base64, the id included.
     algod = _BlockAlgod({
         10: _block({"type": "appl", "apid": 7, "snd": keeper,
-                    "apaa": [base64.b64encode(EXECUTE_SELECTOR).decode()]}),
+                    "apaa": [base64.b64encode(EXECUTE_SELECTOR).decode(),
+                             base64.b64encode((0).to_bytes(8, "big")).decode()]}),
     })
-    assert attribute(algod, 7, since_round=9, until_round=10) == keeper
+    assert attribute(algod, 7, since_round=9, until_round=10, upkeep_id=0) == keeper
 
 
 def test_the_execute_selector_is_the_contracts() -> None:
@@ -741,8 +743,13 @@ def test_a_crash_between_the_2xx_and_the_acknowledgement_yields_a_duplicate_not_
     class _Crash(BaseException):
         pass
 
+    real_save = notifier.PendingStrangers.save
     def crash_on_save(self) -> None:
-        raise _Crash()
+        # The pacing save before the post goes through; the acknowledgement
+        # save after the 2xx (the record already deleted in memory) crashes.
+        if not self.records:
+            raise _Crash()
+        real_save(self)
 
     delivered = _scripted_urlopen(["ok", "ok"])
     monkeypatch.setattr(notifier.time, "sleep", lambda s: None)
@@ -758,7 +765,12 @@ def test_a_crash_between_the_2xx_and_the_acknowledgement_yields_a_duplicate_not_
     monkeypatch.setattr(notifier.urllib.request, "urlopen", delivered)
     restarted = notifier.PendingStrangers.load(path)
     assert len(restarted) == 1
-    restarted.deliver("https://discord.invalid/webhook", now=0.0)
+    # The attempt before the crash was written into the record, so the
+    # restart waits out the window rather than posting on the spot...
+    restarted.deliver("https://discord.invalid/webhook", now=1.0)
+    assert len(delivered.calls) == 1
+    # ...and then the duplicate lands.
+    restarted.deliver("https://discord.invalid/webhook", now=notifier.STRANGER_RETRY_SECONDS)
     assert len(delivered.calls) == 2, "posted twice; never zero times"
     assert len(restarted) == 0
 
@@ -797,16 +809,16 @@ class _Halt(KeyboardInterrupt):
 
 
 class _Clock:
-    """`time.sleep` advances `time.monotonic`, so a test can walk the notifier
+    """`time.sleep` advances `time.time`, so a test can walk the notifier
     through retry windows without waiting through them."""
 
     def __init__(self) -> None:
-        self.now = 0.0
+        self.now = 1_000_000.0
 
     def sleep(self, seconds: float) -> None:
         self.now += seconds
 
-    def monotonic(self) -> float:
+    def time(self) -> float:
         return self.now
 
 
@@ -823,7 +835,8 @@ class _ScriptedAlgod(_StoppingAlgod):
         return {"last-round": self.round}
 
 
-def _run_main(monkeypatch, tmp_path, registries: list[list], urlopen, clock: _Clock) -> None:
+def _run_main(monkeypatch, tmp_path, registries: list[list], urlopen, clock: _Clock,
+              executors=lambda *a: {}) -> None:
     from types import SimpleNamespace
 
     from scripts import notifier
@@ -833,10 +846,10 @@ def _run_main(monkeypatch, tmp_path, registries: list[list], urlopen, clock: _Cl
     monkeypatch.setattr(notifier.net, "connect",
                         lambda network: SimpleNamespace(client=SimpleNamespace(algod=algod)))
     monkeypatch.setattr(notifier, "scan_upkeeps", lambda algod, app_id: script.pop(0))
-    monkeypatch.setattr(notifier, "attribute", lambda *a: None)
+    monkeypatch.setattr(notifier, "executors", executors)
     monkeypatch.setattr(notifier.urllib.request, "urlopen", urlopen)
     monkeypatch.setattr(notifier.time, "sleep", clock.sleep)
-    monkeypatch.setattr(notifier.time, "monotonic", clock.monotonic)
+    monkeypatch.setattr(notifier.time, "time", clock.time)
     monkeypatch.setenv("DISCORD_WEBHOOK_URL", "https://discord.invalid/webhook")
     monkeypatch.delenv("ARCRON_OURS", raising=False)
     notifier.main(["--network", "testnet", "--app-id", "1", "--ours", OURS,
@@ -1029,3 +1042,315 @@ def test_the_summary_help_names_it_as_the_liveness_signal() -> None:
     source = NOTIFIER_SOURCE.read_text()
     assert "liveness signal" in source
     assert "24-hour" in source
+
+
+# --- second review of the F01 work: what the first round got wrong ----------
+
+def test_a_webhook_without_a_scheme_is_refused_at_startup(monkeypatch, capsys) -> None:
+    """`urllib.request.Request` raises ValueError on a URL with no scheme, and
+    it did so inside `post` but outside its `try`, on every scan, from the
+    stranger re-post that runs before anything else."""
+    from scripts import notifier
+
+    _connected(monkeypatch)
+    monkeypatch.setenv("DISCORD_WEBHOOK_URL", "discord.com/api/webhooks/1/abc")
+    with pytest.raises(SystemExit):
+        notifier.main(["--network", "testnet", "--app-id", "1", "--once", "--no-state"])
+    assert "DISCORD_WEBHOOK_URL" in capsys.readouterr().err
+
+    assert notifier.valid_webhook("https://discord.com/api/webhooks/1/abc")
+    assert notifier.valid_webhook("http://127.0.0.1:9/hook")
+    for bad in ("discord.com/api/webhooks/1/abc", "https://", "ftp://discord.com/x", "", "   "):
+        assert not notifier.valid_webhook(bad), bad
+
+
+def test_post_does_not_raise_on_a_url_urllib_cannot_form(monkeypatch) -> None:
+    from scripts import notifier
+
+    monkeypatch.setattr(notifier.time, "sleep", lambda s: None)
+    # Not monkeypatching urlopen: the failure is in building the request.
+    assert notifier.post("discord.com/api/webhooks/1/abc", "hello") is False
+
+
+def test_an_unwritable_state_directory_does_not_stop_delivery(monkeypatch, tmp_path, caplog) -> None:
+    """Reviewer's reproduction: six scans, three stranger posts, zero
+    executions announced, because the save after the 2xx aborted the scan and
+    the snapshot never advanced. The disk is now allowed to fail."""
+    import logging
+
+    from scripts import notifier
+
+    def refuse_to_write(path, payload) -> None:
+        raise OSError(13, "Permission denied", str(path))
+
+    monkeypatch.setattr(notifier, "_write_json", refuse_to_write)
+    before = [upkeep()]
+    after = [upkeep(times_executed=1, balance=8_000, next_execution_round=1_010),
+             upkeep(upkeep_id=7, creator=STRANGER, interval_rounds=1_000)]
+    urlopen = _scripted_urlopen([])
+    with caplog.at_level(logging.ERROR, logger=notifier.logger.name):
+        _run_main(monkeypatch, tmp_path, registries=[before, after, after],
+                  urlopen=urlopen, clock=_Clock())
+    strangers = [c for c in urlopen.calls if "Upkeep 7 was registered" in c]
+    executed = [c for c in urlopen.calls if "Upkeep 1 executed" in c]
+    assert len(strangers) == 1, "delivered once, from memory, not once per window"
+    assert len(executed) == 1, "the scan finished and ordinary events went out"
+    assert any("Permission denied" in r.message for r in caplog.records)
+
+
+def test_a_pending_stranger_is_posted_even_when_the_node_is_down(monkeypatch, tmp_path) -> None:
+    """Delivery used to run only after a successful scan, so a node outage
+    held back an alert that Discord was ready to take."""
+    from types import SimpleNamespace
+
+    from scripts import notifier
+
+    state = tmp_path / "notifier.json"
+    notifier.PendingStrangers(notifier.pending_path(state)).add(
+        "testnet", 1, _stranger_event(7), current_round=500)
+
+    class DownAlgod(_StoppingAlgod):
+        calls = 0
+
+        def status(self) -> dict:
+            self.calls += 1
+            if self.calls == 1:
+                raise RuntimeError("403 Forbidden")
+            raise _Halt()
+
+    urlopen = _scripted_urlopen([])
+    clock = _Clock()
+    monkeypatch.setattr(notifier.net, "connect",
+                        lambda network: SimpleNamespace(client=SimpleNamespace(algod=DownAlgod())))
+    monkeypatch.setattr(notifier.urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(notifier.time, "sleep", clock.sleep)
+    monkeypatch.setattr(notifier.time, "time", clock.time)
+    monkeypatch.setenv("DISCORD_WEBHOOK_URL", "https://discord.invalid/webhook")
+    notifier.main(["--network", "testnet", "--app-id", "1", "--ours", OURS,
+                   "--state-file", str(state)])
+    assert len(urlopen.calls) == 1
+    assert "Upkeep 7 was registered by" in urlopen.calls[0]
+    assert notifier.PendingStrangers.load(notifier.pending_path(state)).records == {}
+
+
+def test_the_per_event_payment_is_labelled_an_estimate() -> None:
+    [event] = diff(
+        snapshot([upkeep()]),
+        snapshot([upkeep(times_executed=1, balance=8_000, next_execution_round=1_010)]),
+    )
+    assert "≈ 0.004 ALGO paid (escrow drawdown)" in event.text
+
+
+def test_attribution_matches_the_upkeep_id_not_just_the_selector() -> None:
+    """Two upkeeps run by two keepers in one window were both credited to
+    whichever keeper's `execute` was read first."""
+    from scripts.notifier import EXECUTE_SELECTOR, attribute, executors
+
+    a = "FIYLSRRXA22FZ4FXV7NJUGFESVIEHIT4M23A4NRZTSR4NCTRSCDMXO4LGA"
+    b = "NUGVPQGZCURNU4CBHQ2IMXCY4UO2VI3VYCBWKCATL4OAKBJAT4MUTQMBVU"
+    itob = lambda n: n.to_bytes(8, "big")  # noqa: E731
+    algod = _BlockAlgod({
+        10: _block(
+            {"type": "appl", "apid": 7, "snd": a, "apaa": [EXECUTE_SELECTOR, itob(1)]},
+            {"type": "appl", "apid": 7, "snd": b, "apaa": [EXECUTE_SELECTOR, itob(2)]},
+        ),
+    })
+    assert attribute(algod, 7, 9, 10, upkeep_id=1) == a
+    assert attribute(algod, 7, 9, 10, upkeep_id=2) == b
+    assert attribute(algod, 7, 9, 10, upkeep_id=3) is None
+    assert executors(algod, 7, 9, 10) == {1: a, 2: b}
+
+
+def test_an_execute_call_without_an_id_argument_attributes_nothing() -> None:
+    from scripts.notifier import EXECUTE_SELECTOR, executors
+
+    algod = _BlockAlgod({
+        10: _block({"type": "appl", "apid": 7, "snd": OURS, "apaa": [EXECUTE_SELECTOR]},
+                   {"type": "appl", "apid": 7, "snd": OURS, "apaa": [EXECUTE_SELECTOR, b"\x01"]}),
+    })
+    assert executors(algod, 7, 9, 10) == {}
+
+
+def test_the_windows_blocks_are_read_once_per_scan_not_once_per_event(monkeypatch, tmp_path) -> None:
+    """N executions used to cost N passes over the same blocks, against the
+    public quota the keeper is already refused over."""
+    reads: list[tuple] = []
+    keeper = "NUGVPQGZCURNU4CBHQ2IMXCY4UO2VI3VYCBWKCATL4OAKBJAT4MUTQMBVU"
+
+    def counted(algod, app_id, since_round, until_round):
+        reads.append((since_round, until_round))
+        return {i: keeper for i in range(1, 6)}  # the first five were this keeper
+
+    before = [upkeep(upkeep_id=i, interval_rounds=1_000) for i in range(1, 11)]
+    after = [upkeep(upkeep_id=i, interval_rounds=1_000, times_executed=1, balance=8_000,
+                    next_execution_round=2_200) for i in range(1, 11)]
+    urlopen = _scripted_urlopen([])
+    _run_main(monkeypatch, tmp_path, registries=[before, after], urlopen=urlopen, clock=_Clock(),
+              executors=counted)
+    assert len(reads) == 1, "one pass over the window for ten executions"
+    posted = [c for c in urlopen.calls if "executed" in c]
+    assert len(posted) == 10
+    assert sum("NUGVPQGZ" in c for c in posted) == 5
+    assert sum("attribution unknown" in c for c in posted) == 5
+
+
+def test_a_corrupt_pending_file_is_moved_aside_not_overwritten(tmp_path, caplog) -> None:
+    import logging
+
+    from scripts import notifier
+
+    path = tmp_path / "pending.json"
+    path.write_text("{ not json, but maybe a stranger")
+    with caplog.at_level(logging.ERROR, logger=notifier.logger.name):
+        pending = notifier.PendingStrangers.load(path)
+    assert pending.records == {}
+    aside = [p for p in tmp_path.iterdir() if ".corrupt-" in p.name]
+    assert len(aside) == 1 and "maybe a stranger" in aside[0].read_text()
+    assert any("moved to" in r.message for r in caplog.records)
+
+    # The next sighting writes a fresh file and the evidence is still there.
+    pending.add("testnet", 1, _stranger_event(9), current_round=1)
+    assert "testnet/1/9" in json.loads(path.read_text())
+    assert aside[0].exists()
+
+
+def test_an_incomplete_pending_record_is_kept_and_delivered(tmp_path, monkeypatch, caplog) -> None:
+    """An entry without `text` used to be dropped on load and erased by the
+    next save. It is a sighting nobody has acted on; it is delivered as what
+    it is, naming the upkeep from the key."""
+    import logging
+
+    from scripts import notifier
+
+    path = tmp_path / "pending.json"
+    path.write_text(json.dumps({
+        "mainnet/123/7": {"upkeep_id": 7, "first_seen_round": 51_234_567},
+        "mainnet/123/8": "not even an object",
+    }))
+    with caplog.at_level(logging.WARNING, logger=notifier.logger.name):
+        pending = notifier.PendingStrangers.load(path)
+    assert set(pending.records) == {"mainnet/123/7", "mainnet/123/8"}
+    assert sum("missing" in r.message for r in caplog.records) == 2
+
+    up = _scripted_urlopen([])
+    monkeypatch.setattr(notifier.time, "sleep", lambda s: None)
+    monkeypatch.setattr(notifier.urllib.request, "urlopen", up)
+    pending.deliver("https://discord.invalid/webhook", now=0.0)
+    assert len(up.calls) == 2
+    assert any("Upkeep 7 was registered" in c and "round 51234567" in c for c in up.calls)
+    assert any("Upkeep 8 was registered" in c for c in up.calls)
+    assert all("operator decision within 24 hours" in c for c in up.calls)
+    assert json.loads(path.read_text()) == {}
+
+
+def test_retry_pacing_survives_a_restart(tmp_path, monkeypatch) -> None:
+    """A crash-looping unit restarts more often than the retry window and
+    used to re-post every record, three attempts each, on every start."""
+    from scripts import notifier
+
+    path = tmp_path / "pending.json"
+    pending = notifier.PendingStrangers(path)
+    pending.add("testnet", 1, _stranger_event(7), current_round=500)
+    down = _scripted_urlopen([500] * 100)
+    monkeypatch.setattr(notifier.time, "sleep", lambda s: None)
+    monkeypatch.setattr(notifier.urllib.request, "urlopen", down)
+    pending.deliver("https://discord.invalid/webhook", now=1_000.0)
+    assert len(down.calls) == notifier.POST_ATTEMPTS
+    assert json.loads(path.read_text())["testnet/1/7"]["last_attempt"] == 1_000.0
+
+    # Restart inside the window: nothing. Restart past it: one more attempt.
+    notifier.PendingStrangers.load(path).deliver("https://discord.invalid/webhook", now=1_100.0)
+    assert len(down.calls) == notifier.POST_ATTEMPTS
+    notifier.PendingStrangers.load(path).deliver(
+        "https://discord.invalid/webhook", now=1_000.0 + notifier.STRANGER_RETRY_SECONDS)
+    assert len(down.calls) == 2 * notifier.POST_ATTEMPTS
+
+    # A record never attempted is still posted on the spot after a restart.
+    fresh = notifier.PendingStrangers(tmp_path / "fresh.json")
+    fresh.add("testnet", 1, _stranger_event(8), current_round=500)
+    assert json.loads((tmp_path / "fresh.json").read_text())["testnet/1/8"]["last_attempt"] is None
+    notifier.PendingStrangers.load(tmp_path / "fresh.json").deliver(
+        "https://discord.invalid/webhook", now=5.0)
+    assert len(down.calls) == 3 * notifier.POST_ATTEMPTS
+
+
+def test_the_comments_state_the_numbers_they_describe() -> None:
+    source = NOTIFIER_SOURCE.read_text()
+    assert "three attempts, so two retries" in source
+    assert "at least five minutes, not exactly five" in source
+    assert "two-hourly" in source and "absence for a day" in source
+
+
+# --- a node the bot would refuse is refused here too -------------------------
+
+def test_an_unrecoverable_node_error_stops_the_notifier_after_one_delivery(monkeypatch, tmp_path) -> None:
+    """The retry clause swallowed `UnrecoverableError` with a warning and spun,
+    which is a watcher that looks alive and watches nothing. The bot exits 2 on
+    it; so does this now, after posting whatever stranger alert is owed."""
+    from types import SimpleNamespace
+
+    from scripts import notifier
+    from scripts.keeper_bot import UnrecoverableError
+
+    state = tmp_path / "notifier.json"
+    notifier.PendingStrangers(notifier.pending_path(state)).add(
+        "testnet", 1, _stranger_event(7), current_round=500)
+
+    def legacy_listing(algod, app_id):
+        raise UnrecoverableError("The node answered the box listing without a round")
+
+    # Discord is down at the top of the loop and back by the time the node fails.
+    urlopen = _scripted_urlopen([500] * notifier.POST_ATTEMPTS)
+    clock = _Clock()
+    monkeypatch.setattr(notifier.net, "connect",
+                        lambda network: SimpleNamespace(client=SimpleNamespace(algod=_ScriptedAlgod(scans=5))))
+    monkeypatch.setattr(notifier, "scan_upkeeps", legacy_listing)
+    monkeypatch.setattr(notifier.urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(notifier.time, "sleep", clock.sleep)
+    monkeypatch.setattr(notifier.time, "time", clock.time)
+    monkeypatch.setenv("DISCORD_WEBHOOK_URL", "https://discord.invalid/webhook")
+    with pytest.raises(SystemExit) as stop:
+        notifier.main(["--network", "testnet", "--app-id", "1", "--ours", OURS,
+                       "--state-file", str(state), "--poll-seconds", "1"])
+    assert stop.value.code == 2
+    # Pacing still applies on the way out: the attempt at the top of the loop
+    # was seconds ago, so the exit-path attempt is skipped and the record is
+    # left, with its last attempt, for the restart systemd will give it.
+    assert len(urlopen.calls) == notifier.POST_ATTEMPTS
+    left = notifier.PendingStrangers.load(notifier.pending_path(state)).records
+    assert set(left) == {"testnet/1/7"} and left["testnet/1/7"]["last_attempt"] == 1_000_000.0
+
+
+def test_an_unrecoverable_error_is_matched_by_name_after_a_module_reload() -> None:
+    from scripts import notifier
+
+    class UnrecoverableError(RuntimeError):  # a fresh class object, as a reload would make
+        pass
+
+    assert notifier._is_unrecoverable(UnrecoverableError("x"))
+    assert not notifier._is_unrecoverable(RuntimeError("x"))
+
+
+def test_an_ordinary_node_error_is_still_retried(monkeypatch, tmp_path) -> None:
+    from types import SimpleNamespace
+
+    from scripts import notifier
+
+    class Flaky(_StoppingAlgod):
+        calls = 0
+
+        def status(self) -> dict:
+            self.calls += 1
+            if self.calls < 3:
+                raise RuntimeError("timed out")
+            raise _Halt()
+
+    algod = Flaky()
+    clock = _Clock()
+    monkeypatch.setattr(notifier.net, "connect",
+                        lambda network: SimpleNamespace(client=SimpleNamespace(algod=algod)))
+    monkeypatch.setattr(notifier.time, "sleep", clock.sleep)
+    monkeypatch.setattr(notifier.time, "time", clock.time)
+    monkeypatch.delenv("DISCORD_WEBHOOK_URL", raising=False)
+    notifier.main(["--network", "testnet", "--app-id", "1", "--no-state", "--poll-seconds", "1"])
+    assert algod.calls == 3
