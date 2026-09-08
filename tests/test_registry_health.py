@@ -18,7 +18,7 @@ import hashlib
 
 import pytest
 
-from scripts.keeper_bot import BONUS_FEE_MICROALGO, EXECUTION_COST_MICROALGO
+from scripts.keeper_bot import BONUS_FEE_MICROALGO, BOX_PAGE_LIMIT, EXECUTION_COST_MICROALGO
 from algosdk.logic import get_application_address
 from algosdk.v2client.algod import AlgodClient
 
@@ -311,6 +311,18 @@ class TestEveryBoxIsCounted:
         the production path uses, which is the only way this class of mistake
         is ever found.
 
+        The fix for that left the *first* page on `application_boxes`, and
+        #250 (F05) found what that meant: the typed method sends its `limit`
+        as the legacy `max`, whose response never carries a `next-token`, so
+        the continuation this fake was proving never ran on the real path.
+        The `TypeError` regression this once pinned is now pinned the other
+        way round: `application_boxes` is a tripwire, and a reader that so
+        much as calls it fails here, because a reader that calls it cannot
+        page. What is asserted instead is what `algod_request` was sent: a
+        page size on every request, and `next` on every request but the first,
+        which is what a node of algod 4.7.0 or later needs to hand back pages
+        at all.
+
         The page token is opaque to the caller, so it is just the index of the
         next page here; what matters is that the caller has to follow it, and
         has to do so through a real client's real signature.
@@ -320,6 +332,9 @@ class TestEveryBoxIsCounted:
             self.pages = pages
             self.asked_for: list[str | None] = []
             self.values = {name: raw for page in pages for name, raw in page}
+            #: The token the last page handed out, None once a walk has ended:
+            #: what the next listing request has to carry as `next`.
+            self.handed_out: str | None = None
 
         def _page(self, token: "str | None") -> dict:
             self.asked_for.append(token)
@@ -328,21 +343,36 @@ class TestEveryBoxIsCounted:
                 "boxes": [
                     {"name": base64.b64encode(name).decode()}
                     for name, _ in self.pages[index]
-                ]
+                ],
+                # Present on every paginated response, and the tell that the
+                # node honoured the page size rather than answering in legacy
+                # mode; `keeper_bot._box_page` refuses a page without it.
+                "round": 15_055,
             }
             if index + 1 < len(self.pages):
                 page["next-token"] = str(index + 1)
+            self.handed_out = page.get("next-token")
             return page
 
         def application_boxes(self, app_id: int, limit: int = 0, **kwargs) -> dict:
-            # The real signature, which takes no `next`: a reader that tries to
-            # continue through this method is wrong, and must fail here.
-            assert not kwargs, f"application_boxes takes no {sorted(kwargs)}"
-            return self._page(None)
+            raise AssertionError(
+                "the reader listed boxes through application_boxes, which sends "
+                "the legacy max and cannot page; it must use algod_request"
+            )
 
         def algod_request(self, method, requrl, params=None, **kwargs):
-            assert "/boxes" in requrl, f"unexpected request {method} {requrl}"
-            return self._page((params or {}).get("next"))
+            assert (method, requrl) == ("GET", "/applications/769891898/boxes"), (
+                f"unexpected request {method} {requrl}"
+            )
+            params = params or {}
+            assert params.get("limit") == BOX_PAGE_LIMIT, f"no page size in {params}"
+            token = params.get("next")
+            assert token == self.handed_out, (
+                f"next={token!r} on request {len(self.asked_for) + 1}, but the "
+                f"previous page handed out {self.handed_out!r}: a walk starts "
+                f"without a token and continues with exactly the one it was given"
+            )
+            return self._page(token)
 
         def application_box_by_name(self, app_id: int, name: bytes) -> dict:
             return {"value": base64.b64encode(self.values[name]).decode()}

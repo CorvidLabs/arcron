@@ -81,16 +81,16 @@ def main(argv: list[str] | None = None) -> None:
         default_sender=deployer.address, default_signer=deployer.signer,
     )
 
-    boxes = algod.application_boxes(args.app_id).get("boxes", [])
-    if not boxes:
+    # The same paged listing every other reader uses. This was an unpaginated
+    # `application_boxes` call, the shape #250 F05 found fails outright at the
+    # node's listing cap, and a reclaim that cannot list cannot refund.
+    names = keeper_bot._box_names(algod, args.app_id)
+    if not names:
         logger.info(f"app {args.app_id} has no upkeeps. Nothing to reclaim.")
         return
 
     decoded = []
-    for box in boxes:
-        name = base64.b64decode(box["name"])
-        if name[:1] != b"u":
-            continue
+    for name in names:
         upkeep_id = int.from_bytes(name[1:9], "big")
         raw = base64.b64decode(algod.application_box_by_name(args.app_id, name)["value"])
         upkeep = keeper_bot._decode_upkeep(upkeep_id, raw)

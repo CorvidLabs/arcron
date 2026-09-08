@@ -572,6 +572,21 @@ def test_installing_covers_an_endpoint_it_was_never_told_about() -> None:
     assert client.node.calls == 2
 
 
+def test_the_readers_own_listing_request_is_retried() -> None:
+    """`keeper_bot._box_page` calls `algod_request` directly, because the typed
+    `application_boxes` cannot page. The wrapper is installed on that same
+    attribute, so the readers' listing gets the retry without going through a
+    typed method at all. Proved on the reader itself rather than on a request
+    shaped like it: a wrapper on the wrong attribute would pass the latter."""
+    from scripts import keeper_bot
+
+    client = _FakeAlgod(algod_error(LIVE_403, 403), {"boxes": [], "round": 7})
+    install(client, sleep=_Clock())
+
+    assert keeper_bot._box_page(client, 769891898, None) == {"boxes": [], "round": 7}
+    assert client.node.calls == 2
+
+
 def test_installing_twice_does_not_nest_the_retries() -> None:
     """Five attempts nested inside five is twenty-five, and four seconds
     becomes over a minute. `connect` is called once per script, but a script
