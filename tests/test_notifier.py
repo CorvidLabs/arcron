@@ -1478,3 +1478,173 @@ def test_mainnet_starts_with_a_state_file(monkeypatch, tmp_path) -> None:
 def test_the_attribution_comment_names_the_quota_cost() -> None:
     source = NOTIFIER_SOURCE.read_text()
     assert "meters by bytes" in source and "our own node" in source
+
+
+# --- round four: the snapshot file gets the pending file's treatment --------
+
+def test_a_snapshot_with_string_numbers_is_repaired_on_load(tmp_path, caplog) -> None:
+    """`"balance": "10000"` made `diff` raise at `_burst_cost` on every loop."""
+    import logging
+
+    from scripts import notifier
+
+    path = tmp_path / "notifier.json"
+    good = snapshot([upkeep(upkeep_id=1), upkeep(upkeep_id=2)]).to_json()
+    good["upkeeps"]["1"]["balance"] = "10000"
+    good["upkeeps"]["1"]["fee_cap"] = 12000.0
+    good["upkeeps"]["2"]["balance"] = "lots"           # beyond repair
+    good["upkeeps"]["3"] = "not an object"              # beyond repair
+    good["dormant"] = ["2", "x", 4]
+    good["last_round"] = "1000"
+    path.write_text(json.dumps(good))
+
+    with caplog.at_level(logging.WARNING, logger=notifier.logger.name):
+        restored = load(path)
+    assert set(restored.upkeeps) == {1}
+    assert restored.upkeeps[1]["balance"] == 10_000 and restored.upkeeps[1]["fee_cap"] == 12_000
+    assert restored.dormant == {2, 4}
+    assert restored.last_round == 1_000
+    messages = [r.message for r in caplog.records]
+    assert any("balance='10000' read as 10000" in m for m in messages)
+    assert any("upkeep 2 has balance='lots'" in m for m in messages)
+    assert any("'3' is not an upkeep" in m for m in messages)
+    assert any("'x' is not an upkeep id" in m for m in messages)
+    # And the point: arithmetic on it works.
+    diff(restored, snapshot([upkeep(upkeep_id=1, times_executed=1, balance=6_000)]))
+
+
+def test_as_int_refuses_what_is_not_a_whole_number() -> None:
+    from scripts.notifier import _as_int
+
+    assert [_as_int(v) for v in (5, "5", " 5 ", 5.0)] == [5, 5, 5, 5]
+    assert [_as_int(v) for v in (True, 5.5, "5.0", "five", None, [5], float("inf"))] == [None] * 7
+
+
+def test_a_corrupt_snapshot_does_not_stop_scanning_or_hide_a_stranger(monkeypatch, tmp_path) -> None:
+    from scripts import notifier
+
+    state = tmp_path / "notifier.json"
+    broken = snapshot([upkeep()], current_round=1_000).to_json()
+    broken["upkeeps"]["1"]["balance"] = "12000"
+    state.write_text(json.dumps(broken))
+
+    after = [upkeep(times_executed=1, balance=8_000, next_execution_round=1_010),
+             upkeep(upkeep_id=7, creator=STRANGER, interval_rounds=1_000)]
+    urlopen = _scripted_urlopen([])
+    _run_main(monkeypatch, tmp_path, registries=[after], urlopen=urlopen, clock=_Clock())
+    assert "Upkeep 7 was registered by" in urlopen.calls[0]
+    assert any("Upkeep 1 executed" in c for c in urlopen.calls), "the repaired snapshot diffed"
+    assert json.loads(state.read_text())["last_round"] == 1_100, "and the scan counted"
+
+
+def test_a_stranger_is_recorded_even_when_diff_raises(monkeypatch, tmp_path, caplog) -> None:
+    """Observation of a stranger must not depend on the previous snapshot
+    being sane: a stranger is a fact about the current registry."""
+    import logging
+
+    from scripts import notifier
+
+    def broken_diff(previous, current, known_creators=frozenset()):
+        raise TypeError("unsupported operand type(s) for -: 'str' and 'int'")
+
+    monkeypatch.setattr(notifier, "diff", broken_diff)
+    state = tmp_path / "notifier.json"
+    registry = [upkeep(), upkeep(upkeep_id=7, creator=STRANGER, interval_rounds=1_000)]
+    urlopen = _scripted_urlopen([])
+    with caplog.at_level(logging.WARNING, logger=notifier.logger.name):
+        _run_main(monkeypatch, tmp_path, registries=[registry, registry], urlopen=urlopen, clock=_Clock())
+    assert any("unsupported operand" in r.message for r in caplog.records), "the error is still reported"
+    # Recorded during the first scan, delivered at the top of the second.
+    assert [c for c in urlopen.calls if "Upkeep 7 was registered by" in c]
+    assert notifier.PendingStrangers.load(notifier.pending_path(state)).records == {}
+
+
+def test_strangers_in_needs_no_previous_snapshot() -> None:
+    from scripts.notifier import strangers_in
+
+    current = snapshot([upkeep(), upkeep(upkeep_id=7, creator=STRANGER)])
+    events = strangers_in(current, frozenset({OURS}))
+    assert [(e.kind, e.upkeep_id) for e in events] == [("stranger", 7)]
+    assert events[0].text == _stranger_event(7).text, "the same alert diff would have raised"
+    assert strangers_in(current, frozenset()) == [], "no allowlist, nobody is a stranger"
+
+
+def test_a_last_attempt_in_the_future_does_not_mute_the_alert(tmp_path, monkeypatch, caplog) -> None:
+    """`Infinity` is legal JSON to Python, and a clock stepped back leaves a
+    real timestamp ahead of now; either way `now - last` never reached the
+    window and the alert was muted for good."""
+    import logging
+
+    from scripts import notifier
+
+    monkeypatch.setattr(notifier.time, "time", lambda: 1_000_000.0)
+    path = tmp_path / "pending.json"
+    path.write_text(json.dumps({
+        "testnet/1/7": {"upkeep_id": 7, "first_seen_round": 1, "first_seen_at": "x",
+                        "last_attempt": float("inf"), "text": "seven"},
+        "testnet/1/8": {"upkeep_id": 8, "first_seen_round": 1, "first_seen_at": "x",
+                        "last_attempt": 1_000_000.0 + 7 * 3600, "text": "eight"},
+    }))
+    with caplog.at_level(logging.WARNING, logger=notifier.logger.name):
+        pending = notifier.PendingStrangers.load(path)
+    assert pending.records["testnet/1/7"]["last_attempt"] is None
+    assert pending.records["testnet/1/8"]["last_attempt"] is None
+    assert sum("not a past time" in r.message for r in caplog.records) == 2
+
+    up = _scripted_urlopen([])
+    monkeypatch.setattr(notifier.time, "sleep", lambda s: None)
+    monkeypatch.setattr(notifier.urllib.request, "urlopen", up)
+    pending.deliver("https://discord.invalid/webhook")
+    assert sorted(up.calls) == ["eight", "seven"]
+
+    # And at run time, should the clock move after load.
+    again = notifier.PendingStrangers(path, {"testnet/1/9": {
+        "upkeep_id": 9, "first_seen_round": 1, "first_seen_at": "x",
+        "last_attempt": 1_000_000.0 + 7 * 3600, "text": "nine"}})
+    again.deliver("https://discord.invalid/webhook", now=1_000_000.0)
+    assert up.calls[-1] == "nine"
+
+
+def test_the_snapshot_does_not_advance_on_disk_past_an_unrecorded_sighting(
+    monkeypatch, tmp_path, caplog
+) -> None:
+    """If the pending write fails and the snapshot write succeeds, the disk
+    says "already seen" about a stranger no file records, which is the one
+    loss this arrangement exists to rule out."""
+    import logging
+
+    from scripts import notifier
+
+    def refuse(self) -> None:
+        raise OSError(13, "Permission denied", str(self.path))
+
+    monkeypatch.setattr(notifier.PendingStrangers, "save", refuse)
+    state = tmp_path / "notifier.json"
+    quiet = [upkeep()]
+    with_stranger = [upkeep(), upkeep(upkeep_id=7, creator=STRANGER, interval_rounds=1_000)]
+    urlopen = _scripted_urlopen([])
+    with caplog.at_level(logging.ERROR, logger=notifier.logger.name):
+        _run_main(monkeypatch, tmp_path, registries=[quiet, with_stranger], urlopen=urlopen,
+                  clock=_Clock())
+    on_disk = json.loads(state.read_text())
+    assert on_disk["last_round"] == 1_100, "the first scan's snapshot, not the second's"
+    assert "7" not in on_disk["upkeeps"]
+    assert any("Not advancing the snapshot on disk" in r.message for r in caplog.records)
+    # Delivery itself was not held back: memory moved on, only the disk waited.
+    assert any("Upkeep 7 was registered by" in c for c in urlopen.calls)
+
+
+def test_a_successful_pending_write_lets_the_snapshot_advance_again(tmp_path, monkeypatch) -> None:
+    """The hold-back is per write, not for the rest of the process."""
+    from scripts import notifier
+
+    pending = notifier.PendingStrangers(tmp_path / "pending.json")
+    real_write = notifier._write_json
+    monkeypatch.setattr(notifier, "_write_json",
+                        lambda path, payload: (_ for _ in ()).throw(OSError(13, "denied", str(path))))
+    pending.add("testnet", 1, _stranger_event(7), current_round=1)
+    assert pending.unsaved is True
+    monkeypatch.setattr(notifier, "_write_json", real_write)  # the directory was fixed
+    pending.add("testnet", 1, _stranger_event(8), current_round=2)
+    assert pending.unsaved is False
+    assert set(json.loads((tmp_path / "pending.json").read_text())) == {"testnet/1/7", "testnet/1/8"}

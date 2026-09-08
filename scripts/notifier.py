@@ -43,6 +43,7 @@ import base64
 import hashlib
 import json
 import logging
+import math
 import os
 import time
 import urllib.error
@@ -192,14 +193,93 @@ class Snapshot:
             "last_round": self.last_round,
         }
 
+    # What `diff`, `_fee_now` and `_burst_cost` do arithmetic on. The first
+    # six are read unconditionally; the rest are optional because a snapshot
+    # written before escalation or asset fees existed has none of them.
+    REQUIRED_INTS = (
+        "times_executed", "balance", "fee_per_execution", "interval_rounds",
+        "next_execution_round", "target_app",
+    )
+    OPTIONAL_INTS = ("policy", "fee_cap", "fee_asset", "last_serviced_round")
+
     @classmethod
     def from_json(cls, payload: dict) -> "Snapshot":
-        return cls(
-            upkeeps={int(k): v for k, v in payload.get("upkeeps", {}).items()},
-            dormant=set(payload.get("dormant", [])),
-            stalled=set(payload.get("stalled", [])),
-            last_round=int(payload.get("last_round", 0)),
-        )
+        """A snapshot from disk, with every number checked to be one.
+
+        Shape alone was checked before, and a hand-edited `"balance":
+        "10000"` made `diff` raise at `_burst_cost` on every loop: the retry
+        clause slept through it, the scan counter never moved, and a stranger
+        in that same scan never reached the pending file. Each numeric field
+        is coerced, each repair is logged, and an upkeep that cannot be made
+        whole is treated as absent rather than kept broken: it will be
+        announced as registered (or as a stranger) on the next diff, which is
+        a duplicate, and the log says why.
+        """
+        upkeeps: dict[int, dict] = {}
+        for raw_key, raw_state in (payload.get("upkeeps") or {}).items():
+            upkeep_id = _as_int(raw_key)
+            state = dict(raw_state) if isinstance(raw_state, dict) else None
+            if upkeep_id is None or state is None:
+                logger.warning(f"Snapshot entry {raw_key!r} is not an upkeep; treating it as absent")
+                continue
+            broken = False
+            for name in cls.REQUIRED_INTS + cls.OPTIONAL_INTS:
+                if name not in state:
+                    if name in cls.REQUIRED_INTS:
+                        broken = True
+                        logger.warning(f"Snapshot upkeep {upkeep_id} has no {name}")
+                    continue
+                value = _as_int(state[name])
+                if value is None:
+                    broken = True
+                    logger.warning(
+                        f"Snapshot upkeep {upkeep_id} has {name}={state[name]!r}, not an integer"
+                    )
+                elif value != state[name] or not isinstance(state[name], int):
+                    logger.warning(f"Snapshot upkeep {upkeep_id}: {name}={state[name]!r} read as {value}")
+                    state[name] = value
+            if broken:
+                logger.warning(f"Snapshot upkeep {upkeep_id} cannot be repaired; treating it as absent")
+                continue
+            upkeeps[upkeep_id] = state
+
+        def ids(name: str) -> set[int]:
+            out: set[int] = set()
+            for raw in payload.get(name) or []:
+                value = _as_int(raw)
+                if value is None:
+                    logger.warning(f"Snapshot {name} entry {raw!r} is not an upkeep id; dropped")
+                else:
+                    out.add(value)
+            return out
+
+        last_round = _as_int(payload.get("last_round", 0))
+        if last_round is None:
+            logger.warning(f"Snapshot last_round={payload.get('last_round')!r} is not an integer; using 0")
+            last_round = 0
+        return cls(upkeeps=upkeeps, dormant=ids("dormant"), stalled=ids("stalled"), last_round=last_round)
+
+
+def _as_int(value: object) -> int | None:
+    """An integer read from JSON that may have been edited by hand, or None.
+
+    Accepts an int, an integral float (JSON has one number type and some
+    editors write `5.0`), or a string of digits. Refuses booleans, which are
+    ints to Python and never to anyone editing a state file, and anything
+    else.
+    """
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value) if math.isfinite(value) and value == int(value) else None
+    if isinstance(value, str):
+        try:
+            return int(value.strip())
+        except ValueError:
+            return None
+    return None
 
 
 def _algos(micro_algo: int) -> str:
@@ -240,25 +320,7 @@ def diff(
                 # empty, a stranger already present is exactly the thing being
                 # watched for, and the flood this suppression avoids does not
                 # exist.
-                events.append(
-                    Event(
-                        "stranger",
-                        upkeep_id,
-                        f"🚨 **Upkeep {upkeep_id} was registered by {creator}, who is "
-                        f"not one of us.** Somebody has escrowed real value into a "
-                        f"deployment whose id was never published, and while it is "
-                        f"unfrozen they are trusting a keyholder they did not agree to. "
-                        f"This needs an **operator decision within 24 hours** of first "
-                        f"sighting, recorded with who decided and on what evidence: "
-                        f"freeze, only if the running bytecode is already accepted for "
-                        f"permanence; or run an already-approved update sequence; or "
-                        f"explicitly accept the temporary unfrozen exposure while "
-                        f"responding. Not an automatic freeze, not an unsoaked update, "
-                        f"and not cancel: `cancel` is creator-only, so their box cannot "
-                        f"be removed by us. Targets app {now['target_app']}, every "
-                        f"{now['interval_rounds']} rounds.",
-                    )
-                )
+                events.append(_stranger_event(upkeep_id, now))
             elif previous.upkeeps:  # a first run is not a flood of "new upkeep"
                 events.append(
                     Event(
@@ -325,6 +387,49 @@ def diff(
         )
 
     return events
+
+
+def _stranger_event(upkeep_id: int, state: dict) -> Event:
+    """The alert for an upkeep whose creator is not one of ours.
+
+    Built from the current state alone, so it can be raised with or without a
+    previous snapshot: `diff` uses it for a creator that just appeared, and
+    `strangers_in` for the case where `diff` itself cannot run.
+    """
+    return Event(
+        "stranger",
+        upkeep_id,
+        f"🚨 **Upkeep {upkeep_id} was registered by {state.get('creator', '')}, who is "
+        f"not one of us.** Somebody has escrowed real value into a "
+        f"deployment whose id was never published, and while it is "
+        f"unfrozen they are trusting a keyholder they did not agree to. "
+        f"This needs an **operator decision within 24 hours** of first "
+        f"sighting, recorded with who decided and on what evidence: "
+        f"freeze, only if the running bytecode is already accepted for "
+        f"permanence; or run an already-approved update sequence; or "
+        f"explicitly accept the temporary unfrozen exposure while "
+        f"responding. Not an automatic freeze, not an unsoaked update, "
+        f"and not cancel: `cancel` is creator-only, so their box cannot "
+        f"be removed by us. Targets app {state.get('target_app')}, every "
+        f"{state.get('interval_rounds')} rounds.",
+    )
+
+
+def strangers_in(current: Snapshot, known_creators: frozenset[str]) -> list[Event]:
+    """Every upkeep in one snapshot whose creator is not in the allowlist.
+
+    Needs no previous snapshot: a stranger is a fact about the registry as it
+    stands, not about what changed. This is the fallback the scan loop uses
+    when `diff` raises, so that a corrupt previous snapshot cannot hide a
+    sighting. With no allowlist nobody is a stranger, as in `diff`.
+    """
+    if not known_creators:
+        return []
+    return [
+        _stranger_event(upkeep_id, state)
+        for upkeep_id, state in sorted(current.upkeeps.items())
+        if state.get("creator", "") not in known_creators
+    ]
 
 
 def _fee_now(state: dict, current_round: int) -> int:
@@ -635,8 +740,9 @@ def _log_write_failure(path: Path | None, what: str, exc: OSError) -> None:
     unwritable is worth a line per scan in the journal.
     """
     logger.error(
-        f"Could not write {path} ({what}): {exc}. Continuing from memory; a restart "
-        f"will replay what was announced since the last successful write."
+        f"Could not write {path} ({what}): {exc}. Continuing from memory. The snapshot "
+        f"is not advanced on disk while a sighting is unrecorded, so a restart replays "
+        f"from the last write that succeeded rather than skipping past one."
     )
 
 
@@ -689,6 +795,11 @@ class PendingStrangers:
     def __init__(self, path: Path | None, records: dict[str, dict] | None = None) -> None:
         self.path = path
         self.records: dict[str, dict] = records or {}
+        # Whether the file on disk is behind what is in memory. Set when a
+        # save fails, cleared when one succeeds; the scan loop reads it and
+        # holds the snapshot back while it is set, so the disk can never say
+        # "seen" about a stranger it has not recorded.
+        self.unsaved = False
 
     @classmethod
     def load(cls, path: Path | None) -> "PendingStrangers":
@@ -770,7 +881,19 @@ class PendingStrangers:
         record["upkeep_id"] = coerce("upkeep_id", int, id_from_key)
         record["first_seen_round"] = coerce("first_seen_round", int, 0)
         record["first_seen_at"] = coerce("first_seen_at", str, "unknown")
-        record["last_attempt"] = coerce("last_attempt", float, None, allow_none=True)
+        last_attempt = coerce("last_attempt", float, None, allow_none=True)
+        if last_attempt is not None and (not math.isfinite(last_attempt) or last_attempt > time.time()):
+            # `Infinity` is legal JSON to Python, and a clock stepped back can
+            # leave a real timestamp in the future; either way `now - last`
+            # never reaches the window and the alert is muted for good. Read
+            # as never attempted, and `deliver` guards the same way at run
+            # time in case the clock moves after load.
+            logger.warning(
+                f"Pending stranger record {key} has last_attempt={last_attempt!r}, which is "
+                f"not a past time; treating it as never attempted"
+            )
+            last_attempt = None
+        record["last_attempt"] = last_attempt
         text = coerce("text", str, "")
         record["text"] = text or (
             f"🚨 **Upkeep {record['upkeep_id']} was registered by somebody who is not one "
@@ -791,7 +914,9 @@ class PendingStrangers:
     def _save_or_log(self, what: str) -> None:
         try:
             self.save()
+            self.unsaved = False
         except OSError as exc:
+            self.unsaved = True
             _log_write_failure(self.path, what, exc)
 
     @staticmethod
@@ -838,7 +963,9 @@ class PendingStrangers:
         for key in sorted(self.records, key=lambda k: (self.records[k]["first_seen_round"], k)):
             record = self.records[key]
             last = record.get("last_attempt")
-            if last is not None and now - last < STRANGER_RETRY_SECONDS:
+            # A last attempt in the future is a clock that moved, not a
+            # record inside its window; it counts as never attempted.
+            if last is not None and last <= now and now - last < STRANGER_RETRY_SECONDS:
                 continue
             record["last_attempt"] = now
             self._save_or_log("pacing a retry")
@@ -1030,7 +1157,17 @@ def main(argv: list[str] | None = None) -> None:
 
             current_round = algod.status()["last-round"]
             snapshot = Snapshot.of(scan_upkeeps(algod, app_id), current_round)
-            events = diff(previous, snapshot, known_creators)
+            try:
+                events = diff(previous, snapshot, known_creators)
+            except Exception:
+                # Seeing a stranger must not depend on the previous snapshot
+                # being sane. `from_json` repairs what it can, but if `diff`
+                # still raises, a stranger is "a creator not in --ours on any
+                # upkeep in the current scan", which needs no previous at
+                # all; record those before the error goes to the retry clause.
+                for event in strangers_in(snapshot, known_creators):
+                    pending.add(args.network, app_id, event, current_round)
+                raise
 
             # New strangers to disk first, then to Discord first. The snapshot
             # is not advanced until the end of the scan, so a crash anywhere in
@@ -1042,7 +1179,10 @@ def main(argv: list[str] | None = None) -> None:
             for event in events:
                 if event.kind == "stranger":
                     pending.add(args.network, app_id, event, current_round)
-            pending.deliver(webhook)
+            try:
+                pending.deliver(webhook)
+            except Exception as exc:
+                logger.error(f"Delivering pending stranger alerts failed ({exc!r}); finishing the scan")
 
             # One pass over the window's blocks for the whole scan, however
             # many upkeeps ran in it; read lazily, so a quiet scan costs no
@@ -1069,7 +1209,18 @@ def main(argv: list[str] | None = None) -> None:
                 time.sleep(POST_INTERVAL_SECONDS)
 
             previous = snapshot
-            save_or_log(path, snapshot)
+            if pending.unsaved:
+                # The disk has not taken this scan's sighting. A snapshot that
+                # advanced past it would tell the next start "already seen"
+                # about a stranger no file records, which is the one loss this
+                # whole arrangement exists to rule out. Memory moves on; the
+                # disk waits for the pending write to succeed.
+                logger.error(
+                    f"Not advancing the snapshot on disk: {pending.path} could not be "
+                    f"written this scan, and the snapshot must not get ahead of it"
+                )
+            else:
+                save_or_log(path, snapshot)
             scans += 1
             if args.summary_every > 0 and scans % args.summary_every == 0:
                 if not post(webhook, summarise(snapshot, executions_since_summary, paid_since_summary)):
