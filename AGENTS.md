@@ -21,7 +21,11 @@ TestNet (app 769891898; 769802474 and 769772891 are superseded and predate the
   programs have been installed, from indexer history rather than app age, and
   it refuses to count once the local build stops matching the chain or the
   history cannot be read), `fledge run keeper-ui` (a local dashboard on 4300, never
-  published).
+  published), and `fledge run preflight`, which is every live check the
+  MainNet rollout owes in one run (node version and genesis, a real paged box
+  listing, the deployed digest, the indexer's install history, solvency,
+  strangers, and what the rehearsal throwaway is short). `-- --markdown`
+  prints rows for the evidence table in `docs/design/mainnet-rollout.md`.
 - Fixing what `health` finds starving: `fledge run topup` prices every upkeep in
   **days of runway** and prints the top-ups that reach 30 of them. Planning is
   read-only; `fledge run topup -- --send` is the one that signs. It refuses to

@@ -64,6 +64,12 @@ and `notifier.env`, which both carry a commented block for it:
 create ceremony. The bot refuses to start on MainNet without the flag, and the
 notifier refuses without `ARCRON_OURS` and a webhook.
 
+Once it is installed, run `fledge run preflight` from the VPS, pointed at the
+node the units will use. It is read-only and it answers the one question an
+install cannot: whether that node serves a paged box listing at all. A node
+below algod 4.7 is refused by every reader here, loudly, and it is better to
+learn that before the seven days of G1 start than during them.
+
 The fourth thing is the node. The free public endpoint sheds requests once a
 daily quota is crossed, and the laptop keeper on TestNet was refused 4,949
 times in one log by it (`scripts/node_retry.py` has the measurement). A keeper

@@ -445,16 +445,98 @@ Angular CLI refuses 22.22.2 by one patch version). No chain was reachable.
 | LocalNet lane (`smoke-keeper`, `smoke-govern`, `smoke-multisig`, `smoke-clawback`, `attacks`, `hostile-target`, `smoke-reference-boundary`) | **not run**, no Docker. Owed by whoever runs G1, as the review said. |
 | the live TestNet node's answer to a paged box listing | **not run.** The egress policy here refuses `testnet-api.algonode.cloud` and `testnet-idx.algonode.cloud` outright (HTTP 403 on CONNECT, from `curl` and from the fetch tool alike), so the F05 request shape and the F03 indexer query have only ever met fakes and the spec. |
 
-The two probes that close the last row take a minute from any machine that
-can reach TestNet, and belong in this table with their output before G2:
+That last row is now one command rather than four, because a row nobody can
+run is a row nobody runs:
 
 ```sh
-curl -s https://testnet-api.algonode.cloud/versions | jq .build          # major 4, minor >= 7, or 5
-curl -s 'https://testnet-api.algonode.cloud/v2/applications/769891898/boxes?limit=2' | jq 'keys'   # ["boxes","next-token","round"]
-fledge run health                                                          # the readers, against the real node
-fledge run clock                                                           # the indexer walk: expect the alpha-3 update round, not the create
+fledge run preflight -- --markdown --ours <every address of ours>
 ```
 
-A `/versions` below 4.7 or a listing without `round` means every reader on
-this branch refuses that node, loudly, which is the intended behaviour and
-also a reason not to merge until the node in front of G1 is newer.
+`scripts/preflight.py` asks the node its version and genesis, requests a real
+paged box listing, compares the deployed digest against this tree, walks the
+indexer's install history, reads solvency, counts who would be announced as a
+stranger, and prices what the rehearsal throwaway is still short. It signs
+nothing and holds no key, which a test pins. `--markdown` prints the rows to
+paste back into this table, so the record is the run rather than a
+transcription of it. It exits non-zero if any check failed; a check it had to
+skip is not evidence and says so.
+
+A `/versions` below 4.7 or a listing without `round` means every reader here
+refuses that node, loudly. That is the intended behaviour and it is also the
+first thing to learn about the node in front of G1, which is why it is check
+one rather than a footnote.
+
+## What to run next, in order
+
+Everything above that is not yet evidence needs a chain. This is that work,
+ordered so each step's output is the next step's input. Nothing here changes
+the contract; the digest stays `c94c6e0c…` until alpha-4.
+
+**1. Preflight against TestNet.** Closes the last F11 row and tells you
+whether the node you are about to build G1 on is one the readers accept.
+
+```sh
+fledge run preflight -- --markdown --ours <every address of ours>
+```
+
+Paste the rows into the F11 table with the date. Expect `clock` to name the
+alpha-3 update round rather than the alpha-2 create: that difference is the
+whole of F03, and seeing it on a real indexer is what turns the fix from
+argued into observed.
+
+**2. Fund the rehearsal throwaway.** The ceremony rehearsal has been blocked
+on this since 2026-09-05, and preflight's last check prints the shortfall in
+µALGO rather than leaving it as a sentence. The creator is
+`CVM4NOTWQYDRAUVF3EYHLZJXWERUI33GLFCNAV4MR4YVNOT6Z3XJMDGKNE`; the TestNet
+dispenser is the way to close it.
+
+**3. The ceremony rehearsal on TestNet, with a code-changing update.** This
+is [#250](https://github.com/CorvidLabs/arcron/issues/250) F10, and the part
+LocalNet could not give: a creator that has never made an app, a public node
+in the loop, and an `update` that actually replaces bytes. The LocalNet
+rehearsals only ever saw `Deployed programs already match this tree. Nothing
+to do.`, which proves a refusal and not a path.
+
+```sh
+git switch --detach <the commit under review>  # `mainnet-1` does not exist until G2 tags it
+export DEPLOYER_MNEMONIC=...                  # the throwaway, never corvid.algo
+fledge run deploy-testnet -- --with-pulse     # note the app id it prints
+fledge run govern -- status --network testnet --app-id <id>
+poetry run python -m scripts.verify_build --network testnet --app-id <id>
+```
+
+Then make the update a real one. Change one bound that no live upkeep
+approaches and that leaves the `Upkeep` struct and the ABI surface untouched,
+commit it on a scratch branch that is never merged, and update:
+
+```sh
+git switch -c rehearsal-update
+sed -i 's/^MAX_INTERVAL_ROUNDS = 1_000_000_000$/MAX_INTERVAL_ROUNDS = 999_999_999/' smart_contracts/keeper/contract.py
+poetry run python -m smart_contracts build && git commit -am "Rehearsal only: a byte that differs"
+fledge run govern -- update --network testnet --app-id <id>       # must NOT say "already match"
+poetry run python -m scripts.verify_build --network testnet --app-id <id>
+fledge run preflight -- --app-id <id>          # clock's install round is now this update, not the create
+fledge run govern -- freeze --network testnet --app-id <id>
+fledge run govern -- update --network testnet --app-id <id>       # must refuse: frozen
+```
+
+Record all of it in the Rehearsal record above, then delete the scratch
+branch. The tree that reaches MainNet is `mainnet-1`, not this.
+
+**4. The LocalNet lane.** The chain-facing half of F11, which no machine
+without Docker can produce.
+
+```sh
+algokit localnet start && fledge lanes run local
+```
+
+**5. G1.** A VPS runs the keeper and the notifier against TestNet from `main`,
+with a node of our own or a fallback, and the notifier posts to Discord for
+seven days. `deploy/vps/install.sh` is the install and
+[`../hosting.md`](../hosting.md) is the detail. Two things make the week
+count rather than merely pass: `--summary-every` on, so the *absence* of a
+periodic summary is the alarm the runbook says it is, and a preflight run
+against the VPS's own node, because check one is the only thing that says
+whether that node can serve a paged listing at all.
+
+Then, and not before, G2.

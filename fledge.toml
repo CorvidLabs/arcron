@@ -79,6 +79,15 @@ topup = "poetry run python -m scripts.keeper_topup --network testnet --app-id 76
 # Would running a keeper here be worth it? Measured from the chain rather than
 # argued from the docs, so alpha task #93 can be decided before it is started.
 keeper-preview = "poetry run python -m scripts.keeper_preview --network testnet --app-id 769891898"
+# Every live check the rollout plan owes, in one read-only run: the node's
+# version and genesis, a real paged box listing, the deployed digest against
+# this tree, the indexer's install history, solvency, who would be announced
+# as a stranger, and whether the rehearsal throwaway is funded. It signs
+# nothing and holds no key. `-- --markdown` prints rows to paste into the F11
+# evidence table in docs/design/mainnet-rollout.md, which is where this
+# belongs: until it has run against a real node, the box paging and the
+# install-history walk have only ever met fakes and the published specs.
+preflight = "poetry run python -m scripts.preflight --network testnet --app-id 769891898"
 # The same three against MainNet. No app id here on purpose: the MainNet id
 # stays out of the tree until the deployment is frozen, so these read it from
 # KEEPER_APP_ID in .env.mainnet, and each needs ARCRON_ALLOW_MAINNET=1
@@ -88,6 +97,7 @@ keeper-preview = "poetry run python -m scripts.keeper_preview --network testnet 
 health-mainnet = "poetry run python -m scripts.registry_health --network mainnet"
 clock-mainnet = "poetry run python -m scripts.mainnet_clock --network mainnet"
 keeper-preview-mainnet = "poetry run python -m scripts.keeper_preview --network mainnet"
+preflight-mainnet = "poetry run python -m scripts.preflight --network mainnet"
 
 # --- Running a keeper that is actually up ---------------------------------
 # `.github/workflows/keeper-bot.yml` asks for a run every thirty minutes and
