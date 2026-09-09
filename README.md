@@ -361,10 +361,11 @@ simulates what is due, so an upkeep whose fee has escalated to the ceiling is
 not counted as money on the table when its target reverts.
 
 `preflight` is the one to run before trusting a node with any of the others.
-It asks that node its version and genesis, requests a real paged box listing,
-compares the deployed programs against this tree, walks the indexer for the
-round the current programs were installed, reads solvency, and counts how many
-creators a watcher would announce as strangers. Every one of those is a
+It asks that node its version and genesis, checks the app id is a keeper,
+requests a real paged box listing, compares the deployed programs against this
+tree, walks the indexer for the round the current programs were installed,
+reads solvency, and counts how many creators a watcher would announce as
+strangers. Every one of those is a
 question the rest of this repository answers against mocks; this is the one
 command that puts them to a chain, and `-- --markdown` prints the answers as
 rows to keep. It exits non-zero if any of them failed.

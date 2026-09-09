@@ -77,16 +77,21 @@ either: the node lives in `/etc/arcron/*.env`. Run the module, and source the
 id, the node and `ARCRON_OURS` while the keeper's carries a mnemonic that a
 read-only tool has no business having in its environment:
 
+`install.sh` writes that file `640 root:keeper`, so the read needs root:
+
 ```bash
-cd /opt/arcron
-set -a && . /etc/arcron/notifier.env && set +a
-poetry run python -m scripts.preflight \
-    --network "$ARCRON_NETWORK" --app-id "$KEEPER_APP_ID" --ours "$ARCRON_OURS"
+sudo -i sh -c 'cd /opt/arcron \
+  && set -a && . /etc/arcron/notifier.env \
+  && INDEXER_SERVER=https://testnet-idx.algonode.cloud \
+  && set +a \
+  && poetry run python -m scripts.preflight \
+       --network "$ARCRON_NETWORK" --app-id "$KEEPER_APP_ID" --ours "$ARCRON_OURS"'
 ```
 
-The clock check wants `INDEXER_SERVER`, which that file does not set because
-the notifier needs no indexer. Either export one for the run or read that row
-as the skip it will be.
+The `INDEXER_SERVER` on that third line is there because the notifier needs no
+indexer and its env file therefore sets none, while the clock check fails
+closed without one. It is a fail rather than a skip, deliberately: an install
+round nobody can read is not a hold anybody should count.
 
 The fourth thing is the node. The free public endpoint sheds requests once a
 daily quota is crossed, and the laptop keeper on TestNet was refused 4,949
