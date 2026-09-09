@@ -97,6 +97,9 @@ preflight = "poetry run python -m scripts.preflight --network testnet --app-id 7
 health-mainnet = "poetry run python -m scripts.registry_health --network mainnet"
 clock-mainnet = "poetry run python -m scripts.mainnet_clock --network mainnet"
 keeper-preview-mainnet = "poetry run python -m scripts.keeper_preview --network mainnet"
+# Needs ARCRON_OURS as well as KEEPER_APP_ID in .env.mainnet: without an
+# allowlist the stranger check cannot answer, and a clean exit that skipped
+# the one MainNet-critical question is worse than a refusal.
 preflight-mainnet = "poetry run python -m scripts.preflight --network mainnet"
 
 # --- Running a keeper that is actually up ---------------------------------

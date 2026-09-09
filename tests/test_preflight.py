@@ -26,6 +26,7 @@ from algosdk import encoding, error
 from algosdk.logic import get_application_address
 
 from scripts import preflight, verify_build
+from scripts.keeper_bot import scan_upkeeps
 from scripts.preflight import (
     CHECKS,
     FAIL,
@@ -33,6 +34,7 @@ from scripts.preflight import (
     REHEARSAL_ALGO,
     REHEARSAL_CREATOR,
     SKIP,
+    check_app,
     check_boxes,
     check_build,
     check_clock,
@@ -63,9 +65,20 @@ CURRENT_BUILD = {
 }
 TESTNET_VERSIONS = {"genesis_id": "testnet-v1.0", "build": dict(CURRENT_BUILD)}
 
+ALGOD_ADDRESS = "https://node.of.ours.example"
+INDEXER_ADDRESS = "https://indexer.of.ours.example"
+
+#: An account's own minimum balance, which it cannot spend and which the
+#: rehearsal therefore cannot use.
+ACCOUNT_MBR = 100_000
+
 ROUND = 66_894_910
 CREATED_ROUND = 66_000_000
 UPDATED_ROUND = 66_500_000
+
+#: A throwaway with the two ALGO the ceremony needs *spendable*, which is the
+#: two ALGO plus the account minimum it can never spend.
+REHEARSAL_FUNDED = {REHEARSAL_CREATOR: {"amount": REHEARSAL_ALGO + ACCOUNT_MBR, "min-balance": ACCOUNT_MBR}}
 
 #: What the local artifacts hash to, and what the fake chain therefore serves
 #: back when the deployment is meant to be this tree.
@@ -111,6 +124,10 @@ class PreflightAlgod(CountingAlgod):
         accounts: dict[str, dict] | None = None,
     ) -> None:
         super().__init__(chain)
+        # The endpoint the report has to name: a row that cannot tell our own
+        # node from a public one does not answer G1's "against the VPS's own
+        # node", which is the reason the address is in the header at all.
+        self.algod_address = ALGOD_ADDRESS
         self._versions = TESTNET_VERSIONS if versions is None else versions
         self._programs = LOCAL_PROGRAMS if programs is None else programs
         approval, clear = self._programs
@@ -151,6 +168,8 @@ class FakeIndexer:
     transaction against the app with `on-completion: update`, and one page
     with no `next-token` is a walk that reached the end.
     """
+
+    indexer_address = INDEXER_ADDRESS
 
     def __init__(self, *, updates: tuple[int, ...] = (UPDATED_ROUND,), raises: Exception | None = None) -> None:
         self.updates = updates
@@ -248,6 +267,30 @@ class TestTheNode:
         assert result.status == FAIL
         assert "mainnet-v1.0" in result.result and "not testnet" in result.result
 
+    def test_a_stripped_genesis_is_not_reported_as_the_wrong_network(self) -> None:
+        """The branch that is actually reachable, and it used to print a lie.
+
+        A genuine mismatch cannot get this far: `network.connect` asks
+        `suggested_params` and refuses to return. What does happen is an edge
+        that strips or renames `genesis_id`, and saying "this is not testnet"
+        about a node whose genesis was verified twenty lines earlier would put
+        a false sentence into an evidence table.
+        """
+        stripped = {"build": dict(CURRENT_BUILD)}
+        result = check_node(node(versions=stripped), "testnet")
+        assert result.status == SKIP
+        assert "not testnet" not in result.result
+        assert "algod 4.7.0" in result.result
+        assert "network.connect already verified" in result.detail
+
+    def test_a_stripped_genesis_does_not_soften_an_old_node(self) -> None:
+        # The version is decisive on its own: a 4.6.0 node is refused by every
+        # reader here whether or not its /versions named a genesis.
+        old = {"build": dict(CURRENT_BUILD, minor=6)}
+        result = check_node(node(versions=old), "testnet")
+        assert result.status == FAIL
+        assert "4.6.0" in result.result and "4.7.0" in result.result
+
     def test_a_versions_without_a_build_skips_rather_than_failing(self) -> None:
         # Proxies do strip it, and an absent version is not an old one. The
         # skip says which question went unanswered.
@@ -255,6 +298,38 @@ class TestTheNode:
         result = check_node(node(versions=stripped), "testnet")
         assert result.status == SKIP
         assert "no build" in result.result
+
+
+# --- the app id -------------------------------------------------------
+
+class TestTheAppRow:
+    def test_a_keeper_passes_and_says_what_made_it_one(self) -> None:
+        result = check_app(node(), APP_ID, "testnet")
+        assert result.status == PASS
+        assert "next_upkeep_id" in result.result
+
+    def test_an_app_that_is_not_a_keeper_fails_naming_the_id(self) -> None:
+        algod = node()
+        algod.params = {**algod.params, "global-state": []}
+        result = check_app(algod, APP_ID, "testnet")
+        assert result.status == FAIL
+        assert str(APP_ID) in result.result and "not a keeper" in result.result
+
+    def test_a_node_refusing_to_answer_is_not_blamed_on_the_id(self) -> None:
+        """`require_keeper_app` wraps every failure as "does not exist".
+
+        That is fine as its own message and misleading as the only thing an
+        operator sees, so the row carries the caveat and the node row above it
+        carries the 403. The id in `.env.testnet` was correct all along.
+        """
+        class Refusing(PreflightAlgod):
+            def application_info(self, application_id: int, **kwargs):
+                raise error.AlgodHTTPError("HTTP Error 403: Forbidden", 403)
+
+        result = check_app(Refusing(live_chain(ROUND)), APP_ID, "testnet")
+        assert result.status == FAIL
+        assert "403" in result.result
+        assert "the node refusing to answer rather than as the id being wrong" in result.detail
 
 
 # --- boxes ------------------------------------------------------------
@@ -356,6 +431,30 @@ class TestTheDeployedBuild:
         assert builds == [1]
 
 
+    def test_an_uncompiled_tree_fails_this_check_and_not_the_run(self, monkeypatch) -> None:
+        """`verify_build._spec` and `rebuild` raise `SystemExit`, not `Exception`.
+
+        Both are reachable from here and, through `mainnet_clock.measure`, from
+        the clock check, and `SystemExit` is a `BaseException`: an `except
+        Exception` guard let it past and the process died having thrown away
+        the node and box answers it had already collected, which is exactly
+        what the guard promises never to happen.
+        """
+        def no_artifacts(contract):
+            raise SystemExit(f"no ARC-56 spec for {contract}; run `fledge run build` first")
+
+        monkeypatch.setattr(verify_build, "_spec", no_artifacts)
+        results = run_checks(algorand(node(), FakeIndexer()), "testnet", APP_ID)
+        assert named(results, "build").status == FAIL
+        assert "SystemExit" in named(results, "build").result
+        assert "no ARC-56 spec" in named(results, "build").result
+        # The clock reaches `_spec` through `measure`, so it fails too, and the
+        # four answers that do not need the tree are still there.
+        assert named(results, "clock").status == FAIL
+        assert [named(results, name).status for name in ("node", "app", "boxes", "solvency")] == [PASS] * 4
+        assert exit_code(results) == 1
+
+
 # --- clock ------------------------------------------------------------
 
 class TestTheInstallClock:
@@ -416,6 +515,15 @@ class TestSolvency:
         assert "min-balance" in result.result
 
 
+    def test_the_shared_scan_is_used_when_it_is_handed_over(self) -> None:
+        algod = node()
+        upkeeps = scan_upkeeps(algod, APP_ID)
+        reads = algod.counts["box_read"]
+        result = check_solvency(algod, APP_ID, upkeeps)
+        assert result.status == PASS
+        assert algod.counts["box_read"] == reads  # not a box re-read between them
+
+
 # --- strangers --------------------------------------------------------
 
 class TestStrangers:
@@ -463,18 +571,30 @@ def _must_not_connect(network):
 
 class TestTheRehearsalThrowaway:
     def test_a_funded_throwaway_passes(self) -> None:
-        funded = node(accounts={REHEARSAL_CREATOR: {"amount": REHEARSAL_ALGO, "min-balance": 100_000}})
-        result = check_rehearsal(funded, "testnet")
+        result = check_rehearsal(node(accounts=REHEARSAL_FUNDED), "testnet")
         assert result.status == PASS
         assert "funded" in result.result
+
+    def test_exactly_two_algo_is_short_by_the_minimum_balance(self) -> None:
+        """The number that reads as funded and is not.
+
+        An account cannot spend below its own minimum, so a throwaway holding
+        exactly the two ALGO the plan names has 0.1 less than the ceremony can
+        actually use, and the ceremony would fail on its last transaction.
+        """
+        exact = node(accounts={REHEARSAL_CREATOR: {"amount": REHEARSAL_ALGO, "min-balance": ACCOUNT_MBR}})
+        result = check_rehearsal(exact, "testnet")
+        assert result.status == FAIL
+        assert f"short by {ACCOUNT_MBR:,} uALGO" in result.result
+        assert "spendable" in result.result
 
     def test_an_underfunded_throwaway_fails_with_the_exact_shortfall(self) -> None:
         # Half a TestNet ALGO is what the deployer had spendable on 2026-09-05,
         # which is how this came to be blocked in the first place.
-        thin = node(accounts={REHEARSAL_CREATOR: {"amount": 500_000, "min-balance": 100_000}})
+        thin = node(accounts={REHEARSAL_CREATOR: {"amount": 500_000, "min-balance": ACCOUNT_MBR}})
         result = check_rehearsal(thin, "testnet")
         assert result.status == FAIL
-        assert "short by 1,500,000 uALGO" in result.result
+        assert "short by 1,600,000 uALGO" in result.result
         assert "dispenser" in result.detail
 
     def test_an_account_that_does_not_exist_yet_reads_as_zero(self) -> None:
@@ -482,7 +602,7 @@ class TestTheRehearsalThrowaway:
         # record of it at all. That is the case this check is for, not an error.
         result = check_rehearsal(node(), "testnet")
         assert result.status == FAIL
-        assert f"holds 0 uALGO of the {REHEARSAL_ALGO:,}" in result.result
+        assert f"has 0 uALGO spendable (minimum balance 0) of the {REHEARSAL_ALGO:,}" in result.result
 
     def test_an_edge_shedding_is_not_read_as_an_empty_account(self) -> None:
         class Shedding(PreflightAlgod):
@@ -523,12 +643,12 @@ class TestTheRunAsAWhole:
         assert named(results, "node").status == FAIL
         assert "AlgodHTTPError" in named(results, "node").result
         assert [r.status for r in results if r.name != "node"] == [
-            PASS, PASS, PASS, PASS, PASS, FAIL  # the rehearsal throwaway is unfunded here
+            PASS, PASS, PASS, PASS, PASS, PASS, FAIL  # the throwaway is unfunded here
         ]
         assert exit_code(results) == 1
 
     def test_a_clean_run_exits_zero(self) -> None:
-        funded = node(accounts={REHEARSAL_CREATOR: {"amount": REHEARSAL_ALGO, "min-balance": 100_000}})
+        funded = node(accounts=REHEARSAL_FUNDED)
         results = run_checks(
             algorand(funded, FakeIndexer()), "testnet", APP_ID, known_creators=frozenset({OURS})
         )
@@ -538,57 +658,150 @@ class TestTheRunAsAWhole:
     def test_a_skip_never_fails_the_run(self) -> None:
         # No allowlist, so `strangers` skips; nothing else changes.
         results = run_checks(
-            algorand(
-                node(accounts={REHEARSAL_CREATOR: {"amount": REHEARSAL_ALGO, "min-balance": 100_000}}),
-                FakeIndexer(),
-            ),
-            "testnet",
-            APP_ID,
+            algorand(node(accounts=REHEARSAL_FUNDED), FakeIndexer()), "testnet", APP_ID
         )
         assert named(results, "strangers").status == SKIP
         assert exit_code(results) == 0
 
+    def test_the_registry_is_scanned_once_for_the_whole_run(self) -> None:
+        """Solvency and strangers each used to scan, so two thirds of the box
+        reads in a run were duplicates of the other third, against an endpoint
+        `scripts/node_retry.py` measured shedding about one request in eleven.
+
+        The box check still lists twice on its own, because asking for the
+        pages is the whole of what it is evidence for.
+        """
+        algod = node(accounts=REHEARSAL_FUNDED)
+        run_checks(algorand(algod, FakeIndexer()), "testnet", APP_ID,
+                   known_creators=frozenset({OURS}))
+        assert algod.counts["box_read"] == 33  # one read per box, not two
+        assert algod.counts["boxes"] == 3  # the check's page and walk, and the shared scan
+
+    def test_a_failed_scan_is_reported_by_both_checks_that_needed_it(self) -> None:
+        # The memoised failure: the second check says what happened rather than
+        # repeating a request that has just been refused.
+        class Refusing(PreflightAlgod):
+            asked = 0
+
+            def application_box_by_name(self, application_id, box_name, **kwargs):
+                type(self).asked += 1
+                raise error.AlgodHTTPError("HTTP Error 403: Forbidden", 403)
+
+        algod = Refusing(live_chain(ROUND))
+        results = run_checks(algorand(algod, FakeIndexer()), "testnet", APP_ID,
+                             known_creators=frozenset({OURS}))
+        assert named(results, "solvency").status == FAIL
+        assert named(results, "strangers").status == FAIL
+        assert "403" in named(results, "strangers").result
+        assert Refusing.asked == 1  # the refusal was not asked for a second time
+
 
 class TestTheOutput:
-    def test_the_human_report_names_the_network_the_app_and_the_round(self, monkeypatch, capsys) -> None:
+    def test_the_human_report_names_the_network_the_app_the_round_and_the_node(self, monkeypatch, capsys) -> None:
         _run_main(monkeypatch, ["--network", "testnet", "--app-id", str(APP_ID)])
         out = capsys.readouterr().out
         assert f"testnet app {APP_ID} (the soaked registry)" in out
         assert f"round {ROUND:,}" in out
+        # G1 asks for a run against the VPS's own node, so the row has to say
+        # which node answered. It could not, before.
+        assert f"algod {ALGOD_ADDRESS}, indexer {INDEXER_ADDRESS}" in out
         assert "FAIL  rehearsal" in out
         assert "passed, 1 failed" in out
 
-    def test_markdown_emits_one_row_per_check(self, monkeypatch, capsys) -> None:
+    def test_a_node_that_will_not_give_a_round_still_prints_the_table(self, monkeypatch, capsys) -> None:
+        # The round heads the report; it used to be read outside every guard,
+        # so one refused status request threw away all eight answers.
+        class Speechless(PreflightAlgod):
+            def status(self, **kwargs):
+                raise error.AlgodHTTPError("HTTP Error 403: Forbidden", 403)
+
+        algod = Speechless(live_chain(ROUND))
+        monkeypatch.setattr(preflight.net, "connect", lambda network: algorand(algod, FakeIndexer()))
+        code = preflight.main(["--network", "testnet", "--app-id", str(APP_ID)])
+        out = capsys.readouterr().out
+        assert "round unknown" in out
+        assert "PASS  boxes" in out
+        assert code == 1  # the unfunded throwaway, not the missing round
+
+    def test_markdown_emits_one_row_per_check_and_nothing_to_trim(self, monkeypatch, capsys) -> None:
         code = _run_main(monkeypatch, ["--network", "testnet", "--app-id", str(APP_ID), "--markdown"])
         out = capsys.readouterr().out
-        rows = [line for line in out.splitlines() if line.startswith("| `preflight ")]
-        assert len(rows) == len(CHECKS)
-        assert all(row.count("|") >= 3 for row in rows)
-        assert "| check | result |" in out
-        assert f"app {APP_ID}" in out
+        rows = [line for line in out.splitlines() if line.startswith("| ")]
+        checks = [row for row in rows if row.startswith("| `preflight ")]
+        assert len(checks) == len(CHECKS)
+        assert len(rows) == len(CHECKS) + 1  # the context row, and nothing else
+        # The block appends to the table that is already in the rollout doc, so
+        # it must carry no header of its own to delete first.
+        assert "| check | result |" not in out
+        assert "|---|---|" not in out
+        context = rows[0]
+        assert f"app {APP_ID} (the soaked registry)" in context
+        assert ALGOD_ADDRESS in context and INDEXER_ADDRESS in context
+        assert "passed," in context
         # A row is a record of a run, so it carries the status and the number.
-        assert any(row.startswith("| `preflight boxes` | PASS. 33 names") for row in rows)
+        assert any(row.startswith("| `preflight boxes` | PASS. 33 names") for row in checks)
         assert code == 1  # the unfunded throwaway
 
     def test_main_exits_zero_when_every_check_passes(self, monkeypatch, capsys) -> None:
         code = _run_main(
             monkeypatch,
             ["--network", "testnet", "--app-id", str(APP_ID), "--ours", OURS],
-            accounts={REHEARSAL_CREATOR: {"amount": REHEARSAL_ALGO, "min-balance": 100_000}},
+            accounts=REHEARSAL_FUNDED,
         )
         capsys.readouterr()
         assert code == 0
 
-    def test_an_app_that_is_not_a_keeper_is_refused_before_the_checks(self, monkeypatch, capsys) -> None:
-        # A wrong id answers a box listing with an empty list and HTTP 200, so
-        # every check below would report a quiet, healthy, imaginary registry.
+    def test_an_app_that_is_not_a_keeper_is_a_failed_row_with_a_table_around_it(self, monkeypatch, capsys) -> None:
+        # Still refused, and still clear, but as a row: the operator sees what
+        # the node answered as well as what the id was.
         algod = node()
         algod.params = {**algod.params, "global-state": []}
         monkeypatch.setattr(preflight.net, "connect", lambda network: algorand(algod, FakeIndexer()))
+        code = preflight.main(["--network", "testnet", "--app-id", str(APP_ID)])
+        out = capsys.readouterr().out
+        assert code == 1
+        assert "FAIL  app" in out and "not a keeper" in out
+        assert "PASS  node" in out
+
+    def test_a_node_refusing_everything_does_not_send_the_operator_after_the_app_id(
+        self, monkeypatch, capsys
+    ) -> None:
+        """The failure H3 is about, end to end.
+
+        `require_keeper_app` reads any failure as "App N does not exist ...
+        Check KEEPER_APP_ID", and it used to run outside the checks and end the
+        process. Against a node shedding 403s the operator got that one line,
+        exit 2, and no rows at all, and went to fix an app id that was right.
+        """
+        class Refusing(PreflightAlgod):
+            def versions(self, **kwargs):
+                raise error.AlgodHTTPError("HTTP Error 403: Forbidden", 403)
+
+            def application_info(self, application_id: int, **kwargs):
+                raise error.AlgodHTTPError("HTTP Error 403: Forbidden", 403)
+
+        algod = Refusing(live_chain(ROUND))
+        monkeypatch.setattr(preflight.net, "connect", lambda network: algorand(algod, FakeIndexer()))
+        code = preflight.main(["--network", "testnet", "--app-id", str(APP_ID)])
+        out = capsys.readouterr().out
+        assert code == 1
+        assert "FAIL  node" in out and "403" in out
+        assert "the node refusing to answer rather than as the id being wrong" in out
+
+    def test_mainnet_without_an_allowlist_is_refused_at_startup(self, monkeypatch, capsys) -> None:
+        """The notifier refuses this and so does this, for the same reason.
+
+        Without `--ours` the stranger row skips, everything else passes, and
+        the clean exit that gets pasted is evidence of a question nobody asked.
+        `fledge run preflight-mainnet` passes no allowlist, so this is the
+        refusal that makes it set ARCRON_OURS.
+        """
+        monkeypatch.delenv("ARCRON_OURS", raising=False)
+        monkeypatch.setattr(preflight.net, "connect", _must_not_connect)
         with pytest.raises(SystemExit) as refused:
-            preflight.main(["--network", "testnet", "--app-id", str(APP_ID)])
+            preflight.main(["--network", "mainnet", "--app-id", str(APP_ID)])
         assert refused.value.code == 2
-        assert "not a keeper" in capsys.readouterr().err
+        assert "--ours (or ARCRON_OURS) is required on MainNet" in capsys.readouterr().err
 
 
 def _run_main(monkeypatch, argv, accounts=None) -> int:

@@ -15,11 +15,21 @@ reads this tree's build artifacts, and prints. That is enforced by
 the notifier's boundary is enforced, because a probe that could act on what it
 finds is a different and much larger thing than a probe.
 
-The seven checks, and what each one is evidence for:
+Every check is a row, including the two that used to refuse the run before it
+started. A preflight that exits with one line about an app id, having asked the
+node nothing it could print, sends an operator to fix the wrong thing: the run
+always prints a table, and the table says which of the node and the id was
+wrong.
 
-  node       the node's genesis and build version. F05 refuses a node older
-             than `BOX_PAGINATION_SINCE`, loudly, so which node G1 is about to
-             run on is the first thing to establish rather than a footnote.
+The eight checks, and what each one is evidence for:
+
+  node       the node's genesis and build version, and the address it was
+             asked at. F05 refuses a node older than `BOX_PAGINATION_SINCE`,
+             loudly, so which node G1 is about to run on is the first thing to
+             establish rather than a footnote.
+  app        that the id is a keeper at all. A wrong id answers a box listing
+             with an empty list and HTTP 200, so every check after this one
+             would report a quiet, healthy, entirely imaginary registry.
   boxes      F05 itself: a real paged listing, requested the way every reader
              here requests one, answered by a node rather than by a fake.
   build      the deployed programs against this tree, the comparison
@@ -41,6 +51,12 @@ somewhere else would read. A SKIP never fails the run and is never evidence
 either: it records a question this run could not put to the chain, and it is
 in the output precisely so that nobody reads a clean exit as an answer.
 
+`--markdown` prints the run as table rows and nothing else: a context row
+naming the network, the app, the date and the endpoints, then one row per
+check. No preamble and no `| check | result |` header, because the F11 table
+already has one and the point of this flag is that the block appends to it
+without being edited first.
+
 Run:  poetry run python -m scripts.preflight [--network N] [--app-id N]
                                              [--ours A,B] [--rehearsal-creator ADDR]
                                              [--rebuild] [--markdown]
@@ -59,7 +75,6 @@ from algosdk import encoding
 from scripts import keeper_bot, mainnet_clock
 from scripts import network as net
 from scripts import verify_build
-from scripts.deploy import SOAKED_APP_ID
 from scripts.keeper_bot import (
     BOX_PAGE_LIMIT,
     BOX_PAGINATION_SINCE,
@@ -80,9 +95,11 @@ SKIP = "SKIP"
 CONTRACT = "keeper"
 
 #: The names, in the order they run and print. Ordered so the cheapest answer
-#: that invalidates the rest comes first: a node that cannot page a box listing
-#: makes the four checks after it unreadable rather than merely wrong.
-CHECKS = ("node", "boxes", "build", "clock", "solvency", "strangers", "rehearsal")
+#: that invalidates the rest comes first: a node that cannot be reached, or an
+#: id that is not a keeper, makes every row under it unreadable rather than
+#: merely wrong, and an operator reading the table top to bottom meets the
+#: explanation before the symptoms.
+CHECKS = ("node", "app", "boxes", "build", "clock", "solvency", "strangers", "rehearsal")
 
 #: The throwaway generated for the TestNet ceremony rehearsal, named in
 #: `docs/design/mainnet-rollout.md`. An account that has never created an app
@@ -131,13 +148,23 @@ def _guard(name: str, run) -> Result:
 
     Two services are being asked things here and they fail independently: the
     public algod sheds under quota with a 403 and the public indexer times out,
-    on different days. A traceback out of either one would take the other five
+    on different days. A traceback out of either one would take the other seven
     answers with it, and the run that is hard to get is the run against a real
     chain, so no check is allowed to end the process.
+
+    `SystemExit` is caught with the rest, which is not the usual advice and is
+    right here. It is a `BaseException`, so `except Exception` let it past, and
+    two of the helpers this drives raise it as an ordinary error return:
+    `verify_build._spec` on a missing ARC-56 spec and `verify_build.rebuild` on
+    a failed compile, both reachable from the build check and, through
+    `mainnet_clock.measure`, from the clock check. An uncompiled tree would
+    therefore have thrown away the node and box answers, which are the two this
+    exists to collect, and the process would have exited on the code path whose
+    docstring promises it never does.
     """
     try:
         return run()
-    except Exception as raised:  # noqa: BLE001 - any failure is this check's failure
+    except (Exception, SystemExit) as raised:  # noqa: BLE001 - any failure is this check's failure
         return Result(name, FAIL, f"raised {type(raised).__name__}: {raised}")
 
 
@@ -154,52 +181,116 @@ def _version(build: dict) -> tuple[int, int, int]:
 def check_node(algod, network: str) -> Result:
     """What the node is, and whether the readers on this branch will work on it.
 
-    Two answers matter and they fail differently. A genesis that is not this
-    network means the rest of the run is measuring some other chain, so it is
-    the first thing decided. A build below `BOX_PAGINATION_SINCE` is the node
-    every reader here refuses: pagination mode shipped in 4.7.0, an older node
-    ignores `limit` and answers in legacy mode, and `_box_page` raises rather
-    than reading a listing that will fail outright once the registry outgrows
-    the node's cap.
+    Two answers matter and they fail differently. A build below
+    `BOX_PAGINATION_SINCE` is the node every reader here refuses: pagination
+    mode shipped in 4.7.0, an older node ignores `limit` and answers in legacy
+    mode, and `_box_page` raises rather than reading a listing that will fail
+    outright once the registry outgrows the node's cap. That is the decisive
+    half and it is reported whatever else is missing.
 
-    A `/versions` with no build at all is neither of those. Proxies in front of
-    public endpoints do strip it, and an absent version is not an old one, so
-    it is a skip that says which question went unanswered.
+    The genesis is the other half, and the reading of an *absent* one is the
+    thing to get right. A `/versions` that names a different network is a real
+    failure and says so. A `/versions` with no `genesis_id` at all is not: an
+    edge that strips or renames the field is common, and `network.connect` has
+    already put the same question to `suggested_params` and refused to return
+    if the answer was wrong, so this run is on the right chain whatever this
+    endpoint chose to include. Printing "this is not testnet" into an evidence
+    table about a node whose genesis was verified moments earlier would be
+    false, so an absent field is recorded as a question this response did not
+    answer.
+
+    A `/versions` with no build is the same shape of unknown. Proxies do strip
+    it, and an absent version is not an old one.
     """
     info = dict(algod.versions() or {})
     genesis = str(info.get("genesis_id") or "")
     expected = net.genesis_ids(network)
-    if genesis not in expected:
+    if genesis and genesis not in expected:
         return Result(
             "node",
             FAIL,
-            f"the node reports genesis {genesis or 'nothing'}, not one of "
-            f"{', '.join(expected)}: this is not {network}",
+            f"the node reports genesis {genesis}, not one of {', '.join(expected)}: "
+            f"this is not {network}",
         )
     build = dict(info.get("build") or {})
+    unnamed = (
+        "" if genesis
+        else " /versions carried no genesis_id, so the genesis here is the one "
+             "network.connect already verified through suggested_params, not one this "
+             "response named."
+    )
     if not build:
         return Result(
             "node",
             SKIP,
-            f"genesis {genesis}, but /versions carried no build, so the node's version "
-            f"is unknown and cannot be held to {BOX_PAGINATION_SINCE}",
-            "Some proxies strip it. Ask the node itself, or read the paging answer of the boxes check instead.",
+            f"genesis {genesis or 'not named'}, and /versions carried no build either, so "
+            f"the node's version is unknown and cannot be held to {BOX_PAGINATION_SINCE}",
+            ("Some edges strip both. Ask the node itself, or read the paging answer of the "
+             "boxes check, which is the same question asked of behaviour instead of of a "
+             "version string." + unnamed),
         )
     running = _version(build)
     version = ".".join(str(part) for part in running)
-    where = f"algod {version} on {genesis}"
+    where = f"algod {version} on genesis {genesis or 'not named'}"
     channel = str(build.get("channel") or "")
     commit = str(build.get("commit_hash") or "")[:12]
     detail = ", ".join(part for part in (f"channel {channel}" if channel else "", f"commit {commit}" if commit else "") if part)
     if running < MINIMUM_ALGOD:
+        # A version this old is decisive on its own: every reader here refuses
+        # the node, whether or not the response also named its genesis.
         return Result(
             "node",
             FAIL,
             f"{where}, below the {BOX_PAGINATION_SINCE} paged box listings need: every "
             f"reader on this branch refuses this node",
-            detail,
+            (detail + unnamed).strip(),
+        )
+    if not genesis:
+        return Result(
+            "node",
+            SKIP,
+            f"{where}, at or above {BOX_PAGINATION_SINCE}, but this response named no "
+            f"genesis, so only the version half was answered here",
+            (detail + unnamed).strip(),
         )
     return Result("node", PASS, f"{where}, at or above {BOX_PAGINATION_SINCE}", detail)
+
+
+def check_app(algod, app_id: int, network: str) -> Result:
+    """That the id is a keeper, as a row rather than as a refusal.
+
+    `require_keeper_app` is the same startup check the bot and the notifier
+    make, and it exists because algod answers a box listing for an app that
+    does not exist with an empty list and HTTP 200: a mistyped `KEEPER_APP_ID`
+    produced a process that ran clean forever and watched nothing.
+
+    It used to run before the checks and end the process through
+    `parser.error`. That is wrong here for a reason worth stating: it wraps
+    *any* failure to read the app, a 403 from an edge shedding under quota
+    included, in the words "does not exist ... Check KEEPER_APP_ID". An
+    operator whose node was refusing requests would have been sent to fix an
+    app id that was correct, with no rows printed and nothing to say what the
+    node had done. As a row it is one line in the table, under the node row
+    that says what the node answered, and the two are read together.
+    """
+    try:
+        require_keeper_app(algod, app_id, network)
+    except Exception as refused:
+        if not is_unrecoverable(refused):
+            raise
+        return Result(
+            "app",
+            FAIL,
+            str(refused),
+            "This is one read of the application. If the node row above also failed, read "
+            "this as the node refusing to answer rather than as the id being wrong.",
+        )
+    return Result(
+        "app",
+        PASS,
+        f"app {app_id} exists on {network} and its global state carries next_upkeep_id, "
+        f"so it is a keeper",
+    )
 
 
 def check_boxes(algod, app_id: int) -> Result:
@@ -313,7 +404,7 @@ def check_clock(
     )
 
 
-def check_solvency(algod, app_id: int) -> Result:
+def check_solvency(algod, app_id: int, upkeeps=None) -> Result:
     """Whether the ledger would pay out what the boxes promise.
 
     Read rather than assumed, both halves: the escrow from every box, and the
@@ -322,8 +413,18 @@ def check_solvency(algod, app_id: int) -> Result:
     failed check here, which is right, because the fallback everything else
     uses is a lower bound and substituting it reports an app that cannot pay
     as solvent.
+
+    `upkeeps` is the registry already read for this run, and the sum over their
+    escrow is what `read_escrowed` returns (`registry_health.read_upkeeps`
+    carries `balance` through as `escrow`). Passing it in is what keeps this
+    run to one scan instead of three, against an endpoint `scripts/node_retry`
+    measured shedding about one request in eleven. Left out, this reads the
+    registry itself, so the check still stands on its own.
     """
-    escrowed = read_escrowed(algod, app_id)
+    escrowed = (
+        read_escrowed(algod, app_id) if upkeeps is None
+        else sum(upkeep.balance for upkeep in upkeeps)
+    )
     solvency = read_solvency(algod, app_id, escrowed)
     where = f"{escrowed:,} uALGO owed, {solvency.spendable:,} spendable"
     detail = f"balance {solvency.amount:,} uALGO, ledger minimum {solvency.min_balance:,}"
@@ -338,7 +439,7 @@ def check_solvency(algod, app_id: int) -> Result:
     return Result("solvency", PASS, f"{where}, so escrow is covered", detail)
 
 
-def check_strangers(algod, app_id: int, known_creators: frozenset[str]) -> Result:
+def check_strangers(algod, app_id: int, known_creators: frozenset[str], upkeeps=None) -> Result:
     """What the notifier would announce, with no webhook in the way.
 
     The stranger control is the one thing the unfrozen MainNet window exists to
@@ -351,8 +452,12 @@ def check_strangers(algod, app_id: int, known_creators: frozenset[str]) -> Resul
     the case where it demonstrably can; deciding what to do about the upkeep is
     an operator's job and this is a probe. What does fail is the check raising,
     which would mean the creators could not be read at all.
+
+    `upkeeps` is the registry already read for this run; left out, this reads
+    it. See `check_solvency` for why the run shares one scan.
     """
-    upkeeps = scan_upkeeps(algod, app_id)
+    if upkeeps is None:
+        upkeeps = scan_upkeeps(algod, app_id)
     creators = {upkeep.creator for upkeep in upkeeps}
     census = f"{len(upkeeps)} upkeep(s) from {len(creators)} creator(s)"
     if not known_creators:
@@ -382,8 +487,8 @@ def check_strangers(algod, app_id: int, known_creators: frozenset[str]) -> Resul
     )
 
 
-def _account_balance(algod, address: str) -> int:
-    """What an account holds, counting one that has never been funded as zero.
+def _spendable(algod, address: str) -> tuple[int, int]:
+    """What an account can actually spend, and the minimum under it.
 
     An address that no transaction has ever reached has no record in the
     ledger, and edges differ on how they say so: some answer a zeroed account,
@@ -392,6 +497,11 @@ def _account_balance(algod, address: str) -> int:
     edge shedding under quota, or a 5xx, still reaches the caller, because
     reporting an outage as an empty account would print a shortfall that is
     not there and send somebody to a dispenser for no reason.
+
+    Spendable rather than the balance, because the balance is the number that
+    reads as funded and is not: an account cannot spend below its own minimum,
+    so a throwaway holding exactly two ALGO has 0.1 less than the ceremony
+    needs. Both numbers are returned so the report can say which it used.
     """
     try:
         info = algod.account_info(address)
@@ -399,9 +509,9 @@ def _account_balance(algod, address: str) -> int:
         said_missing = "does not exist" in str(refused).lower() or "no accounts found" in str(refused).lower()
         code = getattr(refused, "code", None)
         if said_missing and code in (None, 404):
-            return 0
+            return 0, 0
         raise
-    return int(info.get("amount") or 0)
+    return int(info.get("amount") or 0) - int(info.get("min-balance") or 0), int(info.get("min-balance") or 0)
 
 
 def check_rehearsal(algod, network: str, creator: str = REHEARSAL_CREATOR) -> Result:
@@ -423,9 +533,12 @@ def check_rehearsal(algod, network: str, creator: str = REHEARSAL_CREATOR) -> Re
             SKIP,
             f"the ceremony rehearsal is a TestNet one, and this is {network}",
         )
-    balance = _account_balance(algod, creator)
-    shortfall = REHEARSAL_ALGO - balance
-    holding = f"{creator} holds {balance:,} uALGO of the {REHEARSAL_ALGO:,} the rehearsal needs"
+    spendable, minimum = _spendable(algod, creator)
+    shortfall = REHEARSAL_ALGO - spendable
+    holding = (
+        f"{creator} has {spendable:,} uALGO spendable (minimum balance {minimum:,}) of the "
+        f"{REHEARSAL_ALGO:,} the rehearsal needs"
+    )
     if shortfall > 0:
         return Result(
             "rehearsal",
@@ -435,6 +548,39 @@ def check_rehearsal(algod, network: str, creator: str = REHEARSAL_CREATOR) -> Re
             f"is closed, F10 stays open and G2 with it.",
         )
     return Result("rehearsal", PASS, f"{holding}: funded")
+
+
+def _scan_once(algod, app_id: int):
+    """One registry scan for the two checks that both need every box.
+
+    A scan is a listing plus a read per box, and solvency and strangers each
+    used to do their own: on the 33 live upkeeps that was 66 box reads where 33
+    would do, against an endpoint `scripts/node_retry.py` measured shedding
+    about one request in eleven. Halving the reads halves the chance that a run
+    an operator went to some trouble to make comes back with a 403 in a row it
+    did not need to ask for.
+
+    Lazy and memoised, including the failure: whichever check asks first pays
+    for the scan, and if it fails, the same error is handed to the second
+    check, so both rows say what happened rather than one of them saying it and
+    the other repeating the request that just failed. The box check is
+    deliberately not fed from here, because asking for the pages itself is the
+    whole of what it is evidence for.
+    """
+    memo: dict = {}
+
+    def read():
+        if "error" in memo:
+            raise memo["error"]
+        if "upkeeps" not in memo:
+            try:
+                memo["upkeeps"] = scan_upkeeps(algod, app_id)
+            except BaseException as refused:
+                memo["error"] = refused
+                raise
+        return memo["upkeeps"]
+
+    return read
 
 
 def run_checks(
@@ -450,16 +596,18 @@ def run_checks(
     algod = algorand.client.algod
     # `indexer_if_present`, not `indexer`: the latter raises when none is
     # configured, and that is a fact for the clock check to report as unknown
-    # history, not a traceback that takes the other six checks with it.
+    # history, not a traceback that takes the other seven checks with it.
     indexer = algorand.client.indexer_if_present
     seconds = net.seconds_per_round(network)
+    registry = _scan_once(algod, app_id)
     return [
         _guard("node", lambda: check_node(algod, network)),
+        _guard("app", lambda: check_app(algod, app_id, network)),
         _guard("boxes", lambda: check_boxes(algod, app_id)),
         _guard("build", lambda: check_build(algod, app_id, rebuild=rebuild)),
         _guard("clock", lambda: check_clock(algod, indexer, app_id, seconds)),
-        _guard("solvency", lambda: check_solvency(algod, app_id)),
-        _guard("strangers", lambda: check_strangers(algod, app_id, known_creators)),
+        _guard("solvency", lambda: check_solvency(algod, app_id, registry())),
+        _guard("strangers", lambda: check_strangers(algod, app_id, known_creators, registry())),
         _guard("rehearsal", lambda: check_rehearsal(algod, network, rehearsal_creator)),
     ]
 
@@ -471,12 +619,68 @@ def exit_code(results: list[Result]) -> int:
 
 def _which_app(app_id: int) -> str:
     # Worth saying in the header of a record that gets pasted somewhere else:
-    # `SOAKED_APP_ID` is the registry every soak claim in this repository is
+    # `net.SOAKED_APP_ID` is the registry every soak claim in this repository is
     # about, and a preflight against some other app proves nothing about it.
-    return " (the soaked registry)" if app_id == SOAKED_APP_ID else ""
+    return " (the soaked registry)" if app_id == net.SOAKED_APP_ID else ""
 
 
-def report(results: list[Result], network: str, app_id: int, current_round: int, when: datetime) -> None:
+@dataclass(frozen=True)
+class Run:
+    """What the run was: which chain, which app, when, and asked where.
+
+    The endpoints are here because the row is evidence about a node and used
+    not to name one. G1 asks for a preflight against the VPS's own node, and a
+    pasted row that cannot tell that node from a public one does not answer it.
+    """
+
+    network: str
+    app_id: int
+    when: datetime
+    algod_address: str
+    indexer_address: str
+    #: None when the node would not say, which is a fact and not a crash.
+    current_round: int | None = None
+
+    @property
+    def where(self) -> str:
+        return f"algod {self.algod_address}, indexer {self.indexer_address}"
+
+    @property
+    def at(self) -> str:
+        return "round unknown" if self.current_round is None else f"round {self.current_round:,}"
+
+
+def _address(client, attribute: str) -> str:
+    """The endpoint a client is pointed at, as far as it will say."""
+    if client is None:
+        return "none configured"
+    return str(getattr(client, attribute, "") or "unknown")
+
+
+def describe(algorand, network: str, app_id: int) -> Run:
+    """The run's own context, read from the clients rather than from arguments.
+
+    The round is asked for here and not in a check, because it heads the report
+    rather than answering a question. A node that will not say is recorded as
+    unknown: this used to raise, outside every guard, so an endpoint refusing
+    one status request threw away all eight answers before the first was asked.
+    """
+    algod = algorand.client.algod
+    try:
+        current_round = int(algod.status()["last-round"])
+    except Exception:  # noqa: BLE001 - a header, not a check
+        current_round = None
+    return Run(
+        network=network,
+        app_id=app_id,
+        when=datetime.now(timezone.utc),
+        algod_address=_address(algod, "algod_address"),
+        indexer_address=_address(algorand.client.indexer_if_present, "indexer_address"),
+        current_round=current_round,
+    )
+
+
+def report(results: list[Result], run: Run) -> None:
     """The human report.
 
     Printed rather than logged, for the reason `scripts/why_figures.py` prints:
@@ -484,9 +688,10 @@ def report(results: list[Result], network: str, app_id: int, current_round: int,
     level prefix on every line is one more thing to strip out of the paste.
     """
     print(
-        f"Arcron preflight: {network} app {app_id}{_which_app(app_id)}, round "
-        f"{current_round:,}, {when:%Y-%m-%dT%H:%M:%SZ}"
+        f"Arcron preflight: {run.network} app {run.app_id}{_which_app(run.app_id)}, "
+        f"{run.at}, {run.when:%Y-%m-%dT%H:%M:%SZ}"
     )
+    print(f"  {run.where}")
     print()
     width = max(len(result.name) for result in results)
     for result in results:
@@ -494,12 +699,15 @@ def report(results: list[Result], network: str, app_id: int, current_round: int,
         if result.detail:
             print(f"{'':6}{'':<{width}}  {result.detail}")
     print()
-    counted = {status: sum(1 for r in results if r.status == status) for status in (PASS, FAIL, SKIP)}
     print(
-        f"{counted[PASS]} passed, {counted[FAIL]} failed, {counted[SKIP]} skipped. "
-        f"A skipped check is a question this run could not put to the chain, so it is "
-        f"not evidence for anything and a clean exit does not cover it."
+        f"{_tally(results)}. A skipped check is a question this run could not put to the "
+        f"chain, so it is not evidence for anything and a clean exit does not cover it."
     )
+
+
+def _tally(results: list[Result]) -> str:
+    counted = {status: sum(1 for r in results if r.status == status) for status in (PASS, FAIL, SKIP)}
+    return f"{counted[PASS]} passed, {counted[FAIL]} failed, {counted[SKIP]} skipped"
 
 
 def _cell(text: str) -> str:
@@ -507,21 +715,21 @@ def _cell(text: str) -> str:
     return " ".join(text.split()).replace("|", "\\|")
 
 
-def markdown(results: list[Result], network: str, app_id: int, when: datetime) -> None:
-    """The same run as rows for the F11 evidence table.
+def markdown(results: list[Result], run: Run) -> None:
+    """The same run as rows for the F11 evidence table, and nothing else.
 
-    Shaped like the table already there, so the record is the run rather than
-    somebody's transcription of it, which is the failure mode the four-command
-    version of that row had.
+    Rows only: no preamble, no `| check | result |` header, no separator. The
+    table this joins already has all three, and a block that has to be trimmed
+    before it can be pasted is the transcription step this flag exists to
+    delete. The first row carries the context the others would otherwise each
+    have to repeat, so the whole block is one clean append and one clean
+    deletion.
     """
     print()
     print(
-        f"Preflight on {network}, app {app_id}{_which_app(app_id)}, "
-        f"{when:%Y-%m-%d} (UTC), `fledge run preflight`:"
+        f"| `fledge run preflight` on {run.network}, app {run.app_id}{_which_app(run.app_id)}, "
+        f"{run.when:%Y-%m-%d} (UTC) | {_cell(run.where)}; {run.at}; {_tally(results)} |"
     )
-    print()
-    print("| check | result |")
-    print("|---|---|")
     for result in results:
         # The status, then the measurement, then whatever an operator would do
         # about it, as sentences: a cell is read as prose in the table it lands
@@ -565,7 +773,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--markdown",
         action="store_true",
-        help="also print the run as rows for the F11 evidence table in docs/design/mainnet-rollout.md",
+        help=(
+            "also print the run as table rows to append to the F11 evidence table in "
+            "docs/design/mainnet-rollout.md (rows only, no header to trim)"
+        ),
     )
     args = parser.parse_args(argv)
 
@@ -586,23 +797,29 @@ def main(argv: list[str] | None = None) -> int:
             )
     if not encoding.is_valid_address(args.rehearsal_creator):
         parser.error(f"--rehearsal-creator {args.rehearsal_creator!r} is not an Algorand address")
+    if args.network == net.MAINNET and not known_creators:
+        # The same refusal the notifier makes, and for the same reason. On a
+        # deployment whose id is meant to be unpublished, the stranger count is
+        # the one MainNet-critical thing this tool measures, and without an
+        # allowlist it measures nothing: the row skips, the other checks pass,
+        # and the clean exit that gets pasted is evidence of a question nobody
+        # asked. An allowlist that works for the notifier works here.
+        parser.error(
+            "--ours (or ARCRON_OURS) is required on MainNet: without it no creator is a "
+            "stranger, so the one check this run exists to make there says nothing and "
+            "still exits zero"
+        )
 
     algorand = net.connect(args.network)
     # After connect, so `.env.<network>` has been read: the MainNet id lives
     # there and in no file in this tree.
     app_id = resolve_app_id(parser, args.app_id, args.network)
-    algod = algorand.client.algod
-    try:
-        # An id that is not a keeper answers a box listing with an empty list
-        # and HTTP 200, so every check below would report a quiet, healthy,
-        # entirely imaginary registry. Refused here as the bot and the notifier
-        # refuse it.
-        require_keeper_app(algod, app_id, args.network)
-    except RuntimeError as wrong:
-        parser.error(str(wrong))
-
-    current_round = int(algod.status()["last-round"])
-    when = datetime.now(timezone.utc)
+    # Nothing between here and the report is allowed to end the run. Whether
+    # the id is a keeper is the `app` check, whether the node answers at all is
+    # the `node` check, and both print a row: an operator who gets one line
+    # about an app id, from a run that asked the node nothing it could show
+    # them, goes and fixes the wrong thing.
+    run = describe(algorand, args.network, app_id)
     results = run_checks(
         algorand,
         args.network,
@@ -611,9 +828,9 @@ def main(argv: list[str] | None = None) -> int:
         rehearsal_creator=args.rehearsal_creator,
         rebuild=args.rebuild,
     )
-    report(results, args.network, app_id, current_round, when)
+    report(results, run)
     if args.markdown:
-        markdown(results, args.network, app_id, when)
+        markdown(results, run)
     return exit_code(results)
 
 

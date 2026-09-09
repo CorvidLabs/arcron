@@ -452,10 +452,12 @@ run is a row nobody runs:
 fledge run preflight -- --markdown --ours <every address of ours>
 ```
 
-`scripts/preflight.py` asks the node its version and genesis, requests a real
-paged box listing, compares the deployed digest against this tree, walks the
-indexer's install history, reads solvency, counts who would be announced as a
-stranger, and prices what the rehearsal throwaway is still short. It signs
+`scripts/preflight.py` asks the node its version and genesis, confirms the id
+is a keeper, requests a real paged box listing, compares the deployed digest
+against this tree, walks the indexer's install history, reads solvency, counts
+who would be announced as a stranger, and prices what the rehearsal throwaway
+is still short. Each is a row, so a node that refuses everything says so once
+at the top instead of being reported as a wrong app id. It signs
 nothing and holds no key, which a test pins. `--markdown` prints the rows to
 paste back into this table, so the record is the run rather than a
 transcription of it. It exits non-zero if any check failed; a check it had to
