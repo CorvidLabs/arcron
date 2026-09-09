@@ -599,9 +599,14 @@ observe the world.
 
 **Oracle pairing** is the supported answer for data-driven automation: a
 reporter pushes values into an oracle contract, an Arcron upkeep triggers
-`settle()` on a cadence, and settlement reads the stored value. Arcron supplies
-the timing guarantee: settlement cannot be stalled, delayed or selectively
-timed by an interested party. It does not supply the data.
+`settle()` on a cadence, and settlement reads the stored value. Arcron does not supply the data, and
+what it supplies is narrower than "settlement cannot be stalled, delayed or
+selectively timed", which this paragraph used to say: once the upkeep is due
+and funded, anyone may execute the fixed registered call and is paid
+atomically when it completes, so no single party controls the timing. It is
+still delayed if no keeper shows up, and whoever can influence the target's
+readiness can influence when the call goes through. No deadline, no business
+outcome, no independent-operator guarantee.
 
 One case needs no oracle trust at all: a **staleness check** that compares the
 feed's last-updated round against the current round and flags the feed if it

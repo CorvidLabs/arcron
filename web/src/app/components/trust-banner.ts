@@ -16,8 +16,12 @@ export function noticesFor(state: {
   status: string;
   frozen: boolean | null;
   undecodableBoxes: number;
-  /** Counted, and deliberately not surfaced. See below. */
+  /** Surfaced as a fact about the read, never as one about the app. See below. */
   unreadableBoxes: number;
+  /** Box names the listing returned, so the notice can say N of M. */
+  listedBoxes?: number;
+  /** Whether the balance stood still while the boxes were read; null before any read. */
+  snapshotConsistent?: boolean | null;
 }): Notice[] {
   const { appId } = state;
   if (appId === null) return [];
@@ -53,12 +57,45 @@ export function noticesFor(state: {
     });
   }
 
-  // Deliberately silent about unreadable boxes. A box the node would not hand
-  // over says nothing about the app: cancel deletes a box, so a read racing a
-  // cancel finds nothing, and a rate-limited node answers nothing for
-  // anything. The read failure itself is already reported above, and adding a
-  // second alarming notice for the same cause taught people to distrust an
-  // honest deployment for doing exactly what they asked it to do.
+  // An unreadable box says nothing about the app: cancel deletes a box, so a
+  // read racing a cancel finds nothing, and a rate-limited node answers
+  // nothing for anything. An earlier version was therefore silent about it,
+  // and that silence let the page sum the boxes it did get, compare the
+  // balance against the partial sum, and announce solvency over escrow it had
+  // not seen. So the fact is stated, in the register of "this read is
+  // incomplete" rather than "this app is suspect", and the copy says which
+  // of the two it is, because the undecodable notice below is an accusation
+  // and the two must not read alike.
+  const unreadable = state.unreadableBoxes;
+  if (unreadable > 0) {
+    const listed = state.listedBoxes ?? 0;
+    const count =
+      listed > 0 ? `${unreadable} of ${listed} boxes` : `${unreadable} ${unreadable === 1 ? 'box' : 'boxes'}`;
+    found.push({
+      tone: 'warn',
+      headline:
+        `${count} could not be read, so the escrow total below is incomplete and ` +
+        `solvency is unknown.`,
+      detail:
+        `This is about the read, not the app. The node did not hand those boxes over, ` +
+        `which is what a cancel racing the read or a rate-limited node looks like; it is ` +
+        `not evidence that the app is short of funds or that it is a different contract, ` +
+        `and a box that reads but does not decode gets its own notice. The next full read ` +
+        `retries.`,
+    });
+  } else if (state.snapshotConsistent === false) {
+    found.push({
+      tone: 'warn',
+      headline:
+        `The app's balance moved while its boxes were being read, so the escrow total ` +
+        `below and the balance are from different moments and solvency is unknown.`,
+      detail:
+        `Something executed, registered, topped up or cancelled mid-read, which is what a ` +
+        `busy registry does and is not evidence of anything about the app. The read is ` +
+        `repeated once straight away, then on the next full poll.`,
+    });
+  }
+
   const undecodable = state.undecodableBoxes;
   if (undecodable > 0) {
     found.push({
@@ -152,6 +189,8 @@ export class TrustBanner {
       frozen: this.arcron.frozen(),
       undecodableBoxes: this.arcron.undecodableBoxes(),
       unreadableBoxes: this.arcron.unreadableBoxes(),
+      listedBoxes: this.arcron.listedBoxes(),
+      snapshotConsistent: this.arcron.snapshotConsistent(),
     }),
   );
 }

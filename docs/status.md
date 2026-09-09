@@ -242,7 +242,11 @@ than 100 is that the creator can still reach every escrow, and while that is
 true, anyone escrowing here is trusting a keyholder rather than bytecode.
 Which is why the notifier will run against MainNet with `--ours` set and
 announces any other creator, and why an unexpected upkeep before freeze is a
-person to freeze for rather than a schedule to finish. Not publishing the app
+person who has trusted us and an operator decision within 24 hours (freeze
+only bytecode already accepted for permanence, an already-approved update,
+or a recorded acceptance of the exposure), not a schedule to finish and not
+an automatic freeze; see [`design/mainnet-rollout.md`](design/mainnet-rollout.md),
+"If a stranger appears". Not publishing the app
 id helps and is done; it is not the protection, because the creator is a
 named address and an app id is one indexer query away from it.
 
@@ -261,8 +265,14 @@ app is visible on any explorer. The protection is `scripts/notifier.py`
 watching the deployment with every address of ours named, announcing any
 other creator within a scan, and the answer that announcement gets. If an
 upkeep we did not create appears before freeze, that is a real person who has
-trusted us, and the answer is to freeze then rather than to wait out the
-remaining time.
+trusted us, and the answer is an operator decision within 24 hours of first
+sighting, recorded with who decided and on what evidence: freeze only
+bytecode already accepted for permanence, execute only an already-approved
+update, or explicitly accept the unfrozen exposure while responding. Not an
+automatic freeze, because that would let a stranger choose when known
+defects become permanent, and not cancel, because only the upkeep's own
+creator can cancel it. The policy and its reasons are in
+[`design/mainnet-rollout.md`](design/mainnet-rollout.md).
 
 ## How to help
 

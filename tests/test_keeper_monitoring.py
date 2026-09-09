@@ -61,11 +61,28 @@ class FakeAlgod:
     def status(self) -> dict:
         return {"last-round": self._round}
 
-    def application_boxes(self, app_id: int, **kwargs) -> dict:
-        return {"boxes": [{"name": base64.b64encode(name).decode()} for name in self._boxes]}
+    def algod_request(self, method: str, requrl: str, params=None, **kwargs) -> dict:
+        # The box listing, as `keeper_bot._box_page` sends it: a paged request
+        # rather than the typed `application_boxes`, which cannot page. One
+        # page is all these registries need, and the `round` is what tells the
+        # reader the node paginated rather than answering in legacy mode.
+        assert (method, requrl) == ("GET", f"/applications/{app_id_of(requrl)}/boxes"), (
+            f"unexpected request {method} {requrl}"
+        )
+        assert (params or {}).get("limit"), f"a listing without a page size: {params}"
+        return {
+            "boxes": [{"name": base64.b64encode(name).decode()} for name in self._boxes],
+            "round": self._round,
+        }
 
     def application_box_by_name(self, app_id: int, name: bytes) -> dict:
         return {"value": base64.b64encode(self._boxes[name]).decode()}
+
+
+def app_id_of(requrl: str) -> str:
+    """The app id out of `/applications/<id>/boxes`, so the assertion above
+    checks the path's shape without each test having to know its id."""
+    return requrl.split("/")[2]
 
 
 def _box(upkeep_id: int, *, balance: int | None = None) -> tuple[bytes, bytes]:

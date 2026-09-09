@@ -4,7 +4,15 @@ Everything an integration needs and nothing it does not:
 
 * one NoOp method taking no arguments of its own, so a keeper can call it with
   just its selector;
-* authorization to the keeper app, so nobody else can drive your schedule;
+* authorization to the keeper app, so only Arcron's inner call reaches the
+  hook. That proves who called, not that your interval has elapsed:
+  registering is permissionless, so anyone may point their own upkeep at this
+  target on the shortest cadence the keeper allows and pay the fees themselves.
+  A hook whose effect depends only on current state, like `run` below, does not
+  care. A hook that counts, meters or accrues must enforce its own interval and
+  check its own arguments; see "Authorization to the keeper app is not
+  authorization of cadence" in docs/integrating.md before copying this into
+  one;
 * a no-op path that returns rather than fails, because the hook is called on
   every cadence whether or not there is work to do.
 
@@ -51,10 +59,14 @@ class MinimalTarget(ARC4Contract):
 
         Returns what it did, which is often nothing — and nothing is fine.
         """
-        # Only the keeper app may drive the schedule. Arcron's inner call comes
-        # from the keeper application's account, so this is the check to make.
-        # Leave it out to be permissionless like the Pulse demo; see the guide
-        # for when that is the right call.
+        # Only the keeper app may call this. Arcron's inner call comes from the
+        # keeper application's account, so this is the check to make. It says
+        # who called and nothing about when: anyone can register a second
+        # upkeep against this target, so a hook that counts must check the
+        # round itself. This one drains `pending` rather than counting calls,
+        # so an extra call finds nothing to do. Leave the check out to be
+        # permissionless like the Pulse demo; see the guide for when that is
+        # the right call.
         assert (
             Txn.sender == Application(self.keeper_app.value).address
         ), "Only the keeper app may run this"

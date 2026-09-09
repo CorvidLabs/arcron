@@ -39,6 +39,11 @@ carries programs that are not the ones this tree compiles to. Then it asks for
 the sending account to be typed in full, with no flag to skip it: a signature
 produced without a human reading the description is the thing a multisig
 exists to prevent.
+
+Whatever signs, the fee is never the node's to set. Every transaction built
+here is flat at the network minimum (`bounded_params`), and a node whose
+advice is above `MAX_SIGNABLE_FEE` is refused before anything is signed, with
+no flag to override it on a path that signs in process.
 """
 
 import argparse
@@ -50,7 +55,7 @@ import subprocess
 import sys
 
 import algokit_utils
-from algosdk import transaction
+from algosdk import constants, transaction
 
 from scripts import multisig as ms, network as net
 from scripts.registry_health import read_escrowed, read_solvency
@@ -58,6 +63,140 @@ from scripts.verify_build import _digest, _programs, _spec, rebuild
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
+
+# A fee is spent whether or not the transaction accomplishes anything, so an
+# inflated one is a way to drain the account it is signed from without ever
+# looking like theft. Ten times the minimum leaves room for real congestion.
+MAX_SIGNABLE_FEE = 10_000
+
+
+class FeeRefused(RuntimeError):
+    """A node's fee advice was above the ceiling, and nothing was signed.
+
+    Its own class so `main` can catch the one refusal that comes from the node
+    rather than from the operator, and print it as a refusal instead of a
+    traceback, without swallowing anything else.
+    """
+
+
+def bounded_params(algod) -> transaction.SuggestedParams:
+    """Suggested params with the fee pinned to the network minimum, or a refusal.
+
+    What bounds each path in this repository that signs (issue #250 F14; the
+    inventory was taken 2026-09-08, corrected three times in review the same
+    day, and `tests/test_govern.py` now greps `scripts/` for signers and fails
+    if one is named in neither list below):
+
+    Bounded:
+
+    * `scripts/deploy.py`: the create, and the 0.1 ALGO floor payment after
+      it. Both through this function.
+    * `scripts/govern.py`: `update` and `freeze` when a single key signs, and
+      the unsigned create/update/freeze files written for a multisig, whose
+      holders' `sign` (`scripts/multisig.py`, a mnemonic decoded on the spot)
+      then checks the fee a second time from the file against the same
+      ceiling. All through this function.
+    * `scripts/seed_registry.py --commit`: step three of the MainNet ceremony.
+      Two payments and the `register` call per seed, `static_fee` on all
+      three from this function; `register` issues no inner transaction.
+    * `scripts/keeper_topup.py --send`: the funding payment and the `top_up`
+      call, `static_fee` on both, from this function.
+    * `scripts/keeper_sweep.py`: the payment that moves a keeper's earnings
+      out, `static_fee` from this function; a refusal is an error-level
+      `sweep_refused` event and then a raise, so the bot logs a failed sweep,
+      leaves its period clock alone and retries next heartbeat.
+    * `scripts/reclaim.py`: `cancel`, bounded with `max_fee` rather than a
+      flat fee because `cancel` sends inner transactions that pooling has to
+      cover; the ceiling is the same number.
+    * `scripts/keeper_bot.py`: `execute`, `max_fee` for the same reason
+      (`KEEPER_MAX_OUTER_FEE`, default the same 10,000), a daemon rather
+      than a shell.
+
+    Beside each contract, `smart_contracts/*/deploy_config.py` is algokit's
+    deploy path and signs as DEPLOYER too; it is not bounded, and it refuses
+    MainNet by genesis id itself (`network.refuse_algokit_create_on_mainnet`),
+    which is the stronger property for a path that exists to serve LocalNet.
+
+    Every other script under `scripts/` that signs is a LocalNet instrument
+    and is unbounded by design: the end-to-ends (`keeper_e2e`, `govern_e2e`,
+    `multisig_e2e`, `clawback_e2e`, `subscription_demo`), the soak and the
+    race (`keeper_soak`, `keeper_race`), `scenario`, `attacks`,
+    `reference_boundary`, and the spikes (`spike_asa_fee`,
+    `spike_hostile_target`, `spike_js_execute_resources`, `spike_multiarg`,
+    `spike_quantum`, `spike_reentrancy`, `spike_resources`,
+    `spike_simulate_test_button`). Every key they hold is a throwaway;
+    `keeper_e2e` also accepts `--network testnet`, which is a rehearsal
+    against a public node with the throwaway key from `.env.testnet`, exactly
+    the account a wrong fee is allowed to cost, and it runs `keeper_bot
+    --once`, which is bounded. None of them refuses MainNet itself: they take
+    `--network` from `network.add_network_argument`, whose choices include
+    `mainnet`. What keeps them off it is `network.load_network`:
+    `ARCRON_ALLOW_MAINNET=1`, which nothing in this repository sets, and the
+    refusal of a mnemonic written into `.env.mainnet`, so running one there
+    is a deliberate export of both the flag and the creator key into the same
+    shell, the two acts the ceremony itself requires. A rehearsal script is
+    not made safer against that by a fee bound; it is made safer by not being
+    run there, which `docs/design/mainnet-rollout.md` says.
+
+    Until 2026-09-08 everything in the bounded list except `execute` took
+    `algod.suggested_params()` exactly as the node handed them over, and
+    `MAX_SIGNABLE_FEE` applied only to a file a multisig holder was about to
+    sign (`multisig.refusals`), which is to say to the one path where a human
+    also reads the fee. The number a node
+    returns in `fee` is *per byte*, and algosdk and algokit's composer both
+    multiply it by the transaction's size unless the params are flat. A keeper
+    create is about 2,400 bytes, measured with `estimate_size()` on this
+    tree's programs (2,406 on 2026-09-08), so a node advising 10,000 per byte
+    would have had about 24 ALGO paid from the creator's account, and the only
+    symptom would have been the balance afterwards.
+
+    None of the transactions that come through here needs fee pooling.
+    `update()` and `freeze()` each write state and send nothing; a create runs
+    `__init__`, which does the same; `register` and `top_up` move payments
+    into a box; a payment is a payment. Each has no inner transaction to cover, so the
+    network minimum is the right fee, and a higher suggestion is advice this
+    repository has no reason to take. The fee is therefore set, flat, to the
+    node's `min_fee`, and both figures the node sent are checked against the
+    ceiling: a minimum above it means the node is describing a network these
+    scripts do not know, and a per-byte figure above it is above the ceiling
+    for any transaction at all, since none is shorter than a byte. Either one
+    means stop and look, not pay. A per-byte figure below the ceiling that
+    would still have cost real money (say 100, or about 0.24 ALGO on a create)
+    is not paid either, because the fee is pinned rather than merely capped.
+
+    There is deliberately no `--allow-high-fee` on these paths. `sign` has one
+    because a holder sees the fee printed in the description before deciding;
+    here the transaction is built and signed in one process, and nobody reads
+    a fee before it is paid. If the network minimum ever genuinely rises past
+    the ceiling, the constant changes in a commit anyone can read.
+
+    The node-trust boundary, said once: a ceremony trusts the node for the
+    genesis id check and for the read-back, and for nothing that costs money.
+    A node's fee advice is not authorization to spend. The operator is trusted
+    for the `.env` that names the node, and the node is trusted to describe
+    the chain, which is a claim the read-back can catch it lying about; a fee
+    is spent before anything can be checked, which is why it is not the
+    node's to set.
+    """
+    params = algod.suggested_params()
+    # algosdk leaves `min_fee` None when a fake or an old node did not send
+    # one; the protocol constant is then the only honest figure. It is never
+    # read from `fee`, which is the per-byte suggestion and normally 0.
+    minimum = int(params.min_fee) if params.min_fee is not None else constants.MIN_TXN_FEE
+    per_byte = int(params.fee)
+    if minimum > MAX_SIGNABLE_FEE or per_byte > MAX_SIGNABLE_FEE:
+        raise FeeRefused(
+            f"the node suggests a fee of {per_byte} microAlgos per byte with a minimum "
+            f"of {minimum}, and this repository signs nothing above {MAX_SIGNABLE_FEE}. "
+            "A fee is spent whether or not the transaction does anything, and a node's "
+            "fee advice is not authorization to spend from this account. There is no "
+            "flag to override this on a path that signs in process; if the network "
+            "minimum has genuinely moved, change MAX_SIGNABLE_FEE in a commit, and if "
+            "it has not, find out what node ALGOD_SERVER is pointing at."
+        )
+    params.fee = minimum
+    params.flat_fee = True
+    return params
 
 
 def _frozen(algod, app_id: int) -> int:
@@ -141,7 +280,10 @@ def update(algorand, app_id: int, no_rebuild: bool, out: 'pathlib.Path | None' =
     logger.info(f"  deployed  sha256 {_digest(live_approval, live_clear)}  {len(live_approval)} bytes")
     logger.info(f"  this tree sha256 {_digest(approval, clear)}  {len(approval)} bytes")
 
-    params = algod.suggested_params()
+    # Bounded on both branches. Under a multisig the holders' `sign` checks the
+    # fee again from the file, which is the one place a human reads it; the
+    # single-key branch below signs what it builds, so this is its only check.
+    params = bounded_params(algod)
     if ms.configured():
         # No single machine should be able to rewrite a live contract, so the
         # transaction is written out for the holders to sign wherever their
@@ -290,7 +432,11 @@ def create(algorand, expect_creator: str, assume_yes: bool, allow_dirty: bool,
 
     unsigned = transaction.ApplicationCreateTxn(
         sender=ms.address(),
-        sp=algod.suggested_params(),
+        # Flat, at the minimum. The holders' `sign` would refuse a fee above
+        # the ceiling anyway, but a file that carries one is a file somebody
+        # has to explain, and the node's per-byte advice is not what a create
+        # should cost.
+        sp=bounded_params(algod),
         on_complete=transaction.OnComplete.NoOpOC,
         approval_program=approval,
         clear_program=clear,
@@ -322,6 +468,9 @@ def freeze(algorand, app_id: int, assume_yes: bool, out: 'pathlib.Path | None' =
 
     approval, clear = _deployed(algod, app_id)
     digest = _digest(approval, clear)
+    # Fetched before the operator is asked to type anything, so a node whose
+    # fee advice is refused is refused before the confirmation, not after it.
+    params = bounded_params(algod)
     logger.info(f"About to freeze app {app_id} permanently.")
     logger.info(f"  It will be stuck with sha256 {digest} forever.")
     logger.info("  A bug in these programs could then only be answered by telling")
@@ -335,7 +484,7 @@ def freeze(algorand, app_id: int, assume_yes: bool, out: 'pathlib.Path | None' =
     if ms.configured():
         selector = bytes.fromhex(hashlib.new("sha512_256", b"freeze()void").hexdigest()[:8])
         unsigned = transaction.ApplicationCallTxn(
-            sender=ms.address(), sp=algod.suggested_params(), index=app_id,
+            sender=ms.address(), sp=params, index=app_id,
             on_complete=transaction.OnComplete.NoOpOC, app_args=[selector],
         )
         target = out or pathlib.Path(f"arcron-freeze-{app_id}.json")
@@ -348,7 +497,15 @@ def freeze(algorand, app_id: int, assume_yes: bool, out: 'pathlib.Path | None' =
     client = algorand.client.get_app_client_by_id(
         app_spec=_spec_json(), app_id=app_id, default_sender=deployer.address
     )
-    client.send.call(algokit_utils.AppClientMethodCallParams(method="freeze"))
+    # The app client computes a fee of its own from the node's params, so it
+    # is told the fee instead: `static_fee` is algokit's spelling of a flat
+    # fee, and `freeze()` sends no inner transaction for pooling to cover.
+    client.send.call(
+        algokit_utils.AppClientMethodCallParams(
+            method="freeze",
+            static_fee=algokit_utils.AlgoAmount(micro_algo=params.fee),
+        )
+    )
     if _frozen(algod, app_id) != 1:
         logger.error("freeze did not take. Investigate before announcing anything.")
         return 1
@@ -360,12 +517,6 @@ def _spec_json():
     import json
 
     return algokit_utils.Arc56Contract.from_json(json.dumps(_spec("keeper")))
-
-
-# A fee is spent whether or not the transaction accomplishes anything, so an
-# inflated one is a way to drain the account it is signed from without ever
-# looking like theft. Ten times the minimum leaves room for real congestion.
-MAX_SIGNABLE_FEE = 10_000
 
 
 def _refuse(args, verb: str) -> bool:
@@ -455,6 +606,17 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     algorand = net.connect(args.network)
+    try:
+        return _dispatch(args, algorand)
+    except FeeRefused as refusal:
+        # The one refusal that comes from the node rather than the operator.
+        # Nothing has been signed when it is raised, so it is a refusal and
+        # not a failure, and it is printed as one.
+        logger.error(f"Refusing: {refusal}")
+        return 1
+
+
+def _dispatch(args, algorand) -> int:
     if args.command == "create":
         if not args.expect_creator:
             logger.error(

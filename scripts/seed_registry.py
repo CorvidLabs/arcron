@@ -15,6 +15,12 @@ Each is funded for a stated number of runs, so what it costs is visible before
 anything is sent. Nothing here is required for the network to work — it is
 here to be watched.
 
+On MainNet this is step three of the ceremony (`docs/design/mainnet-rollout.md`,
+"After, in this order"), which is why the fee is not the node's to set here
+either: every transaction in a `register` group pays the network minimum,
+flat, and a node advising above `govern.MAX_SIGNABLE_FEE` is refused before
+the first signature (issue #250 F14).
+
 Run:  poetry run python -m scripts.seed_registry --network testnet --app-id N --target N
       poetry run python -m scripts.seed_registry --network testnet --app-id N --target N --commit
 """
@@ -26,6 +32,7 @@ import algokit_utils
 from algosdk import abi
 
 from scripts import keeper_bot, network as net
+from scripts.govern import FeeRefused, bounded_params
 from smart_contracts.artifacts.keeper.keeper_client import KeeperClient, RegisterArgs
 from smart_contracts.keeper.contract import (
     BOX_MBR_FIXED,
@@ -140,6 +147,20 @@ def main(argv: list[str] | None = None) -> None:
         logger.info("Priced only. Pass --commit to register.")
         return
 
+    # Once, before the first signature, so a node whose fee advice is above
+    # the ceiling registers nothing rather than something. Each group is two
+    # payments and the `register` call, and algokit's composer would multiply
+    # a non-flat per-byte figure by each one's size, three times per seed,
+    # from the creator's account, on MainNet. `register` issues no inner
+    # transaction (smart_contracts/keeper/contract.py: it reads the two
+    # payments and writes a box), so a flat minimum is right on all three;
+    # `reclaim`'s `cancel` needs `max_fee` instead because it does.
+    try:
+        flat = algokit_utils.AlgoAmount(micro_algo=bounded_params(algorand.client.algod).fee)
+    except FeeRefused as refusal:
+        logger.error(f"Refusing to register: {refusal}")
+        raise SystemExit(1)
+
     client = KeeperClient(
         algorand=algorand, app_id=args.app_id,
         default_sender=deployer.address, default_signer=deployer.signer,
@@ -154,15 +175,19 @@ def main(argv: list[str] | None = None) -> None:
                     sender=deployer.address, receiver=client.app_address,
                     amount=algokit_utils.AlgoAmount(micro_algo=amount),
                     first_valid_round=first_valid, last_valid_round=first_valid + 1_000,
+                    static_fee=flat,
                 )
             )
 
-        upkeep_id = client.send.register(args=RegisterArgs(
-            mbr_payment=payment(mbr), funding_payment=payment(escrow),
-            target_app=args.target, call_args=call_args, interval_rounds=interval,
-            fee_per_execution=MIN_UPKEEP_FEE, policy=policy, fee_cap=cap,
-            fee_asset=0, asset_fee=0,
-        )).abi_return
+        upkeep_id = client.send.register(
+            args=RegisterArgs(
+                mbr_payment=payment(mbr), funding_payment=payment(escrow),
+                target_app=args.target, call_args=call_args, interval_rounds=interval,
+                fee_per_execution=MIN_UPKEEP_FEE, policy=policy, fee_cap=cap,
+                fee_asset=0, asset_fee=0,
+            ),
+            params=algokit_utils.CommonAppCallParams(static_fee=flat),
+        ).abi_return
         logger.info(f"  upkeep {upkeep_id:>3}  {label}")
 
     after = algorand.client.algod.account_info(deployer.address)

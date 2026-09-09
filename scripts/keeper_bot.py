@@ -550,6 +550,52 @@ def failure_text(exc: Exception) -> str:
     return f"{exc}" if not raw else f"{exc} | {raw}"
 
 
+#: What algod says when a box is not there: `errBoxDoesNotExist` in
+#: `daemon/algod/api/server/v2/errors.go`, returned with a 404. Read there on
+#: 2026-09-08; it is the one string this module treats as an answer.
+MISSING_BOX_BODY = "box not found"
+
+
+def _is_missing_box(exc: Exception) -> bool:
+    """Is this algod saying the box does not exist, as opposed to anything else?
+
+    algod answers a read of a box it does not hold with HTTP 404 and the body
+    `box not found`, and both are required when a status is there to check:
+    a 404 alone is also what an edge returns for a path it does not serve, or
+    a node for an application that does not exist, and reading either as
+    "the upkeep was cancelled" would be the mistake `read_upkeep` describes
+    wearing a different status. Until 2026-09-08 any 404 was enough (#250).
+    The words alone still count when the exception carries no status at all,
+    because algosdk's `AlgodHTTPError` is not the only shape these arrive in:
+    a wrapper or a client that surfaces the body and drops the code has said
+    the same thing in the only way it can. Nothing wider than that: a 403 is
+    the edge shedding, a 5xx is the node unwell, a 400 is the request itself
+    being wrong, and every one of them has to keep reaching the caller.
+    """
+    said_missing = MISSING_BOX_BODY in str(exc).lower()
+    code = getattr(exc, "code", None)
+    if code is not None:
+        return code == 404 and said_missing
+    return said_missing
+
+
+def _read_box(algod, app_id: int, name: bytes) -> bytes | None:
+    """The bytes of one box, or None if the box is gone.
+
+    The one place a missing box is turned into an answer rather than an error,
+    so that `read_upkeep`, `scan_upkeeps` and `Registry.refresh` cannot drift
+    apart on what "gone" means. A box read here is a request through
+    `algod.application_box_by_name`, which the pinned algosdk funnels through
+    `algod_request`, so `node_retry.install`'s wrapper sees it.
+    """
+    try:
+        return _as_bytes(algod.application_box_by_name(app_id, name)["value"])
+    except Exception as exc:
+        if _is_missing_box(exc):
+            return None
+        raise
+
+
 def read_upkeep(algod, app_id: int, upkeep_id: int) -> Upkeep | None:
     """One upkeep, or None if its box is gone (cancelled, or never existed).
 
@@ -561,14 +607,8 @@ def read_upkeep(algod, app_id: int, upkeep_id: int) -> Upkeep | None:
     gone". That is how this was found, and a keeper would sail through an
     outage believing it had lost a hundred races.
     """
-    name = b"u" + upkeep_id.to_bytes(8, "big")
-    try:
-        raw = _as_bytes(algod.application_box_by_name(app_id, name)["value"])
-    except Exception as exc:
-        if getattr(exc, "code", None) == 404 or "box not found" in str(exc).lower():
-            return None
-        raise
-    return _decode_upkeep(upkeep_id, raw)
+    raw = _read_box(algod, app_id, b"u" + upkeep_id.to_bytes(8, "big"))
+    return None if raw is None else _decode_upkeep(upkeep_id, raw)
 
 
 def registry_moved_on(algod, app_id: int, before: Upkeep) -> tuple[bool | None, Upkeep | None]:
@@ -660,34 +700,106 @@ def align_to(period_seconds: int, stop=None) -> None:
         time.sleep(min(0.5, target - time.time()))
 
 
+#: Box names asked for per listing request. The listing is one request per
+#: page whatever the number, so the size trades the count of requests against
+#: the size of each response. The live registry is 33 boxes and fits in one
+#: page; the default server cap (`MaxAPIBoxPerApplication`, 100,000) is what a
+#: node would enforce if this were left unset, and a request that asked for
+#: that much would be shed by the 1,000,000-byte response limit anyway. A
+#: thousand is well inside both and is also what `registry_health` asked for
+#: while it was still taking a single page and calling it the registry.
+BOX_PAGE_LIMIT = 1_000
+
+#: The first algod release whose box listing understands `limit` and `next`.
+#: Read out of the OpenAPI spec at each release tag on 2026-09-08:
+#: `v4.6.0-stable` has `max` alone, `v4.7.0-stable` has the rest.
+BOX_PAGINATION_SINCE = "4.7.0"
+
+
 def _box_page(algod, app_id: int, token: "str | None") -> dict:
     """One page of an app's box names, continuing from `token`.
 
-    The continuation cannot go through `algod.application_boxes`. That is what
-    this did until 2026-09-01 and it cannot work: algosdk builds that call's
-    query string from `limit` alone and forwards every other keyword to
-    `algod_request`, whose signature has no `next`. A second page therefore
-    raised `TypeError: algod_request() got an unexpected keyword argument
-    'next'` rather than paging, and every reader built on this — the bot's own
-    scan, the health report, the solvency check — would have stopped at one
-    page. It never fired because the live registry is 33 boxes against a
-    server maximum in the thousands, and the unit tests passed because a mock
-    accepts a keyword the real client rejects.
+    Every page, the first included, is an explicit request with an explicit
+    page size, because the typed `algod.application_boxes` cannot page at all.
+    What the pinned py-algorand-sdk (2.12.0) does with it: `limit` is sent as
+    the query parameter `max`, and nothing else can be passed, since every
+    other keyword goes to `algod_request`, whose signature has no `next`. Its
+    own docstring says the request *fails* when server-side limits prevent
+    returning all names. That is the legacy mode of the endpoint, described
+    below, and a legacy response never carries a `next-token`: so until
+    2026-09-08 the continuation branch here was dead code on the real path,
+    and every reader built on this (the bot's scan, the health report, the
+    notifier's snapshot, the top-up planner) would have failed outright at the
+    server's cap rather than read past it. Before that, until 2026-09-01, the
+    continuation asked `application_boxes` for `next` and would have raised
+    `TypeError` instead; Grok 4.6 found that one, and #250 (F05) found that
+    the fix had left the first page on the method that never pages.
 
-    So the first page keeps using the typed method, which every other reader
-    here calls and every fake implements, and only the continuation drops to
-    the request the typed API cannot express.
+    What the endpoint actually accepts, verified 2026-09-08 against
+    https://raw.githubusercontent.com/algorand/go-algorand/master/daemon/algod/api/algod.oas2.json
+    (`GET /v2/applications/{application-id}/boxes`) and the handler in
+    `daemon/algod/api/server/v2/handlers.go` (`GetApplicationBoxes`):
 
-    Grok 4.6 found it reviewing the branch that added the third reader, by
-    checking the fake against the client the production path actually uses.
+      max      legacy: return every name, or fail with 400 "Result limit
+               exceeded" once the app holds more than the smaller of `max`
+               and the node's `MaxAPIBoxPerApplication`. No token, ever.
+      limit    names per page. Capped server-side at MaxAPIBoxPerApplication.
+      next     the `next-token` of the previous page, passed back verbatim. It
+               is a box name in goal's app-call-arg form (`b64:...`), the
+               last name of the page it came from.
+      prefix   a name prefix in the same form; unused here.
+      include  `values` returns box values with the names; unused here.
+      round    pin every page to one round. Supported, and the spec advises
+               pinning to the first page's `round`, but not used here, and
+               not because a lagging node behind a public endpoint would
+               answer 400 to a round it has not reached, though it would.
+               The walk does not need it. The cursor is exclusive: a page
+               holds the names strictly greater than the token
+               (`ledger/acctupdates.go`, `keyInRound <= cursor` is skipped),
+               and the names are `u` + a big-endian id that only ever grows,
+               so a registration landing mid-walk sorts after every cursor
+               already passed and is picked up by a later page, and a
+               cancellation removes a name and can never make one repeat.
+               An unpinned walk therefore returns every box that existed
+               throughout it, possibly some that appeared during it, and
+               never a duplicate, which is what a pinned one would return
+               too, minus the arrivals. Consistency past that is not on
+               offer either way, because each name is then read in its own
+               request against whatever round the node has reached, and
+               `_read_box` is what handles a box that vanishes in between.
+
+    Any one of `limit`, `next`, `prefix`, `include` or `round` switches the
+    handler into pagination mode, where names come back sorted, the response
+    carries `round`, and `next-token` is present exactly when more names
+    exist. The server also enforces a per-response byte limit, so a page may
+    hold fewer than `limit` names while more remain: the token is the only
+    reliable signal, and a reader that stopped at a short page would be wrong.
+    Pagination mode first shipped in algod `BOX_PAGINATION_SINCE` and is in
+    `rel/stable`. An older node does not reject `limit`; it ignores it and
+    answers in legacy mode, which is the silent fallback this function
+    refuses: a legacy response has no `round`, so its absence is the tell,
+    and that raises rather than letting the reader carry on as if it could
+    page. The live TestNet endpoint could not be probed from where this was
+    written (the egress proxy refuses it), so the deployed node's behaviour
+    rests on the spec and the handler rather than on a response we have seen.
+
+    What this buys is exact: the readers no longer fail at the listing cap. It
+    says nothing about how long a scan of a registry with many thousands of
+    boxes takes, which is still a read per name.
     """
-    if not token:
-        # The first page goes through the typed client, which is what every
-        # other reader in this repository calls and what every test fakes.
-        return algod.application_boxes(app_id)
-    return algod.algod_request(
-        "GET", f"/applications/{app_id}/boxes", params={"next": token}
-    )
+    params: dict[str, object] = {"limit": BOX_PAGE_LIMIT}
+    if token:
+        params["next"] = token
+    page = algod.algod_request("GET", f"/applications/{app_id}/boxes", params=params)
+    if "round" not in page:
+        raise UnrecoverableError(
+            f"The node answered the box listing for app {app_id} without a round, "
+            f"which is the legacy, unpaginated response: it ignored limit={BOX_PAGE_LIMIT}. "
+            f"Paged box listings need algod {BOX_PAGINATION_SINCE} or later; point "
+            f"ALGOD_SERVER at a newer node rather than reading a listing that will "
+            f"fail outright once the registry outgrows the node's cap"
+        )
+    return page
 
 
 def _box_names(algod, app_id: int) -> list[bytes]:
@@ -703,9 +815,12 @@ def _box_names(algod, app_id: int) -> list[bytes]:
         page = _box_page(algod, app_id, token)
         for box in page["boxes"]:
             name = _as_bytes(box["name"])
-            # Anyone can pay for a box under a name of their choosing; only the
-            # `u`-prefixed ones are the contract's.
-            if name[:1] == b"u" and len(name) >= 9:
+            # The contract's key is `u` + itob(upkeep_id), nine bytes exactly
+            # (`Box(Upkeep, key=op.concat(b"u", op.itob(upkeep_id)))`), and
+            # nothing else it writes starts with `u`. Anything of another
+            # length is not one of its upkeeps, and reading it as one would
+            # decode bytes that were never an Upkeep.
+            if name[:1] == b"u" and len(name) == 9:
                 names.append(name)
         token = page.get("next-token") or None
         if not token:
@@ -720,14 +835,24 @@ def scan_upkeeps(algod, app_id: int) -> list[Upkeep]:
     is a consistent picture of the registry as it stands. The bot's loop uses
     `Registry` instead, because it asks the same question thousands of times a
     day and almost nothing changes between two of them.
+
+    A box listed and then not there to read was cancelled in between, and is
+    left out rather than allowed to abort the scan (#250, F04). Until
+    2026-09-08 the 404 propagated, so one `cancel` landing during a scan
+    failed the whole of it: the bot backed off globally, and `health` and the
+    notifier died before reporting anything. Only the missing box is
+    forgiven, through `_read_box`; a node refusing to answer still raises,
+    because a scan that read an outage as "everything was cancelled" would be
+    a worse bug than the one being fixed, and so does a box that does not
+    decode, because malformed contract state is not a race.
     """
-    return [
-        _decode_upkeep(
-            int.from_bytes(name[1:9], "big"),
-            _as_bytes(algod.application_box_by_name(app_id, name)["value"]),
-        )
-        for name in _box_names(algod, app_id)
-    ]
+    found: list[Upkeep] = []
+    for name in _box_names(algod, app_id):
+        raw = _read_box(algod, app_id, name)
+        if raw is None:
+            continue  # cancelled between the listing and this read
+        found.append(_decode_upkeep(int.from_bytes(name[1:9], "big"), raw))
+    return found
 
 
 @dataclass
@@ -764,7 +889,9 @@ class Registry:
       backed off           the bot is not going to attempt it before
                            `next_attempt_round`, so its bytes cannot change a
                            decision before then either.
-      cancelled            it leaves the box listing, which is read every scan.
+      cancelled            it leaves the box listing, which is read every scan;
+                           or, listed and then gone by the time it is read,
+                           it is dropped by that read and aborts nothing.
       newly registered     it appears in that listing, and has never been read.
 
     The one thing a cache must never do is decide *not* to look at something
@@ -822,13 +949,21 @@ class Registry:
         live: set[int] = set()
         for name in _box_names(algod, app_id):
             upkeep_id = int.from_bytes(name[1:9], "big")
-            live.add(upkeep_id)
             entry = self.cached.get(upkeep_id)
             if entry is not None and current_round < self.wanted_at(entry, backoff):
+                live.add(upkeep_id)
                 continue
-            raw = _as_bytes(algod.application_box_by_name(app_id, name)["value"])
+            raw = _read_box(algod, app_id, name)
+            self.box_reads += 1  # a 404 is a request the node answered too
+            if raw is None:
+                # Listed a moment ago, gone now: cancelled between the two
+                # requests. Not live, so the loop below drops whatever copy
+                # was held, and not a reason to abort the scan (#250, F04).
+                # A 403 or a 5xx does not come this way; `_read_box` raises
+                # them, and the loop's global back-off is the right answer.
+                continue
+            live.add(upkeep_id)
             self.cached[upkeep_id] = Cached(_decode_upkeep(upkeep_id, raw), current_round)
-            self.box_reads += 1
         # Cancelled: the box is gone, and so is any reason to keep its escrow
         # and schedule in mind.
         for gone in set(self.cached) - live:

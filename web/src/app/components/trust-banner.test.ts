@@ -96,7 +96,7 @@ describe('a network with no published deployment', () => {
 });
 
 describe('a box the node would not hand over is not an accusation', () => {
-    test('an unreadable box raises no notice at all', () => {
+    test('an unreadable box is reported as an incomplete read, not as a bad app', () => {
         // Cancelling an upkeep deletes its box. The console lists boxes, then
         // reads each one, and a cancel lands between the two. Before fetching
         // was separated from decoding, that produced "this app is holding data
@@ -104,16 +104,49 @@ describe('a box the node would not hand over is not an accusation', () => {
         // different contract wearing these box names" against the visitor's
         // own honest deployment, immediately after they did exactly what the
         // console told them to do.
-        const notices = state({ unreadableBoxes: 1 });
+        //
+        // The banner then went silent about unreadable boxes altogether, and
+        // the tile underneath summed the boxes it did get and declared the
+        // balance covered "every escrow". So the fact is back, as a warning
+        // about the read and in words that say which it is.
+        const notices = state({ unreadableBoxes: 1, listedBoxes: 12 });
         expect(notices.some((n) => n.headline.includes('does not decode'))).toBe(false);
-        expect(notices.some((n) => n.detail.includes('different contract'))).toBe(false);
+        expect(notices.some((n) => n.tone === 'bad')).toBe(false);
+        const notice = notices.find((n) => n.headline.includes('could not be read'));
+        expect(notice?.tone).toBe('warn');
+        expect(notice?.headline).toContain('1 of 12 boxes');
+        expect(notice?.headline).toContain('solvency is unknown');
+        expect(notice?.detail).toContain('not the app');
+        expect(notice?.detail).toContain('not evidence');
     });
 
     test('many unreadable boxes are still not an accusation', () => {
         // A rate-limited node answers nothing for anything, so this is the
         // shape of a 403 during a full read, not of a hostile app.
-        const notices = state({ unreadableBoxes: 11 });
-        expect(notices.some((n) => n.detail.includes('different contract'))).toBe(false);
+        const notices = state({ unreadableBoxes: 11, listedBoxes: 11 });
+        expect(notices.some((n) => n.tone === 'bad')).toBe(false);
+        expect(notices.some((n) => n.headline.includes('11 of 11 boxes'))).toBe(true);
+    });
+
+    test('the incomplete-read notice is not suppressed by a healthy status', () => {
+        // The old silence was justified by "status already reports the
+        // failure". It does not: a box read that fails is caught, and the
+        // refresh completes with status 'ready'.
+        const notices = state({ status: 'ready', unreadableBoxes: 2, listedBoxes: 30 });
+        expect(notices.some((n) => n.headline.includes('could not be read'))).toBe(true);
+    });
+
+    test('a torn read is its own warning, and also not an accusation', () => {
+        const notices = state({ snapshotConsistent: false });
+        const notice = notices.find((n) => n.headline.includes('balance moved'));
+        expect(notice?.tone).toBe('warn');
+        expect(notice?.headline).toContain('solvency is unknown');
+        expect(notice?.detail).toContain('not evidence');
+    });
+
+    test('a complete, still read raises neither', () => {
+        const notices = state({ unreadableBoxes: 0, listedBoxes: 36, snapshotConsistent: true });
+        expect(notices.length).toBe(0);
     });
 
     test('a box that decodes wrongly IS still an accusation', () => {

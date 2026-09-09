@@ -401,10 +401,26 @@ which on a registry of hourly cadences was seventeen thousand scans a day
 against a quota a keeper was already being refused over), credits an
 execution only to a call that carries the `execute` selector, and reads
 `ARCRON_OURS` from the environment when no `--ours` is passed, which is how
-the container and the systemd unit tell it who counts as us. On MainNet it
-refuses to start without that list and without a webhook, because a watcher
-that cannot name a stranger, or that tells nobody, is the failure it exists to
-prevent.
+the container and the systemd unit tell it who counts as us. Every entry has
+to be a 58-character address; it does not resolve names, so `corvid.algo`
+typed literally is refused at startup rather than making every creator a
+stranger. On MainNet it refuses to start without that list and without a
+webhook, because a watcher that cannot name a stranger, or that tells nobody,
+is the failure it exists to prevent.
+
+A stranger alert is the one announcement that is not best-effort. It is
+written to `notifier-<network>-<app>-pending.json` (or `<state-file stem>-pending.json` when `--state-file` is given), beside the snapshot
+file, before the scan is recorded as seen; it is re-posted at the start of
+every loop, before the node is asked anything, at least five minutes apart
+per record, until Discord answers 2xx;
+and it carries its own text, so a stranger who cancels before the post
+lands is still announced. On restart the notifier says how many such alerts
+a previous run left undelivered. What the alert asks for is an operator
+decision within 24 hours, recorded with who decided and on what evidence
+(`docs/design/mainnet-rollout.md`, "If a stranger appears"); it does not
+ask for a freeze. The periodic summary (about every two hours by default, `--summary-every`)
+is the liveness signal: its absence for a day means the watcher is dead, on
+the same 24-hour budget.
 
 ```bash
 poetry run python -m scripts.keeper_bot --check --network testnet --app-id <id>

@@ -11,13 +11,14 @@ is pinned against a chain that lies.
 from __future__ import annotations
 
 import base64
+import inspect
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 from algosdk import account, transaction
 
-from scripts import deploy, network as net
+from scripts import deploy, govern, network as net
 
 CORVID = net.MAINNET_CREATOR
 # A real TestNet throwaway shape: valid checksum, not the MainNet creator.
@@ -34,7 +35,10 @@ def plan(network: str = net.MAINNET, creator: str = CORVID, tree: deploy.TreeSta
 
 
 def refuse(p, **overrides) -> list[str]:
-    options = dict(existing_keepers=[], allow_dirty=False, allow_another=False, mnemonic_on_disk=False)
+    # TestNet agreeing with this tree is the default, so every other refusal is
+    # tested on its own; the soak refusals below override it on purpose.
+    options = dict(existing_keepers=[], allow_dirty=False, allow_another=False, mnemonic_on_disk=False,
+                   soaked_digest=p.digest)
     options.update(overrides)
     return deploy.refusals(p, **options)
 
@@ -196,14 +200,27 @@ def _created(app_id: int, *, keys: tuple[bytes, ...] = (), approval: bytes = b"\
 
 
 class FakeAlgod:
-    def __init__(self, *, gen: str = "testnet-v1.0", created: list[dict] | None = None, app: dict | None = None):
+    """Answers like a node: `fee` is per byte and normally 0, `min_fee` is flat.
+
+    Not `flat_fee=True` with a fee of 1000, which is what this fake used to
+    say, because that is what a node never says, and a create built from it
+    costs the minimum whether or not anything bounds the fee. With the real
+    shape an unbounded create costs `fee` times its size, so a test can tell
+    the two apart.
+    """
+
+    def __init__(self, *, gen: str = "testnet-v1.0", created: list[dict] | None = None, app: dict | None = None,
+                 fee: int = 0, min_fee: int = 1000):
         self.gen = gen
         self.created = created or []
         self.app = app
         self.sent: list = []
+        self.fee = fee
+        self.min_fee = min_fee
 
     def suggested_params(self):
-        return transaction.SuggestedParams(fee=1000, first=1, last=1000, gh="", gen=self.gen, flat_fee=True)
+        return transaction.SuggestedParams(fee=self.fee, first=1, last=1000, gh="", gen=self.gen,
+                                           flat_fee=False, min_fee=self.min_fee)
 
     def account_info(self, address: str) -> dict:
         return {"amount": 10_000_000, "min-balance": 100_000, "created-apps": self.created}
@@ -291,6 +308,8 @@ def _algorand(algod: FakeAlgod, deployer_address: str, private_key: str):
 def quiet(monkeypatch):
     monkeypatch.setattr(deploy.ms, "configured", lambda: False)
     monkeypatch.setattr(deploy, "mnemonic_written_to", lambda path: False)
+    # TestNet agrees with this tree, and no test reaches a real node to ask.
+    monkeypatch.setattr(deploy, "soaked_digest", lambda app_id=None, algod=None: plan().digest)
     return monkeypatch
 
 
@@ -401,6 +420,7 @@ def test_main_reads_the_mnemonic_rule_from_the_networks_env_file(monkeypatch, tm
     (tmp_path / ".env.mainnet").write_text("ALGOD_SERVER=https://x\nDEPLOYER_MNEMONIC=\"abandon abandon\"\n")
     monkeypatch.setattr(deploy, "REPO", tmp_path)
     monkeypatch.setattr(deploy.ms, "configured", lambda: False)
+    monkeypatch.setattr(deploy, "soaked_digest", lambda app_id=None, algod=None: plan().digest)
     algod = FakeAlgod(gen="mainnet-v1.0")
     monkeypatch.setattr(deploy.net, "connect", lambda network: _algorand(algod, CORVID, "unused"))
     monkeypatch.setattr(deploy, "tree_state", lambda: CLEAN)
@@ -511,3 +531,186 @@ def test_a_create_that_does_not_confirm_is_reported_with_its_txid(quiet, caplog)
         assert deploy.main(["--network", "testnet", "--no-rebuild", "--yes"]) == 1
     assert "SENT as TXID" in caplog.text and "may well have landed" in caplog.text
     assert len(algod.sent) == 1
+
+
+# --- #250 F10: the bytecode is what TestNet has been running -----------------
+
+
+def test_mainnet_refuses_bytecode_the_testnet_keeper_is_not_running() -> None:
+    """Equality with the soaked programs is the one part of "soaked" a script can check."""
+    p = plan()
+    other = "0" * 64
+    reasons = refuse(p, soaked_digest=other)
+    assert len(reasons) == 1, reasons
+    assert p.digest in reasons[0] and other in reasons[0], "both digests, so somebody can compare"
+    assert refuse(p, soaked_digest=p.digest) == []
+
+
+def test_mainnet_fails_closed_when_testnet_could_not_be_read() -> None:
+    reasons = refuse(plan(), soaked_digest=None)
+    assert any("could not be read" in r and "fails closed" in r for r in reasons), reasons
+
+
+def test_rehearsals_are_not_held_to_the_soaked_digest() -> None:
+    """TestNet is where bytecode goes to become soaked; LocalNet runs offline."""
+    assert refuse(plan(net.TESTNET, STRANGER), soaked_digest=None) == []
+    assert refuse(plan(net.TESTNET, STRANGER), soaked_digest="0" * 64) == []
+    assert refuse(plan(net.LOCALNET, STRANGER), soaked_digest=None) == []
+
+
+def test_pulse_is_not_held_to_a_testnet_twin() -> None:
+    pulse = deploy.plan_for(net.MAINNET, "mainnet-v1.0", CORVID, CLEAN, contract="pulse")
+    assert "pulse" not in deploy.SOAKED
+    assert refuse(pulse, soaked_digest=None) == []
+
+
+def test_soaked_digest_reads_the_programs_and_fails_closed() -> None:
+    p = plan()
+    assert deploy.soaked_digest(769891898, algod=FakeAlgod(app=_live(p))) == p.digest
+
+    class Down(FakeAlgod):
+        def application_info(self, app_id: int) -> dict:
+            raise ConnectionError("testnet-api.algonode.cloud: 403")
+
+    assert deploy.soaked_digest(769891898, algod=Down()) is None
+
+
+def test_the_soaked_app_id_names_the_testnet_keeper() -> None:
+    """The constant CLAUDE.md and docs/releases.md name, so a drift is a failing test."""
+    assert deploy.SOAKED_APP_ID == 769891898
+    assert deploy.SOAKED_ALGOD.startswith("https://testnet-")
+
+
+def test_main_asks_testnet_on_mainnet_only_and_refuses_when_it_disagrees(quiet, caplog) -> None:
+    asked: list[int] = []
+
+    def disagreeing(app_id=None, algod=None):
+        asked.append(app_id)
+        return "f" * 64
+
+    quiet.setattr(deploy, "soaked_digest", disagreeing)
+    quiet.setattr(deploy, "tree_state", lambda: CLEAN)
+    private_key, address = account.generate_account()
+
+    # TestNet: never asked, and the create goes ahead.
+    algod = FakeAlgod()
+    quiet.setattr(deploy.net, "connect", lambda network: _algorand(algod, address, private_key))
+
+    def confirmed(client, txid, rounds):
+        algod.app = _live(plan(net.TESTNET, address))
+        return {"application-index": 4242}
+
+    quiet.setattr(deploy.transaction, "wait_for_confirmation", confirmed)
+    assert deploy.main(["--network", "testnet", "--no-rebuild", "--yes"]) == 0
+    assert asked == []
+
+    # MainNet, everything else right: asked about the constant, and refused.
+    algod = FakeAlgod(gen="mainnet-v1.0")
+    quiet.setattr(deploy.net, "connect", lambda network: _algorand(algod, CORVID, "unused"))
+    quiet.setattr("builtins.input", lambda prompt: pytest.fail("asked for confirmation after refusing"))
+    with caplog.at_level("ERROR"):
+        assert deploy.main(["--network", "mainnet", "--no-rebuild"]) == 1
+    assert asked == [deploy.SOAKED_APP_ID]
+    assert algod.sent == []
+    assert "f" * 64 in caplog.text and plan().digest in caplog.text
+
+
+def test_there_is_no_flag_to_point_the_soak_check_at_another_app(quiet) -> None:
+    """A `--soaked-app-id` would let an app created minutes ago from this tree pass.
+
+    The reviewer's point, and the reason the id is a constant changed by
+    commit: the check is only worth anything if the operator cannot choose
+    what it is compared with.
+    """
+    quiet.setattr(deploy, "soaked_digest", lambda app_id=None, algod=None: pytest.fail("parsed the flag"))
+    quiet.setattr(deploy, "tree_state", lambda: CLEAN)
+    algod = FakeAlgod(gen="mainnet-v1.0")
+    quiet.setattr(deploy.net, "connect", lambda network: _algorand(algod, CORVID, "unused"))
+    with pytest.raises(SystemExit) as refused:
+        deploy.main(["--network", "mainnet", "--no-rebuild", "--soaked-app-id", "770000001"])
+    assert refused.value.code == 2, "argparse rejects the unknown flag"
+    assert algod.sent == []
+    assert "--soaked-app-id" not in deploy.__doc__, "the docstring is the --help text"
+
+
+# --- #250 F14: the node advises a fee; it does not set one --------------------
+
+
+def test_a_node_suggesting_an_inflated_fee_is_refused_before_anything_is_signed(quiet, caplog) -> None:
+    """The fake says 50,000 per byte. Nothing is sent, and the message says why."""
+    private_key, address = account.generate_account()
+    algod = FakeAlgod(fee=50_000, min_fee=1000)
+    quiet.setattr(deploy.net, "connect", lambda network: _algorand(algod, address, private_key))
+    quiet.setattr(deploy, "tree_state", lambda: CLEAN)
+    with caplog.at_level("ERROR"):
+        assert deploy.main(["--network", "testnet", "--no-rebuild", "--yes"]) == 1
+    assert algod.sent == []
+    assert "not authorization" in caplog.text and str(govern.MAX_SIGNABLE_FEE) in caplog.text
+
+
+def test_a_network_minimum_above_the_ceiling_is_refused_too(quiet) -> None:
+    private_key, address = account.generate_account()
+    algod = FakeAlgod(fee=0, min_fee=20_000)
+    quiet.setattr(deploy.net, "connect", lambda network: _algorand(algod, address, private_key))
+    quiet.setattr(deploy, "tree_state", lambda: CLEAN)
+    assert deploy.main(["--network", "testnet", "--no-rebuild", "--yes"]) == 1
+    assert algod.sent == []
+
+
+def test_the_create_and_the_floor_pay_the_minimum_whatever_the_node_suggests(quiet) -> None:
+    """1,000 per byte is about 2.4 ALGO on a create of about 2,400 bytes (`estimate_size()`). It pays 1,000, flat."""
+    private_key, address = account.generate_account()
+    algod = FakeAlgod(fee=1000, min_fee=1000)
+    algorand = _algorand(algod, address, private_key)
+    quiet.setattr(deploy.net, "connect", lambda network: algorand)
+    quiet.setattr(deploy, "tree_state", lambda: CLEAN)
+
+    def confirmed(client, txid, rounds):
+        algod.app = _live(plan(net.TESTNET, address))
+        return {"application-index": 4242}
+
+    quiet.setattr(deploy.transaction, "wait_for_confirmation", confirmed)
+    algod.account_info = lambda addr: {"amount": 0 if addr != address else 10_000_000,
+                                       "min-balance": 100_000, "created-apps": []}
+    assert deploy.main(["--network", "testnet", "--no-rebuild", "--yes"]) == 0
+    sent = algod.sent[0].transaction
+    assert sent.fee == 1000, "the create pays the network minimum, not size times the node's per-byte advice"
+    assert len(sent.approval_program) + len(sent.clear_program) > 1000, "so the two are not the same number"
+    assert algorand.payments[0].static_fee.micro_algo == 1000, "and so does the floor payment"
+
+
+def test_bounded_params_pins_flat_to_the_minimum_and_has_no_override() -> None:
+    params = govern.bounded_params(FakeAlgod(fee=0, min_fee=1000))
+    assert params.flat_fee is True and params.fee == 1000
+    # A fake that never said what the minimum is gets the protocol constant.
+    params = govern.bounded_params(FakeAlgod(fee=0, min_fee=None))
+    assert params.flat_fee is True and params.fee == 1000
+    with pytest.raises(govern.FeeRefused, match="not authorization"):
+        govern.bounded_params(FakeAlgod(fee=govern.MAX_SIGNABLE_FEE + 1))
+    with pytest.raises(RuntimeError):
+        govern.bounded_params(FakeAlgod(min_fee=govern.MAX_SIGNABLE_FEE + 1))
+    # Exactly the ceiling is still under it: ten times the minimum is the room congestion gets.
+    assert govern.bounded_params(FakeAlgod(fee=govern.MAX_SIGNABLE_FEE)).fee == 1000
+    assert "allow_high_fee" not in inspect.signature(govern.bounded_params).parameters
+
+
+def test_a_floor_payment_refused_after_the_create_says_the_app_exists(quiet, caplog) -> None:
+    """The bound can only fire here if the node changed its advice between two requests."""
+    private_key, address = account.generate_account()
+    algod = FakeAlgod()
+    algorand = _algorand(algod, address, private_key)
+    quiet.setattr(deploy.net, "connect", lambda network: algorand)
+    quiet.setattr(deploy, "tree_state", lambda: CLEAN)
+
+    def confirmed(client, txid, rounds):
+        algod.app = _live(plan(net.TESTNET, address))
+        algod.fee = 50_000  # the node changes its mind once the app exists
+        return {"application-index": 4242}
+
+    quiet.setattr(deploy.transaction, "wait_for_confirmation", confirmed)
+    algod.account_info = lambda addr: {"amount": 0 if addr != address else 10_000_000,
+                                       "min-balance": 100_000, "created-apps": []}
+    with caplog.at_level("ERROR"):
+        assert deploy.main(["--network", "testnet", "--no-rebuild", "--yes"]) == 1
+    assert len(algod.sent) == 1 and algorand.payments == []
+    assert "EXISTS" in caplog.text and "NOT funded" in caplog.text

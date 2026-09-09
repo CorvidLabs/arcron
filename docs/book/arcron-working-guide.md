@@ -1752,10 +1752,15 @@ Those numbers are the wrong way round. The ratio that closes the gap is
 | 20,000 µALGO | $1.33 | 2 | 4 |
 
 **The floor is priced for the creator and sits below the cost of supplying it.**
-Raising the fee closes that. Around 10,000 µALGO the two converge at about ten
-upkeeps and the network pays for itself, still 3.0x cheaper than the cheapest paid
-host. That's the sustainable operating point, and it isn't the one the minimum
-advertises. The contract half-admits it already: *"A creator who wants keepers who
+Raising the fee closes that. At 10,000 µALGO a keeper funds a $5 host at about 11
+hourly upkeeps and the creator's crossover drops to 3, which are the table's own
+numbers; an earlier draft had the two "converging at about ten", which the table
+above it contradicts. Read the 11 for what it is: the upkeeps that fund *one*
+keeper's host. Two independent keepers splitting the same executions need about
+twice as many, and one operator is all this registry has had, so nothing here
+measures redundant keeper economics. It's still 3.0x cheaper than the cheapest paid
+host. That's the sustainable operating point for a single keeper, and it isn't
+the one the minimum advertises. The contract half-admits it already: *"A creator who wants keepers who
 do not care about their token should set a fee above this floor."*
 
 > **The takeaway for a creator.** Don't register at the floor and expect a
@@ -1817,9 +1822,14 @@ the product:
 
 The supported answer for data-driven automation is **oracle pairing**. A reporter
 pushes values into an oracle, an Arcron upkeep triggers `settle()` on a cadence,
-and settlement reads the stored value. Arcron supplies the timing guarantee, so
-settlement can't be stalled, delayed, or selectively timed by an interested
-party, and it supplies nothing else. One case needs no oracle trust at all: a
+and settlement reads the stored value. Arcron supplies the timing half, and it's
+narrower than "settlement can't be stalled", which an earlier draft said here:
+once the upkeep is due and funded, anyone may execute the fixed registered call
+and is paid atomically when it completes, so no single party controls the timing. It's still
+delayed if no keeper shows up, and whoever can influence the target's readiness
+can still influence when the call goes through. No deadline, no business
+outcome, no independent-operator guarantee (every keeper so far is ours). It
+supplies nothing else. One case needs no oracle trust at all: a
 **staleness check** comparing a feed's last-updated round against the current
 round, because comparing round numbers can't be lied to.
 

@@ -3,9 +3,10 @@
 # Beta wants thirty days of continuous TestNet uptime "with a funded heartbeat,
 # and the notifier running", so this is half of that gate rather than a
 # convenience. It is also the only thing that can tell somebody else's upkeep
-# from ours, which is what the pre-freeze plan for MainNet depends on: freeze
-# the moment a stranger escrows, and until this runs with --ours nothing knows
-# which upkeeps those are.
+# from ours, which is what the quiet MainNet rollout depends on: a stranger
+# registering is a durable alert and an operator decision within 24 hours
+# (docs/design/mainnet-rollout.md, "If a stranger appears"), not an automatic
+# freeze, and until this runs with --ours nothing knows which upkeeps those are.
 #
 #   sudo cp deploy/notifier.service /etc/systemd/system/
 #   sudo systemctl daemon-reload && sudo systemctl enable --now arcron-notifier

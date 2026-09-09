@@ -470,3 +470,95 @@ def test_the_threshold_still_fires_on_the_first_heartbeat(monkeypatch, tmp_path)
     )
     expected = sweep.sweepable(90_000_000, sweep.reserve_for(None, LOW_BALANCE_MICROALGO))
     assert recorder.sent == [expected]
+
+
+# --- the fee is the network minimum, not the node's advice (#250 F14) -------
+#
+# The payment that moves a keeper's earnings out was built from the node's
+# suggested params as they came, and algokit's composer multiplies a non-flat
+# per-byte figure by the payment's size. A sweep is periodic and unattended,
+# so the refusal has to be loud on its own: an error-level `sweep_refused`
+# event, and then the exception, so that `keeper_bot._maybe_sweep` treats it
+# as a failed sweep and leaves the period clock where it was. A first version
+# returned None instead, which the bot reads as a dry run: it recorded a
+# sweep, and a transient refusal on a daily sweep deferred the next attempt a
+# full day, which `test_a_failed_sweep_does_not_move_the_clock` says a failure
+# must never do.
+
+
+def _sweeping_algorand(fee: int, payments: list):
+    from types import SimpleNamespace
+
+    from algosdk import transaction
+
+    class Algod:
+        def suggested_params(self):
+            return transaction.SuggestedParams(fee=fee, first=1, last=1000, gh="", gen="testnet-v1.0",
+                                               flat_fee=False, min_fee=1000)
+
+    def payment(params):
+        payments.append(params)
+        return SimpleNamespace(tx_ids=["TXID"])
+
+    return SimpleNamespace(client=SimpleNamespace(algod=Algod()), send=SimpleNamespace(payment=payment))
+
+
+def test_the_sweep_is_flat_at_the_minimum_whatever_the_node_advises() -> None:
+    payments: list = []
+    txid = sweep.send(_sweeping_algorand(1000, payments), "SENDER", "DEST", 5_000_000, dry_run=False)
+    assert txid == "TXID"
+    assert payments[0].static_fee.micro_algo == 1000 and payments[0].amount.micro_algo == 5_000_000
+
+
+def test_a_node_advising_too_much_sweeps_nothing_and_says_so_loudly(caplog) -> None:
+    import logging
+
+    from scripts import govern
+
+    payments: list = []
+    with caplog.at_level(logging.ERROR), pytest.raises(govern.FeeRefused):
+        sweep.send(_sweeping_algorand(50_000, payments), "SENDER", "DEST", 5_000_000, dry_run=False)
+    assert payments == []
+    assert "Refusing to sweep" in caplog.text and str(govern.MAX_SIGNABLE_FEE) in caplog.text
+    assert any(r.levelno == logging.ERROR for r in caplog.records), "unattended, so an error and not a warning"
+
+
+def test_a_refused_sweep_does_not_move_the_clock(tmp_path) -> None:
+    """Through the bot's own catch: a refusal is a failed sweep, retried next heartbeat."""
+    import time
+
+    from scripts import keeper_bot
+
+    was = time.time() - 86_401
+    state = _backoff(tmp_path, last_sweep=was)
+    keeper_bot._maybe_sweep(_sweeping_algorand(50_000, []), "SENDER", _sweep_args(),
+                            spendable=90_000_000, backoff=state)
+    assert state.last_sweep == pytest.approx(was), "a refusal must not defer the next attempt a period"
+
+
+def test_the_refusal_goes_out_through_the_bots_rebound_emitter(monkeypatch, caplog) -> None:
+    """Under --log-format json the bot rebinds `emit`; a name imported at load would miss it."""
+    import json
+    import logging
+
+    from scripts import govern, keeper_bot
+
+    monkeypatch.setattr(keeper_bot, "emit", keeper_bot.Emitter(as_json=True))
+    with caplog.at_level(logging.ERROR), pytest.raises(govern.FeeRefused):
+        sweep.send(_sweeping_algorand(50_000, []), "SENDER", "DEST", 5_000_000, dry_run=False)
+    records = [r for r in caplog.records if r.levelno == logging.ERROR]
+    assert records, "the refusal was emitted"
+    parsed = json.loads(records[-1].getMessage())
+    assert parsed["event"] == "sweep_refused" and parsed["destination"] == "DEST" and parsed["amount"] == 5_000_000
+
+
+def test_a_dry_run_asks_the_node_nothing() -> None:
+    """Dry runs happen before any node is trusted for anything; no params are fetched."""
+    from types import SimpleNamespace
+
+    class NoNode:
+        def suggested_params(self):
+            raise AssertionError("a dry run fetched suggested params")
+
+    algorand = SimpleNamespace(client=SimpleNamespace(algod=NoNode()), send=None)
+    assert sweep.send(algorand, "SENDER", "DEST", 5_000_000, dry_run=True) is None

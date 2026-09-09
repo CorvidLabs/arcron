@@ -432,8 +432,10 @@ secret in the project, not as a funding account.
   mnemonic written into `.env.mainnet`, and that file is meant to hold the
   node and the app id and nothing secret, because it stays on the machine
   that later runs `health`. `freeze` has a wallet path: `web-govern` is a
-  local page that signs a freeze with Pera, and it is the answer to a stranger
-  appearing. `update` does not, yet, so alpha-4 is another shell export.
+  local page that signs a freeze with Pera, and it is the surface for the
+  freeze answer if a stranger appears; the answer itself is an operator
+  decision within 24 hours, not an automatic freeze, and the notifier's alert
+  says so. `update` has no wallet path yet, so alpha-4 is another shell export.
   Both are written down in [`design/mainnet-rollout.md`](design/mainnet-rollout.md).
 
   **Why not a multisig.** Because no wallet will sign for one. Asked directly

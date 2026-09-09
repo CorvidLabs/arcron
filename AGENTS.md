@@ -17,9 +17,10 @@ TestNet (app 769891898; 769802474 and 769772891 are superseded and predate the
 - Console: `cd web && bun run ng serve` (LocalNet by default), `bun test` for its unit tests
 - Reading the live deployment (all read-only, none of them signs anything):
   `fledge run health` (upkeeps about to starve, upkeeps that pay a keeper
-  nothing, keeper solvency), `fledge run clock` (how long the deployment has
-  been the deployment, and it refuses to count once the local build stops
-  matching the chain), `fledge run keeper-ui` (a local dashboard on 4300, never
+  nothing, keeper solvency), `fledge run clock` (how long the installed
+  programs have been installed, from indexer history rather than app age, and
+  it refuses to count once the local build stops matching the chain or the
+  history cannot be read), `fledge run keeper-ui` (a local dashboard on 4300, never
   published).
 - Fixing what `health` finds starving: `fledge run topup` prices every upkeep in
   **days of runway** and prints the top-ups that reach 30 of them. Planning is

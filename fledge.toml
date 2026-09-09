@@ -12,7 +12,11 @@ verify = "poetry run python -m scripts.verify_build --no-rebuild"
 # --- Deploying ------------------------------------------------------------
 # LocalNet needs no secrets. TestNet needs .env.testnet with DEPLOYER_MNEMONIC.
 # MainNet additionally needs ARCRON_ALLOW_MAINNET=1, so a mistyped --network
-# cannot reach real money.
+# cannot reach real money. deploy-mainnet also reads the TestNet keeper
+# (769891898, a constant in scripts/deploy.py with no flag) over the public
+# TestNet API and refuses bytecode it is not running, and every deploy pays
+# the network minimum fee flat, refusing a node that advises more than
+# govern.MAX_SIGNABLE_FEE.
 deploy-localnet = "poetry run python -m scripts.deploy --network localnet"
 deploy-testnet = "poetry run python -m scripts.deploy --network testnet"
 deploy-mainnet = "poetry run python -m scripts.deploy --network mainnet"

@@ -161,8 +161,16 @@ Raising the fee closes it, because the ratio is `(fee − 1000)/(fee − 3000)`:
 | 10,000 µALGO | $0.66 | 3 | **11** |
 | 20,000 µALGO | $1.33 | 2 | 4 |
 
-**Around 10,000 the two converge at about 10 upkeeps and the network pays for
-itself**, which is roughly what the registry holds. It is still 3.0x cheaper
+**At 10,000 a keeper funds a $5 host at about 11 hourly upkeeps, and the
+creator's crossover drops to 3.** Those are the table's own numbers and they are
+not the same number: an earlier draft of this paragraph said the two "converge at
+about 10", which the table directly above it contradicts. What the arithmetic
+does say is that at the suggested fee one keeper covers a $5 host once the
+registry sustains about eleven hourly upkeeps' worth of executions. It says
+nothing about redundancy: eleven upkeeps fund *one* keeper's host, two
+independent keepers splitting the same executions need about twice as many, and
+one operator covering one host is all that has ever been measured here, because
+every keeper that has executed on this registry is ours. It is still 3.0x cheaper
 than the cheapest paid host, not the 7.7x an earlier draft claimed here. That
 7.7x was the floor's ratio against a $5 host, reused for a different fee against
 a different host. The contract half-admits the underlying point already: *"A

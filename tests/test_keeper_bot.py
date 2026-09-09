@@ -22,6 +22,8 @@ from algosdk.v2client.algod import AlgodClient
 from scripts import keeper_bot
 from scripts.keeper_backoff import Backoff
 from scripts.keeper_bot import (
+    BOX_PAGE_LIMIT,
+    BOX_PAGINATION_SINCE,
     CATCH_UP,
     HEARTBEAT_ROUNDS,
     HEARTBEAT_SCANS,
@@ -29,6 +31,7 @@ from scripts.keeper_bot import (
     SKIP_AHEAD,
     STARVED_RECHECK_ROUNDS,
     Registry,
+    UnrecoverableError,
     is_frozen,
     _as_bytes,
     _decode_upkeep,
@@ -38,6 +41,7 @@ from scripts.keeper_bot import (
     read_upkeep,
     registry_moved_on,
     resolve_app_id,
+    scan_upkeeps,
     select_due,
     wait_for_work,
 )
@@ -245,9 +249,11 @@ def test_the_recorded_box_names_its_creator() -> None:
     """The box always carried the creator and the decoder dropped it.
 
     Nothing downstream could tell one creator's upkeep from another's, which
-    is the detector the pre-freeze MainNet window depends on: the plan is to
-    freeze the moment an upkeep appears that is not ours, and until now
-    nothing could say which those were.
+    is the detector the unfrozen MainNet window depends on: a stranger's
+    upkeep starts a 24-hour clock for an operator decision (freeze only
+    bytecode already accepted for permanence, an approved update, or a
+    recorded acceptance of the exposure; docs/design/mainnet-rollout.md),
+    and until now nothing could say which upkeeps those were.
 
     Pinned against the same recorded box as the rest of the decoder, so the
     offset is checked against real bytes rather than against the docstring.
@@ -289,6 +295,23 @@ def _http_error(code: int, message: str) -> Exception:
 
 def test_a_cancelled_upkeep_reads_as_gone() -> None:
     algod = _BoxAlgod(error=_http_error(404, "box not found"))
+    assert read_upkeep(algod, 1, 7) is None
+
+
+def test_a_404_that_does_not_say_box_not_found_is_not_a_cancelled_upkeep() -> None:
+    """A 404 alone is also an edge's answer for a path it does not serve, and a
+    node's for an application that does not exist. algod's own words for a
+    missing box are `box not found` (errBoxDoesNotExist), and when a status is
+    there to check, both are required before the upkeep is called gone."""
+    algod = _BoxAlgod(error=_http_error(404, "HTTP Error 404: Not Found"))
+    with pytest.raises(Exception, match="404"):
+        read_upkeep(algod, 1, 7)
+
+
+def test_a_missing_box_reported_without_a_status_is_still_gone() -> None:
+    """Not every client carries a code; one that hands back algod's body and
+    nothing else has said the same thing in the only way it can."""
+    algod = _BoxAlgod(error=RuntimeError("box not found"))
     assert read_upkeep(algod, 1, 7) is None
 
 
@@ -458,11 +481,35 @@ class CountingAlgod(AlgodClient):
     `tests/test_registry_health.py::TestEveryBoxIsCounted` gives: a fake that
     accepts a keyword the real client rejects lets a broken reader pass here
     and fail against a node, which is how the box pagination shipped broken.
+    The subclassing earned its keep a second time on 2026-09-08: when the
+    readers moved their listing to `algod_request`, the real client's
+    `algod_request` was reached and fell over on the network it has no access
+    to, which is how this fake found out it had to change too.
+
+    The listing is answered the way an algod of `BOX_PAGINATION_SINCE` or
+    later answers it, by the handler read for `keeper_bot._box_page`: names
+    sorted, at most `limit` of them, a `round`, and a `next-token` (the last
+    name of the page, in `b64:` form) exactly when names remain after it.
+    `page_size`, when smaller than the limit asked for, stands in for the
+    server's byte cap: a page shorter than `limit` with a token on it.
+
+    Three things a real registry does between one request and the next are
+    scripted per upkeep, so a test can say which box misbehaves:
+    `vanished` boxes are still listed but 404 on the read, which is a
+    `cancel` landing in the gap; `refusing` boxes answer the read with the
+    403 the public edge sheds under quota; `malformed` boxes read back bytes
+    that are not an Upkeep.
     """
 
-    def __init__(self, chain: Chain) -> None:
+    def __init__(self, chain: Chain, page_size: int | None = None) -> None:
         self.chain = chain
         self.counts: Counter[str] = Counter()
+        self.page_size = page_size
+        #: The query parameters of every listing request, in order.
+        self.listings: list[dict] = []
+        self.vanished: set[int] = set()
+        self.refusing: set[int] = set()
+        self.malformed: set[int] = set()
 
     def status(self, **kwargs):
         self.counts["status"] += 1
@@ -475,18 +522,56 @@ class CountingAlgod(AlgodClient):
         return {"last-round": self.chain.round}
 
     def application_boxes(self, application_id: int, limit: int = 0, **kwargs):
-        assert not kwargs, f"application_boxes takes no {sorted(kwargs)}"
+        # The typed method sends `limit` as the legacy `max` and can carry no
+        # `next`, so it cannot page. Until 2026-09-01 the readers asked it for
+        # `next` and would have raised TypeError against a node; until
+        # 2026-09-08 they took the first page from it, which never carries a
+        # token, so the continuation was dead code. Either way round, a
+        # reader that reaches this method is one that cannot read past the
+        # server's cap, and it fails here rather than against a node.
+        raise AssertionError(
+            "the box readers must list through algod_request with limit and next; "
+            "application_boxes cannot page"
+        )
+
+    def algod_request(self, method, requrl, params=None, **kwargs):
+        # The one method on the real client that reaches the network, so this
+        # is what the request actually said. `node_retry.install` wraps this
+        # same attribute, which is why the readers' listing is retried too.
+        assert (method, requrl) == ("GET", f"/applications/{APP_ID}/boxes"), (
+            f"unexpected request {method} {requrl}"
+        )
+        params = dict(params or {})
+        self.listings.append(params)
         self.counts["boxes"] += 1
-        return {
-            "boxes": [
-                {"name": base64.b64encode(b"u" + i.to_bytes(8, "big")).decode()}
-                for i in sorted(self.chain.upkeeps)
-            ]
+        limit = params["limit"]  # a listing without a page size is the legacy read
+        assert isinstance(limit, int) and limit > 0, f"limit={limit!r}"
+        names = sorted(b"u" + i.to_bytes(8, "big") for i in self.chain.upkeeps)
+        if "next" in params:
+            kind, _, encoded = params["next"].partition(":")
+            assert kind == "b64", f"a next-token is a box name in b64: form, not {params['next']!r}"
+            after = base64.b64decode(encoded)
+            names = [name for name in names if name > after]  # the cursor is exclusive
+        take = min(limit, self.page_size or limit)
+        page: dict = {
+            "boxes": [{"name": base64.b64encode(name).decode()} for name in names[:take]],
+            "round": self.chain.round,
         }
+        if len(names) > take:
+            page["next-token"] = "b64:" + base64.b64encode(names[take - 1]).decode()
+        return page
 
     def application_box_by_name(self, application_id: int, box_name: bytes, **kwargs):
+        from algosdk import error
+
         self.counts["box_read"] += 1
         upkeep_id = int.from_bytes(box_name[1:9], "big")
+        if upkeep_id in self.refusing:
+            raise error.AlgodHTTPError("HTTP Error 403: Forbidden", 403)
+        if upkeep_id in self.vanished or upkeep_id not in self.chain.upkeeps:
+            raise error.AlgodHTTPError("box not found", 404)
+        if upkeep_id in self.malformed:
+            return {"value": base64.b64encode(b"not an upkeep").decode()}
         return {"value": base64.b64encode(self.chain.box(upkeep_id)).decode()}
 
     def account_info(self, address: str, exclude=None, **kwargs):
@@ -888,3 +973,159 @@ class TestNothingDueIsMissed:
 
         registry.refresh(algod, APP_ID, start + 1, backoff)
         assert algod.counts["box_read"] == 1
+
+
+class TestTheListingIsPaged:
+    """#250, F05: every page of the box listing is asked for, the first included.
+
+    The live registry is 33 boxes, so nothing here has ever needed a second
+    page, and that is the problem: a pager whose first page comes from a
+    method that never returns a token is a pager that has never paged. These
+    run the readers over more boxes than a page holds and read what the fake
+    node was actually asked.
+    """
+
+    def test_the_first_request_carries_the_page_size_and_no_token(self) -> None:
+        algod = CountingAlgod(live_chain())
+        Registry().refresh(algod, APP_ID, algod.chain.round, Backoff(None))
+        assert algod.listings == [{"limit": BOX_PAGE_LIMIT}]
+
+    def test_the_bot_reads_a_registry_larger_than_a_page(self, monkeypatch) -> None:
+        monkeypatch.setattr(keeper_bot, "BOX_PAGE_LIMIT", 10)
+        algod = CountingAlgod(live_chain())
+        registry = Registry()
+
+        upkeeps = registry.refresh(algod, APP_ID, algod.chain.round, Backoff(None))
+
+        assert sorted(u.upkeep_id for u in upkeeps) == sorted(u[0] for u in LIVE_REGISTRY)
+        assert len(upkeeps) == 33 and algod.counts["boxes"] == 4, dict(algod.counts)
+        assert [p["limit"] for p in algod.listings] == [10, 10, 10, 10]
+        assert "next" not in algod.listings[0]
+        assert all("next" in p for p in algod.listings[1:]), algod.listings
+
+    def test_scan_upkeeps_reads_a_registry_larger_than_a_page(self, monkeypatch) -> None:
+        """The reader `health`, the notifier, the top-up planner and the
+        preview all share; a short read here is a solvency check that lies."""
+        monkeypatch.setattr(keeper_bot, "BOX_PAGE_LIMIT", 10)
+        algod = CountingAlgod(live_chain())
+
+        upkeeps = scan_upkeeps(algod, APP_ID)
+
+        assert sorted(u.upkeep_id for u in upkeeps) == sorted(u[0] for u in LIVE_REGISTRY)
+        assert algod.counts["boxes"] == 4 and algod.counts["box_read"] == 33
+        assert "next" not in algod.listings[0]
+        assert all("next" in p for p in algod.listings[1:])
+
+    def test_a_short_page_with_a_token_is_not_the_end(self) -> None:
+        """The server's byte cap can return fewer than `limit` while more
+        remain; the spec says the token is the only reliable signal, so a
+        reader that stopped at a page shorter than it asked for would be
+        wrong. Here every page is five names against a limit of a thousand."""
+        algod = CountingAlgod(live_chain(), page_size=5)
+        assert len(scan_upkeeps(algod, APP_ID)) == 33
+        assert algod.counts["boxes"] == 7  # ceil(33 / 5)
+
+    def test_what_the_listing_request_looks_like_on_the_wire(self, monkeypatch) -> None:
+        """Through the real client down to `urlopen`, so the URL a node would
+        receive is what is asserted: the versioned path, the page size, and
+        the continuation token with its `b64:` colon percent-encoded and
+        decoding back to exactly the token the previous page handed out."""
+        import io
+        from urllib.parse import parse_qs, urlsplit
+
+        from algosdk.v2client import algod as algod_module
+
+        sent: list[str] = []
+
+        def urlopen(request, timeout=None):
+            sent.append(request.full_url)
+            return io.BytesIO(b'{"boxes": [], "round": 1}')
+
+        monkeypatch.setattr(algod_module, "urlopen", urlopen)
+        client = AlgodClient("", "http://node.test")
+        token = "b64:" + base64.b64encode(b"u" + (84).to_bytes(8, "big")).decode()
+        assert token == "b64:dQAAAAAAAABU"
+
+        keeper_bot._box_page(client, APP_ID, token)
+
+        assert sent == [
+            f"http://node.test/v2/applications/{APP_ID}/boxes?limit=1000&next=b64%3AdQAAAAAAAABU"
+        ]
+        assert parse_qs(urlsplit(sent[0]).query) == {"limit": ["1000"], "next": [token]}
+
+    def test_a_node_that_ignores_the_page_size_is_refused(self) -> None:
+        """An algod older than 4.7.0 does not reject `limit`; it ignores it
+        and answers in legacy mode, without a `round`. That listing fails
+        outright once the app outgrows the node's cap, so it is refused with
+        the version to upgrade to rather than read as if it could page."""
+
+        class LegacyAlgod(CountingAlgod):
+            def algod_request(self, method, requrl, params=None, **kwargs):
+                page = super().algod_request(method, requrl, params, **kwargs)
+                del page["round"]
+                return page
+
+        algod = LegacyAlgod(live_chain())
+        with pytest.raises(UnrecoverableError, match=BOX_PAGINATION_SINCE):
+            scan_upkeeps(algod, APP_ID)
+
+
+class TestACancelledBoxDoesNotAbortTheScan:
+    """#250, F04: a box that vanishes between the listing and its read.
+
+    `cancel` deletes the box, and a scan is a listing followed by a read per
+    name, so a creator cancelling while a scan is in flight hands the reader a
+    name that 404s. Until 2026-09-08 that 404 propagated: the bot logged
+    `scan_failed` and backed off the whole registry, and `health` and the
+    notifier died before saying anything. The 404 is the one error forgiven,
+    and only on the read of a box that was just listed; a node refusing to
+    answer, or a box that does not decode, still fails the scan, because a
+    reader that took an outage for a wave of cancellations would be the worse
+    bug.
+    """
+
+    def test_scan_upkeeps_leaves_the_vanished_box_out(self) -> None:
+        algod = CountingAlgod(live_chain())
+        algod.vanished = {84}
+
+        upkeeps = scan_upkeeps(algod, APP_ID)
+
+        assert 84 not in {u.upkeep_id for u in upkeeps}
+        assert len(upkeeps) == len(LIVE_REGISTRY) - 1
+        assert algod.counts["box_read"] == 33, "the read was attempted, and answered 404"
+
+    def test_the_registry_drops_the_vanished_box_and_keeps_the_rest(self) -> None:
+        algod = CountingAlgod(live_chain())
+        backoff, registry = Backoff(None), Registry()
+        start = algod.chain.round
+        settle(algod, registry, backoff, start)
+        assert 84 in registry.cached
+
+        # Upkeep 84 comes due 24 rounds on, which is what makes the bot read
+        # it again; by then its creator has cancelled it, and the listing the
+        # bot took a moment earlier still names it.
+        algod.vanished = {84}
+        upkeeps = registry.refresh(algod, APP_ID, start + 24, backoff)
+
+        assert 84 not in {u.upkeep_id for u in upkeeps}
+        assert 84 not in registry.cached, "the stale copy has to go with the box"
+        assert len(upkeeps) == len(LIVE_REGISTRY) - 1
+
+    def test_a_refusal_on_a_read_still_fails_the_scan(self) -> None:
+        """The 403 that free TestNet nodes shed under quota: not a cancellation."""
+        algod = CountingAlgod(live_chain())
+        algod.refusing = {84}
+        with pytest.raises(Exception, match="403"):
+            scan_upkeeps(algod, APP_ID)
+        with pytest.raises(Exception, match="403"):
+            Registry().refresh(algod, APP_ID, algod.chain.round, Backoff(None))
+
+    def test_a_box_that_does_not_decode_still_fails_the_scan(self) -> None:
+        """Malformed contract state is a different failure from a race, and
+        skipping it would hide a box the decoder does not understand."""
+        algod = CountingAlgod(live_chain())
+        algod.malformed = {84}
+        with pytest.raises(ValueError, match="upkeep 84"):
+            scan_upkeeps(algod, APP_ID)
+        with pytest.raises(ValueError, match="upkeep 84"):
+            Registry().refresh(algod, APP_ID, algod.chain.round, Backoff(None))

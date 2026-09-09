@@ -190,9 +190,18 @@ other on-chain state machine that has to advance on time.
 
 **Paired with an oracle** it does the half that is otherwise hard. A reporter
 pushes data into an oracle contract, Arcron triggers `settle()` on a cadence,
-and settlement reads the stored value. Arcron does not supply the data. It
-supplies the guarantee that settlement cannot be stalled, delayed or
-selectively timed by an interested party.
+and settlement reads the stored value. Arcron does not supply the data. What
+it supplies is narrower than an earlier version of this paragraph claimed,
+which was that settlement "cannot be stalled, delayed or selectively timed".
+The promise is this: once the upkeep is due and its escrow covers the fee,
+*anyone* may execute the fixed, registered call, and is paid from escrow atomically when that call completes,
+so no single party controls the timing. It is not a deadline. Settlement is
+still delayed if no keeper shows up, and a party who can influence whether the
+target is ready to settle can still influence when the call is able to go
+through. Arcron guarantees permissionless execution of a fixed call once it is
+due and funded, with the reward on successful completion; it does not guarantee a
+deadline, a useful business outcome, or that the keepers who show up are
+independent of one another. Today every keeper that has executed here is ours.
 
 ## What is proven, and what is not
 
@@ -337,10 +346,11 @@ upkeep whose target reverts read identically otherwise and only one of them is
 a funding problem. It reads one box per upkeep with no pacing, so against the
 public TestNet endpoint it can be rate-limited into an HTTP 403 part way
 through; re-run it, or point `ALGOD_SERVER` at a node you control.
-`clock` measures the MainNet hold from the application's
-creation round, and refuses to count once the local build stops matching what
-is deployed, because time served by code that is about to be replaced is not
-evidence about the code replacing it.
+`clock` measures the MainNet hold from the round the installed programs were
+installed, read from indexer history, not from the app's creation, and refuses
+to count once the local build stops matching what is deployed or the history
+cannot be read, because time served by code that is about to be replaced is
+not evidence about the code replacing it.
 
 `keeper-preview` answers the question a prospective keeper actually has. It
 reads what the registry paid over the last day, net of what those executions

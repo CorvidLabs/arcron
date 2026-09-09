@@ -28,13 +28,29 @@ In order:
    through the indexer and quietly creates a second one when the indexer is
    behind. MainNet gets exactly one; a second is a mistake with a permanent
    minimum balance attached, so there it cannot be overridden at all.
-5. Print every permanent field, derived from the build and not typed, and make
+5. On MainNet, read the programs the TestNet keeper (`SOAKED_APP_ID`,
+   769891898, with no flag to point elsewhere) is running right now and refuse
+   bytecode whose digest is not theirs. "Soaked" means two things, and only one of them is a fact a
+   script can check: that the bytes about to be created are the bytes that
+   have been running, which this is, and that they have been running long
+   enough, which stays a human sign-off against `docs/releases.md`. If TestNet
+   cannot be read, nothing proves the first, and the create is refused rather
+   than assumed (issue #250 F10).
+6. Print every permanent field, derived from the build and not typed, and make
    the operator type the creator address back. On MainNet there is no flag to
    skip that.
-6. Simulate the create, then send the same signed bytes.
-7. Fund the app account's 0.1 ALGO floor, then read the creator, extra pages,
+7. Simulate the create, then send the same signed bytes, at the network
+   minimum fee, flat. The node's fee advice is checked and not taken
+   (`govern.bounded_params`, issue #250 F14): a create sends no inner
+   transaction that pooling would have to cover, so a suggestion above the
+   minimum is not something to pay, and a suggestion above `MAX_SIGNABLE_FEE`
+   is a reason to stop and find out what node this is. No flag overrides it.
+8. Fund the app account's 0.1 ALGO floor, then read the creator, extra pages,
    schema, programs and `frozen` back from the chain and compare each to what
    was promised. A mismatch at that point is shouted, because the app exists.
+
+The node is trusted for the genesis id and for the read-back, and for nothing
+that costs money.
 
 `--with-pulse` creates the demo target the same way: directly, checked against
 its own spec, refused if the creator already has one, read back afterwards. No
@@ -62,10 +78,11 @@ from dataclasses import dataclass
 
 import algokit_utils
 from algosdk import logic, transaction
+from algosdk.v2client import algod as algod_client
 from algosdk.v2client.models import SimulateRequest, SimulateRequestTransactionGroup
 
-from scripts import multisig as ms, network as net
-from scripts.govern import PROGRAM_PAGE, _create_shape, _deployed, _frozen
+from scripts import multisig as ms, network as net, node_retry
+from scripts.govern import PROGRAM_PAGE, _create_shape, _deployed, _frozen, bounded_params
 from scripts.registry_health import read_solvency
 from scripts.verify_build import REPO, _digest, _programs, _spec, rebuild
 
@@ -87,6 +104,26 @@ GOVERNED = frozenset({"keeper"})
 
 #: Rounds to wait for a create to confirm before giving up on the read-back.
 CONFIRMATION_ROUNDS = 6
+
+#: The TestNet keeper whose programs the MainNet bytecode has to match: app
+#: 769891898, alpha-2 in `docs/releases.md` and updated in place to alpha-3 on
+#: 2026-08-26, the registry every soak claim is about. There is deliberately
+#: no flag to point this at another app: a `--soaked-app-id` would let any
+#: TestNet app satisfy the check, including one created minutes earlier from
+#: the same tree, which is the opposite of soaked. When a struct change forces
+#: a new TestNet id, this changes in a commit anyone can read, the same stance
+#: `govern.MAX_SIGNABLE_FEE` takes.
+SOAKED_APP_ID = 769891898
+
+#: Where the soaked programs are read from, whatever `.env.mainnet` says. See
+#: `soaked_digest` for why this is not `net.connect(net.TESTNET)`.
+SOAKED_ALGOD = "https://testnet-api.algonode.cloud"
+
+#: Contracts whose MainNet create must be the bytecode TestNet is running.
+#: The keeper holds every escrow and is what the soak is evidence about.
+#: Pulse holds nothing and is created alongside for the uptime clock; it is
+#: deliberately not held to a TestNet twin.
+SOAKED = frozenset({"keeper"})
 
 #: The check every MainNet script applies; here so the ceremony can list it
 #: among its own refusals and a test can exercise the wiring.
@@ -234,6 +271,34 @@ def find_keepers(
     return sorted(found)
 
 
+def soaked_digest(app_id: int = SOAKED_APP_ID, algod=None) -> str | None:
+    """The digest of what the TestNet keeper is running, or None if it could not be read.
+
+    Read through a plain algod client pointed at the public TestNet endpoint,
+    not through `net.connect(net.TESTNET)`. The MainNet run has already loaded
+    `.env.mainnet`, and `load_network` deliberately lets exported variables
+    win over the file it loads, so `ALGOD_SERVER` would still be the MainNet
+    node when `.env.testnet` was read: `AlgorandClient.from_environment()`
+    would connect to MainNet, `assert_network` would refuse, and without that
+    refusal the "soaked" programs would have been read from the chain being
+    deployed to, which proves nothing. An explicit address has no environment
+    to inherit. It gets the same retry wrapper every other client gets, with
+    the fallback pinned empty for the same reason: `ALGOD_SERVER_FALLBACK` in
+    a MainNet shell is a MainNet node.
+
+    Fails closed: any failure is logged and returned as None, and `refusals`
+    turns None into a refusal. `algod` is for tests.
+    """
+    if algod is None:
+        algod = node_retry.install(algod_client.AlgodClient("", SOAKED_ALGOD), fallback="")
+    try:
+        approval, clear = _deployed(algod, app_id)
+    except Exception as error:  # noqa: BLE001 - every failure is the same answer: unproven
+        logger.warning(f"Could not read TestNet app {app_id}'s programs: {error}")
+        return None
+    return _digest(approval, clear)
+
+
 def refusals(
     plan: Plan,
     *,
@@ -241,6 +306,7 @@ def refusals(
     allow_dirty: bool,
     allow_another: bool,
     mnemonic_on_disk: bool,
+    soaked_digest: str | None,
 ) -> list[str]:
     """Every reason not to create, so the operator sees all of them at once.
 
@@ -248,6 +314,12 @@ def refusals(
     decisions happen here, and a test can exercise each decision without a
     node. The MainNet rules have no override flag on purpose; what they guard
     is permanent.
+
+    `soaked_digest` is what the TestNet keeper is running, as read by
+    `soaked_digest()` moments before, or None when that read failed. It is
+    consulted on MainNet only, and only for contracts in `SOAKED`; a rehearsal
+    is how bytecode *becomes* soaked and cannot be held to it, so off MainNet
+    the caller passes whatever it likes and nothing looks at it.
     """
     reasons: list[str] = []
     mainnet = plan.network == net.MAINNET
@@ -278,6 +350,27 @@ def refusals(
             "kept in a file, because that file stays on the machine that later runs "
             "`health`. Remove the line and run this again."
         )
+    if mainnet and plan.contract in SOAKED:
+        # Bytecode equality is the only part of "soaked" a script can verify.
+        # How long it has been running is `docs/releases.md` and a human.
+        if soaked_digest is None:
+            reasons.append(
+                f"the TestNet {plan.contract}'s programs could not be read, so nothing "
+                "proves this bytecode is the soaked bytecode. The check fails closed: "
+                "a MainNet create is not made on the assumption that TestNet would have "
+                f"agreed. Check that app {SOAKED_APP_ID} on TestNet can be read from "
+                f"{SOAKED_ALGOD}, and run this again."
+            )
+        elif soaked_digest != plan.digest:
+            reasons.append(
+                f"this tree builds programs the TestNet {plan.contract} is not running.\n"
+                f"      this tree: {plan.digest}\n"
+                f"      TestNet:   {soaked_digest}\n"
+                "      MainNet is created from bytecode that has been soaking, and the "
+                "clock in docs/design/mainnet-rollout.md restarts for anything else. "
+                "Check out the tag TestNet was updated from, or update TestNet first "
+                "and wait."
+            )
     if existing_keepers:
         ids = ", ".join(str(i) for i in existing_keepers)
         if mainnet:
@@ -379,7 +472,9 @@ def create(algod, deployer, plan: Plan) -> tuple[int, str]:
     probably landed, and the caller must say so rather than let a traceback
     imply nothing happened.
     """
-    params = algod.suggested_params()
+    # Flat at the network minimum, or a `FeeRefused` (a `RuntimeError`) before
+    # anything is signed. A create has no inner transaction to pool for.
+    params = bounded_params(algod)
     signed = build_create(plan, params).sign(deployer.private_key)
     simulate(algod, signed)
     txid = algod.send_transaction(signed)
@@ -440,11 +535,17 @@ def fund_floor(algorand, deployer, app_address: str) -> int:
         return 0
     short = BASE_MBR - amount
     logger.info(f"Funding the app account with {short:,} µALGO of base minimum balance")
+    # algokit computes a fee of its own from the node's params, so it is told
+    # the fee instead. Bounded rather than left alone because a payment has
+    # nothing to pool for either, and because a fee is the same money whether
+    # algosdk or algokit computes it. `static_fee` is algokit's flat fee.
+    fee = bounded_params(algod).fee
     algorand.send.payment(
         algokit_utils.PaymentParams(
             sender=deployer.address,
             receiver=app_address,
             amount=algokit_utils.AlgoAmount(micro_algo=short),
+            static_fee=algokit_utils.AlgoAmount(micro_algo=fee),
         )
     )
     return short
@@ -521,12 +622,21 @@ def main(argv: list[str] | None = None) -> int:
         logger.info(line)
 
     mnemonic_on_disk = mnemonic_written_to(REPO / f".env.{args.network}")
+    if args.network == net.MAINNET:
+        # One request to a TestNet node, made only on MainNet: a rehearsal on
+        # LocalNet runs offline, and TestNet is where bytecode goes to become
+        # soaked in the first place, so neither can be held to this. The app
+        # asked about is the constant, not an argument; see `SOAKED_APP_ID`.
+        soaked = soaked_digest(SOAKED_APP_ID)
+    else:
+        soaked = plan.digest
     reasons = refusals(
         plan,
         existing_keepers=find_keepers(algod, plan.creator, plan.digest),
         allow_dirty=args.allow_dirty,
         allow_another=args.another,
         mnemonic_on_disk=mnemonic_on_disk,
+        soaked_digest=soaked,
     )
     pulse_plan = None
     if args.with_pulse:
@@ -539,6 +649,10 @@ def main(argv: list[str] | None = None) -> int:
             allow_dirty=args.allow_dirty,
             allow_another=args.another,
             mnemonic_on_disk=mnemonic_on_disk,
+            # The keeper's digest, which Pulse is not in `SOAKED` to be
+            # compared with; passed rather than None so a future widening of
+            # that set is a one-line change and not a rewiring.
+            soaked_digest=soaked,
         )
     if reasons:
         logger.error("Refusing to create:")
@@ -561,7 +675,18 @@ def main(argv: list[str] | None = None) -> int:
     app_address = logic.get_application_address(app_id)
     logger.info(f"Created keeper app {app_id} in {txid}")
 
-    fund_floor(algorand, deployer, app_address)
+    try:
+        fund_floor(algorand, deployer, app_address)
+    except RuntimeError as refusal:
+        # The same node passed the same bound a few seconds ago, so this is a
+        # node that changed its advice between two requests. The app exists,
+        # and that has to be said before anything else.
+        logger.error(f"Keeper app {app_id} EXISTS and its 0.1 ALGO floor was NOT funded: {refusal}")
+        logger.error(
+            f"  Send {app_address} an ordinary 0.1 ALGO payment from any account, then "
+            f"`govern status --network {args.network} --app-id {app_id}` and verify_build."
+        )
+        return 1
 
     mismatches = postflight(algod, app_id, plan)
     if mismatches:
