@@ -58,9 +58,9 @@ from algosdk import encoding
 from scripts import network as net
 # One decoder, not a third copy: this is the same one the bot uses.
 from scripts.keeper_bot import (
-    UnrecoverableError,
     Upkeep,
     effective_fee,
+    is_unrecoverable,
     require_keeper_app,
     resolve_app_id,
     scan_upkeeps,
@@ -1001,20 +1001,6 @@ class PendingStrangers:
             time.sleep(POST_INTERVAL_SECONDS)
 
 
-def _is_unrecoverable(exc: BaseException) -> bool:
-    """Whether `scripts.keeper_bot` has said this node cannot be worked with.
-
-    `UnrecoverableError` is what `_box_page` raises when the node ignores
-    `limit` and answers in legacy mode, and what `require_keeper_app` raises
-    for a wrong id. The bot exits 2 on it; the notifier's retry clause used to
-    swallow it with a warning and spin, which is a watcher that looks alive
-    and watches nothing. Matched by name as well as by class because a test
-    suite that reloads `scripts.keeper_bot` leaves this module holding the
-    old class object, and an `isinstance` alone would then let it through.
-    """
-    return isinstance(exc, UnrecoverableError) or type(exc).__name__ == "UnrecoverableError"
-
-
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--once", action="store_true", help="one scan, then exit")
@@ -1253,7 +1239,7 @@ def main(argv: list[str] | None = None) -> None:
             logger.info("Stopping")
             return
         except Exception as exc:
-            if _is_unrecoverable(exc):
+            if is_unrecoverable(exc):
                 # The node cannot be worked with (legacy box listing, wrong
                 # app id). Retrying is spinning, and spinning looks like
                 # watching. Stop loudly, as the bot does, so systemd's restart

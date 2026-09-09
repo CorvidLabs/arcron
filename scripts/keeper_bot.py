@@ -196,6 +196,25 @@ class UnrecoverableError(RuntimeError):
     """A condition no amount of retrying fixes; exit non-zero and be noticed."""
 
 
+def is_unrecoverable(exc: BaseException) -> bool:
+    """Whether this node has been declared one that cannot be worked with.
+
+    `UnrecoverableError` is what `_box_page` raises when the node ignores
+    `limit` and answers a listing in legacy mode, and what `require_keeper_app`
+    raises for an id that is not a keeper. The bot exits 2 on it; the notifier
+    used to swallow it with a warning and spin, which is a watcher that looks
+    alive and watches nothing.
+
+    Matched by name as well as by class, because a test suite that reloads
+    this module leaves every importer holding the old class object, and an
+    `isinstance` alone then lets the refusal through. That is not a
+    hypothetical: `tests/test_keeper_sweep.py` reloads it, and the preflight's
+    box check escaped its own handler because of it. Lives here rather than in
+    the readers so there is one copy of it, beside the exception it is about.
+    """
+    return isinstance(exc, UnrecoverableError) or type(exc).__name__ == "UnrecoverableError"
+
+
 class Emitter:
     """Human lines by default; one JSON object per line for log shipping.
 
