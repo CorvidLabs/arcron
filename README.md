@@ -330,13 +330,14 @@ poetry run python -m scripts.keeper_e2e --network localnet   # full e2e
 
 ### Looking at the live deployment
 
-Four read-only commands, none of which signs anything:
+Five read-only commands, none of which signs anything:
 
 ```bash
 fledge run health          # what is wrong with the registry right now
-fledge run clock           # how long the deployment has been the deployment
+fledge run clock           # how long the installed programs have been installed
 fledge run keeper-preview  # what running a keeper here would actually earn
 fledge run keeper-ui       # a local dashboard, on localhost:4300
+fledge run preflight       # every live question the rollout plan asks, in one run
 ```
 
 `health` reports upkeeps about to starve, upkeeps that pay a keeper nothing,
@@ -358,6 +359,16 @@ cost to send, and divides it by the keepers already there rather than quoting
 the total: an arriving keeper divides the work rather than creating it. It
 simulates what is due, so an upkeep whose fee has escalated to the ceiling is
 not counted as money on the table when its target reverts.
+
+`preflight` is the one to run before trusting a node with any of the others.
+It asks that node its version and genesis, checks the app id is a keeper,
+requests a real paged box listing, compares the deployed programs against this
+tree, walks the indexer for the round the current programs were installed,
+reads solvency, and counts how many creators a watcher would announce as
+strangers. Every one of those is a
+question the rest of this repository answers against mocks; this is the one
+command that puts them to a chain, and `-- --markdown` prints the answers as
+rows to keep. It exits non-zero if any of them failed.
 
 One more, which plans read-only and signs only when told to:
 

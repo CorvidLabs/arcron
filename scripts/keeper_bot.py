@@ -196,6 +196,35 @@ class UnrecoverableError(RuntimeError):
     """A condition no amount of retrying fixes; exit non-zero and be noticed."""
 
 
+def is_unrecoverable(exc: BaseException) -> bool:
+    """Whether this node has been declared one that cannot be worked with.
+
+    `UnrecoverableError` is what `_box_page` raises when the node ignores
+    `limit` and answers a listing in legacy mode, and what `require_keeper_app`
+    raises for an id that is not a keeper. The bot exits 2 on it; the notifier
+    used to swallow it with a warning and spin, which is a watcher that looks
+    alive and watches nothing.
+
+    Lives here, beside the exception it is about, so that a reader asking the
+    question resolves the class through this module's own globals. That is what
+    fixes the reload hazard, and the mechanism is worth stating because the
+    obvious explanation is the wrong one: `importlib.reload` re-executes the
+    module in its existing `__dict__`, so a function defined here sees whatever
+    class that dict holds now, before or after a reload. What goes stale is a
+    `from scripts.keeper_bot import UnrecoverableError` binding in some other
+    module, which keeps pointing at the class object the reload replaced. That
+    is not a hypothetical: `tests/test_keeper_sweep.py` reloads this module,
+    and the preflight's box check escaped its own `except` clause because it
+    held such a binding. Moving the question here deleted the binding.
+
+    The name clause stays regardless, because identity can still fail for
+    reasons a move cannot fix: an instance raised before a reload and handled
+    after it, and a same-named class raised by something that is not this
+    module at all.
+    """
+    return isinstance(exc, UnrecoverableError) or type(exc).__name__ == "UnrecoverableError"
+
+
 class Emitter:
     """Human lines by default; one JSON object per line for log shipping.
 

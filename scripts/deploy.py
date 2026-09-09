@@ -105,19 +105,14 @@ GOVERNED = frozenset({"keeper"})
 #: Rounds to wait for a create to confirm before giving up on the read-back.
 CONFIRMATION_ROUNDS = 6
 
-#: The TestNet keeper whose programs the MainNet bytecode has to match: app
-#: 769891898, alpha-2 in `docs/releases.md` and updated in place to alpha-3 on
-#: 2026-08-26, the registry every soak claim is about. There is deliberately
-#: no flag to point this at another app: a `--soaked-app-id` would let any
-#: TestNet app satisfy the check, including one created minutes earlier from
-#: the same tree, which is the opposite of soaked. When a struct change forces
-#: a new TestNet id, this changes in a commit anyone can read, the same stance
-#: `govern.MAX_SIGNABLE_FEE` takes.
-SOAKED_APP_ID = 769891898
-
-#: Where the soaked programs are read from, whatever `.env.mainnet` says. See
-#: `soaked_digest` for why this is not `net.connect(net.TESTNET)`.
-SOAKED_ALGOD = "https://testnet-api.algonode.cloud"
+#: The soaked TestNet deployment, and where to read it from. Both live in
+#: `scripts/network.py` with the other facts about which chain is which, so
+#: that a read-only reader can name the deployment without importing this
+#: module, which signs. Re-exported here because this is where they are used
+#: and where the ceremony's own tests look for them; the reasoning for there
+#: being no flag to point them elsewhere is on the definitions.
+SOAKED_APP_ID = net.SOAKED_APP_ID
+SOAKED_ALGOD = net.SOAKED_ALGOD
 
 #: Contracts whose MainNet create must be the bytecode TestNet is running.
 #: The keeper holds every escrow and is what the soak is evidence about.

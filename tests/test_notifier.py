@@ -1329,8 +1329,8 @@ def test_an_unrecoverable_error_is_matched_by_name_after_a_module_reload() -> No
     class UnrecoverableError(RuntimeError):  # a fresh class object, as a reload would make
         pass
 
-    assert notifier._is_unrecoverable(UnrecoverableError("x"))
-    assert not notifier._is_unrecoverable(RuntimeError("x"))
+    assert notifier.is_unrecoverable(UnrecoverableError("x"))
+    assert not notifier.is_unrecoverable(RuntimeError("x"))
 
 
 def test_an_ordinary_node_error_is_still_retried(monkeypatch, tmp_path) -> None:

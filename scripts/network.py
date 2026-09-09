@@ -45,6 +45,26 @@ FOUNDATION_BEACON = {
 }
 
 
+#: The TestNet keeper whose programs the MainNet bytecode has to match: app
+#: 769891898, alpha-2 in `docs/releases.md` and updated in place to alpha-3 on
+#: 2026-08-26, the registry every soak claim is about. There is deliberately
+#: no flag to point this at another app: a `--soaked-app-id` would let any
+#: TestNet app satisfy the check, including one created minutes earlier from
+#: the same tree, which is the opposite of soaked. When a struct change forces
+#: a new TestNet id, this changes in a commit anyone can read, the same stance
+#: `govern.MAX_SIGNABLE_FEE` takes.
+#:
+#: Here rather than in `scripts/deploy.py`, where it was written, because it
+#: is a fact about which deployment is which, like the genesis ids and
+#: `MAINNET_CREATOR` above it, and the readers that want to say "this is the
+#: soaked registry" should not have to import the create ceremony to do it.
+SOAKED_APP_ID = 769891898
+
+#: Where the soaked programs are read from, whatever `.env.mainnet` says. See
+#: `deploy.soaked_digest` for why this is not `connect(TESTNET)`.
+SOAKED_ALGOD = "https://testnet-api.algonode.cloud"
+
+
 #: Seconds per round, measured per network rather than assumed.
 #:
 #: Algorand's nominal block time is 2.8, and this repository used it in three
