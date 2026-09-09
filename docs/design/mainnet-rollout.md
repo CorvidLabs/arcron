@@ -515,10 +515,16 @@ sed -i 's/^MAX_INTERVAL_ROUNDS = 1_000_000_000$/MAX_INTERVAL_ROUNDS = 999_999_99
 poetry run python -m smart_contracts build && git commit -am "Rehearsal only: a byte that differs"
 fledge run govern -- update --network testnet --app-id <id>       # must NOT say "already match"
 poetry run python -m scripts.verify_build --network testnet --app-id <id>
-fledge run preflight -- --app-id <id>          # clock's install round is now this update, not the create
+fledge run preflight -- --app-id <id>          # read the clock row: its install round is now this update, not the create
 fledge run govern -- freeze --network testnet --app-id <id>
 fledge run govern -- update --network testnet --app-id <id>       # must refuse: frozen
 ```
+
+Read that mid-ceremony preflight for its `clock` row and expect two failures
+that are not failures: the public indexer may not have caught a minutes-old
+create yet, which fails closed by design, and `rehearsal` prices a throwaway
+that has just spent its balance on the create being measured. The run exits
+non-zero for both. The row that matters is `clock` naming the update round.
 
 That edit was checked here on 2026-09-09 rather than assumed: it takes the
 combined digest from `c94c6e0c…` to `99164c3c…`, and the ARC-56 spec's
@@ -543,6 +549,8 @@ seven days. `deploy/vps/install.sh` is the install and
 count rather than merely pass: `--summary-every` on, so the *absence* of a
 periodic summary is the alarm the runbook says it is, and a preflight run
 against the VPS's own node, because check one is the only thing that says
-whether that node can serve a paged listing at all.
+whether that node can serve a paged listing at all. There is no `fledge` on
+that box; [`../hosting.md`](../hosting.md) has the module invocation that
+works there.
 
 Then, and not before, G2.

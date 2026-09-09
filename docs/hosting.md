@@ -64,11 +64,29 @@ and `notifier.env`, which both carry a commented block for it:
 create ceremony. The bot refuses to start on MainNet without the flag, and the
 notifier refuses without `ARCRON_OURS` and a webhook.
 
-Once it is installed, run `fledge run preflight` from the VPS, pointed at the
-node the units will use. It is read-only and it answers the one question an
+Once it is installed, run the preflight from the VPS, against the node the
+units will actually use. It is read-only and it answers the one question an
 install cannot: whether that node serves a paged box listing at all. A node
 below algod 4.7 is refused by every reader here, loudly, and it is better to
 learn that before the seven days of G1 start than during them.
+
+`install.sh` copies `scripts`, `smart_contracts` and the two Poetry files and
+nothing else, so there is no `fledge.toml` on the box and no `.env.<network>`
+either: the node lives in `/etc/arcron/*.env`. Run the module, and source the
+*notifier's* env rather than the keeper's, because that one carries the app
+id, the node and `ARCRON_OURS` while the keeper's carries a mnemonic that a
+read-only tool has no business having in its environment:
+
+```bash
+cd /opt/arcron
+set -a && . /etc/arcron/notifier.env && set +a
+poetry run python -m scripts.preflight \
+    --network "$ARCRON_NETWORK" --app-id "$KEEPER_APP_ID" --ours "$ARCRON_OURS"
+```
+
+The clock check wants `INDEXER_SERVER`, which that file does not set because
+the notifier needs no indexer. Either export one for the run or read that row
+as the skip it will be.
 
 The fourth thing is the node. The free public endpoint sheds requests once a
 daily quota is crossed, and the laptop keeper on TestNet was refused 4,949
