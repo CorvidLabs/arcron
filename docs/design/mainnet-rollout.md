@@ -434,7 +434,7 @@ Angular CLI refuses 22.22.2 by one patch version). No chain was reachable.
 | check | result |
 |---|---|
 | `poetry run python -m smart_contracts build` | exit 0, zero artifact drift under `smart_contracts/artifacts` |
-| `poetry run pytest tests/ -q` | green before and after every commit: 646 passed on `main`, 753 at the head of the first review round. The number will move again; the run that gates the merge is CI's. |
+| `poetry run pytest tests/ -q` | green before and after every commit: 646 passed on `main`, 780 after three review rounds. The number will move again; the run that gates the merge is CI's. |
 | `tests/test_verify_release.py` | 6 passed after `git fetch --unshallow` and tags; a shallow clone fails it for want of history, which CI avoids with `fetch-depth: 0` |
 | `specsync check --strict` | not run here: the SpecSync binary is a private release the machine could not fetch. CI ran it, strict, on this branch's [pull request](https://github.com/CorvidLabs/arcron/pull/253) and the whole `ci` lane passed (run 467 on `0928fa7`); `tests/test_specs_match_contracts.py` covers the spec-to-contract half locally. |
 | `cd js && bun test` | 137 passed |

@@ -1521,8 +1521,6 @@ def test_as_int_refuses_what_is_not_a_whole_number() -> None:
 
 
 def test_a_corrupt_snapshot_does_not_stop_scanning_or_hide_a_stranger(monkeypatch, tmp_path) -> None:
-    from scripts import notifier
-
     state = tmp_path / "notifier.json"
     broken = snapshot([upkeep()], current_round=1_000).to_json()
     broken["upkeeps"]["1"]["balance"] = "12000"
