@@ -64,6 +64,7 @@ CURRENT_BUILD = {
     "commit_hash": "0123456789abcdef0123456789abcdef01234567",
 }
 TESTNET_VERSIONS = {"genesis_id": "testnet-v1.0", "build": dict(CURRENT_BUILD)}
+MAINNET_VERSIONS = {"genesis_id": "mainnet-v1.0", "build": dict(CURRENT_BUILD)}
 
 ALGOD_ADDRESS = "https://node.of.ours.example"
 INDEXER_ADDRESS = "https://indexer.of.ours.example"
@@ -291,6 +292,17 @@ class TestTheNode:
         assert result.status == FAIL
         assert "4.6.0" in result.result and "4.7.0" in result.result
 
+    def test_a_build_with_no_version_numbers_is_unknown_rather_than_ancient(self) -> None:
+        # Some proxies answer with a build object carrying only a channel and a
+        # commit. Defaulting the numbers to zero read that as algod 0.0.0 and
+        # refused the node as too old, which is the unknown-versus-old
+        # conflation the missing-build skip exists to avoid, one field deeper.
+        vague = {"genesis_id": "testnet-v1.0", "build": {"channel": "stable", "commit_hash": "abc"}}
+        result = check_node(node(versions=vague), "testnet")
+        assert result.status == SKIP
+        assert "0.0.0" not in result.result
+        assert "named no version" in result.result
+
     def test_a_versions_without_a_build_skips_rather_than_failing(self) -> None:
         # Proxies do strip it, and an absent version is not an old one. The
         # skip says which question went unanswered.
@@ -316,11 +328,12 @@ class TestTheAppRow:
         assert str(APP_ID) in result.result and "not a keeper" in result.result
 
     def test_a_node_refusing_to_answer_is_not_blamed_on_the_id(self) -> None:
-        """`require_keeper_app` wraps every failure as "does not exist".
+        """`require_keeper_app` words every failure as "does not exist".
 
-        That is fine as its own message and misleading as the only thing an
-        operator sees, so the row carries the caveat and the node row above it
-        carries the 403. The id in `.env.testnet` was correct all along.
+        True for the 404 it was written for and false for the 403 an edge sheds
+        under quota, and the head of the row is the sentence that gets pasted:
+        a caveat in the detail line is not read by anyone reading one row. The
+        id in `.env.testnet` was correct all along.
         """
         class Refusing(PreflightAlgod):
             def application_info(self, application_id: int, **kwargs):
@@ -329,7 +342,20 @@ class TestTheAppRow:
         result = check_app(Refusing(live_chain(ROUND)), APP_ID, "testnet")
         assert result.status == FAIL
         assert "403" in result.result
-        assert "the node refusing to answer rather than as the id being wrong" in result.detail
+        assert "would not say whether app" in result.result
+        assert "does not exist" not in result.result
+        assert "KEEPER_APP_ID" in result.detail
+
+    def test_an_app_that_really_is_absent_still_says_so(self) -> None:
+        # A 404 is the case `require_keeper_app`'s own wording was written for,
+        # and it is kept verbatim: this really is an id that is not there.
+        class Absent(PreflightAlgod):
+            def application_info(self, application_id: int, **kwargs):
+                raise error.AlgodHTTPError("application does not exist", 404)
+
+        result = check_app(Absent(live_chain(ROUND)), APP_ID, "testnet")
+        assert result.status == FAIL
+        assert "does not exist" in result.result and "KEEPER_APP_ID" in result.result
 
 
 # --- boxes ------------------------------------------------------------
@@ -474,6 +500,23 @@ class TestTheInstallClock:
         assert "program age 12.3d" in result.result
         assert "app age 27.9d" in result.result
 
+    def test_a_hold_on_programs_this_tree_has_moved_on_from_is_not_running(self) -> None:
+        """`complete()` refuses it and the row used to PASS anyway.
+
+        A 31-day-old install whose bytes are no longer this tree reads as
+        `PASS ... 0.0 day(s) to go`, and that row gets pasted into the evidence
+        table, while `mainnet_clock.report` on the same Clock says the hold is
+        not running and deploying the change restarts it at zero. That is the
+        F03 misreading inside the check written to prevent it.
+        """
+        drifted = PreflightAlgod(live_chain(ROUND), programs=(b"not this tree", b"nor this"))
+        result = check_clock(drifted, FakeIndexer(), APP_ID, 2.695)
+        assert result.status == FAIL
+        assert "the hold is not running" in result.result
+        assert LOCAL_DIGEST in result.result
+        assert verify_build._digest(b"not this tree", b"nor this") in result.result
+        assert "day(s) to go" not in result.result and "day(s) to go" not in result.detail
+
     def test_unknown_history_fails_naming_the_reason(self) -> None:
         broken = FakeIndexer(raises=RuntimeError("indexer refused the search"))
         result = check_clock(node(), broken, APP_ID, 2.695)
@@ -603,6 +646,20 @@ class TestTheRehearsalThrowaway:
         result = check_rehearsal(node(), "testnet")
         assert result.status == FAIL
         assert f"has 0 uALGO spendable (minimum balance 0) of the {REHEARSAL_ALGO:,}" in result.result
+
+    def test_a_never_funded_account_reads_as_zero_and_not_as_a_negative(self) -> None:
+        """What algod actually answers for an address with no record.
+
+        Not a 404: a zeroed account carrying the 100,000 floor, so spendable is
+        -100,000. Printing that is nonsense; subtracting from it is right,
+        because 2.1 ALGO has to arrive for 2 to be spendable.
+        """
+        fresh = node(accounts={REHEARSAL_CREATOR: {"amount": 0, "min-balance": ACCOUNT_MBR}})
+        result = check_rehearsal(fresh, "testnet")
+        assert result.status == FAIL
+        assert "has 0 uALGO spendable" in result.result
+        assert "-" not in result.result.split("spendable")[0]
+        assert f"short by {REHEARSAL_ALGO + ACCOUNT_MBR:,} uALGO" in result.result
 
     def test_an_edge_shedding_is_not_read_as_an_empty_account(self) -> None:
         class Shedding(PreflightAlgod):
@@ -786,22 +843,106 @@ class TestTheOutput:
         out = capsys.readouterr().out
         assert code == 1
         assert "FAIL  node" in out and "403" in out
-        assert "the node refusing to answer rather than as the id being wrong" in out
+        assert "would not say whether app" in out
+        assert "does not exist" not in out
 
-    def test_mainnet_without_an_allowlist_is_refused_at_startup(self, monkeypatch, capsys) -> None:
+    def test_mainnet_with_no_allowlist_anywhere_is_still_refused(self, monkeypatch, capsys) -> None:
         """The notifier refuses this and so does this, for the same reason.
 
-        Without `--ours` the stranger row skips, everything else passes, and
-        the clean exit that gets pasted is evidence of a question nobody asked.
-        `fledge run preflight-mainnet` passes no allowlist, so this is the
-        refusal that makes it set ARCRON_OURS.
+        Without an allowlist the stranger row skips, everything else passes,
+        and the clean exit that gets pasted is evidence of a question nobody
+        asked.
         """
         monkeypatch.delenv("ARCRON_OURS", raising=False)
-        monkeypatch.setattr(preflight.net, "connect", _must_not_connect)
+        monkeypatch.setattr(
+            preflight.net, "connect", lambda network: algorand(node(versions=MAINNET_VERSIONS), FakeIndexer())
+        )
         with pytest.raises(SystemExit) as refused:
             preflight.main(["--network", "mainnet", "--app-id", str(APP_ID)])
         assert refused.value.code == 2
         assert "--ours (or ARCRON_OURS) is required on MainNet" in capsys.readouterr().err
+
+    def test_an_allowlist_from_the_env_file_is_read_in_time(self, monkeypatch, capsys) -> None:
+        """`fledge run preflight-mainnet` passes no `--ours`, and could not run.
+
+        `.env.mainnet` is where ARCRON_OURS lives, and `network.connect` is
+        what loads it, so a refusal that read the environment before connecting
+        refused every correctly configured MainNet run. The notifier reads it
+        the other way round, which is why the notifier works.
+        """
+        monkeypatch.delenv("ARCRON_OURS", raising=False)
+
+        def connect(network):
+            # What load_network does through dotenv, at the moment it does it.
+            monkeypatch.setenv("ARCRON_OURS", OURS)
+            return algorand(node(versions=MAINNET_VERSIONS, accounts=REHEARSAL_FUNDED), FakeIndexer())
+
+        monkeypatch.setattr(preflight.net, "connect", connect)
+        code = preflight.main(["--network", "mainnet", "--app-id", str(APP_ID)])
+        out = capsys.readouterr().out
+        assert "PASS  strangers" in out and "all inside the 1 allowed" in out
+        assert "SKIP  rehearsal" in out  # a TestNet ceremony, not a MainNet one
+        assert code == 0
+
+    def test_a_node_that_cannot_be_reached_prints_why_and_measures_nothing(
+        self, monkeypatch, capsys
+    ) -> None:
+        """Connecting is the one step with no row to fail in.
+
+        `.env.testnet` is gitignored, so a first run on a new machine finds no
+        node configured, and that used to be a traceback and exit 1: the same
+        code as a failed check, from a run that measured nothing at all.
+        """
+        def unconfigured(network):
+            raise FileNotFoundError(
+                "No Algorand node configured for testnet: .env.testnet is absent "
+                "and ALGOD_SERVER is unset."
+            )
+
+        monkeypatch.setattr(preflight.net, "connect", unconfigured)
+        code = preflight.main(["--network", "testnet", "--app-id", str(APP_ID)])
+        captured = capsys.readouterr()
+        assert code == preflight.NOTHING_RAN == 3
+        assert code not in (0, 1)  # never confusable with a run that had rows
+        assert "No Algorand node configured" in captured.err
+        assert "Traceback" not in captured.err
+        assert captured.out == ""
+
+
+class TestWhatANodeCanPutInTheTable:
+    """Most of a row is the node's own words, and none of it is written for markdown."""
+
+    HOSTILE = "500 |bad| gateway\nfrom `evil` **node** \\ here"
+
+    def test_a_cell_cannot_be_broken_by_what_the_node_said(self) -> None:
+        cell = preflight._cell(self.HOSTILE)
+        assert "\n" not in cell
+        # A raw pipe ends the cell early and silently rewrites every column
+        # after it; a backtick opens a code span that swallows the rest of the
+        # row; a pair of asterisks turns a fragment bold.
+        for mark in ("|", "`", "*"):
+            assert mark in cell  # the text survives
+            assert cell.count(mark) == cell.count("\\" + mark)
+        assert "bad" in cell and "evil" in cell  # escaped, not stripped
+
+    def test_a_hostile_error_body_lands_in_one_row(self, monkeypatch, capsys) -> None:
+        class Rude(PreflightAlgod):
+            def versions(self, **kwargs):
+                raise error.AlgodHTTPError(TestWhatANodeCanPutInTheTable.HOSTILE, 500)
+
+        algod = Rude(live_chain(ROUND))
+        monkeypatch.setattr(preflight.net, "connect", lambda network: algorand(algod, FakeIndexer()))
+        preflight.main(["--network", "testnet", "--app-id", str(APP_ID), "--markdown"])
+        out = capsys.readouterr().out
+        rows = [line for line in out.splitlines() if line.startswith("| ")]
+        assert len(rows) == len(CHECKS) + 1  # the node's text did not become new rows
+        node_row = next(row for row in rows if row.startswith("| `preflight node`"))
+        # Three unescaped pipes: the two that open and close the row and the
+        # one that separates its columns. The node's own pipes are escaped and
+        # so cannot add a column.
+        assert node_row.replace("\\|", "").count("|") == 3
+        assert node_row.endswith(" |")
+        assert "bad" in node_row and "gateway" in node_row
 
 
 def _run_main(monkeypatch, argv, accounts=None) -> int:

@@ -51,10 +51,19 @@ somewhere else would read. A SKIP never fails the run and is never evidence
 either: it records a question this run could not put to the chain, and it is
 in the output precisely so that nobody reads a clean exit as an answer.
 
-`--markdown` prints the run as table rows and nothing else: a context row
-naming the network, the app, the date and the endpoints, then one row per
-check. No preamble and no `| check | result |` header, because the F11 table
-already has one and the point of this flag is that the block appends to it
+Exit 3 is the third answer, and it is not a failed check: it is no run at all.
+Connecting is the one step that happens before any row can exist, and it fails
+for reasons that are about this machine rather than about the deployment (no
+`.env.<network>` and no `ALGOD_SERVER`, a node that cannot be reached, a node
+that turns out to be another chain, MainNet without `ARCRON_ALLOW_MAINNET`).
+Those print the reason and nothing else, and they are given their own code so
+that a runner cannot read "nothing was measured" as "something was measured
+and it failed".
+
+`--markdown` adds table rows after the human report: a context row naming the
+network, the app, the date and the endpoints, then one row per check. The rows
+carry no preamble and no `| check | result |` header, because the F11 table
+already has one and the point of the flag is that the block appends to it
 without being edited first.
 
 Run:  poetry run python -m scripts.preflight [--network N] [--app-id N]
@@ -67,6 +76,7 @@ from __future__ import annotations
 import argparse
 import base64
 import os
+import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -89,6 +99,12 @@ from scripts.registry_health import read_escrowed, read_solvency
 PASS = "PASS"
 FAIL = "FAIL"
 SKIP = "SKIP"
+
+#: The exit code for a run that never started, as opposed to one that found
+#: something wrong. Distinct from 1 on purpose: no row was printed, so nothing
+#: was measured, and a runner treating that as a failed check would record a
+#: verdict this process never reached.
+NOTHING_RAN = 3
 
 #: The contract this asks about. Not a flag: the questions above are about the
 #: registry that holds the escrow, and Pulse holds nothing and dates nothing.
@@ -168,13 +184,21 @@ def _guard(name: str, run) -> Result:
         return Result(name, FAIL, f"raised {type(raised).__name__}: {raised}")
 
 
-def _version(build: dict) -> tuple[int, int, int]:
-    """A `/versions` build as the tuple its parts compare in.
+def _version(build: dict) -> tuple[int, int, int] | None:
+    """A `/versions` build as the tuple its parts compare in, or None if absent.
 
     algod reports major, minor and build number as separate integers, so this
     is the comparison the fields were written for. Doing it on the rendered
     string would put 4.10.0 below 4.7.0.
+
+    None when there is no `major` to read. A build object carrying only a
+    channel and a commit hash is a version this response did not state, and
+    defaulting the numbers to zero turned that into `algod 0.0.0`, refused as
+    ancient: the same unknown-read-as-old conflation the missing-build skip
+    exists to avoid, one field deeper.
     """
+    if build.get("major") is None:
+        return None
     return tuple(int(build.get(part, 0) or 0) for part in ("major", "minor", "build_number"))
 
 
@@ -219,17 +243,18 @@ def check_node(algod, network: str) -> Result:
              "network.connect already verified through suggested_params, not one this "
              "response named."
     )
-    if not build:
+    running = _version(build)
+    if not build or running is None:
+        stated = "carried no build either" if not build else "named no version in its build"
         return Result(
             "node",
             SKIP,
-            f"genesis {genesis or 'not named'}, and /versions carried no build either, so "
+            f"genesis {genesis or 'not named'}, and /versions {stated}, so "
             f"the node's version is unknown and cannot be held to {BOX_PAGINATION_SINCE}",
             ("Some edges strip both. Ask the node itself, or read the paging answer of the "
              "boxes check, which is the same question asked of behaviour instead of of a "
              "version string." + unnamed),
         )
-    running = _version(build)
     version = ".".join(str(part) for part in running)
     where = f"algod {version} on genesis {genesis or 'not named'}"
     channel = str(build.get("channel") or "")
@@ -278,13 +303,25 @@ def check_app(algod, app_id: int, network: str) -> Result:
     except Exception as refused:
         if not is_unrecoverable(refused):
             raise
-        return Result(
-            "app",
-            FAIL,
-            str(refused),
-            "This is one read of the application. If the node row above also failed, read "
-            "this as the node refusing to answer rather than as the id being wrong.",
-        )
+        # Which failure it was, from the exception it was raised from. A read
+        # that never got an answer is not evidence that the app is absent, and
+        # `require_keeper_app` words every failure as "does not exist ... Check
+        # KEEPER_APP_ID": true for the 404 it was written for, false for the
+        # 403 an edge sheds under quota, and it is the sentence that gets
+        # pasted. The caveat used to be in the detail line, where a row read on
+        # its own does not carry it, so the head itself is rewritten.
+        cause = refused.__cause__
+        if cause is not None and getattr(cause, "code", None) != 404:
+            return Result(
+                "app",
+                FAIL,
+                f"the node would not say whether app {app_id} exists on {network}: {cause}. "
+                f"That is this endpoint refusing to answer, not evidence about the id",
+                "Read it with the node row above. An id that is wrong and a node that is "
+                "unwell look identical from one refused request, and only one of them is "
+                "fixed by editing KEEPER_APP_ID.",
+            )
+        return Result("app", FAIL, str(refused))
     return Result(
         "app",
         PASS,
@@ -389,19 +426,34 @@ def check_clock(
             "INDEXER_SERVER at an indexer that holds this app's history.",
         )
     assert clock.installed_round is not None and clock.days is not None
+    installed = (
+        f"installed at round {clock.installed_round:,}, {clock.update_count} update(s) in "
+        f"history; program age {clock.days:.1f}d, app age {clock.app_days:.1f}d from round "
+        f"{clock.created_round:,}"
+    )
+    if not clock.matches_source:
+        # `Clock.complete` already refuses this, and reading `complete` alone
+        # still printed a program age and a days-to-go beside a PASS, which is
+        # the F03 misreading inside the check written to prevent it: those days
+        # were served by programs this tree is about to replace, and deploying
+        # the change restarts the hold at zero. `mainnet_clock.report` says
+        # exactly that about the same Clock, so no number of days to go is
+        # printed here either.
+        return Result(
+            "clock",
+            FAIL,
+            f"the hold is not running: the local build no longer matches what is deployed "
+            f"(local {clock.local_digest}, chain {clock.remote_digest})",
+            f"The deployed programs were {installed}, but that time was served by code this "
+            f"tree has moved on from; deploying the change restarts the hold at zero. The "
+            f"build row above is the same disagreement, seen from the digests.",
+        )
     served = (
         f"the {hold_days} day hold is complete on these programs"
         if clock.complete(hold_days)
         else f"{clock.remaining(hold_days):.1f} day(s) to go on the {hold_days} day hold"
     )
-    return Result(
-        "clock",
-        PASS,
-        f"installed at round {clock.installed_round:,}, {clock.update_count} update(s) in "
-        f"history; program age {clock.days:.1f}d, app age {clock.app_days:.1f}d from round "
-        f"{clock.created_round:,}",
-        served,
-    )
+    return Result("clock", PASS, installed, served)
 
 
 def check_solvency(algod, app_id: int, upkeeps=None) -> Result:
@@ -502,6 +554,13 @@ def _spendable(algod, address: str) -> tuple[int, int]:
     reads as funded and is not: an account cannot spend below its own minimum,
     so a throwaway holding exactly two ALGO has 0.1 less than the ceremony
     needs. Both numbers are returned so the report can say which it used.
+
+    Spendable can be negative, and on the case this check is for it usually is:
+    algod answers for an address with no record by returning a zeroed account
+    carrying the 100,000 floor, so a throwaway nobody has funded reads as
+    -100,000. That is the right number to subtract from (2.1 ALGO has to
+    arrive, not 2) and the wrong number to print, so the arithmetic keeps it
+    and the report clamps it.
     """
     try:
         info = algod.account_info(address)
@@ -534,11 +593,13 @@ def check_rehearsal(algod, network: str, creator: str = REHEARSAL_CREATOR) -> Re
             f"the ceremony rehearsal is a TestNet one, and this is {network}",
         )
     spendable, minimum = _spendable(algod, creator)
-    shortfall = REHEARSAL_ALGO - spendable
     holding = (
-        f"{creator} has {spendable:,} uALGO spendable (minimum balance {minimum:,}) of the "
-        f"{REHEARSAL_ALGO:,} the rehearsal needs"
+        f"{creator} has {max(0, spendable):,} uALGO spendable (minimum balance {minimum:,}) "
+        f"of the {REHEARSAL_ALGO:,} the rehearsal needs"
     )
+    # From the unclamped figure: an account holding nothing behind a 100,000
+    # floor needs 2.1 ALGO sent to it, not 2.
+    shortfall = REHEARSAL_ALGO - spendable
     if shortfall > 0:
         return Result(
             "rehearsal",
@@ -710,9 +771,33 @@ def _tally(results: list[Result]) -> str:
     return f"{counted[PASS]} passed, {counted[FAIL]} failed, {counted[SKIP]} skipped"
 
 
+#: Characters that mean something to a markdown table or to the renderer
+#: reading it. Escaped rather than stripped, so what the node said survives
+#: intact in the row.
+_MARKDOWN = ("\\", "|", "`", "*")
+
+
 def _cell(text: str) -> str:
-    """One line of a markdown cell: no newlines, and no pipe that splits it."""
-    return " ".join(text.split()).replace("|", "\\|")
+    """One line of a markdown cell, whoever wrote the text.
+
+    Most of what lands in a cell is a node's own words: an error body, a
+    genesis id, an address. None of it is written for a table, and a 500 page
+    quoted verbatim has already been seen to carry pipes and newlines. A pipe
+    ends the cell early and silently rewrites every column after it; a stray
+    backtick opens a code span that swallows the rest of the row; a pair of
+    asterisks turns a fragment bold. Those are escaped and the whitespace is
+    collapsed, and the row a node cannot break is the row an operator can paste
+    without reading it first. The backslash goes first, or escaping would
+    double the ones already there. The underscore is deliberately left alone:
+    an intraword one is not emphasis in any renderer this table is read in, and
+    escaping it would put a backslash in the middle of `next_upkeep_id` and
+    `KEEPER_APP_ID` in almost every row, which is a legibility cost paid on
+    every run against a risk that is not there.
+    """
+    line = " ".join(text.split())
+    for mark in _MARKDOWN:
+        line = line.replace(mark, "\\" + mark)
+    return line
 
 
 def markdown(results: list[Result], run: Run) -> None:
@@ -740,6 +825,28 @@ def markdown(results: list[Result], run: Run) -> None:
         print(f"| `preflight {result.name}` | {cell} |")
 
 
+def _allowlist(parser: argparse.ArgumentParser, source: str, raw: str) -> frozenset[str]:
+    """The creators an upkeep may belong to without being announced.
+
+    Syntax only, and it is worth knowing which way that fails. A mistyped
+    address, or `corvid.algo` written where the address was meant, makes our
+    own creator look like a stranger: loud, wrong, and noticed immediately. The
+    failure this cannot catch is the quiet one, an allowlist that includes a
+    real outsider, which suppresses exactly the alert it exists for. No check
+    on a string can tell those apart; the list is short and should be read by a
+    person. Same rule and same wording as the notifier, so an allowlist that
+    works there works here.
+    """
+    entries = frozenset(entry.strip() for entry in raw.split(",") if entry.strip())
+    for entry in sorted(entries):
+        if not encoding.is_valid_address(entry):
+            parser.error(
+                f"{source} entry {entry!r} is not an Algorand address. NFD names are not "
+                f"resolved here (corvid.algo is refused); use the 58-character address"
+            )
+    return entries
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -757,7 +864,9 @@ def main(argv: list[str] | None = None) -> int:
         help=(
             "comma-separated 58-character addresses whose upkeeps are expected, exactly as "
             "the notifier takes them. Any other creator is counted as one it would announce. "
-            "NFD names are not resolved (corvid.algo is refused). Defaults to ARCRON_OURS"
+            "NFD names are not resolved (corvid.algo is refused). Defaults to ARCRON_OURS, "
+            "which .env.<network> may set: it is read after connecting, because connecting "
+            "is what loads that file"
         ),
     )
     parser.add_argument(
@@ -780,23 +889,37 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    ours = args.ours if args.ours is not None else os.environ.get("ARCRON_OURS", "")
-    known_creators = frozenset(entry.strip() for entry in ours.split(",") if entry.strip())
-    for entry in sorted(known_creators):
-        # Syntax only, and refused before anything connects, because the way
-        # this goes wrong is silent: `corvid.algo` typed where the address was
-        # meant makes our own creator look like somebody else's, and the check
-        # would then report a stranger that is us. The failure it cannot catch
-        # is the opposite one, an allowlist holding a real outsider, and no
-        # check on a string can find that. Same rule and same wording as the
-        # notifier, so an allowlist that works there works here.
-        if not encoding.is_valid_address(entry):
-            parser.error(
-                f"--ours entry {entry!r} is not an Algorand address. NFD names are not "
-                f"resolved here (corvid.algo is refused); use the 58-character address"
-            )
+    # What was typed is checked before anything connects, because a typo in an
+    # address is worth catching without a network round trip. What was
+    # *configured* cannot be read yet: `.env.<network>` is loaded by `connect`,
+    # so anything sourced from the environment is validated below.
+    typed = None if args.ours is None else _allowlist(parser, "--ours", args.ours)
     if not encoding.is_valid_address(args.rehearsal_creator):
         parser.error(f"--rehearsal-creator {args.rehearsal_creator!r} is not an Algorand address")
+
+    try:
+        algorand = net.connect(args.network)
+    except (Exception, SystemExit) as unreachable:
+        # The one step with no row to put its failure in, and the reasons are
+        # about this machine rather than about the deployment: no env file and
+        # no ALGOD_SERVER, a node that cannot be reached, a node that turns out
+        # to be another chain, MainNet without ARCRON_ALLOW_MAINNET. A
+        # traceback here reads as a crash in the tool, and exiting 1 would make
+        # "nothing ran" indistinguishable from "a check failed" to anything
+        # reading the code. So: the reason, on stderr, and a code of its own.
+        print(f"Nothing was measured: {unreachable}", file=sys.stderr)
+        return NOTHING_RAN
+
+    # After connect, so `.env.<network>` has been read. The MainNet app id
+    # lives there and in no file in this tree, and so does the allowlist the
+    # MainNet run is refused without: reading ARCRON_OURS before this point
+    # made `fledge run preflight-mainnet` impossible to satisfy, because the
+    # file that sets it had not been loaded when the refusal fired.
+    app_id = resolve_app_id(parser, args.app_id, args.network)
+    known_creators = (
+        typed if typed is not None
+        else _allowlist(parser, "ARCRON_OURS", os.environ.get("ARCRON_OURS", ""))
+    )
     if args.network == net.MAINNET and not known_creators:
         # The same refusal the notifier makes, and for the same reason. On a
         # deployment whose id is meant to be unpublished, the stranger count is
@@ -809,11 +932,6 @@ def main(argv: list[str] | None = None) -> int:
             "stranger, so the one check this run exists to make there says nothing and "
             "still exits zero"
         )
-
-    algorand = net.connect(args.network)
-    # After connect, so `.env.<network>` has been read: the MainNet id lives
-    # there and in no file in this tree.
-    app_id = resolve_app_id(parser, args.app_id, args.network)
     # Nothing between here and the report is allowed to end the run. Whether
     # the id is a keeper is the `app` check, whether the node answers at all is
     # the `node` check, and both print a row: an operator who gets one line
