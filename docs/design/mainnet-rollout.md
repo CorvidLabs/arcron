@@ -520,6 +520,12 @@ fledge run govern -- freeze --network testnet --app-id <id>
 fledge run govern -- update --network testnet --app-id <id>       # must refuse: frozen
 ```
 
+That edit was checked here on 2026-09-09 rather than assumed: it takes the
+combined digest from `c94c6e0c…` to `99164c3c…`, and the ARC-56 spec's
+methods, structs and state schema are byte for byte identical across it. So
+it is a real update for the path's purposes and not a struct change wearing
+one, which is the distinction `1.0.md` says to get right.
+
 Record all of it in the Rehearsal record above, then delete the scratch
 branch. The tree that reaches MainNet is `mainnet-1`, not this.
 
