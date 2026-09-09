@@ -93,8 +93,9 @@ def bounded_params(algod) -> transaction.SuggestedParams:
       it. Both through this function.
     * `scripts/govern.py`: `update` and `freeze` when a single key signs, and
       the unsigned create/update/freeze files written for a multisig, whose
-      holders' `sign` then checks the fee a second time from the file. All
-      through this function.
+      holders' `sign` (`scripts/multisig.py`, a mnemonic decoded on the spot)
+      then checks the fee a second time from the file against the same
+      ceiling. All through this function.
     * `scripts/seed_registry.py --commit`: step three of the MainNet ceremony.
       Two payments and the `register` call per seed, `static_fee` on all
       three from this function; `register` issues no inner transaction.
@@ -102,13 +103,19 @@ def bounded_params(algod) -> transaction.SuggestedParams:
       call, `static_fee` on both, from this function.
     * `scripts/keeper_sweep.py`: the payment that moves a keeper's earnings
       out, `static_fee` from this function; a refusal is an error-level
-      `sweep_refused` event and no payment, because the bot is unattended.
+      `sweep_refused` event and then a raise, so the bot logs a failed sweep,
+      leaves its period clock alone and retries next heartbeat.
     * `scripts/reclaim.py`: `cancel`, bounded with `max_fee` rather than a
       flat fee because `cancel` sends inner transactions that pooling has to
       cover; the ceiling is the same number.
     * `scripts/keeper_bot.py`: `execute`, `max_fee` for the same reason
       (`KEEPER_MAX_OUTER_FEE`, default the same 10,000), a daemon rather
       than a shell.
+
+    Beside each contract, `smart_contracts/*/deploy_config.py` is algokit's
+    deploy path and signs as DEPLOYER too; it is not bounded, and it refuses
+    MainNet by genesis id itself (`network.refuse_algokit_create_on_mainnet`),
+    which is the stronger property for a path that exists to serve LocalNet.
 
     Every other script under `scripts/` that signs is a LocalNet instrument
     and is unbounded by design: the end-to-ends (`keeper_e2e`, `govern_e2e`,

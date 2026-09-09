@@ -117,6 +117,9 @@ POST_BACKOFF_SECONDS = 2.0
 # attempt is written into the record so a crash-looping unit cannot dodge it
 # by restarting.
 STRANGER_RETRY_SECONDS = 300
+# How many delivered stranger keys a process remembers, so `add` cannot
+# re-record one; a bound only so a very long life cannot grow it without end.
+MAX_DELIVERED_REMEMBERED = 1_000
 # The ARC-4 selector of `execute(uint64)uint64`, so attribution only credits
 # an execution to the account that actually executed. Every other call to the
 # app (a `register`, a `cancel`, a `top_up`) is an application call too, and
@@ -795,6 +798,15 @@ class PendingStrangers:
     def __init__(self, path: Path | None, records: dict[str, dict] | None = None) -> None:
         self.path = path
         self.records: dict[str, dict] = records or {}
+        # Keys this process has already delivered. Upkeep ids come from the
+        # contract's `next_upkeep_id` and never recur, so a delivered key can
+        # never legitimately need a second alert; without this, the fallback
+        # that records strangers when `diff` raises re-added the key the
+        # moment `deliver` forgot it, and posted the same stranger once per
+        # poll for as long as `diff` kept raising. In memory only: a restart
+        # re-posts once, which at-least-once allows, and the file keeps the
+        # flat layout every reader of it expects.
+        self.delivered: set[str] = set()
         # Whether the file on disk is behind what is in memory. Set when a
         # save fails, cleared when one succeeds; the scan loop reads it and
         # holds the snapshot back while it is set, so the disk can never say
@@ -933,6 +945,9 @@ class PendingStrangers:
         key = self.key(network, app_id, event.upkeep_id)
         if key in self.records:
             return False
+        if key in self.delivered:
+            logger.debug(f"Stranger alert for upkeep {event.upkeep_id} was already delivered")
+            return False
         seen_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
         self.records[key] = {
             "upkeep_id": event.upkeep_id,
@@ -974,6 +989,9 @@ class PendingStrangers:
                 # lines is the at-least-once guarantee: a crash between them
                 # re-posts on the next start rather than losing the alert.
                 del self.records[key]
+                self.delivered.add(key)
+                if len(self.delivered) > MAX_DELIVERED_REMEMBERED:
+                    self.delivered = set(sorted(self.delivered)[-MAX_DELIVERED_REMEMBERED:])
                 self._save_or_log("acknowledging a delivery")
             else:
                 logger.warning(

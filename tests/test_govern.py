@@ -197,8 +197,9 @@ def test_the_ceiling_is_the_one_the_multisig_sign_path_already_used() -> None:
 #: The signers the docstring says are bounded, and the LocalNet instruments it
 #: says are unbounded by design. A new script that signs has to be added to
 #: one of these lists and to the docstring, or this fails.
-BOUNDED = {"deploy", "govern", "seed_registry", "keeper_topup", "keeper_sweep", "reclaim", "keeper_bot"}
+BOUNDED = {"deploy", "govern", "multisig", "seed_registry", "keeper_topup", "keeper_sweep", "reclaim", "keeper_bot"}
 INSTRUMENTS = {
+    "keeper/deploy_config", "pulse/deploy_config", "resource_probe/deploy_config", "sim_probe/deploy_config",
     "keeper_e2e", "govern_e2e", "multisig_e2e", "clawback_e2e", "subscription_demo",
     "keeper_soak", "keeper_race", "scenario", "attacks", "reference_boundary",
     "spike_asa_fee", "spike_hostile_target", "spike_js_execute_resources", "spike_multiarg",
@@ -215,7 +216,23 @@ def _signers() -> set[str]:
     and does not match.
     """
     root = pathlib.Path(govern.__file__).resolve().parent
-    return {path.stem for path in root.glob("*.py") if "account.from_environment(" in path.read_text()}
+    # Three ways a script here turns a secret into a signature: an account
+    # from the environment, a mnemonic decoded on the spot (the multisig
+    # holders' `sign`), or `from_mnemonic`. A fourth would need adding here.
+    marks = ("account.from_environment(", "mnemonic.to_private_key(", "from_mnemonic(")
+    found = {path.stem for path in root.glob("*.py") if any(m in path.read_text() for m in marks)}
+    # `keeper_daemon` decodes the mnemonic only to print the address it
+    # derives, and signs nothing; the one match here that is not a signer.
+    found.discard("keeper_daemon")
+    # algokit's deploy path lives beside each contract, signs as DEPLOYER too,
+    # and refuses MainNet by genesis id itself; named so a new one is noticed.
+    contracts = root.parent / "smart_contracts"
+    found |= {
+        f"{path.parent.name}/deploy_config"
+        for path in contracts.glob("*/deploy_config.py")
+        if any(m in path.read_text() for m in marks)
+    }
+    return found
 
 
 def test_every_signing_script_is_in_the_inventory() -> None:
@@ -230,5 +247,5 @@ def test_every_signing_script_is_in_the_inventory() -> None:
 def test_the_docstring_names_every_script_in_both_lists() -> None:
     doc = govern.bounded_params.__doc__
     for name in BOUNDED | INSTRUMENTS:
-        assert name in doc, f"{name} signs and the inventory does not name it"
+        assert name.split("/")[-1] in doc, f"{name} signs and the inventory does not name it"
     assert "ARCRON_ALLOW_MAINNET" in doc and ".env.mainnet" in doc and "load_network" in doc

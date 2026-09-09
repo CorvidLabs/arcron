@@ -1559,6 +1559,35 @@ def test_a_stranger_is_recorded_even_when_diff_raises(monkeypatch, tmp_path, cap
     assert notifier.PendingStrangers.load(notifier.pending_path(state)).records == {}
 
 
+def test_a_stranger_recorded_while_diff_keeps_raising_is_posted_once(monkeypatch, tmp_path) -> None:
+    """The fallback records strangers from the current snapshot on every scan
+    `diff` fails; `deliver` then forgot the key, so the next scan recorded it
+    again and Discord got the same alert every poll. A delivered key is
+    remembered for the life of the process."""
+    from scripts import notifier
+
+    def broken_diff(previous, current, known_creators=frozenset()):
+        raise TypeError("still broken")
+
+    monkeypatch.setattr(notifier, "diff", broken_diff)
+    registry = [upkeep(), upkeep(upkeep_id=7, creator=STRANGER, interval_rounds=1_000)]
+    urlopen = _scripted_urlopen([])
+    _run_main(monkeypatch, tmp_path, registries=[registry] * 5, urlopen=urlopen, clock=_Clock())
+    assert sum("Upkeep 7 was registered by" in c for c in urlopen.calls) == 1
+
+
+def test_a_delivered_key_is_not_recorded_again() -> None:
+    from scripts.notifier import PendingStrangers
+
+    pending = PendingStrangers(None)
+    event = _stranger_event(7)
+    assert pending.add("testnet", 1, event, 500)
+    pending.deliver(None, now=1_000.0)  # no webhook: printed, counts as delivered
+    assert pending.records == {} and "testnet/1/7" in pending.delivered
+    assert not pending.add("testnet", 1, event, 600), "delivered once is delivered"
+    assert pending.records == {}
+
+
 def test_strangers_in_needs_no_previous_snapshot() -> None:
     from scripts.notifier import strangers_in
 
