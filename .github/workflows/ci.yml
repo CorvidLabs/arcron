@@ -95,8 +95,10 @@ jobs:
       # names a SpecSync version, so until now "the version CI gates on" was
       # whatever happened to be on one Mac's PATH.
       #
-      # `version` has to be given explicitly: the action defaults to `6.0.0`
-      # and no such release exists yet — the 6.0 line is still candidates.
+      # `version` is given explicitly rather than left to the action's
+      # default, so this file, and not the action, names the release CI gates
+      # on. Both it and the `uses:` ref are 6.0.0, the first stable 6.0 line
+      # release; they were a release candidate until this commit.
       # The action puts SpecSync on PATH and runs `check --force --strict`
       # itself; `--force` is the right CI invocation, because the hash cache
       # is not committed and a warm workspace can otherwise report "all specs
@@ -112,9 +114,9 @@ jobs:
         run: cd web && bun install --frozen-lockfile && bunx playwright install --with-deps chromium
 
       - name: SpecSync
-        uses: CorvidLabs/spec-sync@v6.0.0-rc.12
+        uses: CorvidLabs/spec-sync@v6.0.0
         with:
-          version: 6.0.0-rc.12
+          version: 6.0.0
           strict: "true"
 
       - name: Run the CI lane's tasks
