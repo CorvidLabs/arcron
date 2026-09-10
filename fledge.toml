@@ -185,6 +185,19 @@ race = "poetry run python -m scripts.keeper_race --network localnet"
 # ever checked, and the last audit checked them by reading TEAL.
 hostile-target = "poetry run python -m scripts.spike_hostile_target --network localnet"
 
+# What the Trust gate runs. Every step is a task the hosted CI job already
+# executes as part of [lanes.ci], and the set matches the verification_commands
+# already declared in .specsync/sdd.json plus the `spec` drift check.
+#
+# The console builds, the hosted-bundle fetch and the rendered-page audit stay
+# in `ci` alone: `web-render` needs a Chromium download, so putting it here
+# would make the gate re-fetch a browser to re-prove what `ci` already proved
+# on the same commit. `ci` remains the full pipeline; this is the subset that
+# answers "does this tree build, pass its tests, and match its specs".
+[lanes.verify]
+description = "Trust gate: contracts build, unit tests, spec drift check, TypeScript suites"
+steps = ["build", "test", "spec", "js-install", "js-test", "web-test"]
+
 [lanes.ci]
 description = "Full CI pipeline: contracts + console, unit tests, spec drift check, rendered-page audit"
 steps = ["build", "test", "spec", "js-install", "js-test", "web-test", "web-build", "web-build-hosted", "web-verify-hosted", "web-render", "keeper-ui-test", "keeper-ui-build", "govern-ui-test", "govern-ui-build"]
