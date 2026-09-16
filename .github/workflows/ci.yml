@@ -119,6 +119,21 @@ jobs:
           version: 6.0.0
           strict: "true"
 
+      # `hi check` gates the structure of `hi/` and INTENT.md — duplicate ids, a
+      # case whose parent is gone, an id that collides with a retired one, a
+      # criterion stranded outside every section. None of that is a compile
+      # error, so it is exactly the kind of damage a hand-edit does quietly and
+      # nobody notices until an id that was supposed to never move has moved.
+      #
+      # It gates structure only: it has nothing to say about whether a criterion
+      # is any good, and a run that passes is not a claim that the intent is
+      # finished. Installed from source like SpecSync above, because `hi` is a
+      # Rust binary no hosted runner has and no dependency file here installs.
+      - name: Intent files are structurally sound
+        run: |
+          cargo install human-intent --version 0.3.3 --locked
+          hi check
+
       - name: Run the CI lane's tasks
         run: |
           # Read each command from fledge.toml so this job and `fledge lanes
