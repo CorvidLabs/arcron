@@ -131,7 +131,7 @@ jobs:
       # Rust binary no hosted runner has and no dependency file here installs.
       - name: Intent files are structurally sound
         run: |
-          cargo install human-intent --version 0.3.3 --locked
+          cargo install human-intent --version 0.4.0 --locked
           hi check
 
       - name: Run the CI lane's tasks
