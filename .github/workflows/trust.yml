@@ -17,9 +17,10 @@ jobs:
           fetch-depth: 0
 
       # The Trust gate's lifecycle stage runs `fledge lanes run verify`, and
-      # that lane's first four tasks are `poetry run ...`, `bun install` and
-      # `bun test`. A hosted runner has none of that, so without these steps
-      # the gate dies on `poetry: not found` before it has checked anything.
+      # that lane's first tasks are `poetry run ...`, `bun install`, `bun test`
+      # and `hi check`. A hosted runner has none of that, so without these
+      # steps the gate dies on `poetry: not found` before it has checked
+      # anything.
       # Same actions, same versions, same inputs as the `Contracts and console`
       # job in ci.yml, because the two must agree about what the tree needs.
       - uses: actions/setup-python@v5
@@ -40,7 +41,12 @@ jobs:
 
       # SpecSync is not installed here: the Trust action installs the pinned
       # 6.0.0 release itself and puts it on PATH, which is what the lane's
-      # `spec` task needs. `web-render` is not in the verify lane, so no
-      # browser is fetched either.
+      # `spec` task needs. `hi` is not in that action, and the verify lane now
+      # runs `intent` (`hi check`), so the same pin as ci.yml has to land here
+      # or the gate dies on `hi: not found`. `web-render` is not in the verify
+      # lane, so no browser is fetched either.
+      - name: Install hi
+        run: cargo install human-intent --version 0.8.0 --locked
+
       - uses: CorvidLabs/trust@fcc889f54d8b4892a81af463c5a0250e2be66fc5 # v1.2.0
         id: trust
