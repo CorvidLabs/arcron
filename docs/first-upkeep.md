@@ -1,11 +1,15 @@
 # Registering your first upkeep from the console
 
-A walkthrough for doing, by hand and with a real wallet, the one thing nobody
-has ever done: writing to the Arcron contract from the console.
+A walkthrough for registering a Pulse upkeep from the console with a real
+wallet, on TestNet. Pulse is a heartbeat you did not write; watching it run,
+then doing this, is the ten minutes before you spend an afternoon pointing
+Arcron at a contract of your own ([`integrating.md`](integrating.md)).
 
-Everything below reads or writes TestNet only. The worst outcome is losing a
-fraction of a TestNet ALGO, and even that is refundable: cancelling an upkeep
-returns its remaining escrow **and** its box minimum balance in full.
+Someone has already registered from the console (upkeep 72, 2026-08-26).
+`execute`, `cancel` and `top_up` from the console still have not been signed
+by a wallet. The worst outcome here is losing a fraction of a TestNet ALGO,
+and even that is refundable: cancelling returns remaining escrow **and** the
+box minimum balance in full.
 
 ## Why this is worth your time
 
