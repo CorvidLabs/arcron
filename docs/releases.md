@@ -54,14 +54,16 @@ change is expensive from beta because it means a new app id whether or not the
 old one could be updated: an update replaces code, not the shape of boxes that
 already exist.
 
-Getting outside upkeeps registered is therefore alpha work, not beta work.
-While we are here a redeploy costs nothing but our own time, which is exactly
+Getting outside upkeeps registered is useful alpha signal, not a beta
+blocker. A redeploy in alpha still costs nothing but our own time, which is
 the condition under which you want to find out that a field is missing or a
-policy is wrong. The console has to be reachable for that to happen at all, so
-publishing it comes first. Its address is
+policy is wrong. The console has to be reachable for anyone who *does* show
+up, so publishing it comes first. Its address is
 **https://corvidlabs.xyz/arcron/console/**, and that is also the canonical URL
 to check a link against: anything claiming to be Arcron at another address is
 somebody else's front end, whatever it looks like.
+
+Own-use MainNet does not wait on a stranger. See the beta section below.
 
 ## beta: other people may rely on it
 
@@ -93,13 +95,27 @@ and re-registering by hand.
   non-zero, which is what to hang a check on.
 - [ ] A keeper running somewhere that is not a laptop
 - [ ] Documentation an integrator can follow without asking us anything
-- [ ] **At least one upkeep registered by somebody who is not us, which survived a redeploy.**
-      Not "an outside upkeep exists": one that was cancelled and re-registered when we
-      replaced the app, because that is the thing beta promises not to make people do again,
-      and it is worth knowing somebody has done it once before we promise it
 
 **What we promise at beta:** we will not redeploy without a stated reason, and
 if we do, we will say so before the old app is abandoned.
+
+**What beta does not wait on (decided 2026-09-19):** an upkeep registered by
+somebody who is not us. Algorand's users are sparse and mostly do not
+collaborate unless a foundation hands them the tool. Waiting for an organic
+tester before we will use the network ourselves is how the product stays a
+TestNet toy. Own-use MainNet (the quiet create in
+[`design/mainnet-rollout.md`](design/mainnet-rollout.md)) therefore does not
+block on a stranger. The count of outside upkeeps is still stated as zero
+wherever we talk about evidence ([`START-HERE.md`](../START-HERE.md),
+TRUST-9.a). The sentence that would settle whether this is *public*
+infrastructure (CASE-9: somebody outside registers an upkeep for something
+they actually wanted) stays on the board; it is the go-big test, not the
+ship-for-us test.
+
+The old form of this checkbox was: *at least one upkeep registered by
+somebody who is not us, which survived a redeploy.* That is now a G4
+announce gate, not a beta gate. We still want it. We will not pretend we
+have it.
 
 **What we do not promise:** an SLA. There is none and there cannot be. That
 is what permissionless means. Fees are escrowed, execution is atomic, and a
@@ -121,7 +137,9 @@ rewrite of it; this.
       the release row below, not that it go a particular way
 - [ ] **#12 complete**: threat model, escrow isolation proven on chain, arithmetic reviewed, immutability posture stated, incident playbook written
 - [ ] At least one **independent adversarial review** beyond our own
-- [ ] Outside upkeeps still registered and being serviced, unchanged since beta
+- [ ] If we are inviting anyone else: outside upkeeps still registered and being
+      serviced, unchanged since beta. Quiet own-use (G2–G3) does not require
+      this; G4 announce does.
 - [ ] **60 days** at rc with no contract change
 
 **The rule that gives the stage its meaning:** *any* change to the contract

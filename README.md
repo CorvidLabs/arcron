@@ -651,12 +651,11 @@ any reason. Nothing here is a promise yet.
 | rc | the exact bytecode intended for MainNet | our credibility |
 | mainnet | everything, forever | real money |
 
-Getting outside upkeeps registered is **alpha** work, not beta work: beta is
-the freeze, so feedback that could still change the struct has to arrive before
-it. The gates are in [`docs/releases.md`](docs/releases.md), and they
-are deliberately specific: a struct change means a new app id whether or not
-the programs can still be replaced, so a stage whose clock can be argued down
-is not a gate.
+Getting outside upkeeps registered is useful signal, not a ship blocker.
+Beta is the ABI / `Upkeep` freeze for *our* use; an organic tester is the
+go-big test (CASE-9), not the quiet-MainNet test. The gates are in
+[`docs/releases.md`](docs/releases.md). A struct change still means a new
+app id whether or not the programs can still be replaced.
 
 ## Spec-driven development
 
