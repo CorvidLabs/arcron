@@ -12,7 +12,7 @@ TestNet (app 769891898; 769802474 and 769772891 are superseded, predating the
 
 ## Commands
 
-- Everything: `fledge lanes run ci` (build + unit tests + spec check; must stay green)
+- Everything: `fledge lanes run ci` (build + unit tests + spec check + intent; must stay green)
 - On a real chain: `fledge lanes run local` (ci + the keeper e2e; needs `algokit localnet start`)
 - Endurance: `fledge lanes run endurance` (adds `scripts/keeper_soak.py`, ~3 min)
 - Console: `cd web && bun run ng serve`; `bun test` for its unit tests
@@ -149,7 +149,7 @@ This repository should use [hi (Human Intent)](https://corvidlabs.xyz/hi): plain
 sentences saying what people want, each with a permanent id, kept in `hi/`.
 Tickets and specs are generated from them.
 
-If there is no `hi/` here yet, start one from real work rather than from the code:
+The locked sentences are in `hi/` and `INTENT.md`. They are the prompt, not a status report. For new work, still start from what a person asked for rather than from the code:
 
 1. When I ask for a feature, draft its criteria first — one plain sentence each,
    about what somebody **wants**, not what the code does. Private test: you should
@@ -166,4 +166,4 @@ criteria from the code or from existing tickets: a hundred plausible sentences
 nobody said is worse than five real ones, and an id spent on a wrong sentence is
 spent forever.
 
-Install: `brew install corvidlabs/tap/hi`, or `cargo install human-intent`.
+Install: `cargo install human-intent --version 0.8.0 --locked` (what CI pins), or `brew install corvidlabs/tap/hi`. After a merge that touched `hi/`, run `hi check` (the `intent` fledge task).
