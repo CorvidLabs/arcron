@@ -124,7 +124,8 @@ jobs:
       # format version is actually read, duplicate-family is a structural
       # problem, and the write path holds the id-permanence promise. The lane
       # loop below is what runs the check, so this job and `fledge lanes run ci`
-      # cannot disagree.
+      # cannot disagree. Do not keep a second `hi check` here: that was the
+      # 0.5.0 shape, and it would drift from the lane.
       - name: Install hi
         run: cargo install human-intent --version 0.8.0 --locked
 

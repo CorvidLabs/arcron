@@ -12,7 +12,7 @@ TestNet (app 769891898; 769802474 and 769772891 are superseded, predating the
 
 ## Commands
 
-- Everything: `fledge lanes run ci` (build + unit tests + spec check; must stay green)
+- Everything: `fledge lanes run ci` (build + unit tests + spec check + intent; must stay green)
 - On a real chain: `fledge lanes run local` (ci + the keeper e2e; needs `algokit localnet start`)
 - Endurance: `fledge lanes run endurance` (adds `scripts/keeper_soak.py`, ~3 min)
 - Console: `cd web && bun run ng serve`; `bun test` for its unit tests
@@ -141,3 +141,29 @@ because these are easy to get wrong from memory:
   Amounts display in ALGO; cadences display as time as well as rounds.
 - `.env.*` files are gitignored and must stay that way. Never commit mnemonics;
   the TestNet deployer is a throwaway and must never be reused on mainnet.
+
+
+## Human intent
+
+This repository should use [hi (Human Intent)](https://corvidlabs.xyz/hi): plain
+sentences saying what people want, each with a permanent id, kept in `hi/`.
+Tickets and specs are generated from them.
+
+The locked sentences are in `hi/` and `INTENT.md`. They are the prompt, not a status report. For new work, still start from what a person asked for rather than from the code:
+
+1. When I ask for a feature, draft its criteria first — one plain sentence each,
+   about what somebody **wants**, not what the code does. Private test: you should
+   be able to put *As a ___,* in front of it. Leave those words out of the file.
+2. Show them to me and stop. Capture nothing I have not agreed to.
+3. Capture what I confirm, one per command: `hi SEND-1 "the sentence, in my words"`.
+   You pick the id. Letters are cases and numbers are steps (`SEND-1.a.1`), and an
+   id is permanent and never reused, so choose like you will say it out loud.
+4. Then build. `hi check` fails only on a structurally broken file, never on
+   unfinished intent.
+
+Do this before every feature, not only the first one. Do **not** bulk-generate
+criteria from the code or from existing tickets: a hundred plausible sentences
+nobody said is worse than five real ones, and an id spent on a wrong sentence is
+spent forever.
+
+Install: `cargo install human-intent --version 0.8.0 --locked` (what CI pins), or `brew install corvidlabs/tap/hi`. After a merge that touched `hi/`, run `hi check` (the `intent` fledge task).
