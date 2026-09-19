@@ -3,6 +3,7 @@
 Integration is one method. This is everything else you need to know, in one
 pass, so you do not have to assemble it from five places.
 
+- [Before you write a hook](#before-you-write-a-hook)
 - [The hook](#the-hook)
 - [Authorization](#authorization)
 - [Making it durable](#making-it-durable) (the part people get wrong)
@@ -23,6 +24,21 @@ To pack `register` from a browser against an arbitrary ARC-56, including this
 keeper, [Arcui](https://corvidlabs.github.io/arcui/) is the generic workbench.
 The packing source of truth remains `js/src/upkeep.ts` and
 `js/src/keeper-txns.ts` in this repository.
+
+## Before you write a hook
+
+Watch a real upkeep run against a contract you did not write, before you
+commit an afternoon to this page. Pulse (`769891902`) is that contract: a
+heartbeat that cannot fail, already being called on the live TestNet
+registry.
+
+The ten-minute path is [`first-upkeep.md`](first-upkeep.md). It uses about
+0.2 TestNet ALGO and most of that comes back when you cancel. You can also
+open the [console](https://corvidlabs.xyz/arcron/console/?network=testnet&app=769891898)
+and watch Pulse's `beats` move without registering anything.
+
+This page is the afternoon after that: pointing Arcron at a contract you
+wrote.
 
 ## The hook
 
@@ -608,19 +624,26 @@ read the last section of this page instead.
 ## Getting a keeper to test against
 
 Everything above assumes an Arcron deployment exists. On TestNet one does, and
-its app id is `769891898`. On LocalNet you have to make one, and nothing else
-on this page tells you how:
+its app id is `769891898`. On LocalNet you have to make one *and* have
+something that will execute your upkeep. That is one command, once a local
+chain is running:
 
 ```bash
-algokit localnet start
-fledge run deploy-localnet      # deploys the keeper and the pulse demo target
+algokit localnet start          # the chain, once
+fledge run smoke-keeper         # deploys the registry if this chain has none, then a keeper runs against it
 ```
 
-That prints the app id to register against. It is idempotent, so running it
-against a LocalNet you have used before **reuses the existing app**, complete
-with whatever upkeeps are already in its registry. Do not be surprised when a
-keeper bot reports more upkeeps than you created, or executes somebody else's.
-`algokit localnet reset` gives you an empty chain.
+`smoke-keeper` is `scripts/keeper_e2e.py`. It deploys the keeper and Pulse if
+they are not already there, registers an upkeep, and has a stranger execute
+it. The app id it prints is the one to register against. It is idempotent on
+the deploy: a LocalNet you have used before **reuses the existing app**,
+complete with whatever upkeeps are already in its registry. Do not be
+surprised when a later run reports more upkeeps than you created, or executes
+somebody else's. `algokit localnet reset` gives you an empty chain.
+
+`fledge run deploy-localnet` is only the programs, with no keeper turning up.
+Use it when you want a quiet registry. Use `smoke-keeper` when you want to
+test a hook.
 
 ## Building a `register` group without this repository
 
