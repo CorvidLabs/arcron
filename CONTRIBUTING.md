@@ -47,7 +47,7 @@ suite against it.
 ## The gate
 
 ```bash
-fledge lanes run ci      # what CI runs: build, tests, spec drift, console
+fledge lanes run ci      # what CI runs: build, tests, spec drift, intent, console
 fledge lanes run local   # the above plus LocalNet end-to-end (needs algokit localnet start)
 ```
 
@@ -65,6 +65,14 @@ treats an undocumented export as an error.
 
 This catches real drift, but it is an unpleasant surprise if nobody warned
 you. Now you are warned. Run `specsync check --strict` locally before pushing.
+
+And **hi**, the same shape: a Rust binary CI installs and nothing in Poetry
+or Bun does. `cargo install human-intent --version 0.8.0 --locked` puts `hi`
+on your path (the crate is `human-intent`; the command is `hi`). `hi check`
+fails only on a structurally broken `hi/*.md` — duplicate ids, a case with no
+parent, a family two files both claim — and never because a criterion is
+unfinished. The sentences are the prompt. Looking at the code to see whether
+they hold is still your job.
 
 Know what it does not catch. It reads structure: sections present, exports
 documented, dependency specs resolvable. It passes clean on a tree whose

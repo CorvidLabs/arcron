@@ -6,6 +6,9 @@
 build = "poetry run python -m smart_contracts build"
 test = "poetry run pytest tests/ -q"
 spec = "specsync check --strict"
+# Structural gate on hi/*.md and INTENT.md. Fails on a broken file, never on
+# unfinished intent. Needs `hi` on PATH (`cargo install human-intent --version 0.8.0 --locked`).
+intent = "hi check"
 # Print the hash of the contract this tree builds; add --app-id to check a deployment.
 verify = "poetry run python -m scripts.verify_build --no-rebuild"
 
@@ -196,16 +199,16 @@ hostile-target = "poetry run python -m scripts.spike_hostile_target --network lo
 # answers "does this tree build, pass its tests, and match its specs".
 [lanes.verify]
 description = "Trust gate: contracts build, unit tests, spec drift check, TypeScript suites"
-steps = ["build", "test", "spec", "js-install", "js-test", "web-test"]
+steps = ["build", "test", "spec", "intent", "js-install", "js-test", "web-test"]
 
 [lanes.ci]
 description = "Full CI pipeline: contracts + console, unit tests, spec drift check, rendered-page audit"
-steps = ["build", "test", "spec", "js-install", "js-test", "web-test", "web-build", "web-build-hosted", "web-verify-hosted", "web-render", "keeper-ui-test", "keeper-ui-build", "govern-ui-test", "govern-ui-build"]
+steps = ["build", "test", "spec", "intent", "js-install", "js-test", "web-test", "web-build", "web-build-hosted", "web-verify-hosted", "web-render", "keeper-ui-test", "keeper-ui-build", "govern-ui-test", "govern-ui-build"]
 
 [lanes.local]
 description = "CI plus the LocalNet end-to-end test and the console rendering audit (needs algokit localnet start, and web-render-install once)"
-steps = ["build", "test", "spec", "js-install", "js-test", "web-test", "web-build", "web-build-hosted", "web-verify-hosted", "web-render", "keeper-ui-test", "keeper-ui-build", "govern-ui-test", "govern-ui-build", "smoke-keeper", "smoke-subscription", "smoke-govern", "smoke-multisig", "smoke-clawback", "attacks", "hostile-target", "smoke-reference-boundary"]
+steps = ["build", "test", "spec", "intent", "js-install", "js-test", "web-test", "web-build", "web-build-hosted", "web-verify-hosted", "web-render", "keeper-ui-test", "keeper-ui-build", "govern-ui-test", "govern-ui-build", "smoke-keeper", "smoke-subscription", "smoke-govern", "smoke-multisig", "smoke-clawback", "attacks", "hostile-target", "smoke-reference-boundary"]
 
 [lanes.endurance]
 description = "The local lane plus a soak: many consecutive executions, no drift"
-steps = ["build", "test", "spec", "smoke-keeper", "soak", "scenario"]
+steps = ["build", "test", "spec", "intent", "smoke-keeper", "soak", "scenario"]

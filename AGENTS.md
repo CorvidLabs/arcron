@@ -9,9 +9,11 @@ project is `smart_contracts/keeper/`, a permissionless keeper network, live on
 TestNet (app 769891898; 769802474 and 769772891 are superseded and predate the
 1.0 contract). `pulse/` is its demo target (app 769891902).
 
+Product intent lives in `hi/` and `INTENT.md`. Those sentences are the agreed prompt, not a status report. Run `hi check` (the `intent` fledge task) after a merge that touched `hi/`. Do not capture a criterion a person has not agreed to.
+
 ## Commands
 
-- Everything: `fledge lanes run ci` (build + unit tests + spec check)
+- Everything: `fledge lanes run ci` (build + unit tests + spec check + intent)
 - Everything, on a real chain: `fledge lanes run local` (ci + the keeper e2e; needs `algokit localnet start`)
 - Sustained operation: `fledge lanes run endurance` (adds a soak; ~3 min)
 - Console: `cd web && bun run ng serve` (LocalNet by default), `bun test` for its unit tests

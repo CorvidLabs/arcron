@@ -119,20 +119,14 @@ jobs:
           version: 6.0.0
           strict: "true"
 
-      # `hi check` gates the structure of `hi/` and INTENT.md — duplicate ids, a
-      # case whose parent is gone, an id that collides with a retired one, a
-      # criterion stranded outside every section. None of that is a compile
-      # error, so it is exactly the kind of damage a hand-edit does quietly and
-      # nobody notices until an id that was supposed to never move has moved.
-      #
-      # It gates structure only: it has nothing to say about whether a criterion
-      # is any good, and a run that passes is not a claim that the intent is
-      # finished. Installed from source like SpecSync above, because `hi` is a
-      # Rust binary no hosted runner has and no dependency file here installs.
-      - name: Intent files are structurally sound
-        run: |
-          cargo install human-intent --version 0.4.0 --locked
-          hi check
+      # `hi check` is the `intent` task. Installed here because `hi` is a Rust
+      # binary no hosted runner has. 0.8.0 is the 1.0 release candidate: the
+      # format version is actually read, duplicate-family is a structural
+      # problem, and the write path holds the id-permanence promise. The lane
+      # loop below is what runs the check, so this job and `fledge lanes run ci`
+      # cannot disagree.
+      - name: Install hi
+        run: cargo install human-intent --version 0.8.0 --locked
 
       - name: Run the CI lane's tasks
         run: |
