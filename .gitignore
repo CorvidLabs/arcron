@@ -210,3 +210,8 @@ web-keeper/dist/
 # only, but the rule has to be here first for that to stay true.
 .npmrc
 js/.npmrc
+
+# The readable page `hi view` writes from INTENT.md and hi/. Generated on
+# demand from files that are committed, so committing it would only give a
+# stale copy of the intent something to disagree with.
+intent.html
