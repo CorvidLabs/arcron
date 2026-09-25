@@ -509,8 +509,11 @@ not the point at which the upkeep goes quiet.
   permissionless, so a counterparty with an
   interest in your schedule running can pay for it. Only the creator can
   `cancel`.
-- **Running dry is silent.** The upkeep goes dormant (no keeper can execute
-  it) and resumes the moment someone tops it up. Nothing announces it.
+- **Running dry is silent on chain.** The upkeep goes dormant (no keeper can
+  execute it) and resumes the moment someone tops it up. The chain announces
+  nothing; `scripts/notifier.py`, if you run one, says so once when the escrow
+  falls below a week of runway at the upkeep's cadence (`--low-runway-days`)
+  and again when it runs dry.
 - **Notice before it happens.** `poetry run python -m scripts.keeper_bot --check`
   reports an upkeep whose escrow has fallen below one fee as **starved**, and
   **exits zero when it does**. That is deliberate: the exit code answers "is a

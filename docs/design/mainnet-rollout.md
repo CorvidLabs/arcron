@@ -425,6 +425,29 @@ And after three independent reviews of the 2026-09-05 script, the same day:
   compose file to `/etc/arcron/`; both units restart on failure with a limit
   rather than flapping forever.
 
+And on 2026-09-25, from a readiness review run by two independent reviewers
+(Claude and Grok, agreeing item by item at 95% or better before anything was
+called settled), four gaps that each amplified an operator mistake:
+
+- **GOVERN-12.** `govern update` held the create's soak rule to nothing: it
+  shipped whatever the tree built after a `frozen` check. On MainNet, decided
+  by the node's genesis id rather than a flag, it now refuses programs that
+  TestNet app 769891898 is not running, and fails closed when TestNet cannot
+  be read, on the multisig export as well as the single-key path.
+  `soaked_digest` moved from `deploy.py` into `govern.py` so both use one
+  reading.
+- **GOVERN-13.** The DEPLOYER fallback refusal checked a variable name, so the
+  creator's words under `KEEPER_MNEMONIC` were loaded without a question.
+  `keeper_bot` now refuses to sign as the creator of an unfrozen app, and as
+  `MAINNET_CREATOR` on any app, whatever the key was called.
+- **GOVERN-14.** `seed_registry` without `--only` registered all six seeds,
+  including the 25-round burn-in and the escalating one. On MainNet it now
+  refuses, before connecting, any selection but `skip-ahead` at `fee_cap 0`.
+- **WATCH-5.** The notifier said an upkeep had run dry only after it had.
+  It now announces, once, an upkeep whose escrow covers less than
+  `--low-runway-days` (default 7, the line `health` draws) at its own cadence.
+  On TestNet at the time 16 of 36 upkeeps had starved without anyone noticing.
+
 ## F11 evidence
 
 Run on 2026-09-08 against the tree these changes were made in, Python
@@ -467,6 +490,19 @@ A `/versions` below 4.7 or a listing without `round` means every reader here
 refuses that node, loudly. That is the intended behaviour and it is also the
 first thing to learn about the node in front of G1, which is why it is check
 one rather than a footnote.
+
+**Run on 2026-09-25**, on `e98026b` against the public TestNet node, closing
+the two rows above that said **not run**:
+
+| check | result |
+|---|---|
+| `fledge run preflight -- --markdown` | round 67,652,258. node PASS (algod 5.0.2, testnet-v1.0); app PASS; boxes PASS (36 names, a real page: the response carried `round`, no `next-token`); build PASS (769891898 is this tree byte for byte, `c94c6e0c…`); clock PASS (installed at round 66,695,186 by the alpha-3 update, program age 29.9 days, app age 30.7); solvency PASS (11,480,785 µALGO owed and spendable); strangers SKIP (no `--ours`); rehearsal FAIL (throwaway short 2.1 ALGO, since funded with 10). |
+| `fledge lanes run local` | 23 steps green: keeper e2e, subscription, governance e2e ending in a freeze, multisig, clawback, all 3 attacks refused, hostile target, reference boundary. Rerun green on the GOVERN-12/13/14 and WATCH-5 branch, with 862 pytest passed. |
+| cancel after neglect, on 769891898 | simulated with empty signatures, nothing sent: starved upkeeps 81, 98, 109 and 120 each refund exactly 62,100 µALGO to their creator (`BOX_MBR_FIXED + 400 × 10`, escrow 0); a different creator cancelling 81 fails at the creator assert. |
+
+Still open for G2 after this: the TestNet rehearsal with a code-changing
+`update` (F10), run on the candidate that carries the four guards above, and
+G1.
 
 ## What to run next, in order
 

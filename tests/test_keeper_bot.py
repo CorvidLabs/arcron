@@ -245,6 +245,50 @@ def test_an_app_with_no_frozen_key_predates_governance_and_is_immutable() -> Non
     assert is_frozen(_FakeAlgod([_entry("next_upkeep_id", 23)]), 1) is True
 
 
+# --- GOVERN-13: the key that can rewrite the contract never signs as a keeper --
+
+class _FakeAppAlgod(_FakeAlgod):
+    """An app with a creator, for the signer check."""
+
+    def __init__(self, creator: str, state: list[dict]) -> None:
+        super().__init__(state)
+        self._creator = creator
+
+    def application_info(self, app_id: int) -> dict:
+        return {"params": {"creator": self._creator, "global-state": self._state}}
+
+
+_CREATOR = "A" * 58
+_KEEPER = "B" * 58
+
+
+def test_the_creator_of_an_unfrozen_app_is_refused_whatever_variable_held_its_key() -> None:
+    """The DEPLOYER fallback refusal checked a variable name; this checks the address."""
+    algod = _FakeAppAlgod(_CREATOR, [_entry("next_upkeep_id", 3), _entry("frozen", 0)])
+    with pytest.raises(UnrecoverableError, match="creator of app 7, which is not frozen"):
+        keeper_bot.refuse_rewriting_signer(algod, 7, _CREATOR)
+
+
+def test_the_creator_of_a_frozen_app_may_sign() -> None:
+    """Once frozen nobody can rewrite it, so the creator is just another account."""
+    algod = _FakeAppAlgod(_CREATOR, [_entry("next_upkeep_id", 3), _entry("frozen", 1)])
+    keeper_bot.refuse_rewriting_signer(algod, 7, _CREATOR)
+
+
+def test_the_mainnet_creator_is_refused_on_any_app_frozen_or_not() -> None:
+    from scripts import network as net
+
+    for frozen in (0, 1):
+        algod = _FakeAppAlgod(_CREATOR, [_entry("frozen", frozen)])
+        with pytest.raises(UnrecoverableError, match="corvid.algo"):
+            keeper_bot.refuse_rewriting_signer(algod, 7, net.MAINNET_CREATOR)
+
+
+def test_a_separate_keeper_account_signs() -> None:
+    algod = _FakeAppAlgod(_CREATOR, [_entry("next_upkeep_id", 3), _entry("frozen", 0)])
+    keeper_bot.refuse_rewriting_signer(algod, 7, _KEEPER)
+
+
 def test_the_recorded_box_names_its_creator() -> None:
     """The box always carried the creator and the decoder dropped it.
 

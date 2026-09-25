@@ -1100,6 +1100,36 @@ def is_frozen(algod, app_id: int) -> bool:
     return True
 
 
+def refuse_rewriting_signer(algod, app_id: int, signer: str) -> None:
+    """Refuse to sign executions with a key that can rewrite the contract (GOVERN-13).
+
+    The DEPLOYER fallback above is refused while the app is unfrozen, but that
+    only catches the key by the name of the variable it came from. The same
+    words in `KEEPER_MNEMONIC` were loaded without a question, and the result
+    is the one the fallback refusal exists to prevent: the key that can replace
+    `execute` and reach every escrow, on a hot machine polling around the
+    clock. So the signer is checked by address, whatever it was called.
+
+    `MAINNET_CREATOR` is refused on every app and every network, frozen or not:
+    it is `corvid.algo`, which creates the MainNet keeper and signs its
+    `update`, and a keeper is a hot key by definition.
+    """
+    if signer == net.MAINNET_CREATOR:
+        raise UnrecoverableError(
+            f"Refusing to sign executions as {signer[:8]}…, the MainNet creator "
+            "(corvid.algo). That key creates and updates the keeper and must never "
+            "be a hot key. Set KEEPER_MNEMONIC to a separate account."
+        )
+    creator = algod.application_info(app_id)["params"].get("creator")
+    if signer == creator and not is_frozen(algod, app_id):
+        raise UnrecoverableError(
+            f"Refusing to sign executions as {signer[:8]}…, the creator of app {app_id}, "
+            "which is not frozen. That key can replace the programs and reach every "
+            "escrow in it, so it must not sign routine executions from a long-running "
+            "bot. Set KEEPER_MNEMONIC to a separate account."
+        )
+
+
 def check_registry(algod, app_id: int, keeper_address: str | None = None) -> int:
     """Report how healthy a registry looks. Returns a process exit code.
 
@@ -1619,6 +1649,7 @@ def main(argv: list[str] | None = None) -> None:
                 "DEPLOYER_MNEMONIC is accepted as a fallback when running from a "
                 "checkout, and is also unset."
             ) from cause
+    refuse_rewriting_signer(algod, app_id, keeper.address)
     state_file = (
         None
         if args.no_state

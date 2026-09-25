@@ -65,6 +65,7 @@ from scripts.keeper_bot import (
     resolve_app_id,
     scan_upkeeps,
 )
+from scripts.registry_health import LOW_RUNWAY_DAYS
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -150,9 +151,14 @@ class Snapshot:
     dormant: set[int] = field(default_factory=set)
     stalled: set[int] = field(default_factory=set)
     last_round: int = 0
+    #: Funded, but for less runway than `low_runway_rounds` at its own cadence
+    #: (WATCH-5). The warning before `dormant`, which is the warning after.
+    low: set[int] = field(default_factory=set)
 
     @classmethod
-    def of(cls, upkeeps: list[Upkeep], current_round: int) -> "Snapshot":
+    def of(cls, upkeeps: list[Upkeep], current_round: int, low_runway_rounds: int = 0) -> "Snapshot":
+        """`low_runway_rounds` of 0 leaves `low` empty, which is what a caller
+        that does not know the network's round time gets."""
         return cls(
             upkeeps={
                 upkeep.upkeep_id: {
@@ -186,6 +192,18 @@ class Snapshot:
                 > STALL_INTERVALS * max(u.interval_rounds, 1)
             },
             last_round=current_round,
+            # Runway counted at the base fee, the same arithmetic `health`
+            # reports in days, so the channel and `health` agree on who is
+            # low. An upkeep that is already dormant is not also low: it has
+            # its own, louder alert.
+            low={
+                u.upkeep_id
+                for u in upkeeps
+                if low_runway_rounds > 0
+                and u.balance >= effective_fee(u, current_round)
+                and u.fee_per_execution > 0
+                and (u.balance // u.fee_per_execution) * u.interval_rounds < low_runway_rounds
+            },
         )
 
     def to_json(self) -> dict:
@@ -193,6 +211,7 @@ class Snapshot:
             "upkeeps": {str(k): v for k, v in self.upkeeps.items()},
             "dormant": sorted(self.dormant),
             "stalled": sorted(self.stalled),
+            "low": sorted(self.low),
             "last_round": self.last_round,
         }
 
@@ -260,7 +279,11 @@ class Snapshot:
         if last_round is None:
             logger.warning(f"Snapshot last_round={payload.get('last_round')!r} is not an integer; using 0")
             last_round = 0
-        return cls(upkeeps=upkeeps, dormant=ids("dormant"), stalled=ids("stalled"), last_round=last_round)
+        # A snapshot written before WATCH-5 has no "low", so every upkeep that
+        # is low now is announced once after the upgrade: a duplicate, not a
+        # silence.
+        return cls(upkeeps=upkeeps, dormant=ids("dormant"), stalled=ids("stalled"),
+                   last_round=last_round, low=ids("low"))
 
 
 def _as_int(value: object) -> int | None:
@@ -371,6 +394,20 @@ def diff(
                     f"{_algos(state['balance'])} is below its "
                     f"{_algos(_fee_now(state, current.last_round))} fee, so no keeper "
                     f"can run it. Anyone can top it up.",
+                )
+            )
+    for upkeep_id in sorted(current.low - previous.low):
+        if upkeep_id in current.upkeeps:
+            state = current.upkeeps[upkeep_id]
+            runs = state["balance"] // max(state["fee_per_execution"], 1)
+            events.append(
+                Event(
+                    "low",
+                    upkeep_id,
+                    f"⏳ **Upkeep {upkeep_id} is running low**: escrow "
+                    f"{_algos(state['balance'])} covers about {runs} more run(s), "
+                    f"{runs * state['interval_rounds']:,} rounds at its cadence. "
+                    f"Top it up before it runs dry. Anyone can.",
                 )
             )
     for upkeep_id in sorted(previous.dormant - current.dormant):
@@ -1049,6 +1086,16 @@ def main(argv: list[str] | None = None) -> None:
         help="on MainNet, mean it when there is no webhook and print announcements instead",
     )
     parser.add_argument(
+        "--low-runway-days",
+        type=float,
+        default=LOW_RUNWAY_DAYS,
+        help=(
+            "announce an upkeep once when its escrow covers less than this many days at its "
+            "own cadence, before it runs dry (default: %(default)s, the same line `health` "
+            "draws; 0 turns it off)"
+        ),
+    )
+    parser.add_argument(
         "--no-state",
         action="store_true",
         help=(
@@ -1080,6 +1127,12 @@ def main(argv: list[str] | None = None) -> None:
             "missing?). Fix it, or unset it to print announcements instead"
         )
     path = None if args.no_state else (args.state_file or state_path(args.network, app_id))
+    # WATCH-5: days become rounds once, from the network's measured round time,
+    # so `Snapshot.of` stays a pure function of what the chain said.
+    low_runway_rounds = (
+        max(0, math.ceil(args.low_runway_days * 86_400 / net.seconds_per_round(args.network)))
+        if args.low_runway_days > 0 else 0
+    )
 
     ours = args.ours if args.ours is not None else os.environ.get("ARCRON_OURS", "")
     known_creators = frozenset(a.strip() for a in ours.split(",") if a.strip())
@@ -1160,7 +1213,7 @@ def main(argv: list[str] | None = None) -> None:
                 logger.error(f"Delivering pending stranger alerts failed ({exc!r}); scanning anyway")
 
             current_round = algod.status()["last-round"]
-            snapshot = Snapshot.of(scan_upkeeps(algod, app_id), current_round)
+            snapshot = Snapshot.of(scan_upkeeps(algod, app_id), current_round, low_runway_rounds)
             try:
                 events = diff(previous, snapshot, known_creators)
             except Exception:

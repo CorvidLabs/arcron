@@ -56,8 +56,9 @@ import sys
 
 import algokit_utils
 from algosdk import constants, transaction
+from algosdk.v2client import algod as algod_client
 
-from scripts import multisig as ms, network as net
+from scripts import multisig as ms, network as net, node_retry
 from scripts.registry_health import read_escrowed, read_solvency
 from scripts.verify_build import _digest, _programs, _spec, rebuild
 
@@ -216,6 +217,34 @@ def _deployed(algod, app_id: int) -> tuple[bytes, bytes]:
     )
 
 
+def soaked_digest(app_id: int = net.SOAKED_APP_ID, algod=None) -> str | None:
+    """The digest of what the TestNet keeper is running, or None if it could not be read.
+
+    Read through a plain algod client pointed at the public TestNet endpoint,
+    not through `net.connect(net.TESTNET)`. The MainNet run has already loaded
+    `.env.mainnet`, and `load_network` deliberately lets exported variables
+    win over the file it loads, so `ALGOD_SERVER` would still be the MainNet
+    node when `.env.testnet` was read: `AlgorandClient.from_environment()`
+    would connect to MainNet, `assert_network` would refuse, and without that
+    refusal the "soaked" programs would have been read from the chain being
+    deployed to, which proves nothing. An explicit address has no environment
+    to inherit. It gets the same retry wrapper every other client gets, with
+    the fallback pinned empty for the same reason: `ALGOD_SERVER_FALLBACK` in
+    a MainNet shell is a MainNet node.
+
+    Fails closed: any failure is logged and returned as None, and `deploy.refusals`
+    and `update` turn None into a refusal. `algod` is for tests.
+    """
+    if algod is None:
+        algod = node_retry.install(algod_client.AlgodClient("", net.SOAKED_ALGOD), fallback="")
+    try:
+        approval, clear = _deployed(algod, app_id)
+    except Exception as error:  # noqa: BLE001 - every failure is the same answer: unproven
+        logger.warning(f"Could not read TestNet app {app_id}'s programs: {error}")
+        return None
+    return _digest(approval, clear)
+
+
 def status(algorand, app_id: int) -> int:
     algod = algorand.client.algod
     frozen = _frozen(algod, app_id)
@@ -262,6 +291,29 @@ def status(algorand, app_id: int) -> int:
     return 0
 
 
+def soak_refusal(digest: str, soaked: str | None) -> str | None:
+    """Why a MainNet update must not send these programs, or None if it may (GOVERN-12).
+
+    The create is held to the bytecode the TestNet keeper is running
+    (`deploy.refusals`, #250 F10); an update replaces that bytecode, so it is
+    held to the same rule, or alpha-4 could reach MainNet without ever having
+    run on TestNet. Pure, so a test can drive each answer without a node.
+    """
+    if soaked is None:
+        return (
+            f"TestNet app {net.SOAKED_APP_ID}'s programs could not be read, so nothing proves "
+            "these programs have soaked there. The check fails closed."
+        )
+    if soaked != digest:
+        return (
+            f"these programs are not what TestNet app {net.SOAKED_APP_ID} is running.\n"
+            f"      this tree: {digest}\n"
+            f"      TestNet:   {soaked}\n"
+            "      Update TestNet first, let it soak, then update MainNet from the same tree."
+        )
+    return None
+
+
 def update(algorand, app_id: int, no_rebuild: bool, out: 'pathlib.Path | None' = None) -> int:
     algod = algorand.client.algod
     if _frozen(algod, app_id) != 0:
@@ -284,6 +336,13 @@ def update(algorand, app_id: int, no_rebuild: bool, out: 'pathlib.Path | None' =
     # fee again from the file, which is the one place a human reads it; the
     # single-key branch below signs what it builds, so this is its only check.
     params = bounded_params(algod)
+    # GOVERN-12, on both branches. Which chain this is comes from the node's own
+    # genesis id rather than from a flag, so no argument can route around it.
+    if params.gen in net._GENESIS_IDS[net.MAINNET]:
+        refusal = soak_refusal(_digest(approval, clear), soaked_digest())
+        if refusal:
+            logger.error(f"Refusing to update: {refusal}")
+            return 1
     if ms.configured():
         # No single machine should be able to rewrite a live contract, so the
         # transaction is written out for the holders to sign wherever their

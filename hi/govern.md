@@ -29,3 +29,6 @@ Anyone should be able to run an Arcron of their own, and whoever does holds a re
 - **GOVERN-9**  A release records the hash and the commit, so the claim that an app is a given build can be checked without trusting anybody.
 - **GOVERN-10**  A claim about how long a deployment has run stops counting the moment the code stops matching what is deployed.
 - **GOVERN-11**  An operator is told when somebody who is not them registers an upkeep, because that is a real person who has trusted them.
+- **GOVERN-12**  An update to the MainNet keeper is refused unless TestNet has already been running those exact programs.
+- **GOVERN-13**  The key that can rewrite the contract is never the key a keeper bot signs with.
+- **GOVERN-14**  Registering our first MainNet upkeep cannot accidentally register the test seeds, or anything with a fee ceiling.

@@ -485,6 +485,8 @@ docker compose -f deploy/compose.yaml up -d notifier              # alongside th
 ```
 **Upkeep 9 executed**, 0.004 ALGO paid, next due at round 2976
 ↳ keeper `FIYLSRRX…XO4LGA`
+⏳ **Upkeep 12 is running low**: escrow 0.020 ALGO covers about 5 more run(s),
+   6,430 rounds at its cadence. Top it up before it runs dry. Anyone can.
 ⚠️ **Upkeep 4 has run dry**: escrow 0.001 ALGO is below its 0.004 ALGO fee,
    so no keeper can run it. Anyone can top it up.
 ⚠️ **Upkeep 7 is going unserviced**. Funded and due, but 812 rounds late.
