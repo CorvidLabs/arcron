@@ -1173,3 +1173,35 @@ class TestACancelledBoxDoesNotAbortTheScan:
             scan_upkeeps(algod, APP_ID)
         with pytest.raises(ValueError, match="upkeep 84"):
             Registry().refresh(algod, APP_ID, algod.chain.round, Backoff(None))
+
+
+class _Reached(Exception):
+    """Raised by the step after the signer check, to prove main got past it."""
+
+
+def _main_with_signer(monkeypatch, signer: str) -> None:
+    from types import SimpleNamespace
+
+    algod = _FakeAppAlgod(_CREATOR, [_entry("next_upkeep_id", 3), _entry("frozen", 0)])
+    algorand = SimpleNamespace(
+        client=SimpleNamespace(algod=algod),
+        account=SimpleNamespace(from_environment=lambda name: SimpleNamespace(address=signer)),
+    )
+    monkeypatch.setattr(keeper_bot.net, "connect", lambda network: algorand)
+
+    def reached(*args, **kwargs):
+        raise _Reached()
+
+    monkeypatch.setattr(keeper_bot, "account_state", reached)
+    keeper_bot.main(["--network", "testnet", "--app-id", "7", "--no-state"])
+
+
+def test_main_refuses_the_creator_before_it_touches_the_account(monkeypatch) -> None:
+    """Pins the call in `main`, not only the function: deleting it fails this."""
+    with pytest.raises(UnrecoverableError, match="creator of app 7"):
+        _main_with_signer(monkeypatch, _CREATOR)
+
+
+def test_main_lets_a_separate_keeper_through_the_check(monkeypatch) -> None:
+    with pytest.raises(_Reached):
+        _main_with_signer(monkeypatch, _KEEPER)
