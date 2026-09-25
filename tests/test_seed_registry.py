@@ -100,3 +100,50 @@ def test_pricing_without_commit_asks_the_node_nothing_about_fees(seeded, monkeyp
     monkeypatch.setattr(seed_registry.net, "connect", lambda network: _algorand(50_000, []))
     seed_registry.main(["--network", "testnet", "--app-id", str(TESTNET_KEEPER), "--target", str(PULSE)])
     assert _RecordingClient.calls == []
+
+
+# --- GOVERN-14: the first MainNet registration cannot take a test seed ----------
+
+
+def _run_mainnet(monkeypatch, *extra: str) -> list:
+    connected: list = []
+    payments: list = []
+
+    def connect(network):
+        connected.append(network)
+        return _algorand(1000, payments)
+
+    monkeypatch.setattr(seed_registry.net, "connect", connect)
+    seed_registry.main(["--network", "mainnet", "--app-id", "1", "--target", "2", "--commit", *extra])
+    return connected
+
+
+def test_mainnet_without_only_refuses_before_connecting(seeded, monkeypatch) -> None:
+    """Forgetting --only used to price, and with --commit register, all six seeds."""
+    with pytest.raises(SystemExit, match="Refusing: MainNet takes only the skip-ahead seed") as refused:
+        _run_mainnet(monkeypatch)
+    for label, *_ in seed_registry.PLAN:
+        if not label.startswith("skip-ahead"):
+            assert label in str(refused.value)
+    assert _RecordingClient.calls == []
+
+
+@pytest.mark.parametrize("only", ["burn-in", "heartbeat", "catch-up", "escalating", "multi-argument", "-"])
+def test_mainnet_refuses_every_other_seed(seeded, monkeypatch, only) -> None:
+    with pytest.raises(SystemExit, match="Refusing"):
+        _run_mainnet(monkeypatch, "--only", only)
+    assert _RecordingClient.calls == []
+
+
+def test_mainnet_takes_the_ceremony_seed(seeded, monkeypatch) -> None:
+    assert _run_mainnet(monkeypatch, "--only", "skip-ahead") == ["mainnet"]
+    assert len(_RecordingClient.calls) == 1
+    args, _ = _RecordingClient.calls[0]
+    assert args.fee_cap == 0 and args.policy == seed_registry.SKIP_AHEAD
+
+
+def test_mainnet_refusal_is_about_the_label_and_the_ceiling() -> None:
+    skip_ahead = [seed for seed in seed_registry.PLAN if seed[0].startswith("skip-ahead")]
+    assert seed_registry.mainnet_refusal(skip_ahead) is None
+    label, interval, runs, policy, _cap, args = skip_ahead[0]
+    assert "skip-ahead" in seed_registry.mainnet_refusal([(label, interval, runs, policy, 12_000, args)])

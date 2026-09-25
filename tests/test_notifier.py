@@ -887,7 +887,9 @@ def test_a_stranger_is_posted_before_a_flood_of_executions(monkeypatch, tmp_path
     before = [upkeep(upkeep_id=i, balance=1_000_000, interval_rounds=1_000) for i in range(1, 41)]
     after = [upkeep(upkeep_id=i, balance=996_000, times_executed=1, interval_rounds=1_000,
                     next_execution_round=2_200) for i in range(1, 41)]
-    after.append(upkeep(upkeep_id=99, creator=STRANGER, interval_rounds=1_000))
+    # Funded like the forty, so it is not also "running low" (WATCH-5) and
+    # the only posts are the stranger and the executions.
+    after.append(upkeep(upkeep_id=99, creator=STRANGER, interval_rounds=1_000, balance=1_000_000))
     urlopen = _scripted_urlopen([])
     _run_main(monkeypatch, tmp_path, registries=[before, after], urlopen=urlopen, clock=_Clock())
 
@@ -918,7 +920,10 @@ def test_the_pending_file_is_written_before_the_snapshot_advances(monkeypatch, t
 
     monkeypatch.setattr(notifier, "save", save_and_record)
     monkeypatch.setattr(notifier.PendingStrangers, "save", pending_save)
-    _run_main(monkeypatch, tmp_path, registries=[[upkeep(upkeep_id=7, creator=STRANGER)]],
+    # Funded for months, so no "running low" post (WATCH-5) spends the
+    # scripted failures that are meant for the stranger alert.
+    stranger = upkeep(upkeep_id=7, creator=STRANGER, interval_rounds=1_000, balance=1_000_000)
+    _run_main(monkeypatch, tmp_path, registries=[[stranger]],
               urlopen=_scripted_urlopen([500] * 10), clock=_Clock())
     assert seen.index("pending") < seen.index("snapshot")
     assert "testnet/1/7" in json.loads((tmp_path / "notifier-pending.json").read_text())
@@ -1675,3 +1680,53 @@ def test_a_successful_pending_write_lets_the_snapshot_advance_again(tmp_path, mo
     pending.add("testnet", 1, _stranger_event(8), current_round=2)
     assert pending.unsaved is False
     assert set(json.loads((tmp_path / "pending.json").read_text())) == {"testnet/1/7", "testnet/1/8"}
+
+
+# --- WATCH-5: told when an upkeep is running low, before it runs dry ----------
+
+
+def test_an_upkeep_below_the_runway_line_is_low_and_one_above_is_not() -> None:
+    # 12,000 at 4,000 a run is three runs; every 10 rounds that is 30 rounds.
+    upkeeps = [upkeep(upkeep_id=1), upkeep(upkeep_id=2, balance=400_000)]  # 2: 100 runs, 1,000 rounds
+    low = Snapshot.of(upkeeps, 1_000, low_runway_rounds=500).low
+    assert low == {1}
+
+
+def test_a_dry_upkeep_is_dormant_not_low() -> None:
+    """Dormant has its own, louder alert; saying "low" as well would be noise."""
+    shot = Snapshot.of([upkeep(balance=1)], 1_000, low_runway_rounds=500)
+    assert shot.dormant == {1} and shot.low == set()
+
+
+def test_no_threshold_means_no_low_set() -> None:
+    assert Snapshot.of([upkeep()], 1_000).low == set()
+
+
+def test_running_low_is_announced_once() -> None:
+    previous = Snapshot.of([upkeep(balance=400_000)], 1_000, low_runway_rounds=500)
+    current = Snapshot.of([upkeep(balance=12_000)], 1_000, low_runway_rounds=500)
+    events = [e for e in diff(previous, current) if e.kind == "low"]
+    assert [e.upkeep_id for e in events] == [1]
+    assert "running low" in events[0].text and "3 more run(s)" in events[0].text
+    assert [e for e in diff(current, current) if e.kind == "low"] == []
+
+
+def test_the_low_set_survives_a_restart_and_an_old_snapshot_reads_as_none() -> None:
+    shot = Snapshot.of([upkeep()], 1_000, low_runway_rounds=500)
+    assert Snapshot.from_json(shot.to_json()).low == {1}
+    old = shot.to_json()
+    del old["low"]
+    assert Snapshot.from_json(old).low == set()
+
+
+def test_main_announces_a_low_upkeep_and_the_flag_turns_it_off(monkeypatch, tmp_path) -> None:
+    # Three runs every ten rounds is minutes of runway on any network.
+    low = [upkeep(upkeep_id=5)]
+    urlopen = _scripted_urlopen([])
+    _run_main(monkeypatch, tmp_path, registries=[low], urlopen=urlopen, clock=_Clock())
+    assert any("Upkeep 5 is running low" in text for text in urlopen.calls)
+
+    quiet = _scripted_urlopen([])
+    _run_main(monkeypatch, tmp_path / "off", registries=[low], urlopen=quiet, clock=_Clock(),
+              extra=("--low-runway-days", "0"))
+    assert not any("running low" in text for text in quiet.calls)

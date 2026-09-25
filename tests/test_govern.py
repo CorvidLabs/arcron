@@ -36,13 +36,15 @@ class FakeAlgod:
     unbounded update cost the minimum too, and the test could not tell.
     """
 
-    def __init__(self, *, approval: bytes, clear: bytes, frozen: int = 0, fee: int = 0, min_fee: int = 1000):
+    def __init__(self, *, approval: bytes, clear: bytes, frozen: int = 0, fee: int = 0, min_fee: int = 1000,
+                 gen: str = "testnet-v1.0"):
         self.approval, self.clear, self.frozen = approval, clear, frozen
+        self.gen = gen
         self.fee, self.min_fee = fee, min_fee
         self.sent: list = []
 
     def suggested_params(self):
-        return transaction.SuggestedParams(fee=self.fee, first=1, last=1000, gh="", gen="testnet-v1.0",
+        return transaction.SuggestedParams(fee=self.fee, first=1, last=1000, gh="", gen=self.gen,
                                            flat_fee=False, min_fee=self.min_fee)
 
     def application_info(self, app_id: int) -> dict:
@@ -170,6 +172,62 @@ def test_the_unsigned_freeze_and_update_carry_the_minimum_fee(monkeypatch, tmp_p
                          out=tmp_path / "update.json") == 0
     assert [txn.fee for txn in written] == [1000, 1000]
     assert all(txn.sender == holder for txn in written)
+
+
+# --- GOVERN-12: a MainNet update sends only what TestNet has been running -------
+
+MAINNET_GEN = "mainnet-v1.0"
+
+
+def test_a_mainnet_update_of_the_soaked_programs_goes_ahead(single_key) -> None:
+    private_key, address = account.generate_account()
+    approval, clear = _tree()
+    single_key.setattr(govern, "soaked_digest", lambda app_id=None, algod=None: _digest(approval, clear))
+    algod = FakeAlgod(approval=b"\x0a\x81\x01", clear=clear, gen=MAINNET_GEN)
+    assert govern.update(_algorand(algod, address, private_key), APP_ID, no_rebuild=True) == 0
+    assert len(algod.sent) == 1
+
+
+@pytest.mark.parametrize("soaked", ["0" * 64, None], ids=["testnet-runs-something-else", "testnet-unreadable"])
+def test_a_mainnet_update_of_unsoaked_programs_sends_nothing(single_key, caplog, soaked) -> None:
+    private_key, address = account.generate_account()
+    _, clear = _tree()
+    single_key.setattr(govern, "soaked_digest", lambda app_id=None, algod=None: soaked)
+    algod = FakeAlgod(approval=b"\x0a\x81\x01", clear=clear, gen=MAINNET_GEN)
+    with caplog.at_level("ERROR"):
+        assert govern.update(_algorand(algod, address, private_key), APP_ID, no_rebuild=True) == 1
+    assert algod.sent == []
+    assert "Refusing to update" in caplog.text
+
+
+def test_the_multisig_export_is_held_to_the_soak_too(monkeypatch, tmp_path) -> None:
+    """The unsigned file is how a multisig updates, so it must not be the way around the rule."""
+    _, holder = account.generate_account()
+    monkeypatch.setattr(govern.ms, "configured", lambda: True)
+    monkeypatch.setattr(govern.ms, "address", lambda: holder)
+    written: list = []
+    monkeypatch.setattr(govern.ms, "export_unsigned", lambda txn, path: written.append(txn))
+    monkeypatch.setattr(govern, "soaked_digest", lambda app_id=None, algod=None: "0" * 64)
+    _, clear = _tree()
+    algod = FakeAlgod(approval=b"\x0a\x81\x01", clear=clear, gen=MAINNET_GEN)
+    assert govern.update(SimpleNamespace(client=SimpleNamespace(algod=algod)), APP_ID, no_rebuild=True,
+                         out=tmp_path / "update.json") == 1
+    assert written == []
+
+
+def test_testnet_updates_do_not_consult_the_soak(single_key) -> None:
+    """TestNet is where programs soak, so it cannot be held to having soaked already."""
+    private_key, address = account.generate_account()
+    _, clear = _tree()
+    single_key.setattr(govern, "soaked_digest", lambda app_id=None, algod=None: pytest.fail("asked TestNet"))
+    algod = FakeAlgod(approval=b"\x0a\x81\x01", clear=clear)
+    assert govern.update(_algorand(algod, address, private_key), APP_ID, no_rebuild=True) == 0
+
+
+def test_soak_refusal_answers() -> None:
+    assert govern.soak_refusal("a" * 64, "a" * 64) is None
+    assert "not what TestNet app" in govern.soak_refusal("a" * 64, "b" * 64)
+    assert "fails closed" in govern.soak_refusal("a" * 64, None)
 
 
 # --- main prints the node's refusal as a refusal --------------------------------

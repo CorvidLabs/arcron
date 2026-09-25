@@ -92,6 +92,32 @@ PLAN = [
 ]
 
 
+#: The only seed MainNet takes (GOVERN-14): Pulse `tick` every twelve hours,
+#: SKIP_AHEAD, no fee ceiling, which is step three of the ceremony. The others
+#: are TestNet instruments: a 25-round burn-in, a ten-minute heartbeat, and one
+#: that escalates, which `docs/design/mainnet-rollout.md` keeps off MainNet
+#: until alpha-4 decides escalation.
+MAINNET_SEEDS = frozenset({"skip-ahead"})
+
+
+def mainnet_refusal(plan: list) -> str | None:
+    """Why this selection must not be registered on MainNet, or None if it may.
+
+    Pure, so a test can drive it without a node. Checked before connecting:
+    forgetting `--only` used to price, and with `--commit` register, all six.
+    """
+    bad = [
+        label for label, _interval, _runs, _policy, cap, _args in plan
+        if label.split(" ")[0] not in MAINNET_SEEDS or cap != 0
+    ]
+    if not bad:
+        return None
+    return (
+        "MainNet takes only the skip-ahead seed at fee_cap 0 "
+        "(--only skip-ahead). This selection also has:\n  " + "\n  ".join(bad)
+    )
+
+
 def _encode_args(call_args: list[bytes]) -> bytes:
     return abi.ABIType.from_string("byte[][]").encode([list(a) for a in call_args])
 
@@ -110,9 +136,6 @@ def main(argv: list[str] | None = None) -> None:
     )
     args = parser.parse_args(argv)
 
-    algorand = net.connect(args.network)
-    deployer = algorand.account.from_environment("DEPLOYER")
-
     plan = PLAN
     if args.only:
         plan = [seed for seed in PLAN if args.only.lower() in seed[0].lower()]
@@ -121,6 +144,15 @@ def main(argv: list[str] | None = None) -> None:
                 f"--only {args.only!r} matched no seed. Labels are:\n  "
                 + "\n  ".join(seed[0] for seed in PLAN)
             )
+    # Before connecting, so a MainNet run that selects a test seed stops
+    # without a node round trip and before anything is priced or signed.
+    if args.network == net.MAINNET:
+        refusal = mainnet_refusal(plan)
+        if refusal:
+            raise SystemExit(f"Refusing: {refusal}")
+
+    algorand = net.connect(args.network)
+    deployer = algorand.account.from_environment("DEPLOYER")
 
     total = 0
     logger.info("")

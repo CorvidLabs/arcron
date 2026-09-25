@@ -23,3 +23,4 @@ A network whose work is invisible looks dead even when it is running perfectly. 
   - **WATCH-3.b**  A top-up plan is printed before anything is signed.
   - **WATCH-3.c**  Nothing is sent until I say to send it.
 - **WATCH-4**  I can see how late the registry actually runs, measured rather than asserted.
+- **WATCH-5**  I hear about an upkeep running low on escrow before it stops running.

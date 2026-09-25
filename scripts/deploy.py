@@ -78,11 +78,10 @@ from dataclasses import dataclass
 
 import algokit_utils
 from algosdk import logic, transaction
-from algosdk.v2client import algod as algod_client
 from algosdk.v2client.models import SimulateRequest, SimulateRequestTransactionGroup
 
-from scripts import multisig as ms, network as net, node_retry
-from scripts.govern import PROGRAM_PAGE, _create_shape, _deployed, _frozen, bounded_params
+from scripts import multisig as ms, network as net
+from scripts.govern import PROGRAM_PAGE, _create_shape, _deployed, _frozen, bounded_params, soaked_digest
 from scripts.registry_health import read_solvency
 from scripts.verify_build import REPO, _digest, _programs, _spec, rebuild
 
@@ -264,34 +263,6 @@ def find_keepers(
         if is_match:
             found.append(int(app["id"]))
     return sorted(found)
-
-
-def soaked_digest(app_id: int = SOAKED_APP_ID, algod=None) -> str | None:
-    """The digest of what the TestNet keeper is running, or None if it could not be read.
-
-    Read through a plain algod client pointed at the public TestNet endpoint,
-    not through `net.connect(net.TESTNET)`. The MainNet run has already loaded
-    `.env.mainnet`, and `load_network` deliberately lets exported variables
-    win over the file it loads, so `ALGOD_SERVER` would still be the MainNet
-    node when `.env.testnet` was read: `AlgorandClient.from_environment()`
-    would connect to MainNet, `assert_network` would refuse, and without that
-    refusal the "soaked" programs would have been read from the chain being
-    deployed to, which proves nothing. An explicit address has no environment
-    to inherit. It gets the same retry wrapper every other client gets, with
-    the fallback pinned empty for the same reason: `ALGOD_SERVER_FALLBACK` in
-    a MainNet shell is a MainNet node.
-
-    Fails closed: any failure is logged and returned as None, and `refusals`
-    turns None into a refusal. `algod` is for tests.
-    """
-    if algod is None:
-        algod = node_retry.install(algod_client.AlgodClient("", SOAKED_ALGOD), fallback="")
-    try:
-        approval, clear = _deployed(algod, app_id)
-    except Exception as error:  # noqa: BLE001 - every failure is the same answer: unproven
-        logger.warning(f"Could not read TestNet app {app_id}'s programs: {error}")
-        return None
-    return _digest(approval, clear)
 
 
 def refusals(

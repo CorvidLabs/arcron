@@ -8,10 +8,10 @@ Every serious chain should let you say "call this later" without running a serve
 - [case](hi/case.md): CASE (16 criteria)
 - [console](hi/console.md): CONSOLE (53 criteria)
 - [execute](hi/execute.md): EXECUTE (18 criteria)
-- [govern](hi/govern.md): GOVERN (18 criteria)
+- [govern](hi/govern.md): GOVERN (21 criteria)
 - [integrate](hi/integrate.md): INTEGRATE (22 criteria)
 - [keeper](hi/keeper.md): KEEPER (28 criteria)
 - [schedule](hi/schedule.md): SCHEDULE (22 criteria)
 - [trust](hi/trust.md): TRUST (16 criteria)
-- [watch](hi/watch.md): WATCH (12 criteria)
+- [watch](hi/watch.md): WATCH (13 criteria)
 <!-- /hi:index -->
