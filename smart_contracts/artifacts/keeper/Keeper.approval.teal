@@ -272,7 +272,7 @@ register_after_for@4:
     // smart_contracts/keeper/contract.py:172
     // assert interval_rounds <= MAX_INTERVAL_ROUNDS, "Interval above maximum"
     uncover 3
-    intc 6 // 1000000000
+    pushint 999999999
     <=
     assert // Interval above maximum
     // smart_contracts/keeper/contract.py:173

@@ -21,7 +21,7 @@ MIN_INTERVAL_ROUNDS = 10
 # Maximum spacing, in rounds — about 90 years at Algorand's block time, so it
 # forbids nothing anyone wants. It exists to make the escalation multiply
 # provably safe without appealing to how old the chain is: see MAX_UPKEEP_FEE.
-MAX_INTERVAL_ROUNDS = 1_000_000_000
+MAX_INTERVAL_ROUNDS = 999_999_999
 # Minimum ALGO reward per execution (µALGO). An execution costs the keeper
 # 3,000 µALGO in transaction fees — 4,000 when an ASA bonus is paid, because
 # that is a third inner transaction — so at this floor a plain upkeep clears
