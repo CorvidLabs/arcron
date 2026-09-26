@@ -97,6 +97,27 @@ integration story in one pass: the hook shape, authorization, the failure
 modes that stop your upkeep being serviced, and the pull pattern everything
 here is built on. Integration is usually one zero-argument method.
 
+## Architecture
+
+```mermaid
+flowchart LR
+    creator["Upkeep creator"] -->|register, top_up, cancel| keeper
+    bot["Keeper<br/>(keeper_bot or anyone)"] -->|execute| keeper
+    keeper["Keeper app<br/>boxes + ALGO escrow"] -->|inner app call| target["Target app"]
+    keeper -->|fee from escrow| bot
+    notifier["notifier<br/>(read-only)"] -.->|watches| keeper
+    notifier -.-> discord["Discord"]
+    console["Console / @corvidlabs/arcron"] -.->|reads, builds groups| keeper
+    creatorKey["Creator key"] -.->|update, freeze<br/>until frozen| keeper
+```
+
+One contract holds every upkeep as a box and escrows ALGO for it; whoever
+calls `execute` on a due upkeep triggers the registered call and is paid in
+the same transaction. Everything else here runs, watches, governs or reads
+that contract. [`docs/HLD.md`](docs/HLD.md) is the full design: components,
+the register, execute, cancel, notifier and governance flows, on-chain data,
+deployment, trust boundaries and failure modes, each linked to the code.
+
 ## The keeper network
 
 Smart contracts can't wake themselves. Everything time-based on Algorand
@@ -507,6 +528,7 @@ web/                 # the console, the one page that is published
 web-keeper/          # local keeper dashboard (localhost:4300, never published)
 web-govern/          # local governance page (never published; the wallet-signing path to MainNet)
 docs/
+  HLD.md             # high-level design: components, flows, data, trust, failure modes
   arcron.md          # hand-off reference: API, box encoding, economics, operations
   integrating.md     # how to point Arcron at a contract you wrote
   security.md        # threat model, accepted risks, what happens if a bug is found
