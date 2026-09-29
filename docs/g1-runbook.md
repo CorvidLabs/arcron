@@ -21,7 +21,7 @@ These are inputs and decisions, not server steps. Each has an owner.
 |---|---|---|
 | A Discord webhook for a channel somebody reads every day | Leif | `DISCORD_WEBHOOK_URL` in `/etc/arcron/notifier.env` |
 | The list of creator addresses that count as ours on TestNet (step 4) | Leif | `ARCRON_OURS` in `/etc/arcron/notifier.env` |
-| Which node sits in front of the services: the public endpoint plus a fallback, or a TestNet node of our own (see "The node" below) | Leif | `ALGOD_SERVER`, `ALGOD_SERVER_FALLBACK` in both env files |
+| Which node sits in front of the services. **Decided 2026-09-29 by Leif: the public endpoint plus a fallback** (see "The node" below) | Leif | `ALGOD_SERVER`, `ALGOD_SERVER_FALLBACK` in both env files (step 4), and the notifier's poll (step 4b) |
 | Whether the laptop keeper and the GitHub cron keep running during the seven days | Leif | see "Other keepers" below |
 | Whether the starved TestNet upkeeps are cancelled or topped up first | Leif | see "The first scan" below |
 | A new keeper account, made on the server (step 3) and funded with 2 TestNet ALGO | the operator | `KEEPER_MNEMONIC` in `/etc/arcron/keeper.env` |
@@ -33,22 +33,22 @@ whatever variable holds the key (`scripts/keeper_bot.py`, `refuse_rewriting_sign
 
 ### The node
 
-G1 needs "our own node or a fallback". What was checked on 2026-09-29: besides
-the default `https://testnet-api.algonode.cloud`, the hosts
-`https://testnet-api.4160.nodely.dev` and `https://testnet-api.algonode.network`
-answer as `testnet-v1.0` on algod 5.0.2, and the first serves a real paged box
-listing (a `round` and a `next-token` on the response), which every reader
-here requires. They are run by the same operator as the default, so whether
-they share its request quota is **unknown**. Two options:
+G1 needs "our own node or a fallback". **Decided 2026-09-29 by Leif: the public
+endpoint plus a fallback.** Step 4 sets both, and step 4b slows the notifier
+down, both as part of G1 rather than as options.
 
-- **Public plus fallback** (no extra software): set
-  `ALGOD_SERVER_FALLBACK=https://testnet-api.4160.nodely.dev` and leave
-  `ALGOD_TOKEN_FALLBACK` empty in both env files. `scripts/node_retry.py`
-  alternates to it when the primary refuses a request. If both shed load
-  together, the 403 count in step 8 will show it.
-- **A TestNet node of our own.** `deploy/vps/algod.compose.yaml` runs a MainNet
-  node and is not written for TestNet; running one for G1 is a change to that
-  file, and a decision, not part of these steps.
+What was checked on 2026-09-29: besides the default
+`https://testnet-api.algonode.cloud`, the host
+`https://testnet-api.4160.nodely.dev` answers as `testnet-v1.0` on algod 5.0.2
+and serves a real paged box listing (a `round` and a `next-token` on the
+response), which every reader here requires; so does
+`https://testnet-api.algonode.network`. They are run by the same operator as
+the default, so whether they share its request quota is **unknown**.
+`scripts/node_retry.py` alternates to the fallback when the primary refuses a
+request; if both shed load together, the 403 count in step 8 will show it,
+and a TestNet node of our own is the next step then. That would be a change
+to `deploy/vps/algod.compose.yaml`, which runs a MainNet node and is not
+written for TestNet.
 
 What the two services ask of a node, counted the way `scripts/node_retry.py`
 counts the keeper: the keeper about 4,800 requests a day, measured. The
@@ -56,9 +56,9 @@ notifier reads the box listing and then every box on each scan, about 38
 requests for today's 36 upkeeps, every 30 seconds by default: about 110,000 a
 day, before the block reads it makes to name a keeper. The public endpoint
 refused the old keeper 4,949 times in one log at about 211,000 a day, and its
-real quota is unmeasured. So on the public endpoint the notifier is the part
-most likely to draw a 403 storm. If Leif chooses public plus fallback, step 4b slows the notifier down to keep
-it well under that.
+real quota is unmeasured. So step 4b sets the notifier's poll to two minutes,
+about 27,000 a day. TestNet does not need a stranger seen within 30 seconds;
+the unit's own 30-second default is left alone for MainNet, where it does.
 
 ### Other keepers
 
@@ -145,10 +145,24 @@ Edit with `sudo -e /etc/arcron/keeper.env` and `sudo -e /etc/arcron/notifier.env
 One value per line and **no comment on the same line as a value**: systemd keeps
 a trailing `# ...` as part of the value.
 
-Both files: `ARCRON_NETWORK=testnet`, `KEEPER_APP_ID=769891898`, and the node
-settings chosen in step 0 (`ALGOD_SERVER`, and `ALGOD_SERVER_FALLBACK` with
-`ALGOD_TOKEN_FALLBACK` empty for a public fallback). Leave the MainNet blocks
-commented.
+Both files set these values, each on its own line, alongside everything else
+already in them (`keeper.env` keeps the `KEEPER_MNEMONIC` step 3 wrote). In the examples the
+two TestNet fallback lines are commented out and empty; replace them with the
+values below rather than uncommenting them, because an empty
+`ALGOD_SERVER_FALLBACK` means no fallback at all. The fallback in the MainNet
+block further down is a MainNet host and stays commented.
+
+```ini
+ARCRON_NETWORK=testnet
+KEEPER_APP_ID=769891898
+ALGOD_SERVER=https://testnet-api.algonode.cloud
+ALGOD_PORT=
+ALGOD_TOKEN=
+ALGOD_SERVER_FALLBACK=https://testnet-api.4160.nodely.dev
+ALGOD_TOKEN_FALLBACK=
+```
+
+Leave the MainNet blocks commented.
 
 `notifier.env` also takes `DISCORD_WEBHOOK_URL` and `ARCRON_OURS`: every
 creator address that counts as ours, comma separated, 58-character addresses
@@ -165,27 +179,29 @@ Leif confirms which of those are ours. On 2026-09-29 the registry had seven
 creators; the last full attribution, on 2026-09-01, found all seven were ours
 ([`status.md`](status.md)). Check again rather than trusting that.
 
-### 4b. Only for public plus fallback: slow the notifier
+### 4b. Slow the notifier to a two-minute poll
 
-Skip this with a node of our own. With the public endpoint, a two-minute
-poll is about 27,000 requests a day, and TestNet does not need a stranger
-seen within 30 seconds. The unit is installed by now (step 2), so:
+Part of G1 as decided (see "The node"): about 27,000 requests a day instead of
+about 110,000. This adds a systemd drop-in beside the unit step 2 installed;
+the installer replaces only the unit file itself, so the drop-in survives
+upgrades.
 
 ```bash
-sudo systemctl edit arcron-notifier
-```
-
-and in the editor that opens, between the comment lines it shows:
-
-```ini
+sudo mkdir -p /etc/systemd/system/arcron-notifier.service.d
+sudo tee /etc/systemd/system/arcron-notifier.service.d/poll.conf >/dev/null <<'EOF'
 [Service]
 ExecStart=
 ExecStart=/opt/arcron/.venv/bin/python -m scripts.notifier --poll-seconds 120 --summary-every 60
+EOF
+sudo systemctl daemon-reload
+systemctl cat arcron-notifier | grep -- '--poll-seconds 120'
 ```
 
-`--summary-every 60` keeps the summary two-hourly at that poll. The empty
-`ExecStart=` line is required: it clears the unit's own before the override
-sets a new one.
+The last line must print the new `ExecStart`. The empty `ExecStart=` line is
+required: it clears the unit's own before the drop-in sets a new one.
+`--summary-every 60` keeps the summary two-hourly at that poll. If G1 moves to
+a node of our own, `sudo rm /etc/systemd/system/arcron-notifier.service.d/poll.conf`
+and a `daemon-reload` put the unit's 30-second default back.
 
 ## 5. Preflight from the server, before starting anything
 
@@ -223,9 +239,10 @@ first line must say `posting to Discord`. If it says `printing here`,
 announces into its own log, so it looks healthy while the seven days never
 begin. The seven days start at the first summary in the channel. The notifier
 posts the first-scan announcements to Discord, then one message per execution, and a
-`📊 **Registry**:` summary every 240 scans (about two hours at the default
-30-second poll). That summary is the liveness signal: a day without one means
-the watcher is down.
+`📊 **Registry**:` summary every 60 scans, two-hourly at the two-minute poll
+from step 4b. Its first line also says `every 120s`; if it says `every 30s`,
+the drop-in is not in place. That summary is the liveness signal: a day
+without one means the watcher is down.
 
 ## 7. Check it is doing the work
 
@@ -264,6 +281,7 @@ stranger alert, executions announced. The G1 record at the end of the week is:
 | Executions by this server's keeper | `fledge run health` and `fledge run keeper-preview` from a workstation |
 | No 403 storm | `sudo journalctl -u keeper-bot --since "7 days ago" \| grep -c "The node refused"` and the same for `arcron-notifier` |
 | No crash loop | `systemctl show keeper-bot arcron-notifier -p NRestarts` |
+| The notifier ran at the decided poll | `systemctl cat arcron-notifier \| grep -- '--poll-seconds 120'` |
 
 Those numbers go into the F11 evidence section of
 [`design/mainnet-rollout.md`](design/mainnet-rollout.md) with the dates.
@@ -273,7 +291,8 @@ Those numbers go into the F11 evidence section of
 Build a new package from the new `main` (step 1), copy it over and run the
 installer again (step 2). It stops the keeper and the notifier before replacing
 the code, starts the keeper again, restarts the notifier if it was running,
-leaves both env files alone, and prints the new build. Check `BUILD` afterwards.
+leaves both env files and the step 4b drop-in alone, and prints the new build.
+Check `BUILD` afterwards.
 
 ## Stopping
 
