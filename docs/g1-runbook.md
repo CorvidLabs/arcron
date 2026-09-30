@@ -22,7 +22,7 @@ These are inputs and decisions, not server steps. Each has an owner.
 | A Discord webhook for a channel somebody reads every day | Leif | `DISCORD_WEBHOOK_URL` in `/etc/arcron/notifier.env` |
 | The list of creator addresses that count as ours on TestNet (step 4) | Leif | `ARCRON_OURS` in `/etc/arcron/notifier.env` |
 | Which node sits in front of the services. **Decided 2026-09-29 by Leif: the public endpoint plus a fallback** (see "The node" below) | Leif | `ALGOD_SERVER`, `ALGOD_SERVER_FALLBACK` in both env files (step 4), and the notifier's poll (step 4b) |
-| Whether the laptop keeper and the GitHub cron keep running during the seven days | Leif | see "Other keepers" below |
+| Whether the laptop keeper and the GitHub cron keep running during the seven days. **Decided 2026-09-30 by Leif: both stop** | Leif | stopped at the go/no-go check (5b), restarted after step 8 (see "Other keepers" below) |
 | Whether the starved TestNet upkeeps are cancelled or topped up first | Leif | see "The first scan" below |
 | A new keeper account, made on the server (step 3) and funded with 2 TestNet ALGO | the operator | `KEEPER_MNEMONIC` in `/etc/arcron/keeper.env` |
 
@@ -62,11 +62,54 @@ the unit's own 30-second default is left alone for MainNet, where it does.
 
 ### Other keepers
 
-Today the TestNet registry is also serviced by a keeper on a laptop and by the
-GitHub cron in `.github/workflows/keeper-bot.yml`. Keepers racing is harmless
-(a losing transaction is rejected and costs nothing), but the seven days are
-meant to show this server doing the work. If the others keep running, the
-evidence in step 8 has to be read per keeper, which `health` already does.
+Today the TestNet registry is also serviced by a keeper on Leif's laptop (a
+launchd agent, `xyz.corvidlabs.arcron.keeper.testnet`) and by the GitHub cron
+in `.github/workflows/keeper-bot.yml`. **Decided 2026-09-30 by Leif: both stop
+for the seven days**, so this server's keeper alone produces the evidence.
+Both are stopped at the very end of the go/no-go check (5b), right before
+step 6, so the registry is never left without a keeper while the server is
+still being set up; and both come back after step 8. While they are stopped,
+nothing else services the registry: if the server's keeper stops, upkeeps go
+unserviced and the notifier says so, which is exactly what G1 is meant to
+show.
+
+Leif runs these, from his arcron checkout on the laptop.
+
+Stop the laptop keeper. `keeper-daemon-uninstall` removes the agent's plist as
+well as stopping it; stopping it with `launchctl bootout` alone would leave the
+plist in `~/Library/LaunchAgents`, and launchd would start it again at the next
+login, in the middle of the seven days. The copy is a fallback for the
+restart; the plist carries no secret.
+
+```bash
+cp ~/Library/LaunchAgents/xyz.corvidlabs.arcron.keeper.testnet.plist ~/xyz.corvidlabs.arcron.keeper.testnet.plist.before-g1 \
+  && test -s ~/xyz.corvidlabs.arcron.keeper.testnet.plist.before-g1 \
+  && fledge run keeper-daemon-uninstall
+fledge run keeper-daemon-status
+```
+
+The `&&` chain means the uninstall only runs once the backup exists, because
+the uninstall deletes the plist. The status must report the plist as `absent`
+and launchd as `not loaded`. launchd can take up to 30 seconds to let the job
+go (the plist gives it that long to finish a scan), so if the status still
+shows it loaded, run `fledge run keeper-daemon-status` again until it says
+`not loaded`.
+
+Stop the GitHub cron. Let a run already in progress finish first (it takes a
+couple of minutes); disabling does not cancel it.
+
+```bash
+gh run list -R CorvidLabs/arcron --workflow keeper-bot.yml -L 1 --json status --jq '.[0].status'
+gh workflow disable keeper-bot.yml -R CorvidLabs/arcron
+gh workflow list --all -R CorvidLabs/arcron --json name,state --jq '.[] | select(.name=="Keeper bot") | .state'
+```
+
+The last line must print `disabled_manually`. Disabling stops new runs, not
+one already going, so run the first command again: it must print `completed`
+(not `in_progress` or `queued`) before step 6. The `--json` forms print one
+plain word; the ordinary table shows status symbols in a terminal.
+
+Restarting both, after the seven days, is in "After the seven days" below.
 
 ### The first scan
 
@@ -223,6 +266,25 @@ sudo -u keeper sh -c 'cd /opt/arcron \
 `rehearsal` row is about a different job (see the end of this page) and does
 not block G1. Save the output: it is part of the G1 record.
 
+## 5b. Go / no-go
+
+Every line must be a yes before step 6. The last two are the only ones that
+change anything outside this server, which is why they come last.
+
+| Check | How |
+|---|---|
+| The package is from `main` | `cat /opt/arcron/BUILD` shows `dirty=0` and `on_origin_main=yes` |
+| The keeper account is funded | the address from step 3 holds at least 1 TestNet ALGO (any TestNet explorer; the bot also logs its balance when it starts) |
+| Both env files are filled in | step 4, including the fallback lines; `notifier.env` has `DISCORD_WEBHOOK_URL` set and the `ARCRON_OURS` list Leif confirmed |
+| The notifier's poll is two minutes | `systemctl cat arcron-notifier \| grep -- '--poll-seconds 120'` prints a line (step 4b) |
+| The preflight passed | step 5: `node`, `app`, `boxes`, `build`, `solvency` pass and `strangers` says `0 would be announced` |
+| Leif has answered the rest of step 0 | the starved-upkeeps decision is made (cleaned up first, or the first-scan burst accepted) |
+| The laptop keeper is stopped | Leif runs the first block in "Other keepers"; `fledge run keeper-daemon-status` reports the plist `absent` and launchd `not loaded` |
+| The GitHub cron is stopped | Leif runs the second block in "Other keepers"; `gh workflow list --all -R CorvidLabs/arcron --json name,state --jq '.[] \| select(.name=="Keeper bot") \| .state'` prints `disabled_manually`, and `gh run list -R CorvidLabs/arcron --workflow keeper-bot.yml -L 1 --json status --jq '.[0].status'` prints `completed` |
+
+Then start the server's services straight away (step 6), so the registry is
+without a keeper for minutes, not hours.
+
 ## 6. Start
 
 ```bash
@@ -282,9 +344,46 @@ stranger alert, executions announced. The G1 record at the end of the week is:
 | No 403 storm | `sudo journalctl -u keeper-bot --since "7 days ago" \| grep -c "The node refused"` and the same for `arcron-notifier` |
 | No crash loop | `systemctl show keeper-bot arcron-notifier -p NRestarts` |
 | The notifier ran at the decided poll | `systemctl cat arcron-notifier \| grep -- '--poll-seconds 120'` |
+| Only this server's keeper executed | `fledge run health` once a day, keeping its keeper lines: each run lists the keepers of about the last day (32,000 rounds) from one indexer page of up to 1,000 transactions, so seven daily readings cover the week where one reading at the end would not. From the second day on it should list one keeper, this server's; the laptop keeper drops out about a day after 5b |
 
 Those numbers go into the F11 evidence section of
 [`design/mainnet-rollout.md`](design/mainnet-rollout.md) with the dates.
+
+## After the seven days
+
+Once the G1 record is written into
+[`design/mainnet-rollout.md`](design/mainnet-rollout.md), Leif restarts the
+two keepers stopped in 5b, from his arcron checkout on the laptop. The server's
+keeper and notifier keep running; G2 needs them.
+
+The laptop keeper first. Put the plist saved in 5b back and load it: that is
+the same job as before, with its sweep settings, which live only in that
+plist.
+
+```bash
+cp ~/xyz.corvidlabs.arcron.keeper.testnet.plist.before-g1 ~/Library/LaunchAgents/xyz.corvidlabs.arcron.keeper.testnet.plist
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/xyz.corvidlabs.arcron.keeper.testnet.plist
+fledge run keeper-daemon-status
+```
+
+The status must say `state = running`. Only then the GitHub cron:
+
+```bash
+gh workflow enable keeper-bot.yml -R CorvidLabs/arcron
+gh workflow list --all -R CorvidLabs/arcron --json name,state --jq '.[] | select(.name=="Keeper bot") | .state'
+```
+
+which must say `active`. If the saved plist is lost, reinstall the agent with
+the sweep flags the laptop section of [`hosting.md`](hosting.md) uses; a bare
+`fledge run keeper-daemon-install` refuses, because the bot will not take a
+sweep destination without a trigger:
+
+```bash
+fledge run keeper-daemon-install -- --sweep-to <your wallet> --sweep-above 2000000 --sweep-every 86400
+```
+
+If G1 is abandoned before the seven days are up, the same commands restart
+them.
 
 ## Upgrading
 
