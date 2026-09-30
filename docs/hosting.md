@@ -25,6 +25,12 @@ upkeep, which is not yet true.
 If you have a VPS doing anything else, put the keeper on it. It is a small
 Python process; it will not notice.
 
+**For G1**, the rollout's first gate, do not use this section's commands:
+follow [`g1-runbook.md`](g1-runbook.md) from step 1. It packages from `main`
+and checks that the archive says so, makes the key on the server, and runs
+the preflight before anything starts. This section is the general reference
+it is built on.
+
 ```bash
 ./deploy/vps/package.sh                                  # builds a 392 KB tarball
 scp /tmp/arcron-keeper.tar.gz <user>@<host>:/tmp/
@@ -37,7 +43,7 @@ Then add the mnemonic and start it:
 
 ```bash
 sudo -e /etc/arcron/keeper.env     # KEEPER_MNEMONIC=
-sudo systemctl start keeper-bot
+sudo systemctl enable --now keeper-bot
 sudo journalctl -u keeper-bot -f
 ```
 
@@ -77,20 +83,25 @@ either: the node lives in `/etc/arcron/*.env`. Run the module, and source the
 id, the node and `ARCRON_OURS` while the keeper's carries a mnemonic that a
 read-only tool has no business having in its environment:
 
-`install.sh` writes that file `640 root:keeper`, so the read needs root:
+`install.sh` writes that file `640 root:keeper`, so the `keeper` user can read
+it, and that user owns the virtualenv the units run from. Run it as `keeper`,
+with that virtualenv's Python. Not `poetry run`: `install.sh` copies no
+`poetry.toml`, so Poetry run from any other account looks for a different
+virtualenv than `/opt/arcron/.venv`.
 
 ```bash
-sudo -i sh -c 'cd /opt/arcron \
+sudo -u keeper sh -c 'cd /opt/arcron \
   && set -a && . /etc/arcron/notifier.env \
-  && INDEXER_SERVER=https://testnet-idx.algonode.cloud \
+  && INDEXER_SERVER="https://${ARCRON_NETWORK}-idx.algonode.cloud" \
   && set +a \
-  && poetry run python -m scripts.preflight \
+  && .venv/bin/python -m scripts.preflight \
        --network "$ARCRON_NETWORK" --app-id "$KEEPER_APP_ID" --ours "$ARCRON_OURS"'
 ```
 
 The `INDEXER_SERVER` on that third line is there because the notifier needs no
 indexer and its env file therefore sets none, while the clock check fails
-closed without one. It is a fail rather than a skip, deliberately: an install
+closed without one. It follows `ARCRON_NETWORK`, so the same line reads the
+TestNet indexer during G1 and the MainNet one after the create. It is a fail rather than a skip, deliberately: an install
 round nobody can read is not a hold anybody should count.
 
 The fourth thing is the node. The free public endpoint sheds requests once a

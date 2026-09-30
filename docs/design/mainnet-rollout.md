@@ -589,6 +589,8 @@ periodic summary is the alarm the runbook says it is, and a preflight run
 against the VPS's own node, because check one is the only thing that says
 whether that node can serve a paged listing at all. There is no `fledge` on
 that box; [`../hosting.md`](../hosting.md) has the module invocation that
-works there.
+works there. The step by step for whoever does the server work, with the
+decisions it needs first and the evidence it produces, is
+[`../g1-runbook.md`](../g1-runbook.md).
 
 Then, and not before, G2.

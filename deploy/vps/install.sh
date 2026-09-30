@@ -16,6 +16,7 @@ APP_DIR=/opt/arcron
 ENV_DIR=/etc/arcron
 ENV_FILE="${ENV_DIR}/keeper.env"
 SERVICE=keeper-bot
+NOTIFIER_SERVICE=arcron-notifier
 RUN_USER=keeper
 SOURCE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
@@ -58,6 +59,16 @@ echo "==> Ensuring the ${RUN_USER} user"
 id -u "$RUN_USER" >/dev/null 2>&1 || useradd --system --home-dir "$APP_DIR" --shell /usr/sbin/nologin "$RUN_USER"
 
 # Stop before replacing code, so a half-copied tree is never what is running.
+# Both units run from this tree. Stopping only the keeper used to leave the
+# notifier on the old code, from files that had been deleted under it, until
+# something else restarted it; an upgrade has to restart the watcher too, and
+# the one that was running is the one that comes back.
+NOTIFIER_WAS_ACTIVE=0
+if systemctl is-active --quiet "$NOTIFIER_SERVICE"; then
+    NOTIFIER_WAS_ACTIVE=1
+    echo "==> Stopping ${NOTIFIER_SERVICE} for the upgrade"
+    systemctl stop "$NOTIFIER_SERVICE"
+fi
 if systemctl is-active --quiet "$SERVICE"; then
     echo "==> Stopping ${SERVICE} for the upgrade"
     systemctl stop "$SERVICE"
@@ -69,6 +80,15 @@ for item in scripts smart_contracts pyproject.toml poetry.lock; do
     rm -rf "${APP_DIR:?}/${item}"
     cp -R "${SOURCE}/${item}" "${APP_DIR}/"
 done
+# Which commit this is. G1 asks for the keeper and the notifier to run "from
+# main", and without a record nothing on the host can say whether they do.
+# package.sh writes it; an archive made some other way has none, and says so.
+if [[ -f "${SOURCE}/BUILD" ]]; then
+    install -m 644 "${SOURCE}/BUILD" "${APP_DIR}/BUILD"
+else
+    printf 'commit=unknown\nnote=not packaged by deploy/vps/package.sh\n' > "${APP_DIR}/BUILD"
+fi
+echo "    build: $(tr '\n' ' ' < "${APP_DIR}/BUILD")"
 chown -R "$RUN_USER:$RUN_USER" "$APP_DIR"
 
 echo "==> Installing dependencies (this takes a minute)"
@@ -110,7 +130,7 @@ install -m 644 "${SOURCE}/deploy/keeper-bot.service" "/etc/systemd/system/${SERV
 # and the list of creators that count as us, and starting it without those
 # gives a service that runs and reports nothing.
 NOTIFIER_ENV="${ENV_DIR}/notifier.env"
-install -m 644 "${SOURCE}/deploy/notifier.service" /etc/systemd/system/arcron-notifier.service
+install -m 644 "${SOURCE}/deploy/notifier.service" "/etc/systemd/system/${NOTIFIER_SERVICE}.service"
 if [ ! -f "$NOTIFIER_ENV" ]; then
     install -m 640 "${SOURCE}/deploy/notifier.env.example" "$NOTIFIER_ENV"
     chown root:"$RUN_USER" "$NOTIFIER_ENV"
@@ -122,15 +142,30 @@ fi
 install -m 644 "${SOURCE}/deploy/vps/algod.compose.yaml" "${ENV_DIR}/algod.compose.yaml"
 
 systemctl daemon-reload
-systemctl enable "$SERVICE" >/dev/null
+# Enabled when it is started, not before. Enabling at install meant that once
+# a key was written into keeper.env, the next reboot started the keeper before
+# anybody had run the preflight or chosen the node.
+
+if [[ "$NOTIFIER_WAS_ACTIVE" == 1 ]]; then
+    echo "==> Starting ${NOTIFIER_SERVICE} again, on the new code"
+    systemctl start "$NOTIFIER_SERVICE"
+fi
 
 if grep -q '^KEEPER_MNEMONIC=$' "$ENV_FILE"; then
     cat <<'DONE'
 
 Installed, not started: KEEPER_MNEMONIC is still empty.
 
+On TestNet for G1, start nothing yet. The build line above must show
+dirty=0 and on_origin_main=yes; if it does not, repackage from main
+(docs/g1-runbook.md step 1) and run this installer again. Then follow the
+runbook from step 3: it makes the key on this host, fills both env files and
+runs the preflight before anything is started, and step 6 starts both units.
+
+Otherwise, add the key and start the keeper:
+
   sudo -e /etc/arcron/keeper.env     # paste the 25-word mnemonic
-  sudo systemctl start keeper-bot
+  sudo systemctl enable --now keeper-bot
   sudo systemctl status keeper-bot
   sudo journalctl -u keeper-bot -f
 
@@ -140,7 +175,8 @@ Then the watcher, which is the other half of the thirty-day gate:
   sudo systemctl enable --now arcron-notifier
   sudo journalctl -u arcron-notifier -f
 
-For MainNet, both env files carry a commented block that changes together:
+MainNet only (G2 onwards): both env files carry a commented block that
+changes together:
 ARCRON_ALLOW_MAINNET=1, ARCRON_NETWORK=mainnet, the app id from the create
 ceremony, and a node. Run our own rather than the free public endpoint, which
 sheds requests past a daily quota:
@@ -155,6 +191,7 @@ order of operations.
 
 DONE
 else
+    systemctl enable "$SERVICE" >/dev/null
     systemctl start "$SERVICE"
     sleep 2
     systemctl --no-pager --lines=15 status "$SERVICE" || true
