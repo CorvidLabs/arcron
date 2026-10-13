@@ -107,7 +107,7 @@ docker compose -f /etc/arcron/algod.compose.yaml logs -f    # fast catch-up, abo
 ```
 
 The node dials out to relays and listens for nothing, so no inbound port is
-needed. Then `ALGOD_SERVER=http://127.0.0.1:8080` and that token in both env
+needed. Then `ALGOD_SERVER=http://127.0.0.1:7900` and that token in both env
 files, each value on a line of its own with no trailing comment, because
 systemd keeps a trailing `# ...` as part of the value. Keep
 `ALGOD_SERVER_FALLBACK=https://mainnet-api.algonode.cloud` beside it with
@@ -121,6 +121,51 @@ comes before and after, is [`design/mainnet-rollout.md`](design/mainnet-rollout.
 Not from a laptop. `fledge run keeper-daemon-install` refuses `--network
 mainnet`: the job would read `.env.mainnet`, and the keeper's hot key has no
 business in the same environment the create ceremony uses.
+
+#### Existing-node port cutover and rollback
+
+The VPS port plan reserves host loopback `127.0.0.1:7900` for shared algod
+infrastructure. The container still serves REST on 8080. No gossip port or
+public REST listener is added, and this local node needs no public nginx route.
+LocalNet and the public TestNet/MainNet endpoints are unchanged. The loopback
+examples above are for systemd clients on the same host; a keeper in a separate
+container cannot reach the host through its own `127.0.0.1`.
+
+For an existing node on host port 8080, coordinate a maintenance window with
+VPS administrator @0xGaspar and every client of that node. Save the old Compose
+file and both private env files securely on the host. Keep the existing
+`ALGOD_TOKEN`, network, app ids, fallback endpoints and allow flags. The installer
+preserves existing env files, so edit `ALGOD_SERVER` in both `/etc/arcron/keeper.env`
+and `/etc/arcron/notifier.env` explicitly; installing a new example does not
+update them. Use `http://127.0.0.1:7900`, with `ALGOD_PORT` empty when the port is
+already in the URL. Never commit the real env files or put secrets in logs.
+
+Stop `keeper-bot` and `arcron-notifier`, replace the installed node Compose
+file with the verified `deploy/vps/algod.compose.yaml`, and recreate the node
+using the same project name
+`arcron-algod` and existing `arcron-algod_algod-data` volume:
+
+```bash
+docker compose -f /etc/arcron/algod.compose.yaml up -d
+curl --fail --silent --show-error -H "X-Algo-API-Token: $ALGOD_TOKEN" \
+  http://127.0.0.1:7900/v2/status
+```
+
+Supply the existing token through the approved private operator environment.
+Confirm the node is ready on the expected network and resumed round progression;
+run the read-only preflight above with the updated notifier env before restarting
+both clients. Select an indexer for that same network: for MainNet use
+`INDEXER_SERVER=https://mainnet-idx.algonode.cloud` rather than the TestNet value
+in the earlier preflight example. Check their logs and configured fallback behavior. Do not replace
+or remove the data volume, run `down -v`, rerun the MainNet create ceremony, or
+change a signing key as part of this port cutover.
+
+For rollback, stop both clients, restore the saved Compose file and matched
+client env files, then run `up -d` with the same project/data volume. Probe the
+previous loopback endpoint and run preflight before restarting the clients.
+Coordinate any restored host 8080 binding with other applications to avoid a
+collision. A rollback must retain the same node token and data, not generate a
+fresh token or start a new catch-up volume.
 
 ### B. GitHub Actions on a schedule
 

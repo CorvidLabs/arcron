@@ -3,7 +3,7 @@
 #
 #   docker compose -f deploy/vps/algod.compose.yaml up -d
 #   docker compose -f deploy/vps/algod.compose.yaml logs -f
-#   curl -s -H "X-Algo-API-Token: $ALGOD_TOKEN" localhost:8080/v2/status | jq .last-round
+#   curl -s -H "X-Algo-API-Token: $ALGOD_TOKEN" 127.0.0.1:7900/v2/status | jq .last-round
 #
 # Why. The free public endpoint sheds requests once a daily quota is crossed
 # (scripts/node_retry.py, "Whose quota this is"), and the laptop keeper was
@@ -21,7 +21,7 @@
 # documented at https://github.com/algorand/go-algorand/tree/master/docker.
 # Check there before changing anything below. Generate TOKEN once with
 # `openssl rand -hex 32` and put the same value in /etc/arcron/keeper.env and
-# notifier.env as ALGOD_TOKEN, with ALGOD_SERVER=http://127.0.0.1:8080.
+# notifier.env as ALGOD_TOKEN, with ALGOD_SERVER=http://127.0.0.1:7900.
 #
 # install.sh copies this file to /etc/arcron/algod.compose.yaml. The project
 # name is fixed below so the data volume is `arcron-algod_algod-data` wherever
@@ -39,8 +39,9 @@ services:
       FAST_CATCHUP: "1"
       TOKEN: "${ALGOD_TOKEN:?set ALGOD_TOKEN in the shell or a .env beside this file}"
     ports:
-      # The REST API, bound to loopback: only processes on this host may ask.
-      - "127.0.0.1:8080:8080"
+      # Shared-infra host port 7900; REST inside the container remains 8080.
+      # Bound to loopback: only processes on this host may ask.
+      - "127.0.0.1:7900:8080"
     volumes:
       - algod-data:/algod/data
     logging:
