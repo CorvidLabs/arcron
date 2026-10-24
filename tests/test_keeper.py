@@ -373,17 +373,42 @@ def test_catch_up_replays_every_missed_interval(
     upkeep_id = _register(
         context, keeper, pulse, _selector("tick()uint64"), funding=MIN_UPKEEP_FEE * 10
     )
+    creator = context.default_sender
+    keepers = (context.any.account(), context.any.account())
+    assert creator != keepers[0] and creator != keepers[1]
+    assert keepers[0] != keepers[1]
     # Four whole intervals go by with nobody watching.
     now = start + 4 * MIN_INTERVAL_ROUNDS
     context.ledger.patch_global_fields(round=UInt64(now))
 
     runs = 0
     while _read_upkeep(context, keeper, int(upkeep_id)).next_execution_round <= now:
-        keeper.execute(upkeep_id)
+        before = _read_upkeep(context, keeper, int(upkeep_id))
+        executor = keepers[runs % len(keepers)]
+        with context.txn.create_group(active_txn_overrides={"sender": executor}):
+            next_due = int(keeper.execute(upkeep_id))
+        payment = context.txn.last_group.itxn_groups[-1][0]
+        assert payment.receiver == executor, "pay this slot's executor, not its creator"
+        assert payment.amount == MIN_UPKEEP_FEE
         runs += 1
+        after = _read_upkeep(context, keeper, int(upkeep_id))
+        assert next_due == before.next_execution_round + MIN_INTERVAL_ROUNDS
+        assert after.next_execution_round == next_due
+        assert after.times_executed == before.times_executed + 1
+        assert after.balance == before.balance - MIN_UPKEEP_FEE
+        assert after.last_serviced_round == now
+        assert runs <= 4, "each replay must advance its stored slot"
 
     assert runs == 4
     assert _read_upkeep(context, keeper, int(upkeep_id)).times_executed == 4
+    # Both keepers ran different overdue slots without advancing Global.round.
+    # Once caught up, another caller cannot spend or record a fifth execution.
+    box_before = ctx_box(context, keeper, int(upkeep_id))
+    with context.txn.create_group(active_txn_overrides={"sender": keepers[1]}):
+        with pytest.raises(AssertionError, match="^Not due$"):
+            keeper.execute(upkeep_id)
+    assert ctx_box(context, keeper, int(upkeep_id)) == box_before
+    assert context.txn.last_group.itxn_groups == []
 
 
 def test_skip_ahead_runs_once_and_keeps_the_schedule_phase(
@@ -400,11 +425,19 @@ def test_skip_ahead_runs_once_and_keeps_the_schedule_phase(
         funding=MIN_UPKEEP_FEE * 10,
         policy=SKIP_AHEAD,
     )
+    creator = context.default_sender
+    keeper_a, keeper_b = context.any.account(), context.any.account()
+    assert creator != keeper_a and creator != keeper_b
+    assert keeper_a != keeper_b
     scheduled = _read_upkeep(context, keeper, int(upkeep_id)).next_execution_round
     now = start + 4 * MIN_INTERVAL_ROUNDS + 3
     context.ledger.patch_global_fields(round=UInt64(now))
 
-    next_due = int(keeper.execute(upkeep_id))
+    with context.txn.create_group(active_txn_overrides={"sender": keeper_a}):
+        next_due = int(keeper.execute(upkeep_id))
+    payment = context.txn.last_group.itxn_groups[-1][0]
+    assert payment.receiver == keeper_a, "pay the executor, not the creator"
+    assert payment.amount == MIN_UPKEEP_FEE
 
     assert next_due > now, "must land strictly in the future"
     assert next_due - now <= MIN_INTERVAL_ROUNDS, "must land on the *first* future slot"
@@ -413,8 +446,14 @@ def test_skip_ahead_runs_once_and_keeps_the_schedule_phase(
     # And it is done: one execution, not five.
     upkeep = _read_upkeep(context, keeper, int(upkeep_id))
     assert upkeep.times_executed == 1
-    with pytest.raises(AssertionError, match="Not due"):
-        keeper.execute(upkeep_id)
+    assert upkeep.balance == MIN_UPKEEP_FEE * 9
+    assert upkeep.last_serviced_round == now
+    box_before = ctx_box(context, keeper, int(upkeep_id))
+    with context.txn.create_group(active_txn_overrides={"sender": keeper_b}):
+        with pytest.raises(AssertionError, match="^Not due$"):
+            keeper.execute(upkeep_id)
+    assert ctx_box(context, keeper, int(upkeep_id)) == box_before
+    assert context.txn.last_group.itxn_groups == []
 
 
 def test_execute_records_the_round_it_actually_ran_in(
@@ -525,14 +564,30 @@ def test_escalation_is_measured_from_the_last_service_not_the_schedule(
         funding=cap * 30,
         fee_cap=cap,
     )
-    # Twenty intervals of neglect, then one keeper drains the whole backlog.
+    creator = context.default_sender
+    keepers = (context.any.account(), context.any.account())
+    assert creator != keepers[0] and creator != keepers[1]
+    assert keepers[0] != keepers[1]
+    # Twenty intervals of neglect, then two keepers alternate overdue slots.
     now = start + 21 * MIN_INTERVAL_ROUNDS
     context.ledger.patch_global_fields(round=UInt64(now))
 
     fees: list[int] = []
     while _read_upkeep(context, keeper, int(upkeep_id)).next_execution_round <= now:
-        keeper.execute(upkeep_id)
+        before = _read_upkeep(context, keeper, int(upkeep_id))
+        executor = keepers[len(fees) % len(keepers)]
+        with context.txn.create_group(active_txn_overrides={"sender": executor}):
+            next_due = int(keeper.execute(upkeep_id))
+        payment = context.txn.last_group.itxn_groups[-1][0]
+        assert payment.receiver == executor, "each keeper receives its own fee"
         fees.append(_fee_paid(context, keeper))
+        after = _read_upkeep(context, keeper, int(upkeep_id))
+        assert next_due == before.next_execution_round + MIN_INTERVAL_ROUNDS
+        assert after.next_execution_round == next_due
+        assert after.times_executed == before.times_executed + 1
+        assert after.balance == before.balance - fees[-1]
+        assert after.last_serviced_round == now
+        assert len(fees) <= 21, "each replay must advance its stored slot"
 
     assert fees[0] == cap, "the execution that cleared the market pays the ceiling"
     assert set(fees[1:]) == {base}, "everything behind it pays base"

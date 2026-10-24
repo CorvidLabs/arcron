@@ -33,7 +33,8 @@ call, or on the app account's spendable balance, belongs in `keeper_e2e.py`.
 | Scenario | Expected Behavior |
 |----------|-------------------|
 | Execute in exactly the due round | Allowed (`>=`) |
-| Execute twice in one window | Second fails ("Not due") |
+| A second keeper executes in the same round after `SKIP_AHEAD` advances, or after an on-time `CATCH_UP` execution | Second fails ("Not due"); box state is unchanged and the attempt records no inner target call or payment |
+| Different keepers execute an overdue `CATCH_UP` upkeep in the same round | Each may execute the next missed slot while due and funded; each recorded ALGO fee names that call's executor, with one cap-priced initial service and base-priced replays when escalation applies. Once the stored due round is in the future, another attempt fails ("Not due") |
 | Escrow exactly one fee | One execution, then "Insufficient funding" |
 | Target app rejects the call | Group fails; keeper unpaid; state unchanged |
 | Cancel an empty escrow | Box deleted, box MBR refunded to the creator |
