@@ -31,6 +31,13 @@
       },
       "approved_delta_digests": {},
       "approved_delta_bases": {}
+    },
+    {
+      "gate": "finalization",
+      "actor": "specsync:finalization",
+      "timestamp": 1794583095,
+      "digest": "9f05b2f55e066dfd391490234c63ce96cefd8abb8b39e85e25903fa783696841",
+      "note": "Same-PR finalization closing digest"
     }
   ],
   "reopenings": []
