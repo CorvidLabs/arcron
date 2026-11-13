@@ -9,7 +9,7 @@ artifact: plan
 
 Add a `verification_ignored_paths` array to `.specsync/sdd.json` listing
 `.chough/sessions/`, `.chough/archive/` and `.chough/bugs/` (SpecSync 6.1.2 and later
-honour it). No other key changes.
+honour it). Also, following Leif's decisions (2026-11-13, 7:14 AM and 8:15 AM MST), narrow `.specsync/config.toml` `source_dirs` from `["."]` to the real source folders, and replace `"."` in `meaningful_paths` with the tracked top-level paths except `.chough/`. SpecSync refuses a `verification_ignored_paths` entry that overlaps either. No other key changes.
 
 ## Out of scope
 
@@ -17,7 +17,7 @@ Every other policy key, the Chough migration commit itself, and any spec or code
 
 ## Steps
 
-1. Edit `.specsync/sdd.json` to add the three entries.
+1. Edit `.specsync/sdd.json` (the three entries and `meaningful_paths`) and `.specsync/config.toml` (`source_dirs`).
 2. Run `specsync check`, `chough doctor` and the repository's own checks.
 3. Human scope approval and review, then finalize and archive in this PR.
 

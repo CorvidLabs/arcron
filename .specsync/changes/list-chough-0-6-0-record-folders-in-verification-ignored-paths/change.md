@@ -17,7 +17,7 @@ List Chough 0.6.0 record folders in verification_ignored_paths
 
 ## Acceptance Criteria
 
-- .specsync/sdd.json verification_ignored_paths lists .chough/sessions/, .chough/archive/ and .chough/bugs/; chough doctor reports no records_in_verification finding; specsync check passes
+- .specsync/config.toml source_dirs names the real source folders instead of the whole repository; .specsync/sdd.json meaningful_paths names the tracked top-level paths instead of ".", without .chough/; verification_ignored_paths lists .chough/sessions/, .chough/archive/ and .chough/bugs/; chough doctor reports no records_in_verification finding; specsync check passes
 
 ## No-spec Rationale
 
