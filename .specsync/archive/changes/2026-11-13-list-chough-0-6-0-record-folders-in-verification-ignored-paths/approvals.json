@@ -1,0 +1,44 @@
+{
+  "approvals": [
+    {
+      "gate": "definition",
+      "actor": "corvid-agent",
+      "timestamp": 1794583088,
+      "digest": "849c7a547fb2e2e4aa80f2028f68d771a0b048bb0f0ecdb0f5dbb918f02af348",
+      "note": "Leif's decision, given in chat to his Chief of Staff on 2026-11-13 at 8:15 AM MST: \"Yes, replace \".\" with the real folders on NFTMix and arcron, excluding .grok on NFTMix, and record my approval and review as corvid-agent.\" Recorded by corvid-agent; this is not 0xLeif's own signature.",
+      "approved_scope": {
+        "schema_version": 1,
+        "change_id": "list-chough-0-6-0-record-folders-in-verification-ignored-paths",
+        "title": "List Chough 0.6.0 record folders in verification_ignored_paths",
+        "description": "List Chough 0.6.0 record folders in verification_ignored_paths",
+        "kind": "operations",
+        "affected_specs": [],
+        "affected_paths": [
+          ".specsync/config.toml",
+          ".specsync/sdd.json"
+        ],
+        "no_spec_change": true,
+        "no_spec_change_rationale": "Policy-only edit to .specsync/sdd.json that adds Chough's three record folders to verification_ignored_paths; no module contract changes",
+        "acceptance_criteria": [
+          ".specsync/config.toml source_dirs names the real source folders instead of the whole repository; .specsync/sdd.json meaningful_paths names the tracked top-level paths instead of \".\", without .chough/; verification_ignored_paths lists .chough/sessions/, .chough/archive/ and .chough/bugs/; chough doctor reports no records_in_verification finding; specsync check passes"
+        ],
+        "dependencies": [],
+        "supersedes": [],
+        "answers": {
+          "architecture_risk": "no",
+          "public_contract": "no"
+        }
+      },
+      "approved_delta_digests": {},
+      "approved_delta_bases": {}
+    },
+    {
+      "gate": "finalization",
+      "actor": "specsync:finalization",
+      "timestamp": 1794583095,
+      "digest": "9f05b2f55e066dfd391490234c63ce96cefd8abb8b39e85e25903fa783696841",
+      "note": "Same-PR finalization closing digest"
+    }
+  ],
+  "reopenings": []
+}

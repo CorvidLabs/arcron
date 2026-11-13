@@ -1,1 +1,4 @@
 * text=auto eol=lf
+.chough/bugs/*.md merge=chough-bug
+knowledge/index.md merge=chough-generated
+knowledge/journal/feed.xml merge=chough-generated
